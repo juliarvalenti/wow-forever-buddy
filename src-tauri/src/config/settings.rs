@@ -116,19 +116,22 @@ impl Settings {
                     loc.display()
                 )));
             }
-            // Spec §6: never inside the game folder, or every full snapshot
-            // would capture the backup store itself.
+            // Spec §6: never inside the game folder (or a linked folder's
+            // real target, e.g. a WTF junction into Dropbox), or every full
+            // snapshot would capture the backup store itself. Compared after
+            // resolving links, so an alias of the game folder can't sneak by.
             if let Some(install) = &self.install {
-                let lower = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
-                let root = lower(&install.root);
-                let loc_str = lower(loc);
-                if loc_str == root
-                    || loc_str.starts_with(&format!("{}/", root.trim_end_matches('/')))
-                {
-                    return Err(AppError::InvalidSettings(format!(
-                        "backup location can't be inside the game folder: {}",
-                        loc.display()
-                    )));
+                let location = resolve_existing(loc);
+                let forbidden = std::iter::once(&install.root)
+                    .chain(install.links.iter().map(|l| &l.target))
+                    .map(|p| resolve_existing(p));
+                for root in forbidden {
+                    if is_within(&location, &root) {
+                        return Err(AppError::InvalidSettings(format!(
+                            "backup location can't be inside the game folder: {}",
+                            loc.display()
+                        )));
+                    }
                 }
             }
         }
@@ -151,6 +154,37 @@ impl Settings {
         self.process_names_extra = names;
         Ok(())
     }
+}
+
+/// `path` with links resolved as far as it exists: the deepest existing
+/// ancestor is canonicalized and the rest re-appended. (A backup location
+/// often doesn't exist yet.)
+fn resolve_existing(path: &Path) -> PathBuf {
+    let mut existing = path;
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(canon) = dunce::canonicalize(existing) {
+            return rest.iter().rev().fold(canon, |p, c| p.join(c));
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_os_string());
+                existing = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// `path` is `root` or inside it, comparing names case-insensitively.
+fn is_within(path: &Path, root: &Path) -> bool {
+    let mut path = path.components();
+    root.components().all(|r| {
+        path.next().is_some_and(|c| {
+            c.as_os_str().to_string_lossy().to_lowercase()
+                == r.as_os_str().to_string_lossy().to_lowercase()
+        })
+    })
 }
 
 /// A partial update from the UI (spec §8 `settings_update(patch)`): only the
@@ -707,11 +741,21 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
         let root = tmp.path().join("World of Warcraft");
+        std::fs::create_dir_all(&root).unwrap();
+        // An alias of the game folder, and a linked WTF's real home.
+        let alias = tmp.path().join("WoW alias");
+        crate::test_support::link_dir(&root, &alias);
+        let dropbox_wtf = tmp.path().join("Dropbox").join("WTF");
+        std::fs::create_dir_all(&dropbox_wtf).unwrap();
         store
             .update(|s| {
                 s.install = Some(InstallChoice {
                     root: root.clone(),
                     flavor: "_classic_beta_".into(),
+                    links: vec![crate::fsx::relpath::LinkedFolder {
+                        folder: "WTF".into(),
+                        target: dropbox_wtf.clone(),
+                    }],
                 })
             })
             .unwrap();
@@ -719,6 +763,8 @@ mod tests {
         for inside in [
             root.clone(),
             root.join("_classic_beta_").join("WTF").join("bk"),
+            alias.join("Backups"),
+            dropbox_wtf.join("Backups"),
         ] {
             assert!(
                 matches!(

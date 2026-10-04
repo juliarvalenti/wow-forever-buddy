@@ -109,8 +109,12 @@ impl AppCore {
     /// The configured game folder, validated now. Until T5 lands this reads
     /// the install choice from settings; T5 switches it to the active install.
     pub fn active_game(&self) -> AppResult<ActiveGame> {
-        let install = self.settings.get().install.ok_or(AppError::NoInstall)?;
-        let flavor_dir: PathBuf = install.root.join(&install.flavor);
+        let choice = self.settings.get().install.ok_or(AppError::NoInstall)?;
+        // Re-validates the saved install, and refuses if a linked folder (a
+        // WTF junction into Dropbox, say) was added, removed or re-pointed
+        // since the user confirmed it.
+        crate::install::current(&self.settings)?.ok_or(AppError::NoInstall)?;
+        let flavor_dir: PathBuf = choice.root.join(&choice.flavor);
         if !flavor_dir.join("WTF").is_dir() {
             return Err(AppError::InvalidInstall(format!(
                 "{} has no WTF folder",
@@ -118,8 +122,10 @@ impl AppCore {
             )));
         }
         Ok(ActiveGame {
-            root: GameRoot::new(&flavor_dir)?,
-            flavor: install.flavor,
+            // From the recorded links, so paths are checked against where the
+            // links pointed at confirmation, not wherever they point now.
+            root: GameRoot::from_saved(&choice)?,
+            flavor: choice.flavor,
         })
     }
 
@@ -237,5 +243,32 @@ mod tests {
             Arc::ptr_eq(&second, &core.backups().unwrap()),
             "reused while unchanged"
         );
+    }
+
+    /// Review note: the game root comes from the links recorded when the
+    /// install was confirmed, and a link re-pointed later is refused.
+    #[test]
+    fn active_game_uses_recorded_links_and_refuses_repointed_ones() {
+        let (dir, root) = crate::test_support::fixture_copy();
+        let flavor = root.join("_classic_beta_");
+        let synced = dir.path().join("Dropbox").join("WTF");
+        std::fs::create_dir_all(synced.parent().unwrap()).unwrap();
+        std::fs::rename(flavor.join("WTF"), &synced).unwrap();
+        crate::test_support::link_dir(&synced, &flavor.join("WTF"));
+
+        let core = AppCore::new(AppPaths::under(&dir.path().join("app"))).unwrap();
+        assert!(matches!(core.active_game(), Err(AppError::NoInstall)));
+        crate::install::set(&core.settings, &root, None).unwrap();
+
+        let game = core.active_game().unwrap();
+        assert_eq!(game.flavor, "_classic_beta_");
+        assert_eq!(game.root.links.len(), 1, "the WTF link was recorded");
+
+        // Someone points WTF somewhere else.
+        let other = dir.path().join("Other");
+        std::fs::create_dir_all(&other).unwrap();
+        crate::test_support::unlink_dir(&flavor.join("WTF"));
+        crate::test_support::link_dir(&other, &flavor.join("WTF"));
+        assert!(core.active_game().is_err(), "re-pointed link refused");
     }
 }
