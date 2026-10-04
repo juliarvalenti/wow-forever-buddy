@@ -3,6 +3,7 @@
 //! at startup, it means a restore was interrupted, and the app offers to roll
 //! back or finish it.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,21 @@ pub fn read(dir: &Path) -> AppResult<Option<Journal>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
     }
+}
+
+/// Snapshots an unresolved restore still needs, so pruning keeps them (T8).
+/// `Err` if the journal is unreadable: then the caller must not prune at all,
+/// since it can't tell which snapshots a roll back would need.
+pub fn held_snapshots(dir: &Path) -> AppResult<HashSet<String>> {
+    Ok(read(dir)?
+        .map(|j| {
+            HashSet::from([
+                j.source_snapshot,
+                j.original_pre_restore,
+                j.pre_restore_snapshot,
+            ])
+        })
+        .unwrap_or_default())
 }
 
 pub fn write(dir: &Path, journal: &Journal) -> AppResult<()> {
@@ -93,5 +109,27 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join(FILE_NAME), b"{ not json").unwrap();
         assert!(read(tmp.path()).is_err());
+        assert!(held_snapshots(tmp.path()).is_err(), "so nothing is pruned");
+    }
+
+    #[test]
+    fn held_snapshots_are_the_journals_three_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(held_snapshots(tmp.path()).unwrap().is_empty());
+        let journal = Journal {
+            source_snapshot: "A".into(),
+            original_pre_restore: "B".into(),
+            pre_restore_snapshot: "C".into(),
+            selection: RestoreSelection {
+                items: vec![ScopeItem::Everything],
+            },
+            mode: RestoreMode::Overlay,
+            flavor: "_classic_beta_".into(),
+            started_at: "2026-10-04T00:00:00Z".into(),
+            summary: "everything".into(),
+        };
+        write(tmp.path(), &journal).unwrap();
+        let held = held_snapshots(tmp.path()).unwrap();
+        assert_eq!(held, HashSet::from(["A".into(), "B".into(), "C".into()]));
     }
 }

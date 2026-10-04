@@ -76,7 +76,7 @@ All reads of game files go through `fsx::read`. No other module opens game files
 | Never block WoW's writes | `OpenOptions::new().read(true)` plus explicit `share_mode(FILE_SHARE_READ \| FILE_SHARE_WRITE \| FILE_SHARE_DELETE)` on Windows. Rust's std already defaults to this, but we set it explicitly and add a test so a refactor can't regress it. |
 | Never hold handles | `safe_read(path) -> Result<Bytes>`: open, `read_to_end`, drop. Nothing streams from a game file. That includes zip/hash code, which reads the bytes `safe_read` returns. |
 | Detect torn reads | `stat` → read → `stat`. If size or mtime changed, retry up to 3× with a 250 ms backoff, then return `AppError::Unstable` ("try later"). |
-| Debounced watching | `notify` + `notify-debouncer-full`, watching `WTF/` recursively. A path is "settled" only when its size and mtime have been unchanged for **2 s**. Only then do we emit `wtf://changed { paths }`. If the notify backend fails (network drives etc.), fall back to polling every 30 s. |
+| Debounced watching | `notify` + `notify-debouncer-full`, watching `WTF/` recursively. A path is "settled" only when its size and mtime have been unchanged for **2 s**. Only then do we emit `wtf://changed { paths }`. If the notify backend fails (network drives etc.), fall back to polling every 30 s. **Deferred to the v0.2 ingest ticket** (PM, 2026-10-04): nothing in v0.1 consumes `wtf-changed`. The game-exit backup waits for WTF to settle with its own polling check (`triggers::wait_until_settled`), and the v0.1 sessions stretch attributes characters from per-character WTF mtimes before and after a session. |
 | Bad parse means retry, never act | Consumers treat `Parse`/`Unstable` errors as "skip this cycle". Nothing destructive ever depends on a parse result. |
 | Never execute Lua | SavedVariables are parsed as data by our own parser (below). We never use `mlua`/`rlua`. |
 
@@ -424,7 +424,7 @@ Each ticket is about 0.5–2 days, with tests, and passes CI on Windows and macO
 5. **Install detection:** registry, common-path and manual sources; validation; flavors from `.build.info`; `install_*` commands; dialog plugin.
 6. **Game watcher + write gate:** `ProcessProbe`/sysinfo poller, `game://status-changed`, `MutationGuard` with the synchronous running check, `write_audit`.
 7. **Backup store:** CAS blobs, manifests, hash cache, `backup_create/list/get/delete/pin/label`, job queue + progress.
-8. **Retention + GC + triggers:** retention fn, prune + GC, debounced WTF watcher, app_start / game_exit / scheduled triggers, skip-identical.
+8. **Retention + GC + triggers:** retention fn, prune + GC, app_start / game_exit / scheduled triggers, skip-identical. (The debounced WTF watcher moved to the v0.2 ingest ticket; see §3.)
 9. **Restore:** scopes, overlay/mirror, preview, pre-restore snapshot, journal + crash recovery, `backup_verify`.
 10. **Secrets interface:** keyring store, `IntegrationId`, `secrets_*` commands.
 11. **Frontend wiring:** generated bindings in `src/lib`, `useGameStatus`/`useInstall`/`useBackups`/`useRestore` hooks, and a Backups screen following the **round-1 mock structure** (list, back up now, restore flow with the "close WoW first" state and the deletions list). Use **plain, unstyled components** with all logic in the hooks. The visual direction is being redone, so don't polish visuals yet; the restyle should only touch markup and CSS.

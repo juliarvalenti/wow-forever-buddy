@@ -188,7 +188,6 @@ impl GameWatcher {
 
     /// For the write gate: asks the OS right now (never the cached status)
     /// and fails closed, counting any known WoW exe wherever it runs from.
-    #[allow(dead_code)] // the write gate's only production caller arrives with T7
     pub fn is_running_now(&self, target: &ProbeTarget) -> bool {
         let matcher = Matcher::new(target);
         self.probe

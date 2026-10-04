@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
+use crate::backup::journal;
 use crate::backup::manifest::{SnapshotSummary, Trigger};
+use crate::backup::retention::POLICY;
 use crate::backup::tree::SnapshotDetail;
-use crate::backup::{clean_label, SnapshotRequest, SnapshotScope};
+use crate::backup::{clean_label, PruneReport, SnapshotRequest, SnapshotScope, StorageInfo};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -103,4 +105,24 @@ pub fn backup_set_label(
     label: Option<String>,
 ) -> AppResult<SnapshotSummary> {
     state.core.backups()?.set_label(&id, label)
+}
+
+/// The storage meter and the retention sentence for the Backups header.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_storage(state: State<'_, AppState>) -> AppResult<StorageInfo> {
+    Ok(state.core.backups()?.storage(&POLICY))
+}
+
+/// Settings' "Prune now". Waits for any running backup or restore, because
+/// garbage collection must never overlap one. Keeps whatever an interrupted
+/// restore still needs, and refuses while its journal is unreadable.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
+    let core = &state.core;
+    let _job = core.jobs.lock().expect("job lock poisoned");
+    let held = journal::held_snapshots(&core.paths.local_data_dir)?;
+    core.backups()?
+        .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now, &held)
 }
