@@ -1,7 +1,21 @@
-import type { RecoveryStatus } from "@/lib/bindings";
+import { useEffect, useState } from "react";
+import { commands, type RecoveryStatus } from "@/lib/bindings";
 import { Button, Callout, Dialog, PrimaryButton } from "@/components/d";
 import { when } from "@/lib/format";
 import type { useRecovery } from "@/hooks/useRestore";
+
+/** When snapshot `id` was taken, or null until known (or if it's gone). */
+function useTakenAt(id: string | null | undefined): string | null {
+  const [at, setAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    commands.backupList().then(
+      (list) => setAt(list.find((s) => s.id === id)?.created_at ?? null),
+      () => setAt(null),
+    );
+  }, [id]);
+  return at;
+}
 
 const LEAVE_WHY =
   "Nothing changes: files stay as they are now, part restored. The safety copy stays in Backups.";
@@ -16,9 +30,11 @@ export function RecoveryDialog({
 }: {
   recovery: ReturnType<typeof useRecovery>;
   onLater: () => void;
-  onOpenSafety: (id: string) => void;
+  /** Opens that safety snapshot, or the Safety list when null. */
+  onOpenSafety: (id: string | null) => void;
 }) {
   const { status, busy, error, resolve } = recovery;
+  const takenAt = useTakenAt(status?.kind === "pending" ? status.journal.original_pre_restore : null);
   if (!status || status.kind === "none") return null;
 
   if (status.kind === "unreadable") {
@@ -33,15 +49,17 @@ export function RecoveryDialog({
             <Button variant="ghost" onClick={() => resolve("discard")} disabled={busy}>
               Clear notice
             </Button>
-            {safety && (
-              <PrimaryButton onClick={() => onOpenSafety(safety)}>Open the safety copy</PrimaryButton>
-            )}
+            <PrimaryButton onClick={() => onOpenSafety(safety)}>
+              {safety ? "Open the safety copy" : "Open Backups"}
+            </PrimaryButton>
           </>
         }
       >
         <p>
-          We can't read its record, so it can't be rolled back or finished automatically. Your
-          files from before the restore are in a safety copy in Backups.
+          We can't read its record, so it can't be rolled back or finished automatically.{" "}
+          {safety
+            ? "Your files from before the restore are in a safety copy in Backups."
+            : "Check Backups for a safety copy from around then."}
         </p>
         <p className="d-muted">Restores stay locked until you clear this notice.</p>
         {error && <Callout tone="bad">{error}</Callout>}
@@ -73,12 +91,14 @@ export function RecoveryDialog({
       }
     >
       <p>
-        Restoring <b>{journal.summary}</b> stopped partway on {when(journal.started_at)}.
+        Restoring <b>{journal.summary}</b> stopped partway ({when(journal.started_at)}).
       </p>
       <p>
         <b>Roll back</b> (recommended) puts back exactly what was there before. <b>Finish restore</b>{" "}
         completes it.
       </p>
+      {takenAt && <p className="d-muted">Safety copy: taken {when(takenAt)}</p>}
+      <p className="d-dim">Either way, the safety copy stays in Backups.</p>
       {error && <Callout tone="bad">{error}</Callout>}
     </Dialog>
   );

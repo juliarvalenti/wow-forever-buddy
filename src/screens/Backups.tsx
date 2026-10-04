@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import type {
-  Category,
-  GameStatus,
-  RestoreMode,
-  RestoreSelection,
-  ScopeItem,
-  SnapshotDetail,
-  SnapshotSummary,
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  events,
+  type Category,
+  type GameStatus,
+  type RestoreMode,
+  type RestoreSelection,
+  type ScopeItem,
+  type SnapshotDetail,
+  type SnapshotSummary,
 } from "@/lib/bindings";
 import {
   Button,
@@ -28,6 +29,7 @@ import {
   Segmented,
 } from "@/components/d";
 import { useBackups, useSnapshot } from "@/hooks/useBackups";
+import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
 import { ago, bytes, plural, when } from "@/lib/format";
 
@@ -240,12 +242,35 @@ function ConfirmRestore({
   running: boolean;
   onClose: () => void;
 }) {
-  const { plan, planError, run, preview, start } = useRestore();
+  const { plan, planError, loading, changed, run, preview, start } = useRestore();
   const selection = useMemo(() => toSelection(keys), [keys]);
-  useEffect(() => {
-    preview(id, selection, mode);
-  }, [id, selection, mode, preview]);
+  const again = useCallback(() => preview(id, selection, mode), [id, selection, mode, preview]);
   const { title } = restoreLabel(keys);
+
+  // A plan from before WoW's exit writes is stale. When WoW closes, re-plan
+  // and keep Restore locked until that fresh plan is in ("Checking what
+  // changed…"). Don't wait for backup-created: it never comes when exit
+  // backups are off or skipped as identical. If it does come, re-plan again.
+  const [checking, setChecking] = useState(false);
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    again();
+  }, [again]);
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      setChecking(true);
+      again().finally(() => setChecking(false));
+    }
+    wasRunning.current = running;
+  }, [running, again]);
+  useEvent(events.backupCreated, () => {
+    if (run.kind !== "running") again();
+  });
+  // The backend refused because more would be deleted than confirmed: show
+  // the new list for the user to check again.
+  useEffect(() => {
+    if (run.kind === "error" && run.deletionsChanged) again();
+  }, [run, again]);
 
   if (run.kind === "error" && run.corrupt)
     return (
@@ -278,13 +303,17 @@ function ConfirmRestore({
   const busy = run.kind === "running";
   const footer = (
     <>
-      {running ? (
+      {running || checking ? (
         <>
           <LiveDot />
-          <span>
-            Waiting for WoW to close…{" "}
-            <span className="d-muted">Restore enables automatically when it exits.</span>
-          </span>
+          {running ? (
+            <span>
+              Waiting for WoW to close…{" "}
+              <span className="d-muted">Restore enables automatically when it exits.</span>
+            </span>
+          ) : (
+            <span>WoW closed. Checking what changed…</span>
+          )}
           <span className="d-grow" />
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -303,8 +332,14 @@ function ConfirmRestore({
             Cancel
           </Button>
           <PrimaryButton
-            onClick={() => start(id, selection, mode)}
-            disabled={busy || !plan || plan.read_only.length > 0 || plan.write_count + plan.delete.length === 0}
+            onClick={() => plan && start(id, selection, mode, plan)}
+            disabled={
+              busy ||
+              loading ||
+              !plan ||
+              plan.read_only.length > 0 ||
+              plan.write_count + plan.delete.length === 0
+            }
           >
             Restore
           </PrimaryButton>
@@ -316,7 +351,13 @@ function ConfirmRestore({
   return (
     <Dialog title={title} onClose={busy ? undefined : onClose} footer={footer}>
       {planError && <Callout tone="bad">{planError}</Callout>}
-      {run.kind === "error" && <Callout tone="bad">{run.message}</Callout>}
+      {run.kind === "error" && (
+        <Callout tone="bad">
+          {run.deletionsChanged
+            ? "Restore stopped before changing anything. More files would be removed than you confirmed."
+            : run.message}
+        </Callout>
+      )}
       {!plan && !planError && <p className="d-muted">Working out what changes…</p>}
       {plan && (
         <>
@@ -361,6 +402,11 @@ function ConfirmRestore({
             A safety snapshot of the current files is taken before anything changes, so you can
             undo this.
           </p>
+          {changed && (
+            <p style={{ color: "var(--ember-2)" }}>
+              The list changed after WoW closed. Please check it again.
+            </p>
+          )}
         </>
       )}
     </Dialog>
@@ -371,15 +417,18 @@ export function Backups({
   game,
   restoresLocked,
   select,
+  show,
 }: {
   game: GameStatus | null;
   /** An interrupted restore is unresolved: restores stay locked. */
   restoresLocked: boolean;
   /** A snapshot to open (e.g. "Open the safety copy"). */
   select?: string | null;
+  /** A list filter to apply (e.g. "Open Backups" on the safety copies). */
+  show?: Filter | null;
 }) {
   const { list, storage, error, progress, failed, backUpNow } = useBackups();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(show ?? "all");
   const [selected, setSelected] = useState<string | null>(select ?? null);
   const [scope, setScope] = useState<Scope>("characters");
   const [keys, setKeys] = useState<Keys>(new Set());
@@ -391,6 +440,9 @@ export function Backups({
   useEffect(() => {
     if (select) setSelected(select);
   }, [select]);
+  useEffect(() => {
+    if (show) setFilter(show);
+  }, [show]);
   useEffect(() => setKeys(new Set()), [selected, scope]);
 
   const counts = useMemo(() => {
@@ -405,13 +457,15 @@ export function Backups({
   const { button } = restoreLabel(keys);
   const canPick = keys.size > 0;
 
-  const restoreAction = (label: string, onClick: () => void) =>
+  const restoreAction = (label: string, onClick: () => void, variant?: "ghost") =>
     restoresLocked ? (
       <LockedAction why={PENDING_WHY}>{label}</LockedAction>
     ) : running ? (
       <LockedAction why={RUNNING_WHY}>{label}</LockedAction>
     ) : (
-      <Button onClick={onClick}>{label}</Button>
+      <Button variant={variant} onClick={onClick}>
+        {label}
+      </Button>
     );
 
   return (
@@ -492,7 +546,8 @@ export function Backups({
                   <th>When</th>
                   <th>Type</th>
                   <th>Note</th>
-                  <th>Contents</th>
+                  {/* No room beside the snapshot panel. */}
+                  {!selected && <th>Contents</th>}
                   <th className="num">Size</th>
                   <th />
                 </tr>
@@ -508,10 +563,10 @@ export function Backups({
                     <Pill kind={KIND_PILL[s.kind]}>{KIND_LABEL[s.kind]}</Pill>
                   </td>
                   <td>{note(s)}</td>
-                  <td className="d-muted">{contents(s)}</td>
+                  {!selected && <td className="d-muted">{contents(s)}</td>}
                   <td className="num">{bytes(s.total_bytes)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {restoreAction("Restore", () => setSelected(s.id))}
+                    {restoreAction("Restore", () => setSelected(s.id), "ghost")}
                   </td>
                 </tr>
               ))}

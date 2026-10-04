@@ -34,12 +34,14 @@ export const commands = {
 	 */
 	backupRestorePreview: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestorePlan>("backup_restore_preview", { id, selection, mode }),
 	/**
-	 *  Restores `selection` from snapshot `id`. Fails with `GameRunning` while
-	 *  WoW runs (the UI waits for it to close, then the user confirms again),
-	 *  `ReadOnly` or `BackupCorrupt` before changing anything. Waits for any
-	 *  running backup or restore.
+	 *  Restores `selection` from snapshot `id`. `confirmed_deletes` is the
+	 *  preview's `delete` list the user confirmed. Fails before changing anything
+	 *  with `GameRunning` while WoW runs (the UI waits for it to close, then the
+	 *  user confirms again), `ReadOnly`, `BackupCorrupt`, `RestorePending`, or
+	 *  `DeletionsChanged` if it would remove a file not in `confirmed_deletes`.
+	 *  Waits for any running backup or restore.
 	 */
-	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode }),
+	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null, confirmedDeletes: RelPath[]) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode, confirmedDeletes }),
 	/**
 	 *  Checks every stored copy in a snapshot against its checksum. Runs as a
 	 *  job, so a concurrent prune's GC can't remove blobs mid-check and make
@@ -174,7 +176,14 @@ export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind:
  *  A restore was interrupted; it must be rolled back, finished or
  *  discarded before another restore can start.
  */
-{ kind: "RestorePending" } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
+{ kind: "RestorePending" } | 
+/**
+ *  The restore would remove files the user didn't confirm (the folder
+ *  changed after the preview). Nothing was changed; preview again.
+ */
+{ kind: "DeletionsChanged"; detail: {
+	paths: string[],
+} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
 
 export type AppInfo = {
 	version: string,

@@ -15,10 +15,17 @@ export function bytes(n: number | null | undefined): string {
   return `${i === 0 ? v : v.toFixed(v < 10 ? 2 : 1)} ${units[i]}`;
 }
 
-/** "1 Oct, 21:15". */
-export function when(iso: string): string {
+/** "Today, 21:15", "Yesterday, 21:15" or "1 Oct, 21:15". */
+export function when(iso: string, now = new Date()): string {
   const d = new Date(iso);
-  const day = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(d)) / 86400000);
+  const day =
+    days === 0
+      ? "Today"
+      : days === 1
+        ? "Yesterday"
+        : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   return `${day}, ${time}`;
 }
@@ -62,6 +69,8 @@ export function errorText(e: unknown): string {
       return "Another backup or restore is running.";
     case "ReadOnly":
       return `Some files are marked read-only: ${e.detail.paths.join(", ")}`;
+    case "DeletionsChanged":
+      return "Restore stopped before changing anything. More files would be removed than you confirmed.";
     case "BackupCorrupt":
       return `This snapshot is damaged: ${e.detail.files.join(", ")}`;
     case "Parse":

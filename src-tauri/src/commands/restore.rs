@@ -9,6 +9,7 @@ use crate::backup::restore::{
     VerifyReport,
 };
 use crate::error::{AppError, AppResult};
+use crate::fsx::relpath::RelPath;
 use crate::state::AppState;
 
 /// Emitted while a restore runs.
@@ -80,10 +81,12 @@ pub fn backup_restore_preview(
     restore::plan(&manifest, &game.root, &selection, mode.unwrap_or_default())
 }
 
-/// Restores `selection` from snapshot `id`. Fails with `GameRunning` while
-/// WoW runs (the UI waits for it to close, then the user confirms again),
-/// `ReadOnly` or `BackupCorrupt` before changing anything. Waits for any
-/// running backup or restore.
+/// Restores `selection` from snapshot `id`. `confirmed_deletes` is the
+/// preview's `delete` list the user confirmed. Fails before changing anything
+/// with `GameRunning` while WoW runs (the UI waits for it to close, then the
+/// user confirms again), `ReadOnly`, `BackupCorrupt`, `RestorePending`, or
+/// `DeletionsChanged` if it would remove a file not in `confirmed_deletes`.
+/// Waits for any running backup or restore.
 #[tauri::command]
 #[specta::specta]
 pub async fn backup_restore(
@@ -91,10 +94,11 @@ pub async fn backup_restore(
     id: String,
     selection: RestoreSelection,
     mode: Option<RestoreMode>,
+    confirmed_deletes: Vec<RelPath>,
 ) -> AppResult<RestoreReport> {
     let mode = mode.unwrap_or_default();
     restore_job(app, move |r, progress| {
-        r.run(&id, &selection, mode, progress)
+        r.run(&id, &selection, mode, &confirmed_deletes, progress)
     })
     .await
 }

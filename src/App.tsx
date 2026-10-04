@@ -30,6 +30,7 @@ function Shell() {
   const [screen, setScreen] = useState<Screen>("backups");
   const [deferred, setDeferred] = useState(false);
   const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
+  const [backupsFilter, setBackupsFilter] = useState<"Safety" | null>(null);
   const [, tick] = useState(0);
 
   // First run: no game folder yet, so start there.
@@ -91,7 +92,12 @@ function Shell() {
           </div>
         )}
         {current === "backups" && (
-          <Backups game={game} restoresLocked={recovery.pending} select={openSnapshot} />
+          <Backups
+            game={game}
+            restoresLocked={recovery.pending}
+            select={openSnapshot}
+            show={backupsFilter}
+          />
         )}
         {current === "game" && <GameFolder install={install} />}
       </main>
@@ -103,7 +109,8 @@ function Shell() {
           onOpenSafety={(id) => {
             setDeferred(true);
             setScreen("backups");
-            setOpenSnapshot(id);
+            if (id) setOpenSnapshot(id);
+            else setBackupsFilter("Safety");
           }}
         />
       )}

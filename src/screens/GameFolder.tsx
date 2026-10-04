@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Flavor, Install, InstallCandidate } from "@/lib/bindings";
 import {
   Button,
   Callout,
+  LiveDot,
   Page,
   PageHeader,
   Panel,
@@ -80,21 +81,52 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
     if (path) await use(path);
   };
 
+  // First run: look straight away rather than show an empty screen.
+  const autoDetected = useRef(false);
+  useEffect(() => {
+    if (state.kind === "none" && !autoDetected.current) {
+      autoDetected.current = true;
+      detect();
+    }
+  }, [state.kind, detect]);
+
   const looked = report?.looked_in ?? [];
+  const notFound = state.kind !== "ok" && report != null && report.candidates.length === 0;
+  const looking = detecting || (state.kind === "none" && !report);
   return (
     <Page>
       <PageHeader
         title="Game folder"
         lede="We only read here. Nothing is changed until you ask."
         actions={
-          <>
-            <Button onClick={chooseFolder}>Choose another folder…</Button>
-            <PrimaryButton onClick={detect} disabled={detecting}>
-              {detecting ? "Looking…" : "Look for the game"}
-            </PrimaryButton>
-          </>
+          notFound ? (
+            <>
+              <Button onClick={detect} disabled={detecting}>
+                {detecting ? "Looking…" : "Look again"}
+              </Button>
+              <PrimaryButton onClick={chooseFolder}>Choose folder…</PrimaryButton>
+            </>
+          ) : (
+            <>
+              <Button onClick={chooseFolder}>Choose another folder…</Button>
+              <PrimaryButton onClick={detect} disabled={detecting}>
+                {detecting ? "Looking…" : "Look for the game"}
+              </PrimaryButton>
+            </>
+          )
         }
       />
+
+      {looking && !report && (
+        <Panel>
+          <PanelBody>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <LiveDot />
+              <span>Looking for World of Warcraft…</span>
+            </div>
+          </PanelBody>
+        </Panel>
+      )}
 
       {error && <Callout tone="bad">{error}</Callout>}
       {state.kind === "invalid" && (
