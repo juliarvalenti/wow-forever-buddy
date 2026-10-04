@@ -30,6 +30,10 @@ impl AppPaths {
         self.config_dir.join("settings.json")
     }
 
+    pub fn db_file(&self) -> PathBuf {
+        self.local_data_dir.join("buddy.db")
+    }
+
     /// All three dirs under one root. For tests.
     #[cfg(test)]
     pub fn under(root: &std::path::Path) -> Self {
