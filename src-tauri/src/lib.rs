@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod fsx;
+mod install;
 mod state;
 #[cfg(test)]
 mod test_support;
@@ -22,8 +23,15 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::app::app_info,
+            commands::install::app_open_folder,
+            commands::install::install_detect,
+            commands::install::install_get,
+            commands::install::install_set,
             commands::settings::settings_get,
             commands::settings::settings_update,
+        ])
+        .events(tauri_specta::collect_events![
+            commands::install::InstallChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -43,6 +51,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);

@@ -10,12 +10,12 @@ This covers the Rust layer under every feature that touches the game folder: fin
 
 ## 1. Game install detection
 
-### Assumed layout (to be confirmed on Julia's machine, see §10)
+### Layout
 
 ```
 <root>/                         e.g. C:\Program Files (x86)\World of Warcraft
   .build.info                   pipe-separated table; has a Product column per installed flavor
-  _retail_/  _classic_/  _classic_era_/  _<forever?>_/     one folder per flavor
+  _retail_/  _classic_/  _classic_era_/  _classic_beta_/     one folder per flavor
     Wow*.exe
     Interface/AddOns/<Addon>/<Addon>.toc
     WTF/
@@ -29,7 +29,12 @@ This covers the Rust layer under every feature that touches the game folder: fin
     Cache/  Logs/  Screenshots/                          never backed up
 ```
 
-### Detection order (first valid result wins; all candidates are returned to the UI)
+**WoW: Forever** (researched 2026-10-04; still to confirm on Julia's machine during QA):
+- It's in beta until its 4 Nov launch, installed at `<root>\_classic_beta_\` with exe `WowB.exe` (`WowB-arm64.exe` on ARM), product `wow_classic_beta`, build 1.60.x. It shares the normal WoW root.
+- `_classic_beta_` is a generic Blizzard folder that past Classic betas used too. So a flavor counts as Forever only if its product is `wow_classic_beta` on a 1.6x version from `.build.info`, or if its folder or product name contains "forever". The second rule covers a launch build moving to a new folder.
+- Flavors live in a data table (folder, product, label) plus a known-exe list, so the launch build should need a one-line update at most.
+
+### Detection order (all valid results are returned to the UI as candidates)
 
 1. **Saved path** from settings (re-validated on every start).
 2. **Registry** (Windows, via the `winreg` crate):
@@ -57,7 +62,7 @@ We skip parsing Battle.net's `product.db` (protobuf, undocumented) for v0.1. Reg
 ## 2. Game-running detection
 
 - **Polling with `sysinfo`** every **2 s**. We refresh only process names and exe paths, which is cheap. WMI process events would be more "correct" but much more complex, and a 2 s delay doesn't matter here.
-- **Match rule:** a process whose **exe path lives under the active install root** (case-insensitive). If the path can't be read (access denied), fall back to the file name: `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowT.exe`, `Wow-64.exe`, plus whatever Forever's exe turns out to be. The name list is a constant plus a hidden setting.
+- **Match rule:** a process whose **exe path lives under the active install root** (case-insensitive). If the path can't be read (access denied), fall back to the file name: `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowB-arm64.exe` (Forever beta), `WowT.exe`, `Wow-64.exe` and the other entries in `install::layout::KNOWN_EXES`. The name list is a constant plus a hidden setting.
 - **State:** `GameStatus { running: bool, pids: Vec<u32>, since: Option<Timestamp> }`, held in `AppState` behind a `watch` channel.
 - **UI notification:** emits the event `game://status-changed` on each transition. The frontend also calls `game_status()` on mount to get the initial state.
 - **Exit hook:** a running→stopped transition triggers the *game-exit backup* (§5) **after** the WTF tree has been stable for 5 s. WoW writes SavedVariables while shutting down.
@@ -320,7 +325,7 @@ jobs.rs           serialized background job queue + progress events
 
 ### Events
 
-`game://status-changed`, `install://changed`, `wtf://changed {paths}`, `backup://progress {job, phase, done, total}`, `backup://created {summary}`, `backup://pruned`, `restore://completed {report}`, `job://failed {job, error}`.
+Typed tauri-specta events, which it names in kebab-case from the Rust type (`InstallChanged` → `install-changed`): `game-status-changed`, `install-changed`, `wtf-changed {paths}`, `backup-progress {job, phase, done, total}`, `backup-created {summary}`, `backup-pruned`, `restore-completed {report}`, `job-failed {job, error}`. Elsewhere in this spec, `x://y` names mean the matching kebab-case event.
 
 ### Error model
 
@@ -341,7 +346,7 @@ The frontend switches on `kind`. For example, `GameRunning` shows the "Close WoW
 
 ### Capabilities and security config
 
-- `capabilities/default.json`: `core:default`, `dialog:allow-open`, `dialog:allow-save`, `opener:allow-open-path`, scoped to the app data/log dirs and the install root (scope set at runtime). **No** `fs:*` or `shell:*` plugins.
+- `capabilities/default.json`: `core:default`, `dialog:allow-open` and `dialog:allow-save` only. **No** `fs:*`, `shell:*` or `opener:*` permissions for the frontend. "Reveal folder" goes through `app_open_folder(which)`, which calls the opener plugin from Rust (capabilities don't apply there) for a fixed set of targets. That's stricter than a runtime-scoped `opener:allow-open-path`.
 - Set a real CSP in `tauri.conf.json` (it's currently `null`): `default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'`.
 - Commands accept `RelPath` or IDs and never absolute game paths, except `install_set` (picker output, validated) and the export `dest` (save-dialog output).
 
@@ -391,8 +396,8 @@ The window shows right away. Steps 4–9 run in the background and report throug
 
 ## 10. Open questions
 
-1. **Forever's folder layout:** what's the flavor folder name (`_forever_`?), the exe name, and the `.build.info` product code? Does it share a root with retail/classic or install separately? *Ask Julia for a screenshot or `dir` of the install root and the flavor folder.* This blocks finalizing detection and the process name list, but not building them, since both are data-driven.
-2. **Retail vs classic client:** this doesn't affect this layer, but it does affect the companion addon (v0.2).
+1. ~~Forever's folder layout?~~ **Resolved (research, see §1):** `_classic_beta_`, `WowB.exe`, `wow_classic_beta`, 1.60.x, shared root. Confirm on Julia's machine during QA, and re-check at the 4 Nov launch.
+2. ~~Retail vs classic client?~~ **Resolved:** a retail client underneath (Midnight-era API, retail addon restrictions). That matters for v0.2's addon, not this layer. Known beta bug: the client writes SavedVariables but doesn't read them back, so restored addon settings won't apply in-game until Blizzard fixes it. The restore UI shows a caveat.
 3. ~~Include `Interface/AddOns` in backups by default?~~ **Resolved (PM):** off, with a toggle.
 4. ~~Retention defaults user-editable in v0.1?~~ **Resolved (PM):** constants for v0.1.
 5. ~~Backup location default?~~ **Resolved (PM):** `%LOCALAPPDATA%`, movable in settings.
@@ -400,7 +405,7 @@ The window shows right away. Steps 4–9 run in the background and report throug
 7. **Mock data this layer can't provide in v0.1** (for @designer/@project-mgmt):
    - "WoW is running · **Thrandor**": process detection only knows the game is running, not which character is logged in. That needs the companion addon (v0.2). v0.1 shows "WoW is running" plus the session duration.
    - Class colors, level and ilvl on character rows (including the Backups restore list): the WTF folder only gives account, realm and character names. v0.1 shows names in a neutral color, and class data arrives with the addon.
-   - The mocks assume Forever lives in `_classic_` with version 1.15.4. That's a placeholder until Julia's `dir` listing (Q1).
+   - The mocks used `_classic_` / 1.15.4 as placeholders; round 3 switches to `_classic_beta_` / 1.60.x (Q1).
 
 ---
 
