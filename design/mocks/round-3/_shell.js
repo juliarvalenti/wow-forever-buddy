@@ -117,7 +117,7 @@
     el.outerHTML = `<span class="pslot c-${cls}" style="--w:${w}px"><span class="pi">${img}</span>${badge}${tag}${on}</span>`;
   });
 
-  // item tooltips — real in-game tooltip content
+  // item tooltips: real in-game tooltip content
   const C = (g, s, c) => `<span class="coins">${g ? `<span class="g">${g}</span>` : ''}${s ? `<span class="s">${s}</span>` : ''}${c ? `<span class="c">${c}</span>` : ''}</span>`;
   const ITEMS = {
     truestrike: { q: 'rare', n: 'Truestrike Shoulders', lines: ['Binds when picked up', ['Shoulder', 'Leather'], '129 Armor', '+24 Agility', '+11 Stamina', ['g', 'Equip: Improves your chance to hit by 2%.'], 'Durability 60 / 60', 'Requires Level 58'], sell: C(2, 31, 40), src: 'Looted 21:47 · Stratholme' },

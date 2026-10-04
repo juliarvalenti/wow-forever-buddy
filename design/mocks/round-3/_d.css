@@ -1,5 +1,5 @@
 /* ==========================================================================
-   WoW Forever Buddy — design language "D" (round 2)
+   WoW Forever Buddy: design language "D" (round 3)
    MATERIAL RULES (each material has exactly one job):
      stone / leather  = the frame and live/system data   (.panel, .tile, sidebar)
      parchment        = records: things that happened    (.parchment)
@@ -7,7 +7,7 @@
      bronze           = the ONE primary action per view  (.primary)
      ember            = live state (WoW running, pending) (.live, .ember)
      gold             = coins only                       (.coins)
-   Textures are procedural (SVG noise) — no decorative images.
+   Textures are procedural (SVG noise), with no decorative images.
    ========================================================================== */
 
 @font-face { font-family: "Cinzel"; font-weight: 700; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff2") format("woff2"); }
@@ -50,6 +50,9 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 ul { list-style: none; }
 svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 svg.i.sm { width: 14px; height: 14px; }
+/* TYPE RULE (Julia, round 3): no all-caps sections or eyebrows, no letter-spaced labels, no em dashes in copy.
+   Cinzel (which only has capitals) is reserved for page titles, the wordmark and the seal number. Everything else is
+   sentence case: Geist on stone, Georgia on parchment. */
 .cinzel { font-family: "Cinzel", serif; font-weight: 700; letter-spacing: 0.04em; }
 .serif-i { font-family: Georgia, "Iowan Old Style", serif; font-style: italic; }
 .mono { font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 11.5px; }
@@ -72,14 +75,14 @@ svg.i.sm { width: 14px; height: 14px; }
   background: radial-gradient(circle at 40% 35%, #e7d3a7, #b79c6c 70%, #7d6644); box-shadow: 0 2px 6px rgba(0,0,0,.6), inset 0 -2px 3px rgba(0,0,0,.3); }
 .brand .mark svg { width: 18px; height: 18px; }
 .brand .name { font: 700 15px "Cinzel", serif; color: #e5d2a8; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.06); white-space: nowrap; }
-.brand .sub { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--hide-mute); white-space: nowrap; }
+.brand .sub { font-size: 11px; color: var(--hide-mute); white-space: nowrap; }
 .nav { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; display: flex; flex-direction: column; gap: 1px; }
-.nav-group { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; padding: 12px 10px 5px; color: var(--hide-dim); }
+.nav-group { font-size: 11.5px; font-weight: 500; padding: 12px 10px 5px; color: var(--hide-dim); }
 .nav-item { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; white-space: nowrap; color: var(--hide-text); }
 .nav-item svg { color: var(--hide-mute); }
 .nav-item .n { margin-left: auto; font-size: 11px; color: var(--hide-dim); }
 .nav-item.soon { color: var(--hide-dim); }
-.nav-item.soon .n { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; }
+.nav-item.soon .n { font-size: 11px; font-style: italic; }
 .nav-item:hover { background: rgba(0,0,0,.2); }
 /* the red ribbon bookmark marks where you are */
 .nav-item.active { color: #fbe9c6; margin-left: -10px; padding-left: 20px; border-radius: 0;
@@ -119,7 +122,7 @@ svg.i.sm { width: 14px; height: 14px; }
 .ph { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 14px 11px; border-radius: var(--r) var(--r) 0 0;
   background: var(--hidegrain), linear-gradient(180deg, #3e2d20, #2b1f16); box-shadow: inset 0 1px 0 rgba(255,220,180,.08), 0 2px 3px rgba(0,0,0,.5); }
 .ph::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 3px; border-bottom: 1px dashed rgba(220,190,150,.28); }
-.ph h2 { font: 700 12.5px "Cinzel", serif; color: #ead9bf; letter-spacing: .08em; text-shadow: 0 1px 0 #000; white-space: nowrap; }
+.ph h2 { font: 600 13.5px "Geist", sans-serif; color: #ead9bf; text-shadow: 0 1px 0 #000; white-space: nowrap; }
 .ph .meta { margin-left: auto; font-size: 11.5px; color: #a8977f; white-space: nowrap; display: flex; gap: 8px; align-items: center; }
 .ph .link { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--ember-2); white-space: nowrap; }
 .ph h2 + .link { margin-left: auto; }
@@ -128,7 +131,7 @@ svg.i.sm { width: 14px; height: 14px; }
 /* tiles */
 .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .tile { padding: 10px 13px 11px; }
-.tile > .k { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ash); }
+.tile > .k { font-size: 12px; font-weight: 500; color: var(--ash); }
 .tile > .v { font-size: 19px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 8px; white-space: nowrap; color: var(--chalk-hi); }
 .tile > .v small { font-size: 12px; font-weight: 500; color: var(--ash); }
 .tile > .v .coins .s, .tile > .v .coins .c { font-size: 12.5px; font-weight: 500; }
@@ -147,7 +150,7 @@ svg.i.sm { width: 14px; height: 14px; }
 .btn[disabled], .btn.locked { opacity: .45; cursor: not-allowed; filter: none; }
 /* bronze: the one primary action */
 .primary { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 20px; border-radius: var(--r); white-space: nowrap;
-  font: 700 12.5px "Cinzel", serif; letter-spacing: .05em; color: #fff0d6; text-shadow: 0 1px 1px rgba(0,0,0,.7);
+  font: 600 13px "Geist", sans-serif; color: #fff0d6; text-shadow: 0 1px 1px rgba(0,0,0,.7);
   background: var(--grit), radial-gradient(circle at 7px 50%, #d9b77f 0 1.6px, #3a2a14 2.2px, transparent 2.6px), radial-gradient(circle at calc(100% - 7px) 50%, #d9b77f 0 1.6px, #3a2a14 2.2px, transparent 2.6px), radial-gradient(120% 140% at 0% 100%, rgba(90,140,110,.35), transparent 40%), linear-gradient(180deg, var(--bronze-hi), var(--bronze) 45%, var(--bronze-lo));
   box-shadow: inset 0 1px 0 rgba(255,230,190,.45), inset 0 -2px 0 rgba(0,0,0,.35), 0 0 0 1px #1a1208, 0 3px 8px rgba(0,0,0,.6); }
 .primary:hover { filter: brightness(1.1); }
@@ -173,7 +176,7 @@ svg.i.sm { width: 14px; height: 14px; }
 
 /* tables on stone */
 table.grid { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-table.grid th { text-align: left; font-weight: 500; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid rgba(0,0,0,.6); box-shadow: 0 1px 0 rgba(255,255,255,.03); }
+table.grid th { text-align: left; font-weight: 500; font-size: 11.5px; color: var(--soot); padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid rgba(0,0,0,.6); box-shadow: 0 1px 0 rgba(255,255,255,.03); }
 table.grid td { padding: 0 12px; height: 40px; white-space: nowrap; border-bottom: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 -1px 0 rgba(255,255,255,.02); }
 table.grid tr:hover td { background: rgba(255,255,255,.02); }
 table.grid tr.sel td { background: rgba(255,177,92,.06); }
@@ -235,7 +238,7 @@ table.grid .r { text-align: right; }
 .parchment.tilt { transform: rotate(-0.25deg); }
 .parchment .ph { background: none; box-shadow: none; border-radius: 0; margin: 0 10px; padding: 11px 4px 8px; border-bottom: 1.5px solid var(--ink-rule); }
 .parchment .ph::after { left: 0; right: 0; bottom: -4px; border-bottom: 1px solid rgba(58,38,22,.25); }
-.parchment .ph h2 { color: var(--ink); text-shadow: none; font-size: 14px; letter-spacing: .04em; }
+.parchment .ph h2 { color: var(--ink); text-shadow: none; font: 700 15.5px Georgia, "Iowan Old Style", serif; }
 .parchment .ph .meta { color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
 .parchment .ph .link { color: #7a1a12; font-weight: 600; }
 .parchment .muted, .parchment .serif-i { color: var(--ink-2); }
@@ -257,15 +260,15 @@ table.grid .r { text-align: right; }
 .parchment .pill { color: var(--ink); background: rgba(255,255,255,.2); box-shadow: inset 0 0 0 1px rgba(58,38,22,.3); }
 .parchment .bar { background: rgba(58,38,22,.12); box-shadow: inset 0 1px 1px rgba(58,38,22,.3); }
 .parchment .bar .fill { background: linear-gradient(90deg, #6e5537, #3a2616); }
-.parchment .sec { font: 700 10.5px "Cinzel", serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
-.sec { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--soot); font-weight: 500; }
+.parchment .sec { font: italic 12.5px Georgia, "Iowan Old Style", serif; color: var(--ink-3); }
+.sec { font-size: 12px; color: var(--soot); font-weight: 500; }
 
 /* wax seal (records only) */
 .seal { position: relative; width: 64px; height: 64px; flex-shrink: 0; display: grid; place-items: center; transform: rotate(-9deg); }
 .seal::before { content: ""; position: absolute; inset: 0; border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%;
   background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 45%, #5a0c09 80%); box-shadow: 0 2px 0 #3a0705, 0 4px 8px rgba(60,10,5,.5), inset 0 2px 3px rgba(255,160,140,.35), inset 0 -3px 5px rgba(0,0,0,.35); }
 .seal::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px solid rgba(40,4,2,.45); box-shadow: 0 1px 0 rgba(255,160,140,.25); }
-.seal .t { position: absolute; top: 15px; font: 700 8px "Cinzel", serif; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,210,190,.75); z-index: 1; }
+.seal .t { position: absolute; top: 13px; font: italic 10px Georgia, serif; color: rgba(255,210,190,.8); z-index: 1; }
 .seal .n { position: absolute; top: 25px; font: 700 20px/1 "Cinzel", serif; color: #f3b8a6; text-shadow: 0 -1px 0 rgba(0,0,0,.55), 0 1px 0 rgba(255,190,170,.35); z-index: 1; }
 
 /* ---------- shared components (promoted in round 3) ---------- */
@@ -284,7 +287,7 @@ table.grid .r { text-align: right; }
 /* empty / not-yet state: an inset well with a short explanation and at most one action */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 26px 20px; border-radius: var(--r);
   background: rgba(0,0,0,.22); box-shadow: inset 0 2px 6px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.03); color: var(--ash); font-size: 12.5px; }
-.empty .et { font: 700 13.5px "Cinzel", serif; letter-spacing: .04em; color: var(--chalk); }
+.empty .et { font: 600 14px "Geist", sans-serif; color: var(--chalk); }
 .parchment .empty { background: rgba(120,80,30,.07); box-shadow: inset 0 0 0 1px rgba(58,38,22,.18); color: var(--ink-2); }
 .parchment .empty .et { color: var(--ink); }
 

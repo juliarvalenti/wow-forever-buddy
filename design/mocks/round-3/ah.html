@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Auction House — WoW Forever Buddy (mock r3)</title>
+<title>Auction House · WoW Forever Buddy (mock r3)</title>
 <link rel="stylesheet" href="_d.css">
 <style>
-  /* AH: market data you scanned = stone; your sales LEDGER = a record = parchment. */
+  /* AH: market data you scanned = stone; your sales ledger = a record = parchment. */
   .scanbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r); font-size: 12.5px; color: #e9d7bd;
     background: linear-gradient(90deg, rgba(255,122,46,.11), rgba(255,122,46,.02) 60%); box-shadow: inset 0 0 0 1px rgba(255,140,60,.22), inset 0 2px 6px rgba(0,0,0,.4); }
   .scanbar .stale { width: 8px; height: 8px; border-radius: 50%; background: var(--ember-2); box-shadow: 0 0 0 3px rgba(255,122,46,.15); flex-shrink: 0; }
@@ -24,7 +24,7 @@
   .itemhead .nm { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
   .itemhead .nm small { display: block; font-size: 11px; font-weight: 400; color: var(--soot); }
   .fig { display: flex; flex-direction: column; }
-  .fig .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--soot); }
+  .fig .k { font-size: 12px; font-weight: 500; color: var(--soot); }
   .fig .v { font-size: 17px; font-weight: 600; color: var(--chalk-hi); }
   .fig .v .coins .s { font-size: 12px; }
   .verdict { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
@@ -69,9 +69,9 @@
   .ledger .totals { display: grid; grid-template-columns: repeat(4, 1fr); margin: 10px 0 6px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
   .ledger .totals > div { padding: 7px 10px; min-width: 0; }
   .ledger .totals > div + div { border-left: 1px solid rgba(58,38,22,.22); }
-  .ledger .totals .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .ledger .totals .k { font: italic 12.5px Georgia, "Iowan Old Style", serif; color: var(--ink-3); white-space: nowrap; }
   .ledger .totals .v { font-size: 15px; font-weight: 600; white-space: nowrap; }
-  .ledger .totals .net .v { font-family: "Cinzel", serif; font-weight: 700; }
+  .ledger .totals .net .v { font-family: Georgia, "Iowan Old Style", serif; font-weight: 700; }
   .ledger table.grid { table-layout: auto; }
   .ledger table.grid td { height: 38px; padding: 0 8px; }
   .ledger table.grid th { padding: 8px 8px; }
@@ -178,11 +178,11 @@
             <tr><td class="when">3 Oct<span class="kind sold">Sold</span></td><td><span class="it" data-tt="arcanite"><span class="ico q-uncommon"><b>A</b></span><span class="q-uncommon">Arcanite Bar</span></span></td><td class="r">12</td><td class="r"><span class="coins"><span class="g">40</span></span></td><td class="r dim">−24g</td><td class="r up">+456g</td></tr>
             <tr><td class="when">3 Oct<span class="kind sold">Sold</span></td><td><span class="it" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></span></td><td class="r">100</td><td class="r"><span class="coins"><span class="g">1</span><span class="s">10</span></span></td><td class="r dim">−5g 50s</td><td class="r up">+104g 50s</td></tr>
             <tr><td class="when">2 Oct<span class="kind exp">Expired</span></td><td><span class="it" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><span class="q-uncommon">Black Lotus</span></span></td><td class="r">1</td><td class="r dim">listed 95g</td><td class="r dim">−2g 40s</td><td class="r down">−2g 40s</td></tr>
-            <tr><td class="when">2 Oct<span class="kind buy">Bought</span></td><td><span class="it" data-tt="thorium"><span class="ico q-common"><b>T</b></span><span class="q-common">Thorium Bar</span></span></td><td class="r">40</td><td class="r"><span class="coins"><span class="g">2</span><span class="s">15</span></span></td><td class="r dim">—</td><td class="r down">−86g</td></tr>
+            <tr><td class="when">2 Oct<span class="kind buy">Bought</span></td><td><span class="it" data-tt="thorium"><span class="ico q-common"><b>T</b></span><span class="q-common">Thorium Bar</span></span></td><td class="r">40</td><td class="r"><span class="coins"><span class="g">2</span><span class="s">15</span></span></td><td class="r dim">no cut</td><td class="r down">−86g</td></tr>
             <tr><td class="when">30 Sep<span class="kind sold">Sold</span></td><td><span class="it" data-tt="potion"><span class="ico q-common"><b>P</b></span><span class="q-common">Major Healing Potion</span></span></td><td class="r">20</td><td class="r"><span class="coins"><span class="g">2</span></span></td><td class="r dim">−2g</td><td class="r up">+38g</td></tr>
             <tr><td class="when">29 Sep<span class="kind sold">Sold</span></td><td><span class="it" data-tt="flask"><span class="ico q-common"><b>F</b></span><span class="q-common">Flask of the Titans</span></span></td><td class="r">2</td><td class="r"><span class="coins"><span class="g">68</span></span></td><td class="r dim">−6g 80s</td><td class="r up">+129g 20s</td></tr>
             <tr><td class="when">28 Sep<span class="kind exp">Expired</span></td><td><span class="it" data-tt="orb"><span class="ico q-uncommon"><b>O</b></span><span class="q-uncommon">Righteous Orb</span></span></td><td class="r">5</td><td class="r dim">listed 4g</td><td class="r dim">−50s</td><td class="r down">−50s</td></tr>
-            <tr><td class="when">27 Sep<span class="kind buy">Bought</span></td><td><span class="it" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><span class="q-uncommon">Black Lotus</span></span></td><td class="r">1</td><td class="r"><span class="coins"><span class="g">78</span></span></td><td class="r dim">—</td><td class="r down">−78g</td></tr>
+            <tr><td class="when">27 Sep<span class="kind buy">Bought</span></td><td><span class="it" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><span class="q-uncommon">Black Lotus</span></span></td><td class="r">1</td><td class="r"><span class="coins"><span class="g">78</span></span></td><td class="r dim">no cut</td><td class="r down">−78g</td></tr>
           </tbody>
         </table>
         <div class="foot">

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Adventure: Thrandor, 3 Oct — WoW Forever Buddy (mock r3)</title>
+<title>Adventure: Thrandor, 3 Oct · WoW Forever Buddy (mock r3)</title>
 <link rel="stylesheet" href="_d.css">
 <style>
   .nav-entries { display: flex; gap: 6px; }
@@ -11,7 +11,7 @@
   .page > .col + .col { border-left: 1.5px solid var(--ink-rule); box-shadow: inset 3px 0 0 -1.5px rgba(58,38,22,.18); }
 
   .entry-head { display: flex; gap: 14px; align-items: center; }
-  .entry-head .nm { font: 700 19px/1.15 "Cinzel", serif; }
+  .entry-head .nm { font: 700 21px/1.15 Georgia, "Iowan Old Style", serif; }
   .entry-head .sub { font-size: 12.5px; }
   .entry-head .when { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
   .entry-head .seal { margin-left: auto; }
@@ -20,7 +20,7 @@
   .tally { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
   .tally > div { padding: 8px 12px; min-width: 0; }
   .tally > div + div { border-left: 1px solid rgba(58,38,22,.22); }
-  .tally .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .tally .k { font-size: 12px; font-weight: 500; color: var(--ink-3); white-space: nowrap; }
   .tally .v { font-size: 16px; font-weight: 600; white-space: nowrap; }
   .tally .v small { font-size: 11px; font-weight: 500; color: var(--ink-3); }
 
@@ -46,14 +46,14 @@
   .tl li .d small { display: block; font-size: 11px; color: var(--ink-3); }
   .tl .lootlink { display: inline-flex; align-items: center; gap: 6px; padding: 1px 5px; margin: -1px -5px; border-radius: 3px; }
   .tl .lootlink .ico { width: 18px; height: 18px; font-size: 9px; }
-  /* degraded events: the game hid a detail (secret values) — shorter line + a quiet marker, never an empty slot */
+  /* degraded events: the game hid a detail (secret values), so use a shorter line plus a quiet marker, never an empty slot */
   .veil-mk { font-style: normal; font-size: 12px; color: var(--ink-2); margin-left: 6px; cursor: help; }
   .veil-foot { display: flex; gap: 2px; align-items: baseline; margin: 8px 0 0 58px; font: italic 11.5px/1.45 Georgia, serif; color: var(--ink-3); }
   .veil-foot .veil-mk { margin: 0 6px 0 0; }
 
   .note { margin-top: 14px; padding: 10px 12px; border: 1px dashed rgba(58,38,22,.4); border-radius: 3px; background: rgba(255,255,255,.14); font: italic 13px/1.5 Georgia, serif; color: #4a3220; }
-  .note .who { display: flex; align-items: center; gap: 6px; font: 500 10.5px "Geist", sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 3px; font-style: normal; }
-  .note .who button { margin-left: auto; font-size: 11px; letter-spacing: 0; text-transform: none; color: #7a1a12; }
+  .note .who { display: flex; align-items: center; gap: 6px; font: 500 12px "Geist", sans-serif; color: var(--ink-3); margin-bottom: 3px; font-style: normal; }
+  .note .who button { margin-left: auto; font-size: 11.5px; color: #7a1a12; }
 
   table.loot td { height: 32px; }
   table.loot td .it { display: inline-flex; align-items: center; gap: 8px; padding: 2px 5px; margin: 0 -5px; border-radius: 3px; }
@@ -118,7 +118,7 @@
           <li><span class="t">21:12</span><span class="d"><span class="lootlink" data-tt="flask"><span class="ico q-common"><b>F</b></span>Used a Flask of the Titans</span></span></li>
           <li><span class="t">21:46</span><span class="d">Defeated Baron Rivendare<small>boss encounters are shared in full</small></span></li>
           <li class="loot veil"><span class="t">21:47</span><span class="d">Looted <span class="lootlink" data-tt="truestrike"><span class="ico q-rare"><b>S</b></span><span class="q-rare">Truestrike Shoulders</span></span><i class="veil-mk" title="The game doesn't share where loot came from">◌</i></span></li>
-          <li class="ding"><span class="t">21:55</span><span class="d"><b class="cinzel" style="font-size:12.5px">Reached level 60</b><small>on the walk out of Stratholme</small></span></li>
+          <li class="ding"><span class="t">21:55</span><span class="d"><b style="font: 700 13.5px Georgia, serif">Reached level 60</b><small>on the walk out of Stratholme</small></span></li>
           <li><span class="t">22:10</span><span class="d">Turned in 4 quests at Light's Hope<small>+62g · +38,400 XP before the cap</small></span></li>
           <li><span class="t">22:52</span><span class="d">Logged out<small>2,140g · 12 bag slots free</small></span></li>
         </ul>
@@ -170,7 +170,7 @@
 </script>
 <script src="_shell.js"></script>
 <script>
-  // gold through the session — single series (no legend; title names it), events annotated, hover readout
+  // gold through the session: single series (no legend; title names it), events annotated, hover readout
   const P = [[0, 1828], [15, 1846], [38, 1871], [58, 1865], [75, 1898], [92, 1910], [107, 1932], [127, 1985], [140, 1992], [150, 2054], [165, 2080], [180, 2122], [192, 2140]];
   const EV = [[58, 'died', '#b5412e', -8], [127, 'Baron', '#1a4f9c', -8], [135, 'ding!', '#8e1a16', 16], [150, 'quests', '#3a2616', -8]];
   const svg = document.getElementById('sg'), tip = document.getElementById('stip');

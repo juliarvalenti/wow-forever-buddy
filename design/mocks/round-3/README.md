@@ -25,10 +25,14 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 | Sketches | `addons.html` (v0.5), `macros.html`, `weakauras.html` (v0.6) | writes locked while WoW runs |
 
 ## Round-3 decisions engineering should know
+- **Type rule (Julia):**
+  - No all-caps sections or eyebrows, no letter-spaced labels, and no em dashes anywhere in the copy.
+  - Cinzel only for page titles, the wordmark and the seal number.
+  - Everything else is sentence case: Geist on stone, Georgia on parchment.
 - **Forever facts in copy:** `C:\Program Files (x86)\World of Warcraft\_classic_beta_`, `WowB.exe`, "WoW: Forever (Beta)" 1.60.1, interface 16001. Detection stays data-driven; the folder may move at the 4 Nov launch.
 - **Retention text comes from the backend:** `backup_storage().retention_summary` is shown verbatim, e.g. "Auto: 48 h, then daily for 2 weeks, weekly for 2 months · manual kept forever". There's no editable retention in v0.1. Settings shows the policy read-only, plus the 5 GB budget meter and "Prune now".
 - **No-addon state:**
-  - Never show broken zeros. Unknown values read "—" or "needs addon".
+  - Never show broken zeros. Unknown values read "needs addon" or are left blank.
   - Names are neutral (no class colour) and use a plain silhouette portrait.
   - "Install addon" is the bronze primary but is a write, so it's locked while WoW runs.
 - **Secret values (Forever hides some combat data from addons):**
