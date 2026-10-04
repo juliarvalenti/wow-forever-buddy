@@ -1,70 +1,112 @@
-import { Badge } from "@/components/ui/warcraftcn/badge";
-import { Button } from "@/components/ui/warcraftcn/button";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/warcraftcn/tabs";
+import { useEffect, useState } from "react";
+import { commands, type StartupFailure } from "@/lib/bindings";
+import { LiveDot, StatusDot } from "@/components/d";
+import { useGameStatus } from "@/hooks/useGameStatus";
+import { useInstall } from "@/hooks/useInstall";
+import { useRecovery } from "@/hooks/useRestore";
+import { duration } from "@/lib/format";
+import { Backups } from "@/screens/Backups";
+import { GameFolder } from "@/screens/GameFolder";
+import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
+import { StartupError } from "@/screens/StartupError";
 
-const SECTIONS = [
-  {
-    id: "addons",
-    label: "Addons",
-    title: "Addons",
-    blurb: "Browse, install, and update addons for your Forever client.",
-  },
-  {
-    id: "macros",
-    label: "Macros",
-    title: "Macros",
-    blurb: "Write and organize macros outside the game.",
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    title: "Settings",
-    blurb: "Point the buddy at your World of Warcraft folder.",
-  },
-] as const;
+type Screen = "backups" | "game";
 
+/** Asks first whether the app could start; only then mounts the app, since
+ *  in the failure case no other command has state to work with. */
 export default function App() {
+  const [failure, setFailure] = useState<StartupFailure | null | undefined>(undefined);
+  useEffect(() => {
+    commands.startupFailure().then(setFailure, () => setFailure(null));
+  }, []);
+  if (failure === undefined) return <div className="d-root" />;
+  return <div className="d-root">{failure ? <StartupError failure={failure} /> : <Shell />}</div>;
+}
+
+function Shell() {
+  const game = useGameStatus();
+  const install = useInstall();
+  const recovery = useRecovery();
+  const [screen, setScreen] = useState<Screen>("backups");
+  const [deferred, setDeferred] = useState(false);
+  const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
+  const [, tick] = useState(0);
+
+  // First run: no game folder yet, so start there.
+  useEffect(() => {
+    if (install.state.kind === "none") setScreen("game");
+  }, [install.state.kind]);
+  // Keep "session 1h 42m" current.
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const nav: { id: Screen; label: string }[] = [
+    { id: "backups", label: "Backups" },
+    { id: "game", label: "Game folder" },
+  ];
+  const folderOk = install.state.kind === "ok";
+  // Backups need a game folder; until there is one, that's the screen.
+  const current: Screen = folderOk ? screen : "game";
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,#2a2116_0%,#0c0a08_70%)] px-6 py-8 text-amber-50">
-      <header className="mx-auto mb-8 flex max-w-5xl items-center justify-between gap-4">
-        <div>
-          <h1 className="fantasy text-3xl font-bold text-amber-200 [text-shadow:0_0_12px_rgba(251,191,36,0.35)]">
-            WoW Forever Buddy
-          </h1>
-          <p className="fantasy text-sm text-amber-100/60">
-            Your companion for World of Warcraft: Forever
-          </p>
-        </div>
-        <Badge>v0.1.0</Badge>
-      </header>
-
-      <Tabs defaultValue="addons" className="mx-auto max-w-5xl">
-        <TabsList>
-          {SECTIONS.map((s) => (
-            <TabsTrigger key={s.id} value={s.id}>
-              {s.label}
-            </TabsTrigger>
+    <div className="d-app">
+      <aside className="d-side">
+        <div className="d-brand">Forever Buddy</div>
+        <nav className="d-nav">
+          {nav.map((n) => (
+            <button
+              key={n.id}
+              aria-current={current === n.id ? "page" : undefined}
+              onClick={() => setScreen(n.id)}
+            >
+              {n.label}
+            </button>
           ))}
-        </TabsList>
-
-        {SECTIONS.map((s) => (
-          <TabsContent key={s.id} value={s.id}>
-            <div className="flex flex-col items-start gap-4">
-              <h2 className="fantasy text-2xl font-bold text-amber-200">
-                {s.title}
-              </h2>
-              <p className="fantasy text-amber-50/80">{s.blurb}</p>
-              <p className="text-sm text-amber-100/60">Nothing here yet.</p>
-              <Button>Coming soon</Button>
+        </nav>
+        <div className="d-status">
+          {game?.running ? (
+            <div className="d-status-row">
+              <LiveDot />
+              <span>
+                WoW is running
+                {game.since && <span className="d-dim"> · {duration(game.since)}</span>}
+              </span>
             </div>
-          </TabsContent>
-        ))}
-      </Tabs>
-    </main>
+          ) : (
+            <div className="d-status-row d-dim">WoW isn't running</div>
+          )}
+          <div className="d-status-row">
+            {folderOk ? <StatusDot /> : <LiveDot />}
+            <span>{folderOk ? "Game folder found" : "Game folder not set"}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main className="d-main">
+        {deferred && (
+          <div style={{ padding: "16px 24px 0" }}>
+            <RecoveryBanner status={recovery.status} onReview={() => setDeferred(false)} />
+          </div>
+        )}
+        {current === "backups" && (
+          <Backups game={game} restoresLocked={recovery.pending} select={openSnapshot} />
+        )}
+        {current === "game" && <GameFolder install={install} />}
+      </main>
+
+      {recovery.pending && !deferred && (
+        <RecoveryDialog
+          recovery={recovery}
+          onLater={() => setDeferred(true)}
+          onOpenSafety={(id) => {
+            setDeferred(true);
+            setScreen("backups");
+            setOpenSnapshot(id);
+          }}
+        />
+      )}
+    </div>
   );
 }

@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
-use crate::backup::journal::{self, Journal};
+use crate::backup::journal::{self, RecoveryStatus};
+use crate::backup::manifest::Trigger;
 use crate::backup::restore::{
     self, with_restorer, RestoreMode, RestorePlan, RestoreReport, RestoreSelection, Restorer,
     VerifyReport,
@@ -110,11 +111,21 @@ pub fn backup_verify(state: State<'_, AppState>, id: String) -> AppResult<Verify
     Ok(restore::verify(&backups, &manifest))
 }
 
-/// The interrupted restore, if the app stopped in the middle of one.
+/// Whether a restore was interrupted, for the startup recovery dialog and the
+/// "restores locked" banner. `unreadable` carries the newest pre-restore
+/// safety snapshot for "Open the safety copy", since the journal can't say.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn restore_journal_status(state: State<'_, AppState>) -> AppResult<Option<Journal>> {
-    journal::read(&state.core.paths.local_data_dir)
+pub fn restore_journal_status(state: State<'_, AppState>) -> RecoveryStatus {
+    let core = &state.core;
+    journal::status(&core.paths.local_data_dir, || {
+        core.backups()
+            .and_then(|b| b.list())
+            .ok()?
+            .into_iter()
+            .find(|s| s.trigger == Trigger::PreRestore)
+            .map(|s| s.id)
+    })
 }
 
 /// Rolls back, finishes or discards an interrupted restore. Until one of
