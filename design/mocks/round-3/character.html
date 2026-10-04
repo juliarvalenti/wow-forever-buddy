@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thrandor — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .pslot .crest > path { fill: color-mix(in srgb, var(--cc) 34%, #15110d); stroke: color-mix(in srgb, var(--cc) 55%, #cfc6b8); }
+  .pslot .crest > g { fill: var(--cc); stroke: var(--cc); }
+  .pslot { display: inline-block; } .pslot .pi { display: block; }
+
+  .topbar { display: flex; align-items: center; gap: 10px; }
+  .topbar .crumbs { margin: 0; }
+  .topbar .actions { gap: 4px; }
+
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: 16px; align-items: start; }
+
+  /* the sheet (record → parchment) */
+  .sheet { padding: 18px 20px 16px; }
+  .ident { display: flex; gap: 16px; align-items: center; }
+  .ident h1 { font: 700 26px/1.1 "Cinzel", serif; letter-spacing: .03em; }
+  .ident .sub { font-size: 13px; margin-top: 3px; }
+  .ident .pill { margin-left: 6px; font-style: normal; }
+  .ident .seal { margin-left: auto; width: 56px; height: 56px; }
+  .ident .seal .t { top: 12px; } .ident .seal .n { top: 21px; font-size: 17px; }
+  .stats { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(0, 1fr)); margin-top: 14px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
+  .stats > div { padding: 8px 12px; min-width: 0; }
+  .stats > div + div { border-left: 1px solid rgba(58,38,22,.22); }
+  .stats .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .stats .v { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .tabs { display: flex; gap: 2px; margin-top: 12px; border-bottom: 1.5px solid var(--ink-rule); }
+  .tabs a { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; font: 700 12px "Cinzel", serif; letter-spacing: .04em; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1.5px; white-space: nowrap; }
+  .tabs a .n { font: 500 11px "Geist", sans-serif; color: var(--ink-3); }
+  .tabs a.on { color: var(--ink); border-bottom-color: var(--wax); }
+  .tabs .stamp { margin-left: auto; align-self: center; font-size: 11px; color: var(--ink-3); display: flex; gap: 5px; align-items: center; white-space: nowrap; }
+
+  .doll { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; margin-top: 6px; }
+  .slot { display: flex; align-items: center; gap: 10px; height: 42px; border-bottom: 1px solid var(--ink-hair); min-width: 0; padding: 0 4px; }
+  .slot .t { flex: 1; min-width: 0; line-height: 1.2; }
+  .slot .t div { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot .t small { font-size: 10.5px; color: var(--ink-3); }
+  .slot .il { font-size: 11.5px; color: var(--ink-2); }
+  .wrow { margin-top: 12px; }
+  .wrow .sec { display: flex; align-items: center; gap: 10px; }
+  .wrow .sec::after { content: ""; flex: 1; border-top: 1px solid var(--ink-hair); }
+  .wrow .note { font-size: 11.5px; padding-left: 50px; height: 42px; display: flex; align-items: center; border-bottom: 1px solid var(--ink-hair); }
+
+  /* stone side */
+  .side-col { display: grid; gap: 12px; }
+  .bags { padding: 10px 14px 12px; display: grid; gap: 8px; }
+  .bagrow { display: grid; grid-template-columns: 84px 1fr 30px; align-items: center; gap: 10px; font-size: 11.5px; color: var(--ash); }
+  .bagrow.head-r { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); }
+  .bagrow > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bagrow .free { text-align: right; color: var(--chalk-hi); }
+  .cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
+  .cells i { aspect-ratio: 1; border-radius: 2px; background: rgba(0,0,0,.5); box-shadow: inset 0 1px 1px rgba(0,0,0,.7); }
+  .cells i.c { background: #5a524a; } .cells i.u { background: #2f7a22; } .cells i.r { background: #2a5aa8; } .cells i.e { background: #6b3a99; } .cells i.p { background: #3a3733; }
+  .wallet { padding: 8px 14px 12px; }
+  .wallet svg { display: block; width: 100%; height: 56px; }
+  .prof { padding: 8px 14px 12px; display: grid; gap: 10px; }
+  .prof li { display: grid; gap: 4px; font-size: 12.5px; }
+  .prof li div { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; }
+  .prof li div > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+
+  @media (max-width: 1100px) {
+    .body { grid-template-columns: minmax(0, 1fr) 240px; }
+    .stats { grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 1fr)); }
+    .stats > div:nth-child(5) { display: none; }
+    .tabs .stamp { display: none; }
+    .slot .t small { display: none; }
+    .sheet { padding: 14px 14px 12px; }
+  }
+</style>
+<script>
+  window.EXTRA_ITEMS = {
+    lawchest: { q: 'epic', n: 'Lawbringer Chestguard', lines: ['Binds when picked up', ['Chest', 'Plate'], '749 Armor', '+21 Stamina', '+20 Intellect', ['g', 'Equip: Increases healing done by spells by up to 22.'], ['y', 'Lawbringer Armor (3/8)'], 'Requires Level 60'], sell: C(3, 80, 0), src: 'Looted from Lucifron · Molten Core' },
+    girdle: { q: 'epic', n: 'Onslaught Girdle', lines: ['Binds when picked up', ['Waist', 'Plate'], '494 Armor', '+31 Strength', ['g', 'Equip: Improves your chance to get a critical strike by 1%.'], ['g', 'Equip: Improves your chance to hit by 1%.'], 'Requires Level 60'], sell: C(5, 2, 10), src: 'Looted from Ragnaros · Molten Core' },
+    hoj: { q: 'rare', n: 'Hand of Justice', lines: ['Binds when picked up', 'Trinket', ['g', 'Equip: +20 Attack Power.'], ['g', 'Equip: 2% chance on melee hit to gain 1 extra attack.'], 'Requires Level 58'], sell: C(1, 50, 0), src: 'Looted from Emperor Dagran Thaurissan' },
+    dft: { q: 'epic', n: 'Drake Fang Talisman', lines: ['Binds when picked up', 'Trinket', ['g', 'Equip: +56 Attack Power.'], ['g', 'Equip: Increased Defense +10.'], ['g', 'Equip: Improves your chance to hit by 2%.'], 'Requires Level 60'], sell: C(4, 0, 0), src: 'Looted from Chromaggus · Blackwing Lair' },
+  };
+  function C(g, s, c) { return `<span class="coins">${g ? `<span class="g">${g}</span>` : ''}${s ? `<span class="s">${s}</span>` : ''}${c ? `<span class="c">${c}</span>` : ''}</span>`; }
+</script>
+</head>
+<body data-page="characters" data-wow="running">
+<main class="main">
+  <div class="topbar">
+    <div class="crumbs"><a href="characters.html">Characters</a><i data-i="chevron" class="sm"></i><span>Thrandor</span></div>
+    <div class="actions">
+      <button class="btn icon" title="Previous alt"><i data-i="left" class="sm"></i></button>
+      <button class="btn">Switch alt <i data-i="down" class="sm"></i></button>
+      <button class="btn icon" title="Next alt"><i data-i="chevron" class="sm"></i></button>
+    </div>
+  </div>
+
+  <div class="body">
+    <article class="parchment tilt sheet">
+      <div class="ident">
+        <span data-portrait="armory" data-class="paladin" data-w="92" data-online="1"></span>
+        <div>
+          <h1 class="c-paladin cc">Thrandor</h1>
+          <div class="sub serif-i">Level 60 Human Paladin · &lt;Wardens of Dawn&gt; <span class="pill">Online · Eastern Plaguelands</span></div>
+        </div>
+        <div class="seal" title="Reached 60 yesterday"><span class="t">Ding!</span><span class="n">60</span></div>
+      </div>
+
+      <div class="stats">
+        <div><div class="k">Gold</div><div class="v"><span class="coins"><span class="g">2,140</span><span class="s">18</span><span class="c">72</span></span></div></div>
+        <div><div class="k">Item level</div><div class="v">63.4</div></div>
+        <div><div class="k">Worth carried</div><div class="v"><span class="coins"><span class="g">1,312</span></span></div></div>
+        <div><div class="k">Time played</div><div class="v">9d 4h</div></div>
+        <div><div class="k">Rested</div><div class="v">—</div></div>
+      </div>
+
+      <nav class="tabs">
+        <a class="on" href="#"><i data-i="sword" class="sm"></i>Gear</a>
+        <a href="#">Satchels <span class="n">68/80</span></a>
+        <a href="#">Bank <span class="n">112</span></a>
+        <a href="#">Mail <span class="n">3</span></a>
+        <a href="#">Professions</a>
+        <a href="#">History</a>
+        <span class="stamp"><i data-i="clock" class="sm"></i>4 min ago</span>
+      </nav>
+
+      <div class="doll">
+        <div>
+          <div class="slot" data-tt="lionheart"><span class="ico lg q-epic"><img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><radialGradient id='b' cx='.4' cy='.3' r='.9'><stop offset='0' stop-color='%23463a5e'/><stop offset='1' stop-color='%23100c18'/></radialGradient><linearGradient id='h' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23fff2c2'/><stop offset='.35' stop-color='%23d9a640'/><stop offset='.75' stop-color='%23704a14'/><stop offset='1' stop-color='%232a1a06'/></linearGradient></defs><rect width='64' height='64' fill='url(%23b)'/><path d='M14 38c0-14 8-26 18-26s18 12 18 26v12H40V40H24v10H14z' fill='url(%23h)' stroke='%231a1006' stroke-width='1.5'/><path d='M32 12v26' stroke='%23fff6d8' stroke-width='3' opacity='.7'/><path d='M20 34h24' stroke='%232a1a06' stroke-width='3'/><path d='M24 30l-6-14 10 8zM40 30l6-14-10 8z' fill='%23c43a2e'/><rect width='64' height='64' fill='none' stroke='%23000' stroke-opacity='.6' stroke-width='3'/></svg>"></span><div class="t"><div class="q-epic">Lionheart Helm</div><small>Head</small></div><span class="il">67</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>N</b></span><div class="t"><div class="q-rare">Mark of Fordring</div><small>Neck</small></div><span class="il">63</span></div>
+          <div class="slot" data-tt="truestrike"><span class="ico lg q-rare"><b>S</b></span><div class="t"><div class="q-rare">Truestrike Shoulders</div><small>Shoulder · new yesterday</small></div><span class="il">63</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>B</b></span><div class="t"><div class="q-rare">Cape of the Black Baron</div><small>Back</small></div><span class="il">63</span></div>
+          <div class="slot" data-tt="lawchest"><span class="ico lg q-epic"><b>C</b></span><div class="t"><div class="q-epic">Lawbringer Chestguard</div><small>Chest</small></div><span class="il">66</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>W</b></span><div class="t"><div class="q-rare">Vambraces of the Sadist</div><small>Wrist</small></div><span class="il">63</span></div>
+          <div class="slot" data-tt="hoj"><span class="ico lg q-rare"><b>T</b></span><div class="t"><div class="q-rare">Hand of Justice</div><small>Trinket</small></div><span class="il">58</span></div>
+        </div>
+        <div>
+          <div class="slot"><span class="ico lg q-epic"><b>G</b></span><div class="t"><div class="q-epic">Lawbringer Gauntlets</div><small>Hands</small></div><span class="il">66</span></div>
+          <div class="slot" data-tt="girdle"><span class="ico lg q-epic"><b>W</b></span><div class="t"><div class="q-epic">Onslaught Girdle</div><small>Waist</small></div><span class="il">71</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>L</b></span><div class="t"><div class="q-rare">Legplates of the Chromatic Defier</div><small>Legs</small></div><span class="il">63</span></div>
+          <div class="slot"><span class="ico lg q-epic"><b>F</b></span><div class="t"><div class="q-epic">Lawbringer Boots</div><small>Feet</small></div><span class="il">66</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>R</b></span><div class="t"><div class="q-rare">Don Julio's Band</div><small>Finger</small></div><span class="il">65</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>R</b></span><div class="t"><div class="q-rare">Painweaver Band</div><small>Finger</small></div><span class="il">63</span></div>
+          <div class="slot" data-tt="dft"><span class="ico lg q-epic"><b>T</b></span><div class="t"><div class="q-epic">Drake Fang Talisman</div><small>Trinket</small></div><span class="il">75</span></div>
+        </div>
+      </div>
+
+      <div class="wrow">
+        <div class="sec">Weapons</div>
+        <div class="doll">
+          <div class="slot" data-tt="ashkandi"><span class="ico lg q-epic"><b>A</b></span><div class="t"><div class="q-epic">Ashkandi, Greatsword of the Brotherhood</div><small>Two-hand · fills both hands</small></div><span class="il">77</span></div>
+          <div class="slot"><span class="ico lg q-rare"><b>L</b></span><div class="t"><div class="q-rare">Libram of Hope</div><small>Relic</small></div><span class="il">60</span></div>
+        </div>
+      </div>
+    </article>
+
+    <div class="side-col">
+      <article class="panel">
+        <div class="ph"><h2>Satchels</h2><span class="meta">68 of 80 used</span></div>
+        <div class="bags">
+          <div class="bagrow head-r"><span>Bag</span><span>Slots</span><span style="text-align:right">Free</span></div>
+          <div class="bagrow"><span>Backpack</span><div class="cells"><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="p"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i></div><span class="free">0</span></div>
+          <div class="bagrow"><span>Mooncloth Bag</span><div class="cells"><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="p"></i><i class="p"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+          <div class="bagrow"><span>Mooncloth Bag</span><div class="cells"><i class="c"></i><i class="e"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+          <div class="bagrow"><span>Runecloth Bag</span><div class="cells"><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Gold, 30 days</h2><span class="meta"><span class="up">▲ 612g</span></span></div>
+        <div class="wallet">
+          <svg viewBox="0 0 270 56" preserveAspectRatio="none">
+            <path d="M0,46 L20,44 40,45 60,38 80,40 100,34 120,36 140,28 160,31 180,24 200,26 220,18 240,20 270,8 L270,56 L0,56Z" fill="rgba(255,140,50,.08)"/>
+            <polyline fill="none" stroke="#ffb15c" stroke-width="1.5" vector-effect="non-scaling-stroke" points="0,46 20,44 40,45 60,38 80,40 100,34 120,36 140,28 160,31 180,24 200,26 220,18 240,20 270,8"/>
+          </svg>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Professions</h2></div>
+        <ul class="prof">
+          <li><div><span>Blacksmithing <span class="dim">· Armorsmith</span></span><span class="muted">300 / 300</span></div><div class="bar"><i class="fill" style="width:100%"></i></div></li>
+          <li><div><span>Mining</span><span class="muted">285 / 300</span></div><div class="bar"><i class="fill" style="width:95%"></i></div></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

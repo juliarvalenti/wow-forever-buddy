@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .main { align-items: center; justify-content: flex-start; padding-top: 26px; }
+  .stepper { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--soot); }
+  .stepper .st { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .stepper .num { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 10.5px "Cinzel", serif;
+    background: rgba(0,0,0,.4); box-shadow: inset 0 1px 3px rgba(0,0,0,.7); color: var(--soot); }
+  .stepper .st.on { color: var(--chalk-hi); }
+  .stepper .st.on .num { color: #2a1b0e; background: linear-gradient(180deg, var(--ember-2), #c8641f); box-shadow: 0 0 10px rgba(255,122,46,.45); }
+  .stepper .line { width: 34px; height: 1px; background: rgba(255,255,255,.08); box-shadow: 0 1px 0 #000; }
+  .stepper .opt { color: var(--soot); font-style: italic; font-family: Georgia, serif; }
+
+  .letter { width: 640px; max-width: 100%; padding: 26px 34px 24px; }
+  .letter h1 { font: 700 24px/1.15 "Cinzel", serif; color: var(--ink); letter-spacing: .03em; }
+  .letter .intro { margin-top: 6px; font-size: 13px; color: var(--ink-2); max-width: 520px; }
+  .letter .rule2 { height: 0; border-top: 1.5px solid var(--ink-rule); border-bottom: 1px solid rgba(58,38,22,.22); padding-top: 2px; margin: 16px 0 14px; }
+  .letter .k { font: 700 10.5px "Cinzel", serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+
+  .pathrow { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 3px; font: 12px ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--ink);
+    background: rgba(255,255,255,.22); box-shadow: inset 0 0 0 1px rgba(58,38,22,.28); }
+  .pathrow svg { color: var(--ink-3); }
+  .pathrow .tag { margin-left: auto; font: 11px "Geist", sans-serif; color: var(--ok-ink); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+  .flavors { margin-top: 14px; display: grid; gap: 6px; }
+  .flv { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 11px; align-items: center; padding: 9px 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(58,38,22,.18); }
+  .flv.on { background: rgba(255,255,255,.28); box-shadow: inset 0 0 0 1.5px rgba(58,38,22,.55), 0 1px 3px rgba(58,38,22,.2); }
+  .flv .rd { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(58,38,22,.55); position: relative; }
+  .flv.on .rd::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--wax); box-shadow: 0 0 0 1px rgba(58,10,5,.4); }
+  .flv .nm { font-weight: 600; font-size: 13px; color: var(--ink); }
+  .flv .nm small { font: 11.5px ui-monospace, Menlo, monospace; color: var(--ink-3); font-weight: 400; margin-left: 6px; }
+  .flv .d { font-size: 11.5px; color: var(--ink-2); margin-top: 1px; }
+  .flv .side-t { font-size: 11.5px; color: var(--ink-3); text-align: right; white-space: nowrap; }
+  .flv.dimmed { opacity: .72; }
+
+  .acts { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+  .acts .btn.ghost { color: #7a1a12; font-weight: 600; }
+  .acts .btn.ghost:hover { background: rgba(120,80,30,.08); }
+  .note { margin-top: 12px; display: flex; gap: 7px; align-items: center; font: italic 12.5px Georgia, serif; color: var(--ink-2); }
+  .note svg { color: var(--ink-3); flex-shrink: 0; }
+
+  /* detecting */
+  .scan { display: grid; gap: 2px; }
+  .scan li { display: grid; grid-template-columns: 18px 150px minmax(0, 1fr); gap: 10px; align-items: center; height: 32px; font-size: 12.5px; border-bottom: 1px solid var(--ink-hair); }
+  .scan li .w { color: var(--ink); font-weight: 500; }
+  .scan li .r { color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scan li .r.mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  .scan .ok { color: var(--ok-ink); } .scan .pend { color: var(--ink-3); }
+  .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(255,122,46,.25); border-top-color: var(--ember); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress { margin-top: 16px; }
+  .progress .bar { height: 5px; }
+  .progress .bar .fill { background: linear-gradient(90deg, #c8641f, var(--ember-2)) !important; box-shadow: 0 0 8px rgba(255,122,46,.5); }
+  .progress .lbl { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+
+  /* not found / pick */
+  .lost { display: flex; gap: 14px; align-items: flex-start; }
+  .lost .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; color: var(--ink-2); box-shadow: inset 0 0 0 1.5px rgba(58,38,22,.4); }
+  .lost .ic svg { width: 20px; height: 20px; }
+  .lost .t { font: 700 14px "Cinzel", serif; color: var(--ink); }
+  .lost .d { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+  .lost .looked { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+  .hint { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .hint div { padding: 8px 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(58,38,22,.2); font-size: 11.5px; color: var(--ink-2); }
+  .hint b { display: block; font: 11.5px ui-monospace, Menlo, monospace; color: var(--ink); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .norm { display: grid; gap: 6px; }
+  .norm .arrow { display: flex; align-items: center; gap: 8px; font: italic 12px Georgia, serif; color: var(--ink-3); padding-left: 14px; }
+  .norm .arrow svg { transform: rotate(90deg); }
+  .caveat { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--warn-ink); }
+  .caveat svg { margin-top: 2px; flex-shrink: 0; }
+
+  .state { display: none; }
+  body[data-state="found"] .state.found, body[data-state="detecting"] .state.detecting,
+  body[data-state="notfound"] .state.notfound, body[data-state="pick"] .state.pick { display: block; }
+
+  .foot-note { font-size: 11.5px; color: var(--soot); text-align: center; max-width: 640px; }
+
+  @media (max-width: 1100px) {
+    .main { padding-top: 18px; }
+    .letter { padding: 20px 24px 20px; }
+    .letter h1 { font-size: 21px; }
+    .flavors { margin-top: 10px; }
+    .hint { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body data-page="onboarding" data-wow="nofolder" data-addon="none">
+<main class="main">
+  <div class="stepper">
+    <span class="st on"><span class="num">1</span>Find the game</span><span class="line"></span>
+    <span class="st"><span class="num">2</span>First backup</span><span class="line"></span>
+    <span class="st"><span class="num">3</span>Companion addon <span class="opt">optional</span></span>
+  </div>
+
+  <article class="parchment letter">
+    <h1>Well met.</h1>
+    <div class="intro">Forever Buddy keeps your WoW: Forever settings backed up and, later, keeps a ledger of your characters. First, let's find the game.</div>
+    <div class="rule2"></div>
+
+    <!-- FOUND (default) -->
+    <section class="state found">
+      <div class="k">Found World of Warcraft</div>
+      <div class="pathrow"><i data-i="folder" class="sm"></i>C:\Program Files (x86)\World of Warcraft<span class="tag"><i data-i="check" class="sm"></i>via registry</span></div>
+      <div class="flavors">
+        <div class="flv on"><span class="rd"></span><div><div class="nm">WoW: Forever (Beta)<small>_classic_beta_</small></div><div class="d">1.60.1 · WowB.exe · 7 characters on Ashenvale</div></div><span class="side-t">Recommended</span></div>
+        <div class="flv"><span class="rd"></span><div><div class="nm">Retail<small>_retail_</small></div><div class="d">12.0 (Midnight) · Wow.exe · 2 characters</div></div><span class="side-t"></span></div>
+        <div class="flv dimmed"><span class="rd"></span><div><div class="nm">Classic Era<small>_classic_era_</small></div><div class="d">1.15.7 · WowClassic.exe · no characters yet</div></div><span class="side-t"></span></div>
+      </div>
+      <div class="acts">
+        <button class="primary"><i data-i="check"></i>Use this folder</button>
+        <button class="btn ghost">Choose another folder…</button>
+      </div>
+      <div class="note"><i data-i="eye" class="sm"></i>We only read here. Nothing is changed until you ask.</div>
+    </section>
+
+    <!-- DETECTING -->
+    <section class="state detecting">
+      <div class="k">Looking for World of Warcraft</div>
+      <ul class="scan">
+        <li><i data-i="check" class="sm pend"></i><span class="w">Saved folder</span><span class="r">none yet: this is your first run</span></li>
+        <li><i data-i="check" class="sm ok"></i><span class="w">Windows registry</span><span class="r mono">…\Blizzard Entertainment\World of Warcraft</span></li>
+        <li><span class="spin"></span><span class="w">Common folders</span><span class="r mono">D:\Games\World of Warcraft</span></li>
+        <li><i data-i="folder" class="sm pend"></i><span class="w">Pick it yourself</span><span class="r">if we don't find it</span></li>
+      </ul>
+      <div class="progress"><span class="bar" style="display:block"><i class="fill" style="width:62%"></i></span><div class="lbl"><span>Checking drives C, D, E…</span><span>usually a second or two</span></div></div>
+      <div class="acts"><button class="btn ghost">Skip and choose a folder…</button></div>
+    </section>
+
+    <!-- NOT FOUND -->
+    <section class="state notfound">
+      <div class="lost">
+        <span class="ic"><i data-i="search"></i></span>
+        <div>
+          <div class="t">We couldn't find World of Warcraft</div>
+          <div class="d">That's fine; point us at it and we'll take it from there.</div>
+          <div class="looked">Looked in: the Windows registry, Program Files, and \Games and \World of Warcraft on drives C, D and E.</div>
+        </div>
+      </div>
+      <div class="hint">
+        <div><b>World of Warcraft\</b>the main folder</div>
+        <div><b>_classic_beta_\</b>the Forever folder</div>
+        <div><b>WTF\</b>even just this works</div>
+      </div>
+      <div class="acts"><button class="primary"><i data-i="folder"></i>Choose folder…</button><button class="btn ghost">Look again</button></div>
+      <div class="note"><i data-i="eye" class="sm"></i>Any of these works. We'll find the rest from there.</div>
+    </section>
+
+    <!-- PICK (manual pick of a WTF folder, normalized up) -->
+    <section class="state pick">
+      <div class="k">You picked</div>
+      <div class="norm">
+        <div class="pathrow" style="opacity:.75"><i data-i="folder" class="sm"></i>E:\Old PC\World of Warcraft\_classic_beta_\WTF</div>
+        <div class="arrow"><i data-i="chevron" class="sm"></i>that's a WTF folder, so we'll use the game folder above it</div>
+        <div class="pathrow"><i data-i="folder" class="sm"></i>E:\Old PC\World of Warcraft<span class="tag"><i data-i="check" class="sm"></i>looks right</span></div>
+      </div>
+      <div class="flavors">
+        <div class="flv on"><span class="rd"></span><div><div class="nm">WoW: Forever (Beta)<small>_classic_beta_</small></div><div class="d">settings only · 5 characters on Ashenvale</div></div><span class="side-t">no WowB.exe</span></div>
+      </div>
+      <div class="caveat"><i data-i="alert" class="sm"></i><span>There's no game here, just its settings. Backups and restore work; we won't be able to tell when WoW is running from this copy.</span></div>
+      <div class="acts"><button class="primary"><i data-i="check"></i>Use this folder</button><button class="btn ghost">Choose a different one…</button></div>
+    </section>
+  </article>
+
+  <div class="foot-note">Next we'll take a first backup of your settings, before anything else happens.</div>
+</main>
+<script>document.body.dataset.state = new URLSearchParams(location.search).get('state') || 'found';</script>
+<script src="_shell.js"></script>
+</body>
+</html>

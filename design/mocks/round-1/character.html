@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thrandor — WoW Forever Buddy (mock r1)</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+  .crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin-bottom: 8px; }
+  .crumbs a { color: var(--muted); text-decoration: none; }
+  .crumbs a:hover { color: var(--gold-hi); }
+
+  .hero { display: flex; align-items: center; gap: 16px; }
+  .portrait { width: 64px; height: 64px; position: relative; flex-shrink: 0; }
+  .portrait .face { position: absolute; inset: 11px; border-radius: 3px; display: grid; place-items: center; font: 700 20px "Cinzel", serif; background: radial-gradient(circle at 50% 35%, #3a3024, #15110d); color: var(--c-paladin); }
+  .portrait .frame { position: absolute; inset: -9px; background: url("../../../src/components/ui/warcraftcn/assets/avatar-human.webp") center / contain no-repeat; }
+  .hero h1 { color: var(--c-paladin) !important; }
+  .hero .lede { display: flex; gap: 8px; align-items: center; }
+  .altnav { display: flex; gap: 4px; }
+
+  .facts { display: grid; grid-template-columns: repeat(5, 1fr); }
+  .facts > div { padding: 10px 14px; border-right: 1px solid var(--line); }
+  .facts > div:last-child { border-right: 0; }
+  .facts .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .facts .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+  .tabs a { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; color: var(--muted); text-decoration: none; font-size: 12.5px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs a:hover { color: var(--text); }
+  .tabs a.on { color: var(--gold-hi); border-bottom-color: var(--gold); }
+  .tabs a .n { font-size: 11px; color: var(--dim); }
+  .tabs .sp { flex: 1; }
+  .tabs .stamp { align-self: center; font-size: 11px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
+  .doll { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; padding: 8px 14px 12px; }
+  .slot { display: flex; align-items: center; gap: 10px; height: 38px; border-bottom: 1px solid rgba(205,168,98,0.06); min-width: 0; }
+  .slot .ico { width: 28px; height: 28px; }
+  .slot .t { flex: 1; min-width: 0; line-height: 1.2; }
+  .slot .t div { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot .t small { font-size: 10.5px; color: var(--dim); }
+  .slot .il { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .slot.empty .t div { color: var(--dim); font-style: italic; }
+  .weapons { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 18px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+
+  .side { display: grid; gap: 12px; }
+  .bags { padding: 12px 14px; display: grid; gap: 10px; }
+  .bagrow > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bagrow { display: grid; grid-template-columns: 96px 1fr 22px; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); }
+  .cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
+  .cells i { aspect-ratio: 1; border-radius: 2px; background: #0b0908; border: 1px solid rgba(255,255,255,0.05); }
+  .cells i.c { background: #4a4036; } .cells i.u { background: #1f6b1a; } .cells i.r { background: #1f4f99; } .cells i.e { background: #6b2e94; } .cells i.p { background: #333; }
+  .bagrow .free { text-align: right; color: var(--dim); }
+  .prof { list-style: none; padding: 4px 14px 12px; display: grid; gap: 10px; }
+  .prof li { display: grid; gap: 4px; font-size: 12.5px; }
+  .prof li div { display: flex; justify-content: space-between; }
+  .prof .bar > i { background: linear-gradient(90deg, var(--gold-lo), var(--gold)); }
+  .wallet { padding: 6px 14px 12px; }
+  .wallet svg { display: block; }
+
+  @media (max-width: 1100px) {
+    .body { grid-template-columns: minmax(0, 1fr) 260px; }
+    .facts > div:nth-child(5) { display: none; }
+    .facts { grid-template-columns: repeat(4, 1fr); }
+    .slot .t small { display: none; }
+  }
+</style>
+</head>
+<body data-page="characters" data-wow="running">
+<main class="main">
+  <div class="page">
+    <div>
+      <div class="crumbs"><a href="characters.html">Characters</a><i data-i="chevron" class="sm"></i><span>Thrandor</span></div>
+      <header class="page-head">
+        <div class="hero">
+          <div class="portrait"><div class="face">T</div><div class="frame"></div></div>
+          <div>
+            <h1>Thrandor</h1>
+            <div class="lede">Level 60 Human Paladin · &lt;Wardens of Dawn&gt; <span class="pill ok"><span class="dot live" style="width:6px;height:6px"></span>Online</span></div>
+          </div>
+        </div>
+        <div class="actions altnav">
+          <button class="btn icon" title="Previous alt"><i data-i="left" class="sm"></i></button>
+          <button class="btn">Switch alt <i data-i="down" class="sm"></i></button>
+          <button class="btn icon" title="Next alt"><i data-i="chevron" class="sm"></i></button>
+        </div>
+      </header>
+    </div>
+
+    <div class="panel facts">
+      <div><div class="k">Gold</div><div class="v"><span class="coins"><span class="g">2,140</span><span class="s">18</span><span class="c">72</span></span></div></div>
+      <div><div class="k">Item level</div><div class="v">63.4</div></div>
+      <div><div class="k">Inventory value</div><div class="v"><span class="coins"><span class="g">1,312</span></span></div></div>
+      <div><div class="k">Time played</div><div class="v">9d 4h</div></div>
+      <div><div class="k">Location</div><div class="v" style="font-size:13.5px;font-weight:500">Eastern Plaguelands</div></div>
+    </div>
+
+    <div class="tabs">
+      <a class="on" href="#"><i data-i="sword" class="sm"></i>Gear</a>
+      <a href="#"><i data-i="bag" class="sm"></i>Bags <span class="n">68/80</span></a>
+      <a href="#"><i data-i="bank" class="sm"></i>Bank <span class="n">112</span></a>
+      <a href="#">Mail <span class="n">3</span></a>
+      <a href="#">Professions</a>
+      <a href="#">History</a>
+      <span class="sp"></span>
+      <span class="stamp"><i data-i="clock" class="sm"></i>Snapshot from last /reload · 4 min ago</span>
+    </div>
+
+    <div class="body">
+      <div class="panel">
+        <div class="doll">
+          <div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>H</span></div><div class="t"><div class="q-epic">Lionheart Helm</div><small>Head</small></div><span class="il">67</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>N</span></div><div class="t"><div class="q-rare">Mark of Fordring</div><small>Neck</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>S</span></div><div class="t"><div class="q-rare">Truestrike Shoulders</div><small>Shoulder · new this session</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>B</span></div><div class="t"><div class="q-rare">Cape of the Black Baron</div><small>Back</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>C</span></div><div class="t"><div class="q-epic">Lawbringer Chestguard</div><small>Chest</small></div><span class="il">66</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>W</span></div><div class="t"><div class="q-rare">Vambraces of the Sadist</div><small>Wrist</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>T</span></div><div class="t"><div class="q-rare">Hand of Justice</div><small>Trinket</small></div><span class="il">58</span></div>
+          </div>
+          <div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>G</span></div><div class="t"><div class="q-epic">Lawbringer Gauntlets</div><small>Hands</small></div><span class="il">66</span></div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>W</span></div><div class="t"><div class="q-epic">Onslaught Girdle</div><small>Waist</small></div><span class="il">71</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>L</span></div><div class="t"><div class="q-rare">Legplates of the Chromatic Defier</div><small>Legs</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>F</span></div><div class="t"><div class="q-epic">Lawbringer Boots</div><small>Feet</small></div><span class="il">66</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>R</span></div><div class="t"><div class="q-rare">Don Julio's Band</div><small>Finger</small></div><span class="il">65</span></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>R</span></div><div class="t"><div class="q-rare">Painweaver Band</div><small>Finger</small></div><span class="il">63</span></div>
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>T</span></div><div class="t"><div class="q-epic">Drake Fang Talisman</div><small>Trinket</small></div><span class="il">75</span></div>
+          </div>
+          <div class="weapons">
+            <div class="slot"><div class="ico q-epic" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>M</span></div><div class="t"><div class="q-epic">Ashkandi, Greatsword of the Brotherhood</div><small>Two-hand</small></div><span class="il">77</span></div>
+            <div class="slot empty"><div class="ico q-poor" style="background:#0b0908"></div><div class="t"><div>Empty</div><small>Off hand</small></div></div>
+            <div class="slot"><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>L</span></div><div class="t"><div class="q-rare">Libram of Hope</div><small>Relic</small></div><span class="il">60</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <div class="panel-h"><h2>Bags</h2><div class="meta">68 of 80 used</div></div>
+          <div class="bags">
+            <div class="bagrow"><span>Backpack</span><div class="cells"><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="p"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i></div><span class="free">0</span></div>
+            <div class="bagrow"><span>Mooncloth Bag</span><div class="cells"><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="p"></i><i class="p"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+            <div class="bagrow"><span>Mooncloth Bag</span><div class="cells"><i class="c"></i><i class="e"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="u"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+            <div class="bagrow"><span>Runecloth Bag</span><div class="cells"><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="r"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i></i><i></i><i></i><i></i></div><span class="free">4</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h2>Gold, 30 days</h2><div class="meta"><span class="ok">▲ 612g</span></div></div>
+          <div class="wallet">
+            <svg viewBox="0 0 270 60" width="100%" height="60" preserveAspectRatio="none">
+              <defs><linearGradient id="wf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6b26a" stop-opacity="0.25"/><stop offset="1" stop-color="#d6b26a" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0,48 L20,46 40,47 60,40 80,42 100,36 120,38 140,30 160,33 180,26 200,28 220,20 240,22 270,10 L270,60 L0,60Z" fill="url(#wf)"/>
+              <polyline fill="none" stroke="#d6b26a" stroke-width="1.5" vector-effect="non-scaling-stroke" points="0,48 20,46 40,47 60,40 80,42 100,36 120,38 140,30 160,33 180,26 200,28 220,20 240,22 270,10"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h2>Professions</h2></div>
+          <ul class="prof">
+            <li><div><span>Blacksmithing <span class="dim">· Armorsmith</span></span><span class="num muted">300 / 300</span></div><div class="bar"><i style="width:100%"></i></div></li>
+            <li><div><span>Mining</span><span class="num muted">285 / 300</span></div><div class="bar"><i style="width:95%"></i></div></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

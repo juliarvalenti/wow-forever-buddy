@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard — WoW Forever Buddy (mock r2)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+  .who { display: flex; align-items: center; gap: 12px; }
+  .who .wn { font: 700 15px "Cinzel", serif; }
+  .who .wc2 { font-size: 12px; }
+  .who .seal { margin-left: auto; }
+  .tally { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
+  .tally > div { padding: 8px 12px; min-width: 0; }
+  .tally > div + div { border-left: 1px solid rgba(58,38,22,.22); }
+  .tally .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .tally .v { font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .goldline { display: block; width: 100%; height: 56px; margin-top: 12px; }
+  .goldline .line { fill: none; stroke: #4a2e16; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  .goldline .area { fill: rgba(120,80,30,.12); }
+  .goldline .mark { fill: var(--wax); }
+  .goldline text { font: italic 10px Georgia, serif; fill: var(--ink-3); }
+  .loot { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; }
+  .loot .sec { margin-bottom: 2px; }
+  .items li { display: flex; align-items: center; gap: 9px; height: 28px; font-size: 12.5px; padding: 0 4px; margin: 0 -4px; }
+  .items .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .items .x { font-size: 12px; color: var(--ink-2); }
+  .zones { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(58,38,22,.25); font-size: 12px; }
+  .zones .serif-i { color: var(--ink-3); }
+
+  .roster li { display: grid; grid-template-columns: 8px auto 1fr auto 28px; gap: 9px; align-items: center; height: 30px; padding: 0 14px; font-size: 12.5px; }
+  .roster .note { font-size: 11px; color: var(--soot); }
+  .roster .ag { grid-column: 4; }
+  .roster .lv { text-align: right; font-size: 11.5px; color: var(--soot); }
+
+  @media (max-width: 1100px) { .tally > div { padding: 7px 9px; } }
+</style>
+</head>
+<body data-page="dashboard" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Dashboard</h1><div class="lede">Sunday, 4 October · Realm Ashenvale · 7 characters</div></div>
+    <div class="actions">
+      <button class="btn ghost"><i data-i="folder"></i>Open game folder</button>
+      <button class="primary"><i data-i="archive"></i>Back up now</button>
+    </div>
+  </header>
+
+  <section class="strip">
+    <div class="tile"><div class="k">Account gold</div><div class="v"><span class="coins"><span class="g">6,812</span><span class="s">47</span><span class="c">09</span></span></div><div class="s"><span class="up">▲ 412g</span> this week</div>
+      <svg class="spark" viewBox="0 0 74 24"><polyline points="0,20 10,18 18,19 27,14 36,15 45,10 54,11 63,6 74,3"/></svg></div>
+    <div class="tile"><div class="k">Last backup</div><div class="v">2 hours ago</div><div class="s">Auto · on game exit · 48 MB</div></div>
+    <div class="tile"><div class="k">Game</div><div class="v"><span class="live"></span>Running</div><div class="s">Thrandor · 1h 42m this session</div></div>
+    <div class="tile"><div class="k">Characters</div><div class="v">7 <small>· 2 at 60</small></div><div class="s">3 fully rested</div></div>
+  </section>
+
+  <section class="cols">
+    <article class="parchment tilt">
+      <div class="ph"><h2>Last adventure</h2><span class="meta">Yesterday 19:40 – 22:52 · 3h 12m</span><a class="link" href="session.html">Read entry <i data-i="chevron" class="sm"></i></a></div>
+      <div class="pb ruled">
+        <div class="who">
+          <span data-portrait="armory" data-class="paladin" data-w="44"></span>
+          <div><div class="wn cc c-paladin">Thrandor</div><div class="wc2 serif-i">Human Paladin · Level 59 → <b style="font-style:normal;color:var(--ink)">60</b></div></div>
+          <div class="seal"><span class="t">Ding!</span><span class="n">60</span></div>
+        </div>
+        <div class="tally">
+          <div><div class="k">Gold</div><div class="v up">+<span class="coins"><span class="g">312</span><span class="s">40</span></span></div></div>
+          <div><div class="k">Experience</div><div class="v">+148,210</div></div>
+          <div><div class="k">Loot</div><div class="v">47 items</div></div>
+          <div><div class="k">Quests</div><div class="v">9</div></div>
+        </div>
+        <svg class="goldline" viewBox="0 0 600 56" preserveAspectRatio="none">
+          <path class="area" d="M0,48 L40,46 80,44 110,45 150,38 190,39 230,32 260,34 300,24 340,27 380,18 420,20 450,21 470,28 500,16 540,10 580,7 600,5 L600,56 L0,56Z"/>
+          <polyline class="line" points="0,48 40,46 80,44 110,45 150,38 190,39 230,32 260,34 300,24 340,27 380,18 420,20 450,21 470,28 500,16 540,10 580,7 600,5"/>
+          <circle class="mark" cx="470" cy="28" r="3"/>
+        </svg>
+        <div class="loot">
+          <div><div class="sec">Gained</div><ul class="items">
+            <li data-tt="truestrike"><span class="ico q-rare"><b>S</b></span><span class="nm q-rare">Truestrike Shoulders</span></li>
+            <li data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="nm q-common">Runecloth</span><span class="x">×40</span></li>
+            <li data-tt="orb"><span class="ico q-uncommon"><b>O</b></span><span class="nm q-uncommon">Righteous Orb</span><span class="x">×2</span></li>
+            <li data-tt="potion"><span class="ico q-common"><b>P</b></span><span class="nm q-common">Major Healing Potion</span><span class="x">×6</span></li>
+          </ul></div>
+          <div><div class="sec">Spent</div><ul class="items">
+            <li data-tt="flask"><span class="ico q-common"><b>F</b></span><span class="nm q-common">Flask of the Titans</span><span class="x">×1</span></li>
+            <li data-tt="potion"><span class="ico q-common"><b>P</b></span><span class="nm q-common">Major Healing Potion</span><span class="x">×4</span></li>
+            <li><span class="ico q-poor"><b>J</b></span><span class="nm q-poor">Vendor junk, sold</span><span class="x">×22</span></li>
+            <li><span class="ico q-poor"><b>⚒</b></span><span class="nm bad">Repairs</span><span class="x bad">−18g</span></li>
+          </ul></div>
+        </div>
+        <div class="zones"><span class="serif-i">Travelled</span><span class="pill">Eastern Plaguelands</span><span class="pill">Stratholme</span><span class="pill">Light's Hope Chapel</span></div>
+      </div>
+    </article>
+
+    <div class="stack">
+      <article class="panel">
+        <div class="ph"><h2>Game folder</h2><span class="meta"><button class="btn ghost icon" style="height:22px;width:22px" title="Rescan"><i data-i="refresh" class="sm"></i></button></span></div>
+        <ul class="checks">
+          <li><i data-i="check" class="ok"></i><div><div>Client detected</div><small>D:\Games\WoW Forever\_classic_ · 1.15.4</small></div></li>
+          <li><i data-i="check" class="ok"></i><div><div>ForeverBuddy addon</div><small>v0.2.0 · on 7 / 7 characters</small></div></li>
+          <li><i data-i="check" class="ok"></i><div><div>SavedVariables read</div><small>4 min ago · next on logout or /reload</small></div></li>
+          <li><i data-i="alert" class="warn"></i><div><div>Auction prices are 3 days old</div><small>Scan the AH in-game to refresh</small></div></li>
+        </ul>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Characters</h2><a class="link" href="characters.html">All <i data-i="chevron" class="sm"></i></a></div>
+        <ul class="roster rows">
+          <li class="c-warrior"><span class="cdot"></span><span class="cc">Coinpurse</span><span class="note">bank</span><span class="ag"><span class="coins"><span class="g">2,779</span></span></span><span class="lv">12</span></li>
+          <li class="c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span><span></span><span class="ag"><span class="coins"><span class="g">2,140</span></span></span><span class="lv">60</span></li>
+          <li class="c-druid"><span class="cdot"></span><span class="cc">Velyra</span><span></span><span class="ag"><span class="coins"><span class="g">1,066</span></span></span><span class="lv">60</span></li>
+          <li class="c-hunter"><span class="cdot"></span><span class="cc">Brannic</span><span></span><span class="ag"><span class="coins"><span class="g">488</span></span></span><span class="lv">52</span></li>
+          <li class="c-mage"><span class="cdot"></span><span class="cc">Fizzwick</span><span></span><span class="ag"><span class="coins"><span class="g">212</span></span></span><span class="lv">44</span></li>
+        </ul>
+      </article>
+    </div>
+  </section>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

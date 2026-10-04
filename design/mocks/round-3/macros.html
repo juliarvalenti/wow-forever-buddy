@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Macros — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .head h1 { display: flex; align-items: center; gap: 10px; }
+  .sketch { font: 600 10px "Geist", sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--ash); padding: 2px 7px; border-radius: 9px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); vertical-align: middle; }
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .toolbar .who { display: inline-flex; align-items: center; gap: 8px; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+  .grid3 { display: grid; grid-template-columns: 250px minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
+  .mlist li { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+  .mlist li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .mlist li.sel { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+  .mlist li .len { margin-left: auto; font-size: 11px; color: var(--soot); }
+  .mlist li .len.hot { color: var(--warn); }
+  .mlist .ico { width: 26px; height: 26px; }
+  .mlist .group { height: 26px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--soot); cursor: default; background: rgba(0,0,0,.18); }
+  .editor .pb { display: grid; gap: 10px; }
+  .ed-top { display: flex; align-items: center; gap: 10px; }
+  .ed-top .ico { width: 36px; height: 36px; font-size: 14px; }
+  .ed-top .field { flex: 1; }
+  .code { font: 13px/1.7 ui-monospace, "Cascadia Mono", Menlo, monospace; padding: 12px 14px; min-height: 190px; border-radius: var(--r); white-space: pre-wrap; color: var(--chalk);
+    background: rgba(0,0,0,.45); box-shadow: inset 0 2px 6px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); }
+  .code .meta-d { color: #b79c6c; }
+  .code .cmd { color: #ffb15c; }
+  .code .cond { color: #8fb4ee; }
+  .code .sp { color: #ece4d6; }
+  .code .caret { display: inline-block; width: 1.5px; height: 15px; background: var(--ember-2); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .count { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--soot); }
+  .count .bar { flex: 1; }
+  .count .bar .fill { background: linear-gradient(90deg, #7a6a52, var(--warn)); }
+  .count b { color: var(--warn); font-weight: 600; }
+  .ed-foot { display: flex; align-items: center; gap: 8px; }
+  .ed-foot .why { font-size: 11.5px; color: var(--warn); display: inline-flex; align-items: center; gap: 5px; }
+  .lib li { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; padding: 8px 12px; font-size: 12.5px; }
+  .lib li + li { border-top: 1px solid var(--ink-hair); }
+  .lib li small { grid-column: 1; font-size: 11px; color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
+  .lib li .act { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 11.5px; color: #7a1a12; font-weight: 600; }
+  .lib .ph { margin: 0 10px; }
+  @media (max-width: 1100px) {
+    .grid3 { grid-template-columns: 210px minmax(0, 1fr); }
+    .lib-col { display: none; }
+  }
+</style>
+</head>
+<body data-page="macros" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Macros <span class="sketch">Sketch · v0.6</span></h1><div class="lede">Edit macros outside the game. Saved to macros-cache.txt when WoW is closed.</div></div>
+    <div class="actions">
+      <button class="btn"><i data-i="plus" class="sm"></i>New macro</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg"><button>Account (18)</button><button class="on">Character (11)</button></div>
+    <span class="who"><span class="cdot c-paladin"></span><span class="cc c-paladin" style="font-weight:600">Thrandor</span><button class="btn ghost" style="height:24px">Change <i data-i="down" class="sm"></i></button></span>
+    <span class="meta">Account macros: 120 slots · Character: 18 slots · 11 used</span>
+  </div>
+
+  <section class="grid3">
+    <div class="panel">
+      <div class="ph"><h2>Thrandor</h2><span class="meta">11 / 18</span></div>
+      <ul class="mlist">
+        <li class="sel"><span class="ico q-common"><b>J</b></span>Judge + Seal<span class="len hot">231</span></li>
+        <li><span class="ico q-common"><b>H</b></span>Holy Light @mouseover<span class="len">88</span></li>
+        <li><span class="ico q-common"><b>B</b></span>BoP focus<span class="len">64</span></li>
+        <li><span class="ico q-common"><b>C</b></span>Cleanse self<span class="len">52</span></li>
+        <li><span class="ico q-common"><b>M</b></span>Mount<span class="len">41</span></li>
+        <li><span class="ico q-common"><b>T</b></span>Trinket + Wings<span class="len">97</span></li>
+        <li class="group">Shared with account</li>
+        <li><span class="ico q-common"><b>A</b></span>Assist main tank<span class="len">37</span></li>
+        <li><span class="ico q-common"><b>R</b></span>Ready check<span class="len">18</span></li>
+      </ul>
+    </div>
+
+    <div class="panel editor">
+      <div class="ph"><h2>Judge + Seal</h2><span class="meta">character macro · last saved 3 Oct</span></div>
+      <div class="pb">
+        <div class="ed-top"><span class="ico lg q-common"><b>J</b></span><label class="field"><input value="Judge + Seal"></label><button class="btn">Icon <i data-i="down" class="sm"></i></button></div>
+<div class="code"><span class="meta-d">#showtooltip</span> <span class="sp">Judgement</span>
+<span class="cmd">/cast</span> <span class="cond">[mod:shift]</span> <span class="sp">Seal of Light</span>; <span class="cond">[mod:ctrl]</span> <span class="sp">Seal of Wisdom</span>
+<span class="cmd">/cast</span> <span class="cond">[@target,harm,nodead]</span> <span class="sp">Judgement</span>
+<span class="cmd">/use</span> <span class="sp">13</span>
+<span class="cmd">/startattack</span>
+<span class="cmd">/cast</span> <span class="cond">[nomod]</span> <span class="sp">Seal of Command</span><span class="caret"></span></div>
+        <div class="count"><span><b>231</b> / 255</span><span class="bar"><i class="fill" style="width:90.6%"></i></span><span class="warn">24 left</span></div>
+        <div class="ed-foot">
+          <button class="btn ghost"><i data-i="archive" class="sm"></i>Save to library</button>
+          <span class="grow"></span>
+          <span class="why"><i data-i="clock" class="sm"></i>Saves when WoW closes</span>
+          <span class="lockact" style="height:28px;padding:0 11px"><i data-i="lock"></i>Save to Thrandor</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="parchment lib-col">
+      <div class="ph"><h2>Library</h2><span class="meta">14 saved</span></div>
+      <ul class="lib">
+        <li><span>Judge + Seal</span><a class="act">Copy to…</a><small>Paladin · from Thrandor</small></li>
+        <li><span>Wings + Trinkets</span><a class="act">Copy to…</a><small>Any class · burst</small></li>
+        <li><span>Mouseover heal</span><a class="act">Copy to…</a><small>Healers · Velyra, Sela</small></li>
+        <li><span>Feign + Trap</span><a class="act">Copy to…</a><small>Hunter · from Brannic</small></li>
+        <li><span>Polymorph focus</span><a class="act">Copy to…</a><small>Mage · from Fizzwick</small></li>
+        <li><span>Auction scan</span><a class="act">Copy to…</a><small>Any · Auctionator</small></li>
+      </ul>
+    </div>
+  </section>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

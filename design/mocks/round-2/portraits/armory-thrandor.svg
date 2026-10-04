@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">
+  <!-- Stand-in for a Blizzard armory bust render: studio backdrop + armored paladin with rim light. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="#5a3d52"/><stop offset="0.45" stop-color="#2a1d2c"/><stop offset="1" stop-color="#0c080d"/></radialGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9c79a"/><stop offset="0.35" stop-color="#8d7a52"/><stop offset="0.7" stop-color="#3c3222"/><stop offset="1" stop-color="#1a150e"/></linearGradient>
+    <linearGradient id="plateR" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6e7b8"/><stop offset="0.3" stop-color="#a48c5c"/><stop offset="0.75" stop-color="#3a3020"/><stop offset="1" stop-color="#15110b"/></linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8a983"/><stop offset="0.6" stop-color="#8a5c42"/><stop offset="1" stop-color="#3b261b"/></linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4a2c"/><stop offset="1" stop-color="#2a1c10"/></linearGradient>
+    <linearGradient id="tabard" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a1f2b"/><stop offset="1" stop-color="#2b0a10"/></linearGradient>
+    <radialGradient id="floor" cx="50%" cy="100%" r="60%"><stop offset="0" stop-color="#f48cba" stop-opacity="0.25"/><stop offset="1" stop-color="#f48cba" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="400" height="500" fill="url(#bg)"/><rect width="400" height="500" fill="url(#floor)"/>
+  <path d="M60 500 C60 410 95 360 150 340 L250 340 C305 360 340 410 340 500 Z" fill="url(#plate)"/>
+  <path d="M150 340 L250 340 L262 500 L138 500 Z" fill="url(#tabard)"/>
+  <path d="M200 370 l14 22 -14 22 -14 -22z" fill="#e9c45a" opacity="0.85"/>
+  <path d="M40 395 C40 330 95 300 150 312 C165 330 160 370 140 392 C110 410 70 412 40 395Z" fill="url(#plate)"/>
+  <path d="M360 395 C360 330 305 300 250 312 C235 330 240 370 260 392 C290 410 330 412 360 395Z" fill="url(#plateR)"/>
+  <path d="M52 380 C70 340 110 322 146 326" stroke="#f1d898" stroke-width="3" fill="none" opacity="0.7"/>
+  <path d="M348 380 C330 340 290 322 254 326" stroke="#fff3cf" stroke-width="3" fill="none" opacity="0.8"/>
+  <path d="M176 290 L224 290 L230 345 L170 345Z" fill="#3b261b"/>
+  <ellipse cx="200" cy="230" rx="58" ry="74" fill="url(#skin)"/>
+  <path d="M142 222 C138 160 170 140 200 140 C236 140 264 165 258 222 C250 196 236 180 200 178 C168 180 150 196 142 222Z" fill="url(#hair)"/>
+  <path d="M152 262 C160 300 182 312 200 312 C220 312 242 300 248 262 C238 282 222 290 200 290 C178 290 162 282 152 262Z" fill="url(#hair)"/>
+  <path d="M176 236 h18 M208 236 h18" stroke="#2a1a12" stroke-width="5" stroke-linecap="round"/>
+  <path d="M258 200 C266 240 256 280 236 300" stroke="#ffd7ea" stroke-width="3" fill="none" opacity="0.55"/>
+</svg>

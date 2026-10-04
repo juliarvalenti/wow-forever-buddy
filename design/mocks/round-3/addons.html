@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Addons — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .head h1 { display: flex; align-items: center; gap: 10px; }
+  .sketch { font: 600 10px "Geist", sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--ash); padding: 2px 7px; border-radius: 9px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); vertical-align: middle; }
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); display: flex; gap: 12px; align-items: center; }
+  .toolbar .field { width: 220px; }
+  table.grid td, table.grid th { padding: 0 10px; }
+  table.grid th { padding: 8px 10px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 12px; align-items: start; }
+  .tablewrap { overflow: auto; max-height: 520px; }
+  td .an { display: flex; align-items: center; gap: 9px; }
+  td .an b { font-weight: 600; color: var(--chalk-hi); }
+  td .an small { display: block; font-size: 11px; color: var(--soot); }
+  .src { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ash); }
+  .src i.lm { font: 700 9px "Geist", sans-serif; font-style: normal; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 3px; color: var(--chalk); background: linear-gradient(180deg, #3a3631, #24221f); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px #0b0a09; }
+  .toc.old { color: var(--warn); }
+  .chars { display: inline-flex; gap: 3px; }
+  .chars .cdot { width: 7px; height: 7px; }
+  .chars .cdot.off { background: transparent; box-shadow: inset 0 0 0 1px var(--soot); }
+  td .ico { width: 22px; height: 22px; font-size: 10px; }
+  .side-pan .pb { display: grid; gap: 12px; }
+  .side-pan .sec { margin-bottom: 4px; }
+  .matrix { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .matrix th { font-weight: 500; color: var(--soot); text-align: center; padding: 3px 2px; }
+  .matrix th:first-child { text-align: left; }
+  .matrix td { padding: 4px 2px; text-align: center; border-top: 1px solid rgba(0,0,0,.4); }
+  .matrix td:first-child { text-align: left; color: var(--chalk); white-space: nowrap; }
+  .matrix .cb { width: 13px; height: 13px; vertical-align: middle; }
+  .matrix .cb.on::after { left: 4px; top: 1px; width: 3px; height: 7px; }
+  .note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; }
+  .note svg { flex-shrink: 0; margin-top: 1px; }
+  @media (max-width: 1400px) { th.size, td.size { display: none; } }
+  @media (max-width: 1100px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .side-pan { display: none; }
+    th.size, td.size, th.auth, td.auth { display: none; }
+    .toolbar .field { width: 170px; }
+  }
+</style>
+</head>
+<body data-page="addons" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Addons <span class="sketch">Sketch · v0.5</span></h1><div class="lede">52 installed in _classic_beta_\Interface\AddOns · WoW: Forever reads TOC Interface 16001</div></div>
+    <div class="actions">
+      <span class="lockact" style="height:28px;padding:0 11px" title="Close WoW first"><i data-i="lock"></i>Install from zip…</span>
+      <span class="lockact" style="height:32px;padding:0 16px;font:700 12.5px 'Cinzel',serif;letter-spacing:.05em" title="Close WoW first"><i data-i="lock"></i>Update all (3)</span>
+    </div>
+  </header>
+
+  <div class="callout"><i data-i="lock"></i><span class="grow"><b>WoW is running — addon changes are locked.</b> Installs, updates and toggles apply when the game is closed; each one takes a safety snapshot first.</span><span class="live"></span></div>
+
+  <div class="toolbar">
+    <span class="muted" style="font-size:12px">Set</span>
+    <div class="seg"><button class="on">Raid</button><button>Leveling</button><button>Minimal</button><button>+ New set</button></div>
+    <label class="field"><i data-i="search" class="sm" style="color:var(--soot)"></i><input placeholder="Filter addons…"></label>
+    <div class="meta"><span><b style="color:var(--ember-2)">3</b> updates</span><span><b style="color:var(--warn)">2</b> out of date</span><span>CurseForge &amp; Wago.io keys set · <a class="ember" href="settings.html">Integrations</a></span></div>
+  </div>
+
+  <div class="split">
+    <div class="panel tablewrap">
+      <table class="grid">
+        <thead><tr><th>Addon</th><th>Source</th><th>TOC</th><th>Enabled for</th><th class="r size">Size</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="panel side-pan">
+      <div class="ph"><h2>Raid set</h2><span class="meta">38 of 52 on</span></div>
+      <div class="pb">
+        <div>
+          <div class="sec">Per character</div>
+          <table class="matrix">
+            <thead><tr><th>Addon</th><th><span class="cdot c-paladin"></span></th><th><span class="cdot c-druid"></span></th><th><span class="cdot c-hunter"></span></th><th><span class="cdot c-mage"></span></th><th><span class="cdot c-priest"></span></th></tr></thead>
+            <tbody>
+              <tr><td>Details!</td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td></tr>
+              <tr><td>WeakAuras</td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td></tr>
+              <tr><td>Questie</td><td><span class="cb"></span></td><td><span class="cb"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td><td><span class="cb on"></span></td></tr>
+              <tr><td>Auctionator</td><td><span class="cb on"></span></td><td><span class="cb"></span></td><td><span class="cb"></span></td><td><span class="cb"></span></td><td><span class="cb"></span></td></tr>
+              <tr><td>HealBot</td><td><span class="cb"></span></td><td><span class="cb on"></span></td><td><span class="cb"></span></td><td><span class="cb"></span></td><td><span class="cb on"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note"><i data-i="file" class="sm"></i><span>Writes each character's <span class="mono">AddOns.txt</span> when WoW is closed. Switching sets is one click; the previous state is kept as a safety snapshot.</span></div>
+        <div class="note"><i data-i="alert" class="sm"></i><span>2 addons target an older interface. Forever may load them with "Load out of date AddOns" checked in-game.</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  const SRC = {
+    cf: ['CF', 'CurseForge'], wago: ['WA', 'Wago · no key'], gh: ['GH', 'GitHub · key invalid'], zip: ['ZIP', 'Local zip'], folder: ['DIR', 'Local folder'],
+  };
+  // name, version, author, source, toc, enabledFor (paladin,druid,hunter,mage,priest), size, update
+  const A = [
+    ['Details! Damage Meter', 'v16001.27', 'Tercio', 'cf', 16001, [1,1,1,1,1], '4.1 MB', 'v16001.28'],
+    ['WeakAuras', '5.19.2', 'The WeakAuras Team', 'cf', 16001, [1,1,1,1,1], '9.8 MB', '5.19.4'],
+    ['Questie', '10.3.0', 'Aero, Logon', 'cf', 16001, [0,0,1,1,1], '38.2 MB'],
+    ['Auctionator', '11.1.4', 'plusmouse', 'cf', 16001, [1,0,0,0,0], '2.7 MB', '11.1.5'],
+    ['Bagnon', '10.2.5', 'Jaliborc', 'wago', 16001, [1,1,1,1,1], '1.3 MB'],
+    ['ForeverBuddy', '0.2.0', 'you', 'folder', 16001, [1,1,1,1,1], '96 KB'],
+    ['HealBot Continued', '10.2.0', 'Strife', 'gh', 16001, [0,1,0,0,1], '6.0 MB'],
+    ['ClassicCastbars', '1.7.9', 'wardz', 'zip', 11504, [1,1,1,1,1], '420 KB'],
+    ['AtlasLoot Classic', 'v2.4.6', 'Hoizame', 'zip', 11502, [1,0,1,0,0], '24.5 MB'],
+    ['OmniCC', '10.2.3', 'Tuller', 'wago', 16001, [1,1,1,1,1], '210 KB'],
+    ['Leatrix Plus', '1.15.62', 'Leatrix', 'cf', 16001, [1,1,1,1,1], '1.1 MB'],
+  ];
+  const CLS = ['paladin', 'druid', 'hunter', 'mage', 'priest'];
+  document.getElementById('rows').innerHTML = A.map(a => `<tr>
+    <td><div class="an"><span class="ico q-common"><b>${a[0][0]}</b></span><div><b>${a[0]}</b><small>${a[1]}${a[7] ? ` <span class="ember">→ ${a[7]}</span>` : ''} · ${a[2]}</small></div></div></td>
+    <td><span class="src"><i class="lm">${SRC[a[3]][0]}</i>${SRC[a[3]][1]}</span></td>
+    <td><span class="toc ${a[4] !== 16001 ? 'old' : 'muted'}">${a[4]}${a[4] !== 16001 ? ' · out of date' : ''}</span></td>
+    <td><span class="chars">${a[5].map((on, k) => `<span class="cdot c-${CLS[k]} ${on ? '' : 'off'}"></span>`).join('')}</span></td>
+    <td class="r size muted">${a[6]}</td>
+    <td>${a[7] ? '<span class="pill warn">Update</span>' : ''}</td></tr>`).join('');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>

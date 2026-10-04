@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ledger — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .toolbar .sp { flex: 1; }
+  .upper { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+
+  /* chart on paper */
+  .chartwrap { position: relative; padding: 10px 14px 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--ink-2); padding: 0 2px 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .legend i { width: 16px; height: 0; border-top: 2px solid; display: inline-block; }
+  .legend i.tot { border-top-width: 3px; }
+  .legend i.dash { border-top-style: dashed; }
+  #chart { display: block; width: 100%; height: 250px; overflow: visible; }
+  #chart .grid line { stroke: rgba(58,38,22,.14); }
+  #chart .axis text { font: 10.5px "Geist", sans-serif; fill: var(--ink-3); }
+  #chart .lbl { font: 600 11px "Geist", sans-serif; }
+  #chart .lbl tspan.v { font-weight: 500; fill: var(--ink-2); }
+  #chart .cross { stroke: rgba(58,38,22,.45); stroke-dasharray: 2 3; }
+  .ctip { position: absolute; pointer-events: none; display: none; min-width: 168px; padding: 7px 9px; font-size: 11.5px; color: var(--ink);
+    background: var(--fiber), #f1e6c8; border-radius: 3px; box-shadow: 0 0 0 1px rgba(58,38,22,.35), 0 6px 14px rgba(58,38,22,.35); }
+  .ctip .d { font: 700 10.5px "Cinzel", serif; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 3px; }
+  .ctip .r { display: flex; align-items: center; gap: 7px; justify-content: space-between; }
+  .ctip .r span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+  .ctip .r i { width: 10px; height: 0; border-top: 2px solid; }
+  .ctip .r.tot { font-weight: 600; border-top: 1px solid var(--ink-hair); margin-top: 3px; padding-top: 3px; }
+
+  /* net worth: an accountant's column */
+  .worth { padding: 12px 16px 14px; }
+  .acct { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .acct td { padding: 6px 0; border-bottom: 1px solid var(--ink-hair); }
+  .acct td:last-child { text-align: right; }
+  .acct td small { display: block; font-size: 11px; color: var(--ink-3); }
+  .acct tr.total td { border-bottom: 0; padding-top: 9px; font: 700 15px "Geist", sans-serif; }
+  .acct tr.total td:last-child { border-top: 1.5px solid var(--ink); box-shadow: 0 3px 0 -1.5px var(--ink); padding-bottom: 6px; }
+  .acct tr.total td:last-child .coins { padding-bottom: 2px; border-bottom: 3px double var(--ink); }
+  .fresh { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 11.5px; color: var(--warn-ink); }
+  .fresh svg { margin-top: 1px; }
+  .split { margin-top: 12px; }
+  .split .row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .split .row { display: grid; grid-template-columns: 112px 1fr 48px; gap: 8px; align-items: center; height: 22px; font-size: 11.5px; }
+  .split .row .bar { height: 7px; }
+  .split .row .num { text-align: right; color: var(--ink-2); }
+
+  /* the journal */
+  .journal td { height: 38px; }
+  .journal td.when { color: var(--ink-2); }
+  .journal td.when b { color: var(--ink); font-weight: 600; display: block; line-height: 1.15; }
+  .journal td.when small { font-size: 11px; color: var(--ink-3); }
+  .journal .loot { display: inline-flex; align-items: center; gap: 7px; padding: 2px 6px; margin: 0 -6px; border-radius: 3px; }
+  .journal .loot .ico { width: 20px; height: 20px; font-size: 9.5px; }
+  .journal .gold-d { font-weight: 600; }
+  .journal tr { cursor: pointer; }
+  .journal td.go { width: 28px; color: var(--ink-3); }
+  .journal tr:hover td.go { color: #7a1a12; }
+  .wax { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; vertical-align: middle; transform: rotate(-8deg);
+    border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; font: 700 9px "Cinzel", serif; color: #f3b8a6;
+    background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 50%, #5a0c09 85%); box-shadow: 0 1px 0 #3a0705, inset 0 1px 1px rgba(255,160,140,.4); }
+  .journal .who { display: inline-flex; align-items: center; gap: 7px; }
+
+  @media (max-width: 1100px) {
+    .upper { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+    .journal th.dur, .journal td.dur { display: none; }
+    .toolbar .lbl-r { display: none; }
+  }
+</style>
+</head>
+<body data-page="gold" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Ledger</h1><div class="lede">Gold &amp; history across your characters, from every logout since 2 Sep.</div></div>
+    <div class="actions">
+      <button class="btn ghost"><i data-i="file"></i>Export CSV</button>
+    </div>
+  </header>
+
+  <section class="strip">
+    <div class="tile"><div class="k">Account gold</div><div class="v"><span class="coins"><span class="g">6,812</span><span class="s">47</span><span class="c">09</span></span></div><div class="s">across 7 characters</div></div>
+    <div class="tile"><div class="k">Last 30 days</div><div class="v up">+1,202g</div><div class="s"><span class="up">▲ 412g</span> this week</div></div>
+    <div class="tile"><div class="k">Net worth</div><div class="v"><span class="coins"><span class="g">9,430</span></span></div><div class="s">gold + goods at scan prices</div></div>
+    <div class="tile"><div class="k">Best earner</div><div class="v"><span class="cc c-paladin" style="font-size:16px">Thrandor</span></div><div class="s">+490g in 30 days · 9 sessions</div></div>
+  </section>
+
+  <div class="toolbar">
+    <div class="seg"><button>7 days</button><button class="on">30 days</button><button>90 days</button><button>All</button></div>
+    <div class="seg"><button class="on">Chart</button><button>Table</button></div>
+    <span class="sp"></span>
+    <span class="dim lbl-r" style="font-size:11.5px">Gold is read from SavedVariables at each logout</span>
+  </div>
+
+  <section class="upper">
+    <article class="parchment">
+      <div class="ph"><h2>Gold over time</h2><span class="meta">4 Sep – 4 Oct · per character</span></div>
+      <div class="chartwrap">
+        <div class="legend">
+          <span><i class="tot" style="border-color:#3a2616"></i>Account total</span>
+          <span><i style="border-color:#8a4e0e"></i>Coinpurse</span>
+          <span><i style="border-color:#b0306e"></i>Thrandor</span>
+          <span><i style="border-color:#e09a2a"></i>Velyra</span>
+          <span><i style="border-color:#5f8f1a"></i>Brannic</span>
+          <span><i class="dash" style="border-color:#8a7a62"></i>3 others</span>
+        </div>
+        <svg id="chart"></svg>
+        <div class="ctip" id="ctip"></div>
+      </div>
+    </article>
+
+    <article class="parchment tilt">
+      <div class="ph"><h2>Net worth</h2><span class="meta">as of today</span></div>
+      <div class="worth">
+        <table class="acct">
+          <tr><td>Gold on hand<small>7 characters, incl. mailboxes</small></td><td><span class="coins"><span class="g">6,812</span></span></td></tr>
+          <tr><td>Goods in bags &amp; banks<small>1,284 items · 611 priced</small></td><td><span class="coins"><span class="g">2,618</span></span></td></tr>
+          <tr class="total"><td>Net worth</td><td><span class="coins"><span class="g">9,430</span></span></td></tr>
+        </table>
+        <div class="split">
+          <div class="sec" style="margin-bottom:4px">Most valuable holdings</div>
+          <div class="row"><span data-tt="arcanite" class="q-uncommon">Arcanite ×24</span><div class="bar"><i class="fill" style="width:100%"></i></div><span class="num">912g</span></div>
+          <div class="row"><span data-tt="runecloth" class="q-common">Runecloth ×452</span><div class="bar"><i class="fill" style="width:55%"></i></div><span class="num">506g</span></div>
+          <div class="row"><span data-tt="flask" class="q-common">Flasks ×6</span><div class="bar"><i class="fill" style="width:39%"></i></div><span class="num">360g</span></div>
+        </div>
+        <div class="fresh"><i data-i="clock" class="sm"></i><span>Prices from your AH scan 3 days ago. Scan again in-game to refresh; 673 items have no price yet.</span></div>
+      </div>
+    </article>
+  </section>
+
+  <article class="parchment">
+    <div class="ph"><h2>Journal</h2><span class="meta">42 adventures · newest first</span><a class="link" href="session.html">Latest entry <i data-i="chevron" class="sm"></i></a></div>
+    <div class="pb ruled" style="padding-top:4px">
+      <table class="grid journal">
+        <thead><tr><th>When</th><th>Character</th><th class="dur">Played</th><th class="r">Gold</th><th>Of note</th><th></th></tr></thead>
+        <tbody>
+          <tr onclick="location='session.html'"><td class="when"><b>Yesterday</b><small>19:40 – 22:52</small></td><td><span class="who c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span><span class="wax" title="Reached level 60">60</span></span></td><td class="dur">3h 12m</td><td class="r gold-d up">+312g</td><td><span class="loot" data-tt="truestrike"><span class="ico q-rare"><b>S</b></span><span class="q-rare">Truestrike Shoulders</span></span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>Yesterday</b><small>14:05 – 14:27</small></td><td><span class="who c-warrior"><span class="cdot"></span><span class="cc">Coinpurse</span></span></td><td class="dur">22m</td><td class="r gold-d up">+640g</td><td><span class="loot" data-tt="arcanite"><span class="ico q-uncommon"><b>A</b></span><span class="q-uncommon">Arcanite Bar ×12</span></span> <span class="serif-i dim">sold, via mail</span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>2 Oct</b><small>21:10 – 23:15</small></td><td><span class="who c-druid"><span class="cdot"></span><span class="cc">Velyra</span></span></td><td class="dur">2h 05m</td><td class="r gold-d down">−86g</td><td><span class="serif-i dim">Talent respec, flights</span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>2 Oct</b><small>18:30 – 21:10</small></td><td><span class="who c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span></span></td><td class="dur">2h 40m</td><td class="r gold-d up">+178g</td><td><span class="loot" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth ×60</span></span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>1 Oct</b><small>20:00 – 21:55</small></td><td><span class="who c-hunter"><span class="cdot"></span><span class="cc">Brannic</span><span class="wax" title="Reached level 52">52</span></span></td><td class="dur">1h 55m</td><td class="r gold-d up">+41g</td><td><span class="serif-i dim">Feralas · 14 quests</span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>30 Sep</b><small>22:15 – 01:45</small></td><td><span class="who c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span></span></td><td class="dur">3h 30m</td><td class="r gold-d up">+205g</td><td><span class="loot" data-tt="orb"><span class="ico q-uncommon"><b>O</b></span><span class="q-uncommon">Righteous Orb ×5</span></span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>29 Sep</b><small>19:00 – 20:10</small></td><td><span class="who c-mage"><span class="cdot"></span><span class="cc">Fizzwick</span><span class="wax" title="Reached level 44">44</span></span></td><td class="dur">1h 10m</td><td class="r gold-d up">+12g</td><td><span class="serif-i dim">Tanaris · Zul'Farrak</span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+          <tr onclick="location='session.html'"><td class="when"><b>28 Sep</b><small>21:40 – 00:30</small></td><td><span class="who c-druid"><span class="cdot"></span><span class="cc">Velyra</span></span></td><td class="dur">2h 50m</td><td class="r gold-d up">+154g</td><td><span class="loot" data-tt="lionheart"><span class="ico q-epic"><b>H</b></span><span class="q-epic">Lionheart Helm</span></span> <span class="serif-i dim">crafted for Thrandor</span></td><td class="go"><i data-i="chevron" class="sm"></i></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+</main>
+<script>
+  window.EXTRA_ITEMS = {};
+</script>
+<script src="_shell.js"></script>
+<script>
+  // ---- gold-over-time chart (validated paper palette; direct labels + legend + hover) ----
+  const DAYS = 31, start = new Date(2026, 8, 4);
+  const rnd = (s => () => (s = (s * 9301 + 49297) % 233280) / 233280)(7);
+  const walk = (a, b, jitter, steps = []) => Array.from({ length: DAYS }, (_, i) => {
+    let v = a + (b - a) * (i / (DAYS - 1)) + (rnd() - .5) * jitter;
+    steps.forEach(([d, amt]) => { if (i >= d) v += amt; });
+    return i === DAYS - 1 ? b : Math.round(v);
+  });
+  const S = [
+    { name: 'Coinpurse', color: '#8a4e0e', data: walk(2140, 2779, 40) },
+    { name: 'Thrandor', color: '#b0306e', data: walk(1650, 2140, 60) },
+    { name: 'Velyra', color: '#e09a2a', data: walk(1080, 1066, 50) },
+    { name: 'Brannic', color: '#5f8f1a', data: walk(300, 488, 20) },
+    { name: '3 others', color: '#8a7a62', dash: '5 4', data: walk(280, 339, 10) },
+  ];
+  const total = S[0].data.map((_, i) => S.reduce((a, s) => a + s.data[i], 0));
+
+  const svg = document.getElementById('chart'), tip = document.getElementById('ctip');
+  const fmt = n => n.toLocaleString('en-US');
+  const day = i => { const d = new Date(start); d.setDate(d.getDate() + i); return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
+  function draw() {
+    const W = svg.clientWidth, H = svg.clientHeight, L = 40, R = 96, T = 8, B = 22;
+    const max = 7200, x = i => L + (W - L - R) * i / (DAYS - 1), y = v => T + (H - T - B) * (1 - v / max);
+    const line = d => d.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+    let g = '<g class="grid">';
+    for (let v = 0; v <= 7000; v += 1000) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+    g += '</g><g class="axis">';
+    for (let v = 0; v <= 7000; v += 2000) g += `<text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v ? (v / 1000) + 'k' : '0'}</text>`;
+    [0, 7, 14, 21, 30].forEach(i => g += `<text x="${x(i)}" y="${H - 5}" text-anchor="${i === 30 ? 'end' : 'middle'}">${day(i)}</text>`);
+    g += '</g>';
+    S.forEach(s => g += `<path d="${line(s.data)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''}/>`);
+    g += `<path d="${line(total)}" fill="none" stroke="#3a2616" stroke-width="2.6" stroke-linejoin="round"/>`;
+    // direct labels at line ends, nudged apart
+    const ends = [{ name: 'Total', color: '#3a2616', v: total[DAYS - 1] }, ...S.map(s => ({ name: s.name, color: s.color, v: s.data[DAYS - 1] }))]
+      .map(e => ({ ...e, ty: y(e.v) })).sort((a, b) => a.ty - b.ty);
+    for (let k = 1; k < ends.length; k++) if (ends[k].ty - ends[k - 1].ty < 13) ends[k].ty = ends[k - 1].ty + 13;
+    ends.forEach(e => g += `<circle cx="${x(DAYS - 1)}" cy="${y(e.v)}" r="3" fill="${e.color}" stroke="#eadcb8" stroke-width="2"/><text class="lbl" x="${x(DAYS - 1) + 8}" y="${e.ty + 4}" fill="#3a2616">${e.name} <tspan class="v">${fmt(e.v)}</tspan></text>`);
+    g += `<line class="cross" id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" style="display:none"/><rect id="hit" x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/>`;
+    svg.innerHTML = g;
+    const hit = svg.querySelector('#hit'), cross = svg.querySelector('#cross');
+    hit.addEventListener('mousemove', ev => {
+      const r = svg.getBoundingClientRect(), i = Math.max(0, Math.min(DAYS - 1, Math.round((ev.clientX - r.left - L) / (W - L - R) * (DAYS - 1))));
+      cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.display = '';
+      tip.innerHTML = `<div class="d">${day(i)}</div>` + S.map(s => `<div class="r"><span><i style="border-color:${s.color}"></i>${s.name}</span><span>${fmt(s.data[i])}g</span></div>`).join('') + `<div class="r tot"><span>Account</span><span>${fmt(total[i])}g</span></div>`;
+      tip.style.display = 'block';
+      const left = x(i) + 14 + 168 > W ? x(i) - 184 : x(i) + 14;
+      tip.style.left = (left + 14) + 'px'; tip.style.top = '40px';
+    });
+    hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
+  }
+  draw(); addEventListener('resize', draw);
+</script>
+</body>
+</html>

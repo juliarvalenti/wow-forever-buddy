@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">
+  <!-- Stand-in for a user-cropped in-game screenshot: moonlit Moonglade, druid from behind-left. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1a33"/><stop offset="0.55" stop-color="#2b4a6b"/><stop offset="1" stop-color="#6b8a8f"/></linearGradient>
+    <radialGradient id="moon" cx="72%" cy="20%" r="22%"><stop offset="0" stop-color="#f5f1d8"/><stop offset="0.18" stop-color="#e8e4c4" stop-opacity="0.9"/><stop offset="1" stop-color="#e8e4c4" stop-opacity="0"/></radialGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2e4a3a"/><stop offset="1" stop-color="#0d1712"/></linearGradient>
+    <linearGradient id="robe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5a3a6b"/><stop offset="1" stop-color="#1e1226"/></linearGradient>
+    <linearGradient id="skinP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9a3e0"/><stop offset="1" stop-color="#4a3a72"/></linearGradient>
+  </defs>
+  <rect width="400" height="500" fill="url(#sky)"/><rect width="400" height="500" fill="url(#moon)"/>
+  <path d="M0 300 C60 270 120 290 170 260 C230 225 290 250 400 230 L400 500 L0 500Z" fill="#1d3330"/>
+  <path d="M0 340 C80 320 140 345 220 320 C300 296 340 318 400 305 L400 500 L0 500Z" fill="url(#ground)"/>
+  <path d="M40 330 L62 200 L84 330Z M330 310 L352 170 L374 310Z" fill="#0f1f1c"/>
+  <ellipse cx="290" cy="380" rx="70" ry="14" fill="#9fe6ff" opacity="0.35"/>
+  <path d="M150 500 C150 420 160 380 190 360 L240 360 C268 382 276 430 276 500Z" fill="url(#robe)"/>
+  <path d="M175 368 C160 380 150 420 156 470 L180 470 C176 430 182 395 196 372Z" fill="#7a4f8f" opacity="0.6"/>
+  <ellipse cx="214" cy="318" rx="30" ry="38" fill="url(#skinP)"/>
+  <path d="M184 312 C182 270 206 258 222 262 C246 266 252 296 244 318 C240 300 232 290 214 290 C200 290 190 300 184 312Z" fill="#2fb5a8"/>
+  <path d="M188 300 L160 286 L190 312Z" fill="#8f7ac8"/>
+  <path d="M244 318 C250 360 246 390 238 410" stroke="#2fb5a8" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <rect width="400" height="500" fill="#000" opacity="0.08"/>
+</svg>
