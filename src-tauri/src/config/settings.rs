@@ -56,8 +56,10 @@ pub struct BackupSettings {
     pub include_addons: bool,
     pub on_app_start: bool,
     pub on_game_exit: bool,
-    /// None = no scheduled backups.
-    pub schedule_hours: Option<u32>,
+    /// Hours between scheduled backups while the app is open; 0 = off.
+    /// Off is an explicit value so that a missing or null key always means
+    /// "use the default", never "turned off".
+    pub schedule_hours: u32,
 }
 
 impl Default for BackupSettings {
@@ -67,7 +69,7 @@ impl Default for BackupSettings {
             include_addons: false,
             on_app_start: true,
             on_game_exit: true,
-            schedule_hours: Some(24),
+            schedule_hours: 24,
         }
     }
 }
@@ -94,12 +96,11 @@ const MAX_SCHEDULE_HOURS: u32 = 24 * 7;
 impl Settings {
     /// Checks user-editable fields and normalizes them in place.
     fn validate(&mut self) -> AppResult<()> {
-        if let Some(h) = self.backup.schedule_hours {
-            if !(1..=MAX_SCHEDULE_HOURS).contains(&h) {
-                return Err(AppError::InvalidSettings(format!(
-                    "backup schedule must be 1–{MAX_SCHEDULE_HOURS} hours, got {h}"
-                )));
-            }
+        let h = self.backup.schedule_hours;
+        if h > MAX_SCHEDULE_HOURS {
+            return Err(AppError::InvalidSettings(format!(
+                "backup schedule must be 1–{MAX_SCHEDULE_HOURS} hours (or 0 for off), got {h}"
+            )));
         }
         if let Some(loc) = &self.backup.location {
             if !loc.is_absolute() {
@@ -127,6 +128,88 @@ impl Settings {
         }
         self.process_names_extra = names;
         Ok(())
+    }
+}
+
+/// A partial update from the UI (spec §8 `settings_update(patch)`): only the
+/// fields present change, so a stale copy of the settings can't overwrite
+/// newer values. There are no `install` or `schema_version` fields, and
+/// unknown fields are rejected, so a patch can't touch backend-owned state.
+#[derive(Debug, Clone, Default, Deserialize, specta::Type)]
+#[serde(default, deny_unknown_fields)]
+pub struct SettingsPatch {
+    pub backup: Option<BackupPatch>,
+    pub process_names_extra: Option<Vec<String>>,
+    pub integrations: Option<IntegrationsPatch>,
+    /// Set keys to a string to store them, or to null to remove them.
+    pub ui: Option<BTreeMap<String, Option<String>>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, specta::Type)]
+#[serde(default, deny_unknown_fields)]
+pub struct BackupPatch {
+    /// A path to use it, or null to go back to the default location.
+    #[serde(deserialize_with = "present")]
+    #[specta(type = Option<PathBuf>)]
+    pub location: Option<Option<PathBuf>>,
+    pub include_addons: Option<bool>,
+    pub on_app_start: Option<bool>,
+    pub on_game_exit: Option<bool>,
+    /// 0 turns scheduled backups off.
+    pub schedule_hours: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, specta::Type)]
+#[serde(default, deny_unknown_fields)]
+pub struct IntegrationsPatch {
+    pub curseforge: Option<IntegrationSetting>,
+    pub wago: Option<IntegrationSetting>,
+    pub wago_io: Option<IntegrationSetting>,
+    pub github: Option<IntegrationSetting>,
+    pub battlenet: Option<IntegrationSetting>,
+}
+
+/// For `Option<Option<T>>` fields: a key that's present (even as null) is
+/// `Some(..)`; only a missing key is `None` (via `#[serde(default)]`).
+fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+impl SettingsPatch {
+    fn apply(self, s: &mut Settings) {
+        if let Some(b) = self.backup {
+            if let Some(location) = b.location {
+                s.backup.location = location;
+            }
+            set(&mut s.backup.include_addons, b.include_addons);
+            set(&mut s.backup.on_app_start, b.on_app_start);
+            set(&mut s.backup.on_game_exit, b.on_game_exit);
+            set(&mut s.backup.schedule_hours, b.schedule_hours);
+        }
+        set(&mut s.process_names_extra, self.process_names_extra);
+        if let Some(i) = self.integrations {
+            set(&mut s.integrations.curseforge, i.curseforge);
+            set(&mut s.integrations.wago, i.wago);
+            set(&mut s.integrations.wago_io, i.wago_io);
+            set(&mut s.integrations.github, i.github);
+            set(&mut s.integrations.battlenet, i.battlenet);
+        }
+        for (key, value) in self.ui.unwrap_or_default() {
+            match value {
+                Some(v) => s.ui.insert(key, v),
+                None => s.ui.remove(&key),
+            };
+        }
+    }
+}
+
+fn set<T>(field: &mut T, value: Option<T>) {
+    if let Some(v) = value {
+        *field = v;
     }
 }
 
@@ -187,15 +270,10 @@ impl SettingsStore {
             .clone()
     }
 
-    /// Applies a full settings object from the UI. Backend-owned fields
-    /// (`schema_version`, `install`) keep their current values.
-    pub fn update_from_user(&self, incoming: Settings) -> AppResult<Settings> {
-        self.update(|current| {
-            let mut next = incoming;
-            next.schema_version = current.schema_version;
-            next.install = current.install.clone();
-            *current = next;
-        })
+    /// Applies a patch from the UI. Validated as a whole: if the result is
+    /// invalid, nothing changes.
+    pub fn apply_patch(&self, patch: SettingsPatch) -> AppResult<Settings> {
+        self.update(|s| patch.apply(s))
     }
 
     /// Backend-side change (e.g. install commands). Validated and saved like any other.
@@ -292,6 +370,9 @@ fn value_at_mut<'a>(root: &'a mut Value, path: &[String]) -> &'a mut Map<String,
 
 /// Writes into `raw` only what differs between `prev` and `next`: keys this
 /// build doesn't know, and values it never changed, are left as they were.
+/// One edge: if `raw` has a non-object where we expect a section (say a newer
+/// build made `backup` an array), the first edit to that section replaces it
+/// with an object holding just the changed keys.
 fn apply_changes(raw: &mut Value, prev: &Value, next: &Value) {
     let (Value::Object(prev), Value::Object(next)) = (prev, next) else {
         *raw = next.clone();
@@ -339,6 +420,11 @@ mod tests {
 
     fn install_json() -> Value {
         json!({ "root": "/games/wow", "flavor": "_classic_beta_" })
+    }
+
+    /// Builds a patch the way the frontend sends it: as JSON.
+    fn patch(value: Value) -> SettingsPatch {
+        serde_json::from_value(value).unwrap()
     }
 
     #[test]
@@ -403,9 +489,9 @@ mod tests {
         );
 
         let store = store_in(tmp.path());
-        let mut s = store.get();
-        s.backup.include_addons = true;
-        store.update_from_user(s).unwrap();
+        store
+            .apply_patch(patch(json!({ "backup": { "include_addons": true } })))
+            .unwrap();
 
         let disk = on_disk(tmp.path());
         assert_eq!(
@@ -435,14 +521,16 @@ mod tests {
         let store = store_in(tmp.path());
         let s = store.get();
         assert_eq!(s.install.unwrap().flavor, "_classic_beta_");
-        assert_eq!(s.backup.schedule_hours, Some(24));
+        assert_eq!(s.backup.schedule_hours, 24);
         assert!(s.backup.include_addons, "sibling of the bad field is kept");
         assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], "daily");
 
         // Saving an unrelated change still leaves the newer value alone.
-        let mut s = store.get();
-        s.integrations.github.enabled = true;
-        store.update_from_user(s).unwrap();
+        store
+            .apply_patch(patch(
+                json!({ "integrations": { "github": { "enabled": true } } }),
+            ))
+            .unwrap();
         assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], "daily");
         assert_eq!(
             on_disk(tmp.path())["integrations"]["github"]["enabled"],
@@ -465,7 +553,7 @@ mod tests {
 
         let s = store_in(tmp.path()).get();
         assert!(s.install.is_some());
-        assert_eq!(s.backup.schedule_hours, Some(24));
+        assert_eq!(s.backup.schedule_hours, 24);
         assert_eq!(s.backup.location, None);
         assert!(!s.backup.on_app_start);
         assert!(
@@ -486,9 +574,9 @@ mod tests {
             json!({ "schema_version": 1, "backup": { "schedule_hours": 200, "mystery": 1 } }),
         );
         let store = store_in(tmp.path());
-        let mut s = store.get();
-        s.backup.schedule_hours = Some(12);
-        store.update_from_user(s).unwrap();
+        store
+            .apply_patch(patch(json!({ "backup": { "schedule_hours": 12 } })))
+            .unwrap();
 
         let disk = on_disk(tmp.path());
         assert_eq!(disk["backup"]["schedule_hours"], 12);
@@ -496,22 +584,86 @@ mod tests {
     }
 
     #[test]
-    fn removed_map_keys_are_removed_on_disk() {
+    fn patch_changes_only_what_it_names() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
-        let mut s = store.get();
-        s.ui.insert("backups.filter".into(), "auto".into());
-        store.update_from_user(s).unwrap();
-        assert_eq!(on_disk(tmp.path())["ui"]["backups.filter"], "auto");
-
-        let mut s = store.get();
-        s.ui.clear();
-        store.update_from_user(s).unwrap();
-        assert_eq!(on_disk(tmp.path())["ui"], json!({}));
+        store
+            .apply_patch(patch(json!({ "backup": { "include_addons": true } })))
+            .unwrap();
+        // A second patch from a stale UI copy that only knows about another field.
+        let s = store
+            .apply_patch(patch(json!({ "backup": { "on_app_start": false } })))
+            .unwrap();
+        assert!(s.backup.include_addons, "earlier change survives");
+        assert!(!s.backup.on_app_start);
+        assert!(s.backup.on_game_exit, "untouched field keeps its value");
+        assert_eq!(store.apply_patch(patch(json!({}))).unwrap(), s);
     }
 
     #[test]
-    fn user_update_cannot_touch_backend_owned_fields() {
+    fn scheduled_backups_off_is_explicit_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(tmp.path());
+        store
+            .apply_patch(patch(json!({ "backup": { "schedule_hours": 0 } })))
+            .unwrap();
+        assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], 0);
+        assert_eq!(store_in(tmp.path()).get().backup.schedule_hours, 0);
+
+        // null or missing on disk means the default, never "off".
+        write_settings(
+            tmp.path(),
+            json!({ "schema_version": 1, "backup": { "schedule_hours": null } }),
+        );
+        assert_eq!(store_in(tmp.path()).get().backup.schedule_hours, 24);
+    }
+
+    #[test]
+    fn null_location_goes_back_to_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(tmp.path());
+        let custom = std::env::temp_dir().join("wfb-backups");
+        let s = store
+            .apply_patch(patch(json!({ "backup": { "location": custom } })))
+            .unwrap();
+        assert_eq!(s.backup.location, Some(custom));
+
+        let s = store
+            .apply_patch(patch(json!({ "backup": { "location": null } })))
+            .unwrap();
+        assert_eq!(s.backup.location, None);
+    }
+
+    #[test]
+    fn ui_keys_are_set_and_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(tmp.path());
+        store
+            .apply_patch(patch(
+                json!({ "ui": { "backups.filter": "auto", "nav": "backups" } }),
+            ))
+            .unwrap();
+        assert_eq!(on_disk(tmp.path())["ui"]["backups.filter"], "auto");
+
+        store
+            .apply_patch(patch(json!({ "ui": { "backups.filter": null } })))
+            .unwrap();
+        assert_eq!(on_disk(tmp.path())["ui"], json!({ "nav": "backups" }));
+    }
+
+    #[test]
+    fn patch_cannot_touch_backend_owned_fields() {
+        for field in ["install", "schema_version"] {
+            let attempt = json!({ field: install_json() });
+            assert!(
+                serde_json::from_value::<SettingsPatch>(attempt).is_err(),
+                "{field} must be rejected"
+            );
+        }
+        assert!(
+            serde_json::from_value::<SettingsPatch>(json!({ "backup": { "bogus": 1 } })).is_err()
+        );
+
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
         let choice = InstallChoice {
@@ -519,40 +671,32 @@ mod tests {
             flavor: "_classic_beta_".into(),
         };
         store.update(|s| s.install = Some(choice.clone())).unwrap();
-
-        let mut incoming = store.get();
-        incoming.install = None;
-        incoming.schema_version = 99;
-        incoming.backup.include_addons = true;
-        let saved = store.update_from_user(incoming).unwrap();
-
+        let saved = store
+            .apply_patch(patch(json!({ "backup": { "include_addons": true } })))
+            .unwrap();
         assert_eq!(saved.install, Some(choice));
         assert_eq!(saved.schema_version, CURRENT_SCHEMA_VERSION);
-        assert!(saved.backup.include_addons);
-        assert_eq!(on_disk(tmp.path())["backup"]["include_addons"], true);
         assert_eq!(on_disk(tmp.path())["install"]["flavor"], "_classic_beta_");
     }
 
     #[test]
-    fn invalid_update_is_rejected_and_not_saved() {
+    fn invalid_patch_is_rejected_and_not_saved() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
 
-        let mut bad = store.get();
-        bad.backup.schedule_hours = Some(0);
-        assert!(matches!(
-            store.update_from_user(bad),
-            Err(AppError::InvalidSettings(_))
-        ));
-
-        let mut bad = store.get();
-        bad.backup.location = Some(PathBuf::from("relative/dir"));
-        assert!(store.update_from_user(bad).is_err());
-
-        let mut bad = store.get();
-        bad.process_names_extra = vec!["C:\\Games\\Wow.exe".into()];
-        assert!(store.update_from_user(bad).is_err());
-
+        for bad in [
+            json!({ "backup": { "schedule_hours": 200 } }),
+            json!({ "backup": { "location": "relative/dir" } }),
+            json!({ "process_names_extra": ["C:\\Games\\Wow.exe"] }),
+        ] {
+            assert!(
+                matches!(
+                    store.apply_patch(patch(bad.clone())),
+                    Err(AppError::InvalidSettings(_))
+                ),
+                "{bad}"
+            );
+        }
         assert_eq!(store.get(), Settings::default());
         assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], 24);
     }
@@ -561,13 +705,11 @@ mod tests {
     fn process_names_are_trimmed_and_deduped() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
-        let mut s = store.get();
-        s.process_names_extra = vec![
-            " WowForever.exe ".into(),
-            "".into(),
-            "wowforever.EXE".into(),
-        ];
-        let saved = store.update_from_user(s).unwrap();
+        let saved = store
+            .apply_patch(patch(json!({
+                "process_names_extra": [" WowForever.exe ", "", "wowforever.EXE"]
+            })))
+            .unwrap();
         assert_eq!(
             saved.process_names_extra,
             vec!["WowForever.exe".to_string()]
