@@ -84,16 +84,22 @@ fn flush_dir(dir: &Path) -> AppResult<()> {
 /// itself was already fsynced before the rename.
 #[cfg(windows)]
 fn flush_dir(dir: &Path) -> AppResult<()> {
+    let _ = flush_dir_handle(dir);
+    Ok(())
+}
+
+/// Opens `dir` itself (FILE_FLAG_BACKUP_SEMANTICS) with write access and
+/// calls FlushFileBuffers on it. Separate from `flush_dir` so tests can prove
+/// it really succeeds on NTFS instead of being silently skipped.
+#[cfg(windows)]
+fn flush_dir_handle(dir: &Path) -> std::io::Result<()> {
     use std::os::windows::fs::OpenOptionsExt;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    if let Ok(handle) = std::fs::OpenOptions::new()
+    std::fs::OpenOptions::new()
         .write(true)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(dir)
-    {
-        let _ = handle.sync_all();
-    }
-    Ok(())
+        .open(dir)?
+        .sync_all()
 }
 
 /// Errors that mean "someone briefly has the file open", worth retrying.
@@ -256,6 +262,22 @@ mod tests {
 
         assert_eq!(std::fs::read(&target).unwrap(), b"old");
         assert_eq!(names_in(tmp.path()), ["Foo.lua"]);
+    }
+
+    /// The rename's durability rests on this: on NTFS, opening the directory
+    /// for write with backup semantics and flushing it must actually succeed
+    /// (not be skipped by the best-effort wrapper).
+    #[cfg(windows)]
+    #[test]
+    fn directory_flush_succeeds_on_ntfs() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("probe"), b"x").unwrap();
+        flush_dir_handle(tmp.path()).expect("FlushFileBuffers on a directory handle");
+
+        // And it runs as part of a real replace (also on a long path).
+        let target = tmp.path().join("Config.wtf");
+        atomic_replace(&target, b"SET a 1").unwrap();
+        flush_dir_handle(target.parent().unwrap()).unwrap();
     }
 
     /// Deep WTF trees plus long realm/character/addon names can pass MAX_PATH.
