@@ -1,0 +1,4 @@
+MACRO 16777217 "Judge" INV_Misc_QuestionMark
+#showtooltip Judgement
+/cast Judgement
+END

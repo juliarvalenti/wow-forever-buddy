@@ -1,0 +1,5 @@
+## Interface: 16001
+## Title: Details! Damage Meter
+## SavedVariables: _detalhes_global
+## SavedVariablesPerCharacter: _detalhes_database
+Details.lua

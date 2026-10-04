@@ -1,0 +1,8 @@
+
+_detalhes_global = {
+	["always_use_profile"] = false,
+	["got_first_run"] = true,
+	["tutorial"] = {
+		["version_announce"] = 3,
+	},
+}
