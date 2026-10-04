@@ -363,9 +363,12 @@ mod tests {
         let elsewhere = tmp.path().join("syncdrive");
         std::fs::create_dir_all(&elsewhere).unwrap();
         std::fs::rename(flavor.join("WTF"), elsewhere.join("WTF")).unwrap();
-        std::fs::rename(flavor.join("Interface/AddOns"), elsewhere.join("AddOns")).unwrap();
+        // Join components separately: a `/` inside a Windows path reaches
+        // `cmd` as a switch ("Invalid switch - AddOns").
+        let addons = flavor.join("Interface").join("AddOns");
+        std::fs::rename(&addons, elsewhere.join("AddOns")).unwrap();
         link_dir(&elsewhere.join("WTF"), &flavor.join("WTF"));
-        link_dir(&elsewhere.join("AddOns"), &flavor.join("Interface/AddOns"));
+        link_dir(&elsewhere.join("AddOns"), &addons);
 
         let install = scan(&root).unwrap();
         let f = &install.flavors[0];
