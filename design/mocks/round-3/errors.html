@@ -33,9 +33,12 @@
   ].map(card).join('');
   document.getElementById('errs').innerHTML = [
     ['backups.html?error=backup', 'backups-error', 'Backup failed', 'Disk full: one red callout, one failed row, Retry / Change location.'],
-    ['dashboard.html?recover', 'dashboard-recover', 'Restore interrupted', 'Startup dialog: Roll back (recommended) or Finish restore.'],
+    ['dashboard.html?recover', 'dashboard-recover', 'Restore interrupted', 'Startup dialog: Roll back (recommended), Finish restore, or leave files as they are.'],
+    ['dashboard.html?recover=unreadable', 'dashboard-recover-unreadable', 'Restore record unreadable', 'Can only clear the notice or open the safety copy; restores locked until cleared.'],
     ['backups.html?error=corrupt', 'backups-corrupt', 'Damaged snapshot', 'Stopped before any write; lists files; verify all or use an older one.'],
     ['dashboard.html?folder=missing', 'dashboard-folder-missing', 'Game folder gone', 'Drive unplugged: calm stone banner, data shown as last known.'],
+    ['startup-error.html', 'startup-error', "Can't start: newer database", 'AppCore::new failed. No nav; what happened, where the data lives, Open data folder.'],
+    ['startup-error.html?case=settings', 'startup-error-settings', "Can't start: settings unreadable", 'Same screen, settings.json flagged; start fresh by moving the file aside.'],
   ].map(card).join('');
 </script>
 <script src="_shell.js"></script>

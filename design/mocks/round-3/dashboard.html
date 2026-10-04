@@ -142,6 +142,7 @@
     .choice .primary, .choice .btn { align-self: flex-start; }
     .rec .foot { justify-content: space-between; }
     .rec .foot .muted { font-size: 11.5px; }
+    .rec .foot-acts { display: flex; gap: 4px; }
   </style>
   <div class="gone" id="gone"><i data-i="alert"></i>
     <span class="grow"><b>Can't reach the game folder.</b> The drive may be unplugged or renamed. Your backups are safe.<small class="path">C:\Program Files (x86)\World of Warcraft\_classic_beta_</small></span>
@@ -164,13 +165,29 @@
           <div><div class="t">Finish restore</div><div class="d">Write the remaining 21 files from the 11:52 snapshot, as you originally asked.</div><button class="btn"><i data-i="play" class="sm"></i>Finish restore</button></div>
         </div>
       </div>
-      <div class="foot"><span class="muted">Either way, the safety copy stays in Backups.</span><button class="btn ghost">Decide later</button></div>
+      <div class="foot"><span class="muted">Either way, the safety copy stays in Backups.</span><span class="foot-acts"><button class="btn ghost" title="Forget this restore and change nothing. Files stay mixed; the safety copy stays in Backups.">Leave files as they are</button><button class="btn ghost">Decide later</button></span></div>
+    </div>
+  </div>
+
+  <!-- dashboard.html?recover=unreadable: the journal itself is damaged, so roll back / finish aren't possible -->
+  <div class="scrim" id="recover-unreadable">
+    <div class="panel dialog rec" style="width:500px">
+      <div class="ph"><h2>Your last restore didn't finish</h2></div>
+      <div class="body">
+        <p>The app closed while restoring, and the note it keeps about that restore can't be read, so it can't roll back or finish it for you. <b>Nothing has been changed since.</b></p>
+        <p>The safety copy taken just before the restore is in Backups. Restoring it by hand puts things back the way they were.</p>
+        <p class="muted" style="font-size:12px">New restores stay locked until you clear this notice. Backups keep running.</p>
+      </div>
+      <div class="foot"><button class="btn ghost">Clear notice</button><button class="primary" style="height:30px;padding:0 16px"><i data-i="archive"></i>Open the safety copy</button></div>
     </div>
   </div>
 </main>
 <script>
   const qs = location.search;
-  if (qs.includes('recover')) { document.body.dataset.wow = 'closed'; document.getElementById('recover').classList.add('open'); }
+  if (qs.includes('recover')) {
+    document.body.dataset.wow = 'closed';
+    document.getElementById(qs.includes('recover=unreadable') ? 'recover-unreadable' : 'recover').classList.add('open');
+  }
   if (qs.includes('folder=missing')) {
     document.body.dataset.wow = 'closed';
     document.body.classList.add('folder-missing');
