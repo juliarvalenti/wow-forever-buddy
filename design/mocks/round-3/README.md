@@ -38,7 +38,8 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 - **Secret values (Forever hides some combat data from addons):**
   - Timeline lines degrade naturally: "Died in Stratholme" with no killer, "Looted Truestrike Shoulders" with no source. A quiet ◌ marker explains what was hidden, and there's one footnote per page.
   - Item tooltips cite time and zone, never the source.
-- **Forever beta SavedVariables bug:** one muted line you can dismiss, wherever addon settings get restored (the snapshot panel and the confirm dialog).
+- **No SavedVariables caveat on restore.** The beta bug where the client didn't reload SavedVariables was fixed in build 70009 (see specs/feature-matrix), so the round-3 caveat line was removed.
+- **The app can't know who is playing right now.** It detects that WowB.exe is running (process watcher), but character data only arrives when the addon writes at logout or /reload. So nothing claims a live character: the sidebar says "WoW is running" plus "Last played Thrandor", the Game tile shows the session length and the last-played name, and character cards say "Last played yesterday", never "Online".
 - **The v0.1 build ships without the companion addon** (it's v0.2). Use the default `dashboard-noaddon.html` state for v0.1, and the `?v=0.2` state once the addon exists.
 - **Interrupted restore → "Decide later" rule:**
   - Until the user picks Roll back or Finish restore, show a persistent stone banner on Dashboard and Backups ("Your last restore didn't finish", with Roll back and Finish).
