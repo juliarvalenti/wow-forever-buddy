@@ -21,10 +21,12 @@ use crate::game::process::{GameWatcher, ProbeTarget};
 pub trait PreWriteSnapshot: Send + Sync {
     /// Snapshots `paths` under `game` as they are now, recording paths that
     /// don't exist yet as absent so undo can remove them. Returns the
-    /// snapshot id. If this fails, the write must not happen.
+    /// snapshot id. If this fails, the write must not happen. `op` is the
+    /// operation's name ("restore" makes it a pre-restore snapshot).
     fn snapshot_before_write(
         &self,
         game: &GameRoot,
+        op: &str,
         paths: &[RelPath],
         label: &str,
     ) -> AppResult<String>;
@@ -73,7 +75,7 @@ impl WriteGate {
 
         let snapshot_id = self
             .snapshots
-            .snapshot_before_write(&target.game, paths, label)?;
+            .snapshot_before_write(&target.game, op, paths, label)?;
         let audit_id = self.audit_start(op, paths, &snapshot_id)?;
 
         Ok(MutationGuard {
@@ -190,6 +192,7 @@ mod tests {
         fn snapshot_before_write(
             &self,
             _game: &GameRoot,
+            _op: &str,
             paths: &[RelPath],
             label: &str,
         ) -> AppResult<String> {

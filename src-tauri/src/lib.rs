@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod config;
 mod db;
@@ -28,6 +29,12 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::app::app_info,
+            commands::backup::backup_create,
+            commands::backup::backup_delete,
+            commands::backup::backup_get,
+            commands::backup::backup_list,
+            commands::backup::backup_set_label,
+            commands::backup::backup_set_pinned,
             commands::game::game_status,
             commands::settings::settings_get,
             commands::settings::settings_update,
@@ -41,6 +48,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .events(tauri_specta::collect_events![
             InstallChanged,
+            commands::backup::BackupCreated,
+            commands::backup::BackupProgress,
             commands::game::GameStatusChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)

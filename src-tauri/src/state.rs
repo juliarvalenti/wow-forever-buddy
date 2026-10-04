@@ -1,22 +1,36 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
+use crate::backup::BackupService;
 use crate::config::paths::AppPaths;
 use crate::config::settings::SettingsStore;
 use crate::db::Db;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
+use crate::fsx::relpath::GameRoot;
+use crate::game::gate::{MutationTarget, WriteGate};
 use crate::game::process::{GameWatcher, ProbeTarget, ProcessProbe, SysinfoProbe};
 use crate::secrets::{KeyringStore, SecretStore};
 
 /// Everything the app does, minus Tauri. Integration tests build this directly
-/// against temp dirs; later tickets add install and jobs.
+/// against temp dirs; later tickets add the active install (T5).
 pub struct AppCore {
     pub paths: AppPaths,
     pub settings: SettingsStore,
-    #[allow(dead_code)] // first read by the backup store (T7)
     pub db: Db,
     pub secrets: Arc<dyn SecretStore>,
     pub game: Arc<GameWatcher>,
+    pub backups: Arc<BackupService>,
+    /// Backup and restore work runs one job at a time (spec §5): hold this for
+    /// the whole operation. A second caller waits its turn.
+    pub jobs: Mutex<()>,
+}
+
+/// The game folder the app works with right now.
+pub struct ActiveGame {
+    pub root: GameRoot,
+    /// Flavor folder name, e.g. "_classic_beta_".
+    pub flavor: String,
 }
 
 impl AppCore {
@@ -49,12 +63,52 @@ impl AppCore {
 
         let settings = SettingsStore::load(paths.settings_file())?;
         let db = Db::open(&paths.db_file())?;
+        let backups_dir = settings
+            .get()
+            .backup
+            .location
+            .unwrap_or_else(|| paths.local_data_dir.join("backups"));
+        let backups = Arc::new(BackupService::open(&backups_dir, db.clone())?);
         Ok(Self {
             paths,
             settings,
             db,
             secrets,
             game: Arc::new(GameWatcher::new(probe)),
+            backups,
+            jobs: Mutex::new(()),
+        })
+    }
+
+    /// The configured game folder, validated now. Until T5 lands this reads
+    /// the install choice from settings; T5 switches it to the active install.
+    pub fn active_game(&self) -> AppResult<ActiveGame> {
+        let install = self.settings.get().install.ok_or(AppError::NoInstall)?;
+        let flavor_dir: PathBuf = install.root.join(&install.flavor);
+        if !flavor_dir.join("WTF").is_dir() {
+            return Err(AppError::InvalidInstall(format!(
+                "{} has no WTF folder",
+                flavor_dir.display()
+            )));
+        }
+        Ok(ActiveGame {
+            root: GameRoot::new(&flavor_dir)?,
+            flavor: install.flavor,
+        })
+    }
+
+    /// The write gate for game-file changes, with backups as its safety net.
+    #[allow(dead_code)] // first caller is restore (T9)
+    pub fn write_gate(&self) -> WriteGate {
+        WriteGate::new(self.game.clone(), self.backups.clone(), self.db.clone())
+    }
+
+    /// What a change to the active game folder writes into.
+    #[allow(dead_code)] // first caller is restore (T9)
+    pub fn mutation_target(&self) -> AppResult<MutationTarget> {
+        Ok(MutationTarget {
+            game: self.active_game()?.root,
+            probe: self.probe_target(),
         })
     }
 
