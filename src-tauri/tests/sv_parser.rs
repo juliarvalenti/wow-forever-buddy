@@ -240,9 +240,9 @@ fn every_truncation_is_an_error_or_whole_statements() {
     // wrong value: a cut inside a statement (inside a table, a string, or a
     // trailing number like `Version = 31` → `3`) is an error. The one thing
     // the bytes can't reveal is a cut exactly between statements; that parses
-    // as the leading whole statements, and the layers documented in `sv/`
-    // (safe_read's stability check, the watcher debounce, the companion
-    // addon's end sentinel) cover it.
+    // as the leading whole statements. The contract in `sv/` covers it:
+    // safe_read's stability check and the watcher debounce for every file,
+    // plus a single top-level table for our companion addon's data.
     for name in [
         "weakauras.lua",
         "auctionator.lua",

@@ -12,19 +12,23 @@
 //! - **A cut exactly between two statements can't be seen in the bytes.** It
 //!   parses as the leading whole statements, with the later globals missing.
 //!
-//! So consumers must not treat "parsed OK" as "complete". The layers that
-//! cover the gap:
+//! So consumers must not treat "parsed OK" as "complete". How each kind of
+//! file is covered:
 //!
-//! 1. Only read through `fsx::read::safe_read`, whose stat → read → stat
-//!    check rejects a file that changed while it was read.
-//! 2. Only read files the debounced WTF watcher reports as settled (size and
-//!    mtime unchanged for 2 s).
-//! 3. For our own data (v0.2), the companion addon declares a sentinel
-//!    SavedVariable last in its TOC (e.g. `ForeverBuddy_EOF = <count or
-//!    checksum>`). WoW writes variables in TOC order, so ingest requires the
-//!    sentinel, and that it matches, before trusting the file.
-//! 4. A `ParseError` means "skip this cycle and retry later", never act on it
-//!    (spec §3). Nothing destructive depends on a parse result.
+//! - **Every file:** only read through `fsx::read::safe_read`, whose stat →
+//!   read → stat check rejects a file that changed while it was read, and
+//!   only once the debounced WTF watcher reports it settled (size and mtime
+//!   unchanged for 2 s). A `ParseError` means "skip this cycle and retry
+//!   later", never act on it (spec §3); nothing destructive depends on a
+//!   parse result.
+//! - **Third-party addons' SavedVariables:** that's all we have. We can't
+//!   change their format, so a cut between their top-level variables is
+//!   covered only by `safe_read` and the debounce.
+//! - **Our companion addon (v0.2):** it saves exactly one top-level table,
+//!   `ForeverBuddyDB`, so there is no statement boundary to cut at: any cut
+//!   inside it is a `ParseError`. Inside the table, an integrity field
+//!   (e.g. `_meta = { count = …, checksum = … }`) lets ingest check the
+//!   contents before trusting them.
 //!
 //! # Lua semantics for lookups
 //!
