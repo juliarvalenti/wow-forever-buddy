@@ -164,6 +164,10 @@ const LINKABLE_FOLDERS: [&str; 2] = ["WTF", "Interface/AddOns"];
 /// The game folder `RelPath`s resolve against, plus where its linkable
 /// folders really live. Build it when validating the install, so a link that
 /// is re-pointed later is caught instead of trusted.
+///
+/// Built only in Rust, by `GameRoot::new`. It must never be a command
+/// argument: whoever supplies `links[].target` chooses the allowed roots.
+/// (It's serializable so the UI can show "WTF is linked to …".)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct GameRoot {
     /// Canonical flavor folder, e.g. `C:\...\World of Warcraft\_classic_beta_`.
