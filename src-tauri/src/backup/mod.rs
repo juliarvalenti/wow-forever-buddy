@@ -247,7 +247,13 @@ impl BackupService {
             .optional()?)
         })?;
         let Some(id) = latest else { return Ok(false) };
-        let previous = self.manifests.read(&id)?;
+        // Deleted while this backup ran (delete doesn't wait on backups):
+        // treat it as "no previous snapshot" rather than failing the backup.
+        let previous = match self.manifests.read(&id) {
+            Ok(m) => m,
+            Err(AppError::NotFound(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
         let key = |f: &ManifestFile| (f.path.clone(), f.blake3.clone());
         Ok(previous.files.iter().map(key).eq(files.iter().map(key)))
     }

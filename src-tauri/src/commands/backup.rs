@@ -59,31 +59,33 @@ pub async fn backup_create(app: AppHandle, label: Option<String>) -> AppResult<S
     .map_err(|e| AppError::Io(format!("backup task failed: {e}")))?
 }
 
+// These run off the main thread (`async`): `backups()` may open the store,
+// which touches the backup location (an offline network share can take tens
+// of seconds) and can reindex every manifest after a location change.
+// Delete, pin and label edit one manifest under the store's own short lock
+// and never wait on a running backup.
+
 /// Every snapshot, newest first.
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn backup_list(state: State<'_, AppState>) -> AppResult<Vec<SnapshotSummary>> {
     state.core.backups()?.list()
 }
 
 /// One snapshot, grouped by account, character and category for the restore panel.
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn backup_get(state: State<'_, AppState>, id: String) -> AppResult<SnapshotDetail> {
     state.core.backups()?.detail(&id)
 }
 
-// Delete, pin and label edit one manifest under the store's own short lock;
-// they don't take the job lock, so they never wait on a running backup (and
-// never block the main thread, where Tauri runs sync commands).
-
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn backup_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.core.backups()?.delete(&id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn backup_set_pinned(
     state: State<'_, AppState>,
@@ -93,7 +95,7 @@ pub fn backup_set_pinned(
     state.core.backups()?.set_pinned(&id, pinned)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn backup_set_label(
     state: State<'_, AppState>,
