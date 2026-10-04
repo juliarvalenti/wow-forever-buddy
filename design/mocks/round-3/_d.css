@@ -10,8 +10,9 @@
    Textures are procedural (SVG noise), with no decorative images.
    ========================================================================== */
 
-@font-face { font-family: "Cinzel"; font-weight: 700; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "Cinzel"; font-weight: 600; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-600-normal.woff2") format("woff2"); }
+/* Marcellus (OFL, fontsource): a mixed-case flared serif in the family of WoW's own UI face. Vendored for the mocks in
+   fonts/; the app should bundle @fontsource/marcellus (local-only, no font CDN). One weight only, so never set bold. */
+@font-face { font-family: "Marcellus"; font-weight: 400; src: url("fonts/marcellus-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Geist"; font-weight: 100 900; src: url("../../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2"); }
 
 :root {
@@ -50,10 +51,10 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 ul { list-style: none; }
 svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 svg.i.sm { width: 14px; height: 14px; }
-/* TYPE RULE (Julia, round 3): no all-caps sections or eyebrows, no letter-spaced labels, no em dashes in copy.
-   Cinzel (which only has capitals) is reserved for page titles, the wordmark and the seal number. Everything else is
+/* TYPE RULE (Julia, round 3): no all-caps anywhere (including display type), no letter-spaced labels, no em dashes.
+   Marcellus is the display face: page titles, the wordmark, the seal number and badge glyphs. Everything else is
    sentence case: Geist on stone, Georgia on parchment. */
-.cinzel { font-family: "Cinzel", serif; font-weight: 700; letter-spacing: 0.04em; }
+.display { font-family: "Marcellus", Georgia, serif; font-weight: 400; }
 .serif-i { font-family: Georgia, "Iowan Old Style", serif; font-style: italic; }
 .mono { font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 11.5px; }
 .muted { color: var(--ash); } .dim { color: var(--soot); }
@@ -74,7 +75,7 @@ svg.i.sm { width: 14px; height: 14px; }
 .brand .mark { width: 30px; height: 30px; display: grid; place-items: center; flex-shrink: 0; color: #2a1b12; border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, #e7d3a7, #b79c6c 70%, #7d6644); box-shadow: 0 2px 6px rgba(0,0,0,.6), inset 0 -2px 3px rgba(0,0,0,.3); }
 .brand .mark svg { width: 18px; height: 18px; }
-.brand .name { font: 700 15px "Cinzel", serif; color: #e5d2a8; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.06); white-space: nowrap; }
+.brand .name { font: 400 17px "Marcellus", Georgia, serif; color: #e5d2a8; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.06); white-space: nowrap; }
 .brand .sub { font-size: 11px; color: var(--hide-mute); white-space: nowrap; }
 .nav { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; display: flex; flex-direction: column; gap: 1px; }
 .nav-group { font-size: 11.5px; font-weight: 500; padding: 12px 10px 5px; color: var(--hide-dim); }
@@ -108,7 +109,7 @@ svg.i.sm { width: 14px; height: 14px; }
 .vignette { position: fixed; inset: 32px 0 0 216px; pointer-events: none; box-shadow: inset 0 0 120px rgba(0,0,0,.6); z-index: 1; }
 .head { display: flex; align-items: flex-end; gap: 14px; position: relative; padding-bottom: 14px; }
 .head::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(180deg, #000, rgba(255,255,255,.05)); }
-.head h1 { font: 700 24px/1.1 "Cinzel", serif; color: #d8cfc0; letter-spacing: .03em; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.07); }
+.head h1 { font: 400 27px/1.1 "Marcellus", Georgia, serif; color: #d8cfc0; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.07); }
 .lede { color: var(--ash); font-size: 12.5px; margin-top: 4px; }
 .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--soot); margin-bottom: 6px; }
@@ -205,7 +206,7 @@ table.grid .r { text-align: right; }
 .q-poor { color: #8a8580; } .q-common { color: #ece4d6; } .q-uncommon { color: #58d23c; } .q-rare { color: #4f95ff; } .q-epic { color: #b86cf0; } .q-legendary { color: #ff8000; }
 
 /* item icon: 36px real-icon slot w/ quality border; stand-in glyph until icons are cached */
-.ico { width: 24px; height: 24px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 700 10.5px "Cinzel", serif; overflow: hidden;
+.ico { width: 24px; height: 24px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 12px "Marcellus", Georgia, serif; overflow: hidden;
   background: linear-gradient(135deg, #3a3631, #141311); border: 1px solid currentColor; box-shadow: inset 0 0 0 1px #000, inset 0 0 8px rgba(0,0,0,.6); }
 .ico b { color: #e8dfd0; text-shadow: 0 1px 0 #000; }
 .ico.lg { width: 36px; height: 36px; font-size: 13px; }
@@ -269,7 +270,7 @@ table.grid .r { text-align: right; }
   background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 45%, #5a0c09 80%); box-shadow: 0 2px 0 #3a0705, 0 4px 8px rgba(60,10,5,.5), inset 0 2px 3px rgba(255,160,140,.35), inset 0 -3px 5px rgba(0,0,0,.35); }
 .seal::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px solid rgba(40,4,2,.45); box-shadow: 0 1px 0 rgba(255,160,140,.25); }
 .seal .t { position: absolute; top: 13px; font: italic 10px Georgia, serif; color: rgba(255,210,190,.8); z-index: 1; }
-.seal .n { position: absolute; top: 25px; font: 700 20px/1 "Cinzel", serif; color: #f3b8a6; text-shadow: 0 -1px 0 rgba(0,0,0,.55), 0 1px 0 rgba(255,190,170,.35); z-index: 1; }
+.seal .n { position: absolute; top: 24px; font: 400 22px/1 "Marcellus", Georgia, serif; color: #f3b8a6; text-shadow: 0 -1px 0 rgba(0,0,0,.55), 0 1px 0 rgba(255,190,170,.35); z-index: 1; }
 
 /* ---------- shared components (promoted in round 3) ---------- */
 /* locked write action: shown while WoW runs; never looks clickable */
@@ -282,7 +283,7 @@ table.grid .r { text-align: right; }
 .cb.on::after { content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px; border: solid var(--ember-2); border-width: 0 2px 2px 0; transform: rotate(45deg); filter: drop-shadow(0 0 3px var(--ember)); }
 /* small wax dot (level-ups in lists) */
 .wax { display: inline-grid; place-items: center; width: 22px; height: 22px; vertical-align: middle; transform: rotate(-8deg);
-  border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; font: 700 9px "Cinzel", serif; color: #f3b8a6;
+  border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; font: 400 10px "Marcellus", Georgia, serif; color: #f3b8a6;
   background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 50%, #5a0c09 85%); box-shadow: 0 1px 0 #3a0705, inset 0 1px 1px rgba(255,160,140,.4); }
 /* empty / not-yet state: an inset well with a short explanation and at most one action */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 26px 20px; border-radius: var(--r);
@@ -318,7 +319,7 @@ table.grid .r { text-align: right; }
 .pslot img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; display: block; }
 .pslot .crest { position: absolute; inset: 12% 14% 18%; width: 72%; height: 70%; }
 .pslot .race { position: absolute; right: -6px; bottom: -6px; width: max(18px, calc(var(--w) * .34)); height: max(18px, calc(var(--w) * .34)); border-radius: 50%; display: grid; place-items: center; z-index: 1;
-  font: 700 max(8px, calc(var(--w) * .12)) "Cinzel", serif; color: var(--chalk-hi); letter-spacing: 0;
+  font: 400 max(9px, calc(var(--w) * .13)) "Marcellus", Georgia, serif; color: var(--chalk-hi);
   background: var(--grit), radial-gradient(circle at 40% 35%, #3a3631, #121110); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.15), 0 2px 5px rgba(0,0,0,.6); }
 .pslot .src { position: absolute; left: 4px; top: 4px; z-index: 1; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 3px; background: rgba(0,0,0,.6); color: var(--chalk); }
 .pslot .src svg { width: 10px; height: 10px; }

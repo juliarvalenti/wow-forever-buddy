@@ -72,7 +72,6 @@
     { id: 'backups', label: 'Backups', icon: 'archive', href: 'backups.html', n: 23 },
     { id: 'addons', label: 'Addons', icon: 'puzzle', href: 'addons.html', soon: 1 },
     { id: 'macros', label: 'Macros', icon: 'terminal', href: 'macros.html', soon: 1 },
-    { id: 'weakauras', label: 'WeakAuras', icon: 'spark', href: 'weakauras.html', soon: 1 },
   ];
   // body data-wow: running | closed | nofolder ; data-addon: none (v0.1, no companion addon yet)
   const page = document.body.dataset.page, wow = document.body.dataset.wow || 'running';

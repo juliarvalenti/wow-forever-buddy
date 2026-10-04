@@ -15,19 +15,21 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 | Area | File | States (query flags) |
 |---|---|---|
 | **First run** | `onboarding.html` | `found` (default), `?state=detecting`, `?state=notfound`, `?state=pick` |
-| **No addon yet** | `dashboard-noaddon.html`, `characters-noaddon.html` | **v0.1 (default):** step 1 reads "Coming in the next update", with no Install button, and "Back up now" is the bronze action. **`?v=0.2`:** the bronze "Install addon" step (locked while WoW runs). Both show only what the app knows: folder, WTF characters, backups, WoW running |
+| **No addon yet** | `dashboard-noaddon.html`, `characters-noaddon.html` | **v0.1 (default):** step 1 reads "Coming in the next update", with no Install button, and "Back up now" is the bronze action. **`?v=0.2`:** the bronze "Install addon" step (locked while WoW runs). Both show only what the app knows: folder, WTF characters, backups, WoW running, and **recent sessions from the process watcher** (start, end, duration, and the character whose WTF folder changed; the running session says "Character known after you log out"; no gold or loot) |
 | Dashboard | `dashboard.html` | `?recover` (restore interrupted: Roll back / Finish), `?folder=missing` |
 | Backups | `backups.html` | `?confirm`, `?error=backup` (disk full), `?error=corrupt` (damaged snapshot) |
 | Characters | `characters.html`, `character.html`, `portraits.html` | `?q=Runecloth` |
 | Ledger / Adventures | `gold.html`, `session.html` | session timeline with Forever "secret values" fallbacks |
 | Auction House | `ah.html` | scan freshness, price history, sales ledger, sell suggestions |
 | Settings | `settings.html` | spec-accurate retention, Integrations |
-| Sketches | `addons.html` (v0.5), `macros.html`, `weakauras.html` (v0.6) | writes locked while WoW runs |
+| Sketches | `addons.html` (v0.5), `macros.html` (v0.6) | writes locked while WoW runs |
+
+**WeakAuras is dropped** (Julia, 4 Oct). It doesn't run on Forever because of the Midnight addon restrictions, so there's no WeakAuras page, no sidebar entry and no Wago.io integration. The Wago Addons key stays, because it's for normal addon updates.
 
 ## Round-3 decisions engineering should know
 - **Type rule (Julia):**
-  - No all-caps sections or eyebrows, no letter-spaced labels, and no em dashes anywhere in the copy.
-  - Cinzel only for page titles, the wordmark and the seal number.
+  - No all-caps anywhere (display type included), no letter-spaced labels, and no em dashes anywhere in the copy.
+  - The display face is **Marcellus** (OFL, a mixed-case flared serif close to WoW's own UI face). Use it for page titles, the wordmark, the seal number and badge glyphs. It has one weight, so never set it bold. The app should bundle `@fontsource/marcellus`; the mocks vendor it in `round-3/fonts/`.
   - Everything else is sentence case: Geist on stone, Georgia on parchment.
 - **Forever facts in copy:** `C:\Program Files (x86)\World of Warcraft\_classic_beta_`, `WowB.exe`, "WoW: Forever (Beta)" 1.60.1, interface 16001. Detection stays data-driven; the folder may move at the 4 Nov launch.
 - **Retention text comes from the backend:** `backup_storage().retention_summary` is shown verbatim, e.g. "Auto: 48 h, then daily for 2 weeks, weekly for 2 months · manual kept forever". There's no editable retention in v0.1. Settings shows the policy read-only, plus the 5 GB budget meter and "Prune now".

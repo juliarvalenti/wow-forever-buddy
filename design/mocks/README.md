@@ -4,14 +4,14 @@ These are HTML mocks from the design review rounds (designer ↔ PM ↔ Julia). 
 
 | Folder | What it is |
 |---|---|
-| `round-3/` | **Current.** The full app in language "D": onboarding, the no-addon v0.1 state, error states, Auction House, and sketches of Addons, Macros and WeakAuras. |
+| `round-3/` | **Current.** The full app in language "D": onboarding, the no-addon v0.1 state, error states, Auction House, and sketches of Addons and Macros. |
 | `round-2/` | First pass in "D". Its README holds the **material rules** (stone/leather = frame and system data, parchment = records, tooltip glass = item hover, bronze = the one primary action, ember = live, gold = coins only). |
 | `style-tiles/` | The divergence round: the same dashboard as A Tooltip, B Ledger, C Forge and D Mix. Julia picked **D**. |
 | `round-1/` | The first look (gold-on-dark), kept for history. It was superseded because it read as a generic dark dashboard. |
 
 ## Viewing
 - Open any `.html` file directly in a browser. No build step is needed.
-- The mocks load fonts from `node_modules/` (Cinzel, Geist) and some art from `src/components/ui/warcraftcn/assets`, so run `npm install` once.
+- Round 3 loads Geist from `node_modules/` and Marcellus from `round-3/fonts/`. Older rounds use Cinzel from `node_modules/`. Some mocks also load art from `src/components/ui/warcraftcn/assets`, so run `npm install` once.
 - Query flags:
   - `?still` freezes motion.
   - `?tt=<item>` pins an item tooltip.
