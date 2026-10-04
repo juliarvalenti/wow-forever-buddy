@@ -7,7 +7,6 @@
 //!   the flavor folder.
 
 pub mod atomic;
-#[allow(dead_code)] // first callers: install detection (T5) and the backup store (T7)
 pub mod read;
 #[allow(dead_code)] // first callers: the write gate (T6) and backups (T7)
 pub mod relpath;

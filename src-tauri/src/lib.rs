@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod fsx;
+mod install;
 mod secrets;
 mod state;
 pub mod sv;
@@ -10,8 +11,10 @@ pub mod sv;
 mod test_support;
 
 use tauri::Manager;
+use tauri_specta::Event;
 
 use crate::config::paths::AppPaths;
+use crate::install::InstallChanged;
 use crate::state::{AppCore, AppState};
 
 /// Where the generated TypeScript bindings live. Absolute, so a debug build
@@ -29,7 +32,12 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::secrets::secrets_status,
             commands::secrets::secrets_set,
             commands::secrets::secrets_delete,
+            commands::install::install_detect,
+            commands::install::install_get,
+            commands::install::install_set,
+            commands::app::app_open_folder,
         ])
+        .events(tauri_specta::collect_events![InstallChanged])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
 
@@ -57,12 +65,26 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
             let paths = AppPaths::resolve(app.handle())?;
             let core = AppCore::new(paths)?;
             app.manage(AppState { core });
+
+            // Startup step 4 (spec §8) runs in the background; the window
+            // shows right away and hears about the result via the event.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let state = handle.state::<AppState>();
+                if let Some(install) = install::resolve_on_startup(&state.core.settings) {
+                    let _ = InstallChanged {
+                        install: Some(install),
+                    }
+                    .emit(&handle);
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
