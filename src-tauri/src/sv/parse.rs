@@ -222,10 +222,44 @@ impl<'a> Parser<'a> {
                     self.expect(b'=')?;
                     self.skip_trivia()?;
                     let v = self.value()?;
+                    self.statement_end()?;
                     // Identifiers are ASCII, so this never replaces anything.
                     out.push((String::from_utf8_lossy(name).into_owned(), v));
                 }
                 Some(_) => return self.err("expected `Name = value`"),
+            }
+        }
+    }
+
+    /// WoW ends every statement with a newline, so a file that stops after a
+    /// value without one was cut off mid-write (`Version = 31` read as
+    /// `Version = 3`). Consumes nothing up to and including the newline.
+    fn statement_end(&mut self) -> R<()> {
+        let end = self.pos;
+        let truncated = |p: &Self| {
+            Err(p.error_at(
+                end,
+                "file ends right after this value with no newline (truncated?)",
+            ))
+        };
+        loop {
+            match self.peek() {
+                Some(b' ' | b'\t' | b'\r' | 0x0b | 0x0c | b';') => self.pos += 1,
+                Some(b'-') if self.peek_at(1) == Some(b'-') => {
+                    let start = self.pos;
+                    self.pos += 2;
+                    if let Some(level) = self.long_bracket_open() {
+                        self.long_bracket_body(start, level)?;
+                    } else if memchr(b'\n', &self.src[self.pos..]).is_some() {
+                        self.pos = start;
+                        return Ok(());
+                    } else {
+                        return truncated(self);
+                    }
+                }
+                None => return truncated(self),
+                // A newline, or another statement on the same line.
+                Some(_) => return Ok(()),
             }
         }
     }
@@ -273,8 +307,12 @@ impl<'a> Parser<'a> {
     /// `a/b` of two numeric literals, which some serializers emit for
     /// inf/nan (`1/0`, `-1/0`, `0/0`). No other operators are accepted.
     fn division(&mut self, lhs: LuaValue) -> R<LuaValue> {
+        // Look past trivia for a `/`, but leave the position at the end of
+        // the number otherwise, so `statement_end` sees the real line end.
+        let end = self.pos;
         self.skip_trivia()?;
         if self.peek() != Some(b'/') {
+            self.pos = end;
             return Ok(lhs);
         }
         self.pos += 1;
@@ -418,6 +456,9 @@ impl<'a> Parser<'a> {
             let at = self.pos + i;
             match src[at] {
                 b'\\' => {
+                    if memchr(b'\r', &src[seg..at]).is_some() {
+                        return Err(self.error_at(open, "unfinished string"));
+                    }
                     let b = buf.get_or_insert_with(Vec::new);
                     b.extend_from_slice(&src[seg..at]);
                     self.pos = at + 1;
@@ -426,6 +467,11 @@ impl<'a> Parser<'a> {
                 }
                 b'\n' => return Err(self.error_at(open, "unfinished string")),
                 _ => {
+                    // Lua also ends a short string at a raw `\r`. Rare, so it's
+                    // checked once per segment rather than in the hot search.
+                    if memchr(b'\r', &src[seg..at]).is_some() {
+                        return Err(self.error_at(open, "unfinished string"));
+                    }
                     self.pos = at + 1;
                     return Ok(match buf {
                         None => src[seg..at].into(),
@@ -481,7 +527,11 @@ impl<'a> Parser<'a> {
                 out.push(v as u8);
             }
             b'x' => {
-                let hex = self.src.get(self.pos..self.pos + 2);
+                // Check the digits first: from_str_radix would accept "+f".
+                let hex = self
+                    .src
+                    .get(self.pos..self.pos + 2)
+                    .filter(|h| h.iter().all(u8::is_ascii_hexdigit));
                 match hex.and_then(|h| u8::from_str_radix(std::str::from_utf8(h).ok()?, 16).ok()) {
                     Some(v) => {
                         out.push(v);
@@ -777,6 +827,24 @@ mod tests {
     }
 
     #[test]
+    fn lookups_follow_lua_semantics() {
+        let t = v(
+            r#"{ a = 1, ["a"] = 2, "first", "second", [2] = "keyed two", [3.0] = "three", [4] = "x", [4] = "y" }"#,
+        );
+        let t = t.as_table().unwrap();
+        // Duplicate keys: last wins.
+        assert_eq!(t.get("a"), Some(&Int(2)));
+        // Positional beats keyed for the same slot; Int and Num keys are one slot.
+        assert_eq!(t.get_index(1), Some(&s("first")));
+        assert_eq!(t.get_index(2), Some(&s("second")));
+        assert_eq!(t.get_index(3), Some(&s("three")));
+        assert_eq!(t.get_index(4), Some(&s("y")));
+        assert_eq!(t.get_index(0), None);
+        assert_eq!(t.get_index(-1), None);
+        assert_eq!(t.get("missing"), None);
+    }
+
+    #[test]
     fn tables() {
         assert_eq!(v("{}"), table(vec![], vec![]));
         assert_eq!(
@@ -842,7 +910,41 @@ mod tests {
     fn empty_files() {
         assert_eq!(parse(b"").unwrap(), vec![]);
         assert_eq!(parse(b"\n\n-- nothing\n").unwrap(), vec![]);
-        assert_eq!(parse(b"A = 1; B = 2;").unwrap().len(), 2);
+        assert_eq!(parse(b"A = 1; B = 2;\n").unwrap().len(), 2);
+        assert_eq!(parse(b"A = 1 -- trailing comment\n").unwrap().len(), 1);
+        assert_eq!(parse(b"A = 1 --[[ block ]] ;\r\n").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_value_cut_off_before_its_newline_is_truncated() {
+        // `Version = 31\n` torn after the 3: must not parse as 3.
+        for src in [
+            &b"DB = {}\nVersion = 3"[..],
+            b"Version = 3 ",
+            b"Version = 3;",
+            b"Name = \"abc\"",
+            b"T = { 1 }",
+            b"F = 1/0",
+            b"A = 1 -- comment with no newline",
+            b"A = 1 --[[ block ]]",
+        ] {
+            let err = e(src);
+            assert!(
+                err.msg.contains("truncated"),
+                "{:?}: {err}",
+                String::from_utf8_lossy(src)
+            );
+        }
+        let err = e(b"DB = {}\nVersion = 3");
+        assert_eq!((err.line, err.col), (2, 12));
+    }
+
+    #[test]
+    fn raw_carriage_return_ends_a_short_string() {
+        assert!(e(b"A = \"a\rb\"\n").msg.contains("unfinished string"));
+        assert!(e(b"A = \"a\rb\\n\"\n").msg.contains("unfinished string"));
+        // An escaped CR (backslash + CRLF) is still a newline escape.
+        assert_eq!(v("\"a\\\r\nb\""), s("a\nb"));
     }
 
     #[test]
@@ -880,6 +982,9 @@ mod tests {
         assert!(e(b"A = \"\\xZZ\"")
             .msg
             .contains("hexadecimal digit expected"));
+        assert!(e(b"A = \"\\x+f\"\n")
+            .msg
+            .contains("hexadecimal digit expected"));
         assert!(e(b"A = \"\\u{110000}\"")
             .msg
             .contains("invalid unicode escape"));
@@ -912,7 +1017,7 @@ mod tests {
 
     #[test]
     fn depth_limit() {
-        let ok = format!("A = {}{}", "{".repeat(MAX_DEPTH), "}".repeat(MAX_DEPTH));
+        let ok = format!("A = {}{}\n", "{".repeat(MAX_DEPTH), "}".repeat(MAX_DEPTH));
         assert!(parse(ok.as_bytes()).is_ok());
         let deep = format!(
             "A = {}{}",

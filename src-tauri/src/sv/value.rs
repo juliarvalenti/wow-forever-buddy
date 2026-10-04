@@ -68,11 +68,33 @@ impl LuaValue {
 }
 
 impl LuaTable {
-    /// First keyed field whose key is the string `key`.
+    /// The value Lua sees at string key `key`. With duplicate keys
+    /// (`{ a = 1, a = 2 }`), the last one wins, as in Lua.
     pub fn get(&self, key: &str) -> Option<&LuaValue> {
         self.hash
             .iter()
+            .rev()
             .find(|(k, _)| k.as_bytes() == Some(key.as_bytes()))
+            .map(|(_, v)| v)
+    }
+
+    /// The value Lua sees at integer index `i` (1-based). WoW runs Lua 5.1,
+    /// where every number is a double, so `[2]`, `[2.0]` and the second
+    /// positional field are all the same slot. Positional fields are stored
+    /// after keyed ones by the constructor, so they win; among keyed fields
+    /// the last wins.
+    pub fn get_index(&self, i: i64) -> Option<&LuaValue> {
+        if let Some(v) = usize::try_from(i - 1).ok().and_then(|n| self.array.get(n)) {
+            return Some(v);
+        }
+        self.hash
+            .iter()
+            .rev()
+            .find(|(k, _)| match *k {
+                LuaValue::Int(k) => k == i,
+                LuaValue::Num(k) => k == i as f64,
+                _ => false,
+            })
             .map(|(_, v)| v)
     }
 }

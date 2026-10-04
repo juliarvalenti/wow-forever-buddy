@@ -235,21 +235,53 @@ fn truncated_fixture_is_a_parse_error() {
 }
 
 #[test]
-fn every_truncation_is_an_error_or_a_prefix() {
-    // A torn read can stop anywhere. Parsing must never panic, and any cut
-    // inside the table must be an error, never a silently shorter table.
-    let bytes = fixture("weakauras.lua");
-    let full = sv::parse(&bytes).unwrap();
-    let body_end = bytes.iter().rposition(|&b| b == b'}').unwrap();
-    for cut in 0..bytes.len() {
-        let result = sv::parse(&bytes[..cut]);
-        if cut > body_end {
-            assert_eq!(result.unwrap(), full);
-        } else if let Ok(globals) = result {
-            // Only a cut before the value even starts can succeed.
-            assert!(globals.is_empty(), "cut at {cut} parsed: {globals:?}");
+fn every_truncation_is_an_error_or_whole_statements() {
+    // A torn read can stop anywhere. Parsing must never panic or return a
+    // wrong value: a cut inside a statement (inside a table, a string, or a
+    // trailing number like `Version = 31` → `3`) is an error. The one thing
+    // the bytes can't reveal is a cut exactly between statements; that parses
+    // as the leading whole statements, and the layers documented in `sv/`
+    // (safe_read's stability check, the watcher debounce, the companion
+    // addon's end sentinel) cover it.
+    for name in [
+        "weakauras.lua",
+        "auctionator.lua",
+        "details.lua",
+        "strings.lua",
+    ] {
+        let bytes = fixture(name);
+        let full = sv::parse(&bytes).unwrap();
+        assert!(bytes.ends_with(b"\n"));
+        let mut boundary_cuts = 0;
+        for cut in 0..bytes.len() {
+            let Ok(globals) = sv::parse(&bytes[..cut]) else {
+                continue;
+            };
+            assert!(
+                globals.len() < full.len(),
+                "{name}: cut at {cut} of {} parsed everything",
+                bytes.len()
+            );
+            assert_eq!(globals[..], full[..globals.len()], "{name}: cut at {cut}");
+            if !globals.is_empty() {
+                boundary_cuts += 1;
+            }
         }
+        // Multi-global files do have boundary cuts; make sure we saw them.
+        if full.len() > 1 {
+            assert!(boundary_cuts > 0, "{name}");
+        }
+        assert_eq!(sv::parse(&bytes).unwrap(), full);
     }
+}
+
+#[test]
+fn trailing_number_cut_is_an_error() {
+    let src = b"MyAddonDB = {\n\t[\"a\"] = 1,\n}\nMyAddonDB_Version = 31\n";
+    assert_eq!(sv::parse(src).unwrap().len(), 2);
+    let cut = &src[..src.len() - 2]; // "... = 3"
+    let err = sv::parse(cut).unwrap_err();
+    assert!(err.msg.contains("truncated"), "{err}");
 }
 
 #[test]
