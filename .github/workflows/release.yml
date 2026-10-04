@@ -1,0 +1,40 @@
+# Publishing a GitHub release builds the Windows app and attaches it to that
+# release: an installer (*-setup.exe) and a portable .exe you can run directly.
+# "Run workflow" on the Actions tab builds the same thing as a downloadable
+# workflow artifact, without touching any release.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ github.event.release.id }}
+          uploadPlainBinary: true
+          uploadWorkflowArtifacts: true
