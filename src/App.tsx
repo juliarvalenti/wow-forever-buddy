@@ -33,6 +33,10 @@ function Shell() {
   const [backupsFilter, setBackupsFilter] = useState<"Safety" | null>(null);
   const [, tick] = useState(0);
 
+  // "Decide later" applies to one interrupted restore; a new one asks again.
+  useEffect(() => {
+    if (!recovery.pending) setDeferred(false);
+  }, [recovery.pending]);
   // First run: no game folder yet, so start there.
   useEffect(() => {
     if (install.state.kind === "none") setScreen("game");

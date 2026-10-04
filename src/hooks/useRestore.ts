@@ -26,6 +26,11 @@ export type RestoreRun =
       deletionsChanged?: boolean;
     };
 
+/** Fired when a restore fails. A restore that fails partway leaves its
+ *  journal pending without a `restore-completed` event, so `useRecovery`
+ *  re-checks on this to show the recovery dialog straight away. */
+const RESTORE_FAILED = "forever-buddy:restore-failed";
+
 /** What the user would be confirming: the same plan means the same files. */
 function samePlan(a: RestorePlan, b: RestorePlan): boolean {
   const key = (p: RestorePlan) => JSON.stringify([p.write, p.delete, p.read_only]);
@@ -83,6 +88,7 @@ export function useRestore() {
           gameRunning: isAppError(e) && e.kind === "GameRunning",
           deletionsChanged: isAppError(e) && e.kind === "DeletionsChanged",
         });
+        window.dispatchEvent(new Event(RESTORE_FAILED));
       }
     },
     [],
@@ -102,6 +108,10 @@ export function useRecovery() {
   }, []);
   useEffect(refresh, [refresh]);
   useEvent(events.restoreCompleted, refresh);
+  useEffect(() => {
+    window.addEventListener(RESTORE_FAILED, refresh);
+    return () => window.removeEventListener(RESTORE_FAILED, refresh);
+  }, [refresh]);
 
   const resolve = useCallback(
     async (action: JournalAction) => {
