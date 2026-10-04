@@ -55,7 +55,7 @@ export type BackupSettings = {
 
 export type InstallChoice = {
 	root: string,
-	/**  Flavor folder name, e.g. "_classic_". */
+	/**  Flavor folder name, e.g. "_classic_beta_". */
 	flavor: string,
 };
 
@@ -74,8 +74,8 @@ export type Integrations = {
 
 /**
  *  settings.json (spec §6). Every field has a default, so a missing key never
- *  fails a load, and unknown top-level keys survive in `extra` so running an
- *  older build doesn't wipe settings a newer one wrote.
+ *  fails a load. Keys this build doesn't know are kept on disk by
+ *  `SettingsStore`, at any depth, so a downgrade never wipes them.
  */
 export type Settings = {
 	/**  Backend-owned: set by load/migrate, ignored on update. */

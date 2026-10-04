@@ -9,8 +9,9 @@ use tauri::Manager;
 use crate::config::paths::AppPaths;
 use crate::state::{AppCore, AppState};
 
-/// Where the generated TypeScript bindings live, relative to `src-tauri/`.
-const BINDINGS_PATH: &str = "../src/lib/bindings.ts";
+/// Where the generated TypeScript bindings live. Absolute, so a debug build
+/// launched from any working directory still writes into the repo.
+const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/lib/bindings.ts");
 
 /// The one place commands and events are registered. Used by `run()` and by
 /// the `export_bindings` test, so the TS bindings can never drift from Rust.

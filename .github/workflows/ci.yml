@@ -41,11 +41,13 @@ jobs:
 
       - name: cargo clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
+      # --locked: a Cargo.lock that drifted from Cargo.toml fails instead of
+      # being silently re-resolved (matters with the exact RC pins).
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test --locked
 
       # cargo test regenerates src/lib/bindings.ts; fail if it wasn't committed.
       - name: bindings up to date

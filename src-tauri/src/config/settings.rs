@@ -10,8 +10,8 @@ use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::atomic_replace;
 
 /// settings.json (spec §6). Every field has a default, so a missing key never
-/// fails a load, and unknown top-level keys survive in `extra` so running an
-/// older build doesn't wipe settings a newer one wrote.
+/// fails a load. Keys this build doesn't know are kept on disk by
+/// `SettingsStore`, at any depth, so a downgrade never wipes them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
@@ -26,9 +26,6 @@ pub struct Settings {
     /// Free-form UI preferences (remembered tabs, filters). The backend never reads it.
     /// Strings only; the frontend JSON-encodes anything structured.
     pub ui: BTreeMap<String, String>,
-    #[serde(flatten)]
-    #[specta(skip)]
-    pub extra: Map<String, Value>,
 }
 
 impl Default for Settings {
@@ -40,7 +37,6 @@ impl Default for Settings {
             process_names_extra: Vec::new(),
             integrations: Integrations::default(),
             ui: BTreeMap::new(),
-            extra: Map::new(),
         }
     }
 }
@@ -48,7 +44,7 @@ impl Default for Settings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct InstallChoice {
     pub root: PathBuf,
-    /// Flavor folder name, e.g. "_classic_".
+    /// Flavor folder name, e.g. "_classic_beta_".
     pub flavor: String,
 }
 
@@ -134,88 +130,200 @@ impl Settings {
     }
 }
 
-/// Owns settings.json: loads (with migration and corruption recovery), hands
-/// out copies, and saves atomically on every change.
+/// Owns settings.json.
+///
+/// It keeps the file's raw JSON next to the typed view, so that:
+/// - loading never rewrites the file, except to create it, replace a file
+///   that isn't JSON, or save a migration;
+/// - a field that's missing, mistyped (say, from a newer build) or out of range
+///   falls back to its own default without touching the others;
+/// - saving writes only the values that actually changed, so unknown keys and
+///   values this build couldn't read stay exactly as they were on disk.
 pub struct SettingsStore {
     path: PathBuf,
-    current: RwLock<Settings>,
+    inner: RwLock<Inner>,
+}
+
+struct Inner {
+    raw: Value,
+    typed: Settings,
 }
 
 impl SettingsStore {
     pub fn load(path: PathBuf) -> AppResult<Self> {
-        let settings = match std::fs::read(&path) {
-            Ok(bytes) => Self::parse_or_recover(&path, &bytes)?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
+        let (raw, write_back) = match std::fs::read(&path) {
+            Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+                Ok(value) if value.is_object() => {
+                    let migrated = migrate::run(value.clone(), &path)?;
+                    let changed = migrated != value;
+                    (migrated, changed)
+                }
+                _ => {
+                    quarantine(&path)?;
+                    (to_json(&Settings::default()), true)
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                (to_json(&Settings::default()), true)
+            }
             Err(e) => return Err(e.into()),
         };
-        let store = Self {
-            path,
-            current: RwLock::new(settings),
-        };
-        store.save(&store.get())?;
-        Ok(store)
-    }
 
-    fn parse_or_recover(path: &Path, bytes: &[u8]) -> AppResult<Settings> {
-        let parsed = serde_json::from_slice::<Value>(bytes)
-            .map_err(|e| e.to_string())
-            .and_then(|value| migrate::run(value, path).map_err(|e| e.to_string()))
-            .and_then(|value| serde_json::from_value::<Settings>(value).map_err(|e| e.to_string()))
-            .and_then(|mut s| s.validate().map(|_| s).map_err(|e| e.to_string()));
-
-        match parsed {
-            Ok(s) => Ok(s),
-            Err(_) => {
-                // Keep the broken file for inspection and start from defaults
-                // rather than refusing to launch.
-                let stamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let quarantine = path.with_file_name(format!("settings.corrupt-{stamp}.json"));
-                std::fs::rename(path, &quarantine)?;
-                Ok(Settings::default())
-            }
+        let typed = lenient_parse(&raw);
+        if write_back {
+            write_json(&path, &raw)?;
         }
+        Ok(Self {
+            path,
+            inner: RwLock::new(Inner { raw, typed }),
+        })
     }
 
     pub fn get(&self) -> Settings {
-        self.current.read().expect("settings lock poisoned").clone()
+        self.inner
+            .read()
+            .expect("settings lock poisoned")
+            .typed
+            .clone()
     }
 
     /// Applies a full settings object from the UI. Backend-owned fields
-    /// (`schema_version`, `install`) and unknown keys keep their current values.
+    /// (`schema_version`, `install`) keep their current values.
     pub fn update_from_user(&self, incoming: Settings) -> AppResult<Settings> {
         self.update(|current| {
             let mut next = incoming;
             next.schema_version = current.schema_version;
             next.install = current.install.clone();
-            next.extra = current.extra.clone();
             *current = next;
         })
     }
 
     /// Backend-side change (e.g. install commands). Validated and saved like any other.
     pub fn update(&self, change: impl FnOnce(&mut Settings)) -> AppResult<Settings> {
-        let mut guard = self.current.write().expect("settings lock poisoned");
-        let mut next = guard.clone();
+        let mut inner = self.inner.write().expect("settings lock poisoned");
+        let mut next = inner.typed.clone();
         change(&mut next);
         next.validate()?;
-        self.save(&next)?;
-        *guard = next.clone();
+
+        let mut raw = inner.raw.clone();
+        apply_changes(&mut raw, &to_json(&inner.typed), &to_json(&next));
+        if raw != inner.raw {
+            write_json(&self.path, &raw)?;
+        }
+        inner.raw = raw;
+        inner.typed = next.clone();
         Ok(next)
     }
+}
 
-    fn save(&self, settings: &Settings) -> AppResult<()> {
-        let json = serde_json::to_vec_pretty(settings)
-            .map_err(|e| AppError::Io(format!("serialize settings: {e}")))?;
-        atomic_replace(&self.path, &json)
+fn to_json(settings: &Settings) -> Value {
+    serde_json::to_value(settings).expect("Settings always serializes")
+}
+
+fn write_json(path: &Path, value: &Value) -> AppResult<()> {
+    let bytes = serde_json::to_vec_pretty(value)
+        .map_err(|e| AppError::Io(format!("serialize settings: {e}")))?;
+    atomic_replace(path, &bytes)
+}
+
+/// Keeps a file that isn't JSON for inspection; the app starts from defaults
+/// rather than refusing to launch.
+fn quarantine(path: &Path) -> AppResult<()> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    std::fs::rename(
+        path,
+        path.with_file_name(format!("settings.corrupt-{stamp}.json")),
+    )?;
+    Ok(())
+}
+
+/// The typed view of `raw`. Any value that doesn't deserialize or validate
+/// falls back to its default, independently of every other value.
+fn lenient_parse(raw: &Value) -> Settings {
+    if let Some(s) = parse_valid(raw) {
+        return s;
+    }
+    let mut candidate = to_json(&Settings::default());
+    if let Value::Object(fields) = raw {
+        merge_accepted(&mut candidate, &mut Vec::new(), fields);
+    }
+    parse_valid(&candidate).expect("only accepted values were merged into the defaults")
+}
+
+fn parse_valid(value: &Value) -> Option<Settings> {
+    let mut s = serde_json::from_value::<Settings>(value.clone()).ok()?;
+    s.validate().ok()?;
+    Some(s)
+}
+
+/// Copies each value from `fields` into `candidate` (under `path`) if the
+/// result still parses and validates. Tries a whole subtree first and only
+/// descends into it if that fails, so all-or-nothing objects like `install`
+/// are kept or dropped as a unit.
+fn merge_accepted(candidate: &mut Value, path: &mut Vec<String>, fields: &Map<String, Value>) {
+    for (key, value) in fields {
+        path.push(key.clone());
+        let parent = value_at_mut(candidate, &path[..path.len() - 1]);
+        let previous = parent.insert(key.clone(), value.clone());
+
+        if parse_valid(candidate).is_none() {
+            let parent = value_at_mut(candidate, &path[..path.len() - 1]);
+            match &previous {
+                Some(prev) => parent.insert(key.clone(), prev.clone()),
+                None => parent.remove(key),
+            };
+            if let (Value::Object(children), Some(Value::Object(_))) = (value, &previous) {
+                merge_accepted(candidate, path, children);
+            }
+        }
+        path.pop();
+    }
+}
+
+fn value_at_mut<'a>(root: &'a mut Value, path: &[String]) -> &'a mut Map<String, Value> {
+    path.iter()
+        .fold(root, |v, key| &mut v[key.as_str()])
+        .as_object_mut()
+        .expect("merge_accepted only descends into objects")
+}
+
+/// Writes into `raw` only what differs between `prev` and `next`: keys this
+/// build doesn't know, and values it never changed, are left as they were.
+fn apply_changes(raw: &mut Value, prev: &Value, next: &Value) {
+    let (Value::Object(prev), Value::Object(next)) = (prev, next) else {
+        *raw = next.clone();
+        return;
+    };
+    if !raw.is_object() {
+        *raw = Value::Object(Map::new());
+    }
+    let raw = raw.as_object_mut().expect("just made it an object");
+    for (key, next_value) in next {
+        match prev.get(key) {
+            Some(prev_value) if prev_value == next_value => {}
+            Some(prev_value) if prev_value.is_object() && next_value.is_object() => {
+                let slot = raw.entry(key.clone()).or_insert(Value::Null);
+                apply_changes(slot, prev_value, next_value);
+            }
+            _ => {
+                raw.insert(key.clone(), next_value.clone());
+            }
+        }
+    }
+    for key in prev.keys() {
+        if !next.contains_key(key) {
+            raw.remove(key);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn store_in(dir: &Path) -> SettingsStore {
         SettingsStore::load(dir.join("settings.json")).unwrap()
@@ -223,6 +331,14 @@ mod tests {
 
     fn on_disk(dir: &Path) -> Value {
         serde_json::from_slice(&std::fs::read(dir.join("settings.json")).unwrap()).unwrap()
+    }
+
+    fn write_settings(dir: &Path, value: Value) {
+        std::fs::write(dir.join("settings.json"), value.to_string()).unwrap();
+    }
+
+    fn install_json() -> Value {
+        json!({ "root": "/games/wow", "flavor": "_classic_beta_" })
     }
 
     #[test]
@@ -238,28 +354,25 @@ mod tests {
     }
 
     #[test]
-    fn missing_keys_get_defaults_and_unknown_keys_survive() {
+    fn loading_a_valid_file_never_rewrites_it() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            tmp.path().join("settings.json"),
-            r#"{ "schema_version": 1, "backup": { "include_addons": true }, "from_the_future": [1, 2] }"#,
-        )
-        .unwrap();
+        let original = r#"{"schema_version":1,"backup":{"include_addons":true}}"#;
+        std::fs::write(tmp.path().join("settings.json"), original).unwrap();
+
         let store = store_in(tmp.path());
-        let s = store.get();
-        assert!(s.backup.include_addons);
+        assert!(store.get().backup.include_addons);
         assert!(
-            s.backup.on_game_exit,
-            "missing nested key falls back to default"
+            store.get().backup.on_game_exit,
+            "missing key falls back to default"
         );
         assert_eq!(
-            on_disk(tmp.path())["from_the_future"],
-            serde_json::json!([1, 2])
+            std::fs::read_to_string(tmp.path().join("settings.json")).unwrap(),
+            original
         );
     }
 
     #[test]
-    fn corrupt_file_is_quarantined_not_fatal() {
+    fn non_json_file_is_quarantined_not_fatal() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("settings.json"), b"{ not json").unwrap();
         let store = store_in(tmp.path());
@@ -275,13 +388,135 @@ mod tests {
         assert!(quarantined);
     }
 
+    /// Review case 1: unknown keys at any depth survive startup and saves.
+    #[test]
+    fn nested_unknown_keys_survive_load_and_save() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_settings(
+            tmp.path(),
+            json!({
+                "schema_version": 2,
+                "backup": { "keep_days": 90 },
+                "integrations": { "raiderio": { "enabled": true } },
+                "from_the_future": [1, 2]
+            }),
+        );
+
+        let store = store_in(tmp.path());
+        let mut s = store.get();
+        s.backup.include_addons = true;
+        store.update_from_user(s).unwrap();
+
+        let disk = on_disk(tmp.path());
+        assert_eq!(
+            disk["schema_version"], 2,
+            "newer version is never downgraded"
+        );
+        assert_eq!(disk["backup"]["keep_days"], 90);
+        assert_eq!(disk["backup"]["include_addons"], true);
+        assert_eq!(disk["integrations"]["raiderio"]["enabled"], true);
+        assert_eq!(disk["from_the_future"], json!([1, 2]));
+    }
+
+    /// Review case 2: a newer build changed a field's type. Only that field
+    /// falls back; the file isn't quarantined and install is kept.
+    #[test]
+    fn mistyped_field_falls_back_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_settings(
+            tmp.path(),
+            json!({
+                "schema_version": 2,
+                "install": install_json(),
+                "backup": { "schedule_hours": "daily", "include_addons": true }
+            }),
+        );
+
+        let store = store_in(tmp.path());
+        let s = store.get();
+        assert_eq!(s.install.unwrap().flavor, "_classic_beta_");
+        assert_eq!(s.backup.schedule_hours, Some(24));
+        assert!(s.backup.include_addons, "sibling of the bad field is kept");
+        assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], "daily");
+
+        // Saving an unrelated change still leaves the newer value alone.
+        let mut s = store.get();
+        s.integrations.github.enabled = true;
+        store.update_from_user(s).unwrap();
+        assert_eq!(on_disk(tmp.path())["backup"]["schedule_hours"], "daily");
+        assert_eq!(
+            on_disk(tmp.path())["integrations"]["github"]["enabled"],
+            true
+        );
+    }
+
+    /// Review case 3: a hand-edited out-of-range value falls back alone.
+    #[test]
+    fn invalid_values_fall_back_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_settings(
+            tmp.path(),
+            json!({
+                "schema_version": 1,
+                "install": install_json(),
+                "backup": { "schedule_hours": 200, "location": "relative/dir", "on_app_start": false }
+            }),
+        );
+
+        let s = store_in(tmp.path()).get();
+        assert!(s.install.is_some());
+        assert_eq!(s.backup.schedule_hours, Some(24));
+        assert_eq!(s.backup.location, None);
+        assert!(!s.backup.on_app_start);
+        assert!(
+            !std::fs::read_dir(tmp.path()).unwrap().any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("corrupt")),
+            "nothing quarantined"
+        );
+    }
+
+    #[test]
+    fn fixing_a_bad_value_writes_just_that_value() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_settings(
+            tmp.path(),
+            json!({ "schema_version": 1, "backup": { "schedule_hours": 200, "mystery": 1 } }),
+        );
+        let store = store_in(tmp.path());
+        let mut s = store.get();
+        s.backup.schedule_hours = Some(12);
+        store.update_from_user(s).unwrap();
+
+        let disk = on_disk(tmp.path());
+        assert_eq!(disk["backup"]["schedule_hours"], 12);
+        assert_eq!(disk["backup"]["mystery"], 1);
+    }
+
+    #[test]
+    fn removed_map_keys_are_removed_on_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(tmp.path());
+        let mut s = store.get();
+        s.ui.insert("backups.filter".into(), "auto".into());
+        store.update_from_user(s).unwrap();
+        assert_eq!(on_disk(tmp.path())["ui"]["backups.filter"], "auto");
+
+        let mut s = store.get();
+        s.ui.clear();
+        store.update_from_user(s).unwrap();
+        assert_eq!(on_disk(tmp.path())["ui"], json!({}));
+    }
+
     #[test]
     fn user_update_cannot_touch_backend_owned_fields() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store_in(tmp.path());
         let choice = InstallChoice {
             root: PathBuf::from("/games/wow"),
-            flavor: "_classic_".into(),
+            flavor: "_classic_beta_".into(),
         };
         store.update(|s| s.install = Some(choice.clone())).unwrap();
 
@@ -295,6 +530,7 @@ mod tests {
         assert_eq!(saved.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(saved.backup.include_addons);
         assert_eq!(on_disk(tmp.path())["backup"]["include_addons"], true);
+        assert_eq!(on_disk(tmp.path())["install"]["flavor"], "_classic_beta_");
     }
 
     #[test]
