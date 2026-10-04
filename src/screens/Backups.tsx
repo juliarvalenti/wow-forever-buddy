@@ -434,7 +434,7 @@ export function Backups({
   const [keys, setKeys] = useState<Keys>(new Set());
   const [mirror, setMirror] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const { detail } = useSnapshot(selected);
+  const { detail, error: detailError } = useSnapshot(selected);
   const running = game?.running ?? false;
 
   useEffect(() => {
@@ -583,7 +583,14 @@ export function Backups({
               </Button>
             </PanelHeader>
             <PanelBody>
-              {!detail && <p className="d-muted">Loading…</p>}
+              {detailError && (
+                <Callout tone="bad">
+                  <span>
+                    <b>This snapshot couldn't be opened.</b> {detailError}
+                  </span>
+                </Callout>
+              )}
+              {!detail && !detailError && <p className="d-muted">Loading…</p>}
               {detail && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <p className="d-muted">

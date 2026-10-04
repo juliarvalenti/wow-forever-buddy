@@ -30,10 +30,16 @@ export function useInstall() {
     setState(install ? { kind: "ok", install } : { kind: "none" }),
   );
 
+  /** Why the last search failed (not "found nothing", which is a report). */
+  const [detectError, setDetectError] = useState<string | null>(null);
+
   const detect = useCallback(async () => {
     setDetecting(true);
+    setDetectError(null);
     try {
       setReport(await commands.installDetect());
+    } catch (e) {
+      setDetectError(errorText(e));
     } finally {
       setDetecting(false);
     }
@@ -52,5 +58,5 @@ export function useInstall() {
     return typeof path === "string" ? path : null;
   }, []);
 
-  return { state, report, detecting, detect, choose, pick, refresh };
+  return { state, report, detecting, detectError, detect, choose, pick, refresh };
 }

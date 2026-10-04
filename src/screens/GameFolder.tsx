@@ -62,7 +62,7 @@ function InstallSummary({ install }: { install: Install }) {
 /** Finding the game: the current folder, detection with sources, the
  *  picker, and where we looked when nothing was found. */
 export function GameFolder({ install: inst }: { install: ReturnType<typeof useInstall> }) {
-  const { state, report, detecting, detect, choose, pick } = inst;
+  const { state, report, detecting, detectError, detect, choose, pick } = inst;
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<{ path: string; root: string } | null>(null);
 
@@ -77,8 +77,13 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
   };
 
   const chooseFolder = async () => {
-    const path = await pick();
-    if (path) await use(path);
+    setError(null);
+    try {
+      const path = await pick();
+      if (path) await use(path);
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   // First run: look straight away rather than show an empty screen.
@@ -91,8 +96,11 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
   }, [state.kind, detect]);
 
   const looked = report?.looked_in ?? [];
-  const notFound = state.kind !== "ok" && report != null && report.candidates.length === 0;
-  const looking = detecting || (state.kind === "none" && !report);
+  // A failed search leaves the same way out as finding nothing: pick by hand.
+  const notFound =
+    state.kind !== "ok" &&
+    ((report != null && report.candidates.length === 0) || (detectError != null && !detecting));
+  const looking = detecting || (state.kind === "none" && !report && !detectError);
   return (
     <Page>
       <PageHeader
@@ -128,6 +136,14 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
         </Panel>
       )}
 
+      {detectError && !detecting && (
+        <Callout tone="bad">
+          <span>
+            <b>Looking for the game didn't work.</b> You can still choose the folder yourself.{" "}
+            <span className="d-dim">({detectError})</span>
+          </span>
+        </Callout>
+      )}
       {error && <Callout tone="bad">{error}</Callout>}
       {state.kind === "invalid" && (
         <Callout tone="ember">
