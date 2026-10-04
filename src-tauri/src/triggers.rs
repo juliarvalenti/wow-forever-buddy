@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 
 use crate::backup::manifest::{Scope, SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
-use crate::backup::{Gc, SnapshotRequest, SnapshotScope};
+use crate::backup::{journal, Gc, SnapshotRequest, SnapshotScope};
 use crate::error::AppResult;
 use crate::state::AppCore;
 
@@ -74,7 +74,11 @@ pub fn run_auto_locked(
     if let Some(summary) = &created {
         on_created(summary);
         // Spec §5: prune after each *new* snapshot; GC itself is hourly.
-        store.prune(Utc::now(), &POLICY, Gc::Throttled)?;
+        // Never while an unreadable restore journal hides which snapshots a
+        // roll back needs: skip until the user resolves it.
+        if let Ok(held) = journal::held_snapshots(&core.paths.local_data_dir) {
+            store.prune(Utc::now(), &POLICY, Gc::Throttled, &held)?;
+        }
     }
     Ok(created)
 }
@@ -297,6 +301,20 @@ mod tests {
             .unwrap();
         assert!(!schedule_due(&s.core, in_two_hours).unwrap());
         assert!(schedule_due(&s.core, in_two_hours + chrono::Duration::hours(1)).unwrap());
+    }
+
+    /// Review item 1: with an unreadable restore journal the backup still
+    /// runs, but nothing is pruned.
+    #[test]
+    fn an_unreadable_journal_skips_pruning() {
+        let s = setup();
+        let dir = &s.core.paths.local_data_dir;
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join(journal::FILE_NAME), b"{ damaged").unwrap();
+        assert!(run_auto(&s.core, Trigger::GameExit, &|_| {})
+            .unwrap()
+            .is_some());
+        assert_eq!(s.core.db.get_meta("last_gc").unwrap(), None, "no prune ran");
     }
 
     /// Review item 3: the game-exit backup holds the job lock while it waits

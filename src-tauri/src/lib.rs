@@ -38,6 +38,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::backup_set_label,
             commands::backup::backup_set_pinned,
             commands::backup::backup_storage,
+            commands::restore::backup_restore_preview,
+            commands::restore::backup_restore,
+            commands::restore::backup_verify,
+            commands::restore::restore_journal_status,
+            commands::restore::restore_journal_resolve,
             commands::game::game_status,
             commands::settings::settings_get,
             commands::settings::settings_update,
@@ -53,6 +58,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             InstallChanged,
             commands::backup::BackupCreated,
             commands::backup::BackupProgress,
+            commands::restore::RestoreProgress,
+            commands::restore::RestoreCompleted,
             commands::game::GameStatusChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)

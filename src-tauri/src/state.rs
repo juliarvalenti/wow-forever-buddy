@@ -130,7 +130,6 @@ impl AppCore {
     }
 
     /// The write gate for game-file changes, with backups as its safety net.
-    #[allow(dead_code)] // first caller is restore (T9)
     pub fn write_gate(&self) -> AppResult<WriteGate> {
         Ok(WriteGate::new(
             self.game.clone(),
@@ -140,7 +139,6 @@ impl AppCore {
     }
 
     /// What a change to the active game folder writes into.
-    #[allow(dead_code)] // first caller is restore (T9)
     pub fn mutation_target(&self) -> AppResult<MutationTarget> {
         Ok(MutationTarget {
             game: self.active_game()?.root,

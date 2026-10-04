@@ -1,7 +1,9 @@
 //! Backups (spec §5): snapshots of the game's settings stored in a
 //! content-addressed blob store, described by manifests, indexed in SQLite.
 
+pub mod journal;
 pub mod manifest;
+pub mod restore;
 pub mod retention;
 pub mod store;
 pub mod tree;
@@ -376,7 +378,6 @@ impl BackupService {
         })
     }
 
-    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn manifest(&self, id: &str) -> AppResult<Manifest> {
         self.manifests.read(id)
     }
@@ -411,6 +412,7 @@ impl BackupService {
         now: chrono::DateTime<chrono::Utc>,
         policy: &Policy,
         gc: Gc,
+        held: &HashSet<String>,
     ) -> AppResult<PruneReport> {
         let _edit = self.edits.lock().expect("edit lock poisoned");
         // After a db quarantine the index may be incomplete; pruning from it
@@ -418,7 +420,8 @@ impl BackupService {
         self.reindex_if_flagged()?;
 
         let mut report = PruneReport::default();
-        for id in retention::expired(&self.list()?, now, policy) {
+        let expired = retention::expired(&self.list()?, now, policy);
+        for id in expired.into_iter().filter(|id| !held.contains(id)) {
             self.delete_unlocked(&id)?;
             report.pruned.push(id);
         }
@@ -429,7 +432,8 @@ impl BackupService {
         }
 
         if self.blobs.size_on_disk() > policy.budget_bytes {
-            let candidates = retention::budget_candidates(&self.list()?, policy);
+            let mut candidates = retention::budget_candidates(&self.list()?, policy);
+            candidates.retain(|id| !held.contains(id));
             for batch in candidates.chunks(5) {
                 for id in batch {
                     self.delete_unlocked(id)?;
@@ -523,7 +527,6 @@ impl BackupService {
         self.manifests.all_blob_refs()
     }
 
-    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn blobs(&self) -> &BlobStore {
         &self.blobs
     }
@@ -998,7 +1001,12 @@ mod tests {
 
         let report = s
             .service
-            .prune(chrono::Utc::now(), &retention::POLICY, Gc::Now)
+            .prune(
+                chrono::Utc::now(),
+                &retention::POLICY,
+                Gc::Now,
+                &HashSet::new(),
+            )
             .unwrap();
         assert_eq!(report.pruned, vec![old.id.clone()]);
         assert!(report.blobs_removed >= 1 && report.freed_bytes > 0.0);
@@ -1026,7 +1034,7 @@ mod tests {
 
         let report = s
             .service
-            .prune(chrono::Utc::now(), &tiny, Gc::Throttled)
+            .prune(chrono::Utc::now(), &tiny, Gc::Throttled, &HashSet::new())
             .unwrap();
         assert_eq!(report.pruned, [autos[0].id.clone(), autos[1].id.clone()]);
         assert!(
@@ -1066,7 +1074,12 @@ mod tests {
 
         let report = s
             .service
-            .prune(chrono::Utc::now(), &retention::POLICY, Gc::Now)
+            .prune(
+                chrono::Utc::now(),
+                &retention::POLICY,
+                Gc::Now,
+                &HashSet::new(),
+            )
             .unwrap();
         assert_eq!(report.pruned, vec![old.id.clone()]);
         let left: Vec<String> = s
@@ -1080,6 +1093,34 @@ mod tests {
         assert_eq!(s.db.get_meta(NEEDS_REINDEX).unwrap(), None, "flag cleared");
     }
 
+    /// Review item 1: snapshots an interrupted restore needs survive both
+    /// the time rules and the budget.
+    #[test]
+    fn held_snapshots_are_never_pruned() {
+        let s = setup();
+        let safety: Vec<_> = (0..5)
+            .map(|_| full(&s, Trigger::PreRestore).unwrap())
+            .collect();
+        for x in &safety {
+            backdate(&s, &x.id, 24 * 400);
+        }
+        let tiny = Policy {
+            budget_bytes: 1,
+            ..retention::POLICY
+        };
+        let held = HashSet::from([safety[0].id.clone()]);
+
+        let report = s
+            .service
+            .prune(chrono::Utc::now(), &tiny, Gc::Now, &held)
+            .unwrap();
+        assert_eq!(report.pruned, [safety[1].id.clone()], "the oldest is held");
+        assert!(s.service.manifest(&safety[0].id).is_ok());
+        for f in s.service.manifest(&safety[0].id).unwrap().files {
+            assert!(s.service.blobs().contains(&f.blake3), "and its blobs");
+        }
+    }
+
     /// Review item 2: GC runs at most hourly unless forced.
     #[test]
     fn gc_is_throttled_unless_forced() {
@@ -1088,7 +1129,7 @@ mod tests {
         let now = chrono::Utc::now();
         // First prune: nothing recorded yet, so GC is due.
         s.service
-            .prune(now, &retention::POLICY, Gc::Throttled)
+            .prune(now, &retention::POLICY, Gc::Throttled, &HashSet::new())
             .unwrap();
 
         // An orphan blob appears (e.g. its snapshot was deleted).
@@ -1098,19 +1139,22 @@ mod tests {
         let soon = now + chrono::Duration::minutes(10);
         let r = s
             .service
-            .prune(soon, &retention::POLICY, Gc::Throttled)
+            .prune(soon, &retention::POLICY, Gc::Throttled, &HashSet::new())
             .unwrap();
         assert_eq!(r.blobs_removed, 0, "throttled within the hour");
         assert!(s.service.blobs().contains(&orphan));
 
-        let forced = s.service.prune(soon, &retention::POLICY, Gc::Now).unwrap();
+        let forced = s
+            .service
+            .prune(soon, &retention::POLICY, Gc::Now, &HashSet::new())
+            .unwrap();
         assert_eq!(forced.blobs_removed, 1, "Prune now always collects");
 
         s.service.blobs().put(&orphan, b"orphan").unwrap();
         let later = soon + chrono::Duration::minutes(61);
         let r = s
             .service
-            .prune(later, &retention::POLICY, Gc::Throttled)
+            .prune(later, &retention::POLICY, Gc::Throttled, &HashSet::new())
             .unwrap();
         assert_eq!(r.blobs_removed, 1, "due again after an hour");
     }

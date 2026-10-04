@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
+use crate::backup::journal;
 use crate::backup::manifest::{SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
 use crate::backup::tree::SnapshotDetail;
@@ -114,13 +115,14 @@ pub fn backup_storage(state: State<'_, AppState>) -> AppResult<StorageInfo> {
 }
 
 /// Settings' "Prune now". Waits for any running backup or restore, because
-/// garbage collection must never overlap one.
+/// garbage collection must never overlap one. Keeps whatever an interrupted
+/// restore still needs, and refuses while its journal is unreadable.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
-    let _job = state.core.jobs.lock().expect("job lock poisoned");
-    state
-        .core
-        .backups()?
-        .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now)
+    let core = &state.core;
+    let _job = core.jobs.lock().expect("job lock poisoned");
+    let held = journal::held_snapshots(&core.paths.local_data_dir)?;
+    core.backups()?
+        .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now, &held)
 }

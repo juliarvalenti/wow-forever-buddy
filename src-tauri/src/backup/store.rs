@@ -78,7 +78,6 @@ impl BlobStore {
     }
 
     /// Reads a blob back and verifies it against its hash.
-    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn get(&self, hash: &str) -> AppResult<Vec<u8>> {
         let corrupt = || AppError::BackupCorrupt {
             files: vec![hash.to_string()],
