@@ -33,7 +33,7 @@ pub async fn backup_create(app: AppHandle, label: Option<String>) -> AppResult<S
 
         let mut last_sent = 0;
         let summary = core
-            .backups
+            .backups()?
             .create(
                 SnapshotRequest {
                     game: &game.root,
@@ -63,21 +63,24 @@ pub async fn backup_create(app: AppHandle, label: Option<String>) -> AppResult<S
 #[tauri::command]
 #[specta::specta]
 pub fn backup_list(state: State<'_, AppState>) -> AppResult<Vec<SnapshotSummary>> {
-    state.core.backups.list()
+    state.core.backups()?.list()
 }
 
 /// One snapshot, grouped by account, character and category for the restore panel.
 #[tauri::command]
 #[specta::specta]
 pub fn backup_get(state: State<'_, AppState>, id: String) -> AppResult<SnapshotDetail> {
-    state.core.backups.detail(&id)
+    state.core.backups()?.detail(&id)
 }
+
+// Delete, pin and label edit one manifest under the store's own short lock;
+// they don't take the job lock, so they never wait on a running backup (and
+// never block the main thread, where Tauri runs sync commands).
 
 #[tauri::command]
 #[specta::specta]
 pub fn backup_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    let _job = state.core.jobs.lock().expect("job lock poisoned");
-    state.core.backups.delete(&id)
+    state.core.backups()?.delete(&id)
 }
 
 #[tauri::command]
@@ -87,8 +90,7 @@ pub fn backup_set_pinned(
     id: String,
     pinned: bool,
 ) -> AppResult<SnapshotSummary> {
-    let _job = state.core.jobs.lock().expect("job lock poisoned");
-    state.core.backups.set_pinned(&id, pinned)
+    state.core.backups()?.set_pinned(&id, pinned)
 }
 
 #[tauri::command]
@@ -98,6 +100,5 @@ pub fn backup_set_label(
     id: String,
     label: Option<String>,
 ) -> AppResult<SnapshotSummary> {
-    let _job = state.core.jobs.lock().expect("job lock poisoned");
-    state.core.backups.set_label(&id, label)
+    state.core.backups()?.set_label(&id, label)
 }

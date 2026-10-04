@@ -116,6 +116,21 @@ impl Settings {
                     loc.display()
                 )));
             }
+            // Spec §6: never inside the game folder, or every full snapshot
+            // would capture the backup store itself.
+            if let Some(install) = &self.install {
+                let lower = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
+                let root = lower(&install.root);
+                let loc_str = lower(loc);
+                if loc_str == root
+                    || loc_str.starts_with(&format!("{}/", root.trim_end_matches('/')))
+                {
+                    return Err(AppError::InvalidSettings(format!(
+                        "backup location can't be inside the game folder: {}",
+                        loc.display()
+                    )));
+                }
+            }
         }
 
         let mut names: Vec<String> = Vec::new();
@@ -685,6 +700,39 @@ mod tests {
         assert_eq!(saved.install, Some(choice));
         assert_eq!(saved.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(on_disk(tmp.path())["install"]["flavor"], "_classic_beta_");
+    }
+
+    #[test]
+    fn backup_location_cannot_be_inside_the_game_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(tmp.path());
+        let root = tmp.path().join("World of Warcraft");
+        store
+            .update(|s| {
+                s.install = Some(InstallChoice {
+                    root: root.clone(),
+                    flavor: "_classic_beta_".into(),
+                })
+            })
+            .unwrap();
+
+        for inside in [
+            root.clone(),
+            root.join("_classic_beta_").join("WTF").join("bk"),
+        ] {
+            assert!(
+                matches!(
+                    store.apply_patch(patch(json!({ "backup": { "location": inside } }))),
+                    Err(AppError::InvalidSettings(_))
+                ),
+                "{inside:?}"
+            );
+        }
+        // A sibling whose name merely starts the same way is fine.
+        let sibling = tmp.path().join("World of Warcraft Backups");
+        assert!(store
+            .apply_patch(patch(json!({ "backup": { "location": sibling } })))
+            .is_ok());
     }
 
     #[test]

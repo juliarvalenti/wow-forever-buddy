@@ -239,7 +239,42 @@ impl ManifestDir {
         }
     }
 
-    /// Every readable manifest. Unreadable ones are skipped, not fatal.
+    /// Blob ids referenced by every manifest on disk, for GC. Strict where
+    /// `all()` is lenient: a manifest from a newer build (unknown variants,
+    /// new fields) still contributes its `files[].blake3` through a loose
+    /// JSON read, and if any manifest can't be read or isn't JSON at all, this
+    /// fails, so GC never deletes blobs a snapshot might still need.
+    pub fn all_blob_refs(&self) -> AppResult<std::collections::HashSet<String>> {
+        let mut refs = std::collections::HashSet::new();
+        for entry in std::fs::read_dir(&self.dir)? {
+            let path = entry?.path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let refuse = |why: &str| AppError::BackupCorrupt {
+                files: vec![format!(
+                    "{} ({why}); not collecting garbage",
+                    path.display()
+                )],
+            };
+            let bytes = std::fs::read(&path).map_err(|_| refuse("unreadable"))?;
+            let value: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|_| refuse("not valid JSON"))?;
+            let files = value["files"]
+                .as_array()
+                .ok_or_else(|| refuse("no file list"))?;
+            for file in files {
+                let hash = file["blake3"]
+                    .as_str()
+                    .ok_or_else(|| refuse("file without a hash"))?;
+                refs.insert(hash.to_string());
+            }
+        }
+        Ok(refs)
+    }
+
+    /// Every readable manifest. Unreadable ones are skipped, not fatal
+    /// (fine for listing; GC uses `all_blob_refs`).
     pub fn all(&self) -> AppResult<Vec<Manifest>> {
         let mut manifests = Vec::new();
         for entry in std::fs::read_dir(&self.dir)?.flatten() {

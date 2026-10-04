@@ -53,13 +53,19 @@ pub struct SnapshotRequest<'a> {
 /// Reports progress while files are captured: (done, total).
 pub type Progress<'a> = &'a mut dyn FnMut(u32, u32);
 
-/// The backup store. It does no locking of its own: callers run backup and
-/// restore work through `AppCore::jobs`, so they never overlap, and a
-/// restore's safety snapshot (taken inside the restore job) can't deadlock.
+/// The backup store. Long work (backups, restores) is serialized by the
+/// caller through `AppCore::jobs`, not here, so a restore's safety snapshot
+/// (taken inside the restore job) can't deadlock. Small edits to existing
+/// manifests take the store's own short `edits` lock.
 pub struct BackupService {
+    dir: PathBuf,
     blobs: BlobStore,
     manifests: ManifestDir,
     db: Db,
+    /// Guards read-modify-write of existing manifests (pin, label, delete,
+    /// and pruning in T8). Held for milliseconds, never across a backup, so
+    /// pinning while a backup runs doesn't wait.
+    edits: std::sync::Mutex<()>,
 }
 
 impl BackupService {
@@ -68,9 +74,11 @@ impl BackupService {
     /// recreated), the index is rebuilt from the manifests.
     pub fn open(backups_dir: &Path, db: Db) -> AppResult<Self> {
         let service = Self {
+            dir: backups_dir.to_path_buf(),
             blobs: BlobStore::open(backups_dir)?,
             manifests: ManifestDir::open(backups_dir)?,
             db,
+            edits: std::sync::Mutex::new(()),
         };
         let indexed: i64 = service
             .db
@@ -79,6 +87,11 @@ impl BackupService {
             service.reindex()?;
         }
         Ok(service)
+    }
+
+    /// The folder this store lives in.
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// Takes a snapshot. Returns `None` when an automatic full snapshot
@@ -329,6 +342,7 @@ impl BackupService {
 
     /// Removes a snapshot. Its blobs are freed by the next GC (T8).
     pub fn delete(&self, id: &str) -> AppResult<()> {
+        let _edit = self.edits.lock().expect("edit lock poisoned");
         self.manifests.read(id)?;
         self.manifests.delete(id)?;
         self.db.with_conn(|c| {
@@ -353,6 +367,7 @@ impl BackupService {
         id: &str,
         edit: impl FnOnce(&mut Manifest),
     ) -> AppResult<SnapshotSummary> {
+        let _edit = self.edits.lock().expect("edit lock poisoned");
         let mut manifest = self.manifests.read(id)?;
         edit(&mut manifest);
         self.manifests.write(&manifest)?;
@@ -363,12 +378,7 @@ impl BackupService {
     /// Blob ids referenced by any manifest (for GC, T8).
     #[allow(dead_code)] // first caller is GC (T8)
     pub fn referenced_blobs(&self) -> AppResult<HashSet<String>> {
-        Ok(self
-            .manifests
-            .all()?
-            .into_iter()
-            .flat_map(|m| m.files.into_iter().map(|f| f.blake3))
-            .collect())
+        self.manifests.all_blob_refs()
     }
 
     #[allow(dead_code)] // first production callers are GC (T8) and restore (T9)
@@ -769,6 +779,43 @@ mod tests {
         reopened.set_label(&snap.id, Some("   ".into())).unwrap();
         assert_eq!(reopened.list().unwrap()[0].label, None);
         assert!(reopened.set_label(&snap.id, Some("x".repeat(201))).is_err());
+    }
+
+    /// Review must-fix 2: GC must never drop blobs a snapshot still needs.
+    #[test]
+    fn gc_refs_survive_newer_manifests_and_refuse_unreadable_ones() {
+        let s = setup();
+        let snap = full(&s, Trigger::Manual).unwrap();
+        let manifest_path = s
+            .backups_dir
+            .join("snapshots")
+            .join(format!("{}.json", snap.id));
+        let all_refs = s.service.referenced_blobs().unwrap();
+        assert!(!all_refs.is_empty());
+
+        // A newer build wrote a trigger and field we don't know: listing skips
+        // it, but its blobs are still referenced.
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+        value["trigger"] = "weekly_auto".into();
+        value["version"] = 2.into();
+        std::fs::write(&manifest_path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(
+            s.service.manifests.all().unwrap().is_empty(),
+            "unparseable for listing"
+        );
+        assert_eq!(s.service.referenced_blobs().unwrap(), all_refs);
+
+        // A manifest we can't read at all: refuse to compute references, so
+        // GC can't run and delete anything.
+        std::fs::write(&manifest_path, b"{ truncated").unwrap();
+        assert!(matches!(
+            s.service.referenced_blobs(),
+            Err(AppError::BackupCorrupt { .. })
+        ));
+        for hash in &all_refs {
+            assert!(s.service.blobs().contains(hash));
+        }
     }
 
     #[test]

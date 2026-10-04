@@ -20,7 +20,9 @@ pub struct AppCore {
     pub db: Db,
     pub secrets: Arc<dyn SecretStore>,
     pub game: Arc<GameWatcher>,
-    pub backups: Arc<BackupService>,
+    /// Opened on demand (see `backups()`), so a backup drive that isn't
+    /// plugged in never stops the app from starting.
+    backups: Mutex<Option<Arc<BackupService>>>,
     /// Backup and restore work runs one job at a time (spec §5): hold this for
     /// the whole operation. A second caller waits its turn.
     pub jobs: Mutex<()>,
@@ -63,21 +65,45 @@ impl AppCore {
 
         let settings = SettingsStore::load(paths.settings_file())?;
         let db = Db::open(&paths.db_file())?;
-        let backups_dir = settings
-            .get()
-            .backup
-            .location
-            .unwrap_or_else(|| paths.local_data_dir.join("backups"));
-        let backups = Arc::new(BackupService::open(&backups_dir, db.clone())?);
-        Ok(Self {
+        let core = Self {
             paths,
             settings,
             db,
             secrets,
             game: Arc::new(GameWatcher::new(probe)),
-            backups,
+            backups: Mutex::new(None),
             jobs: Mutex::new(()),
-        })
+        };
+        // Open the store now if we can; if the drive is missing, commands
+        // report it and the app still starts.
+        let _ = core.backups();
+        Ok(core)
+    }
+
+    /// Where backups go: the configured location, or `<local data>/backups`.
+    pub fn backups_dir(&self) -> PathBuf {
+        self.settings
+            .get()
+            .backup
+            .location
+            .unwrap_or_else(|| self.paths.local_data_dir.join("backups"))
+    }
+
+    /// The backup store at the currently configured location, opened (or
+    /// re-opened after the location changed in Settings) on demand. Fails
+    /// with a clear message if the location isn't available, e.g. an
+    /// unplugged USB drive.
+    pub fn backups(&self) -> AppResult<Arc<BackupService>> {
+        let dir = self.backups_dir();
+        let mut slot = self.backups.lock().expect("backups lock poisoned");
+        if let Some(service) = slot.as_ref().filter(|s| s.dir() == dir) {
+            return Ok(service.clone());
+        }
+        let service = BackupService::open(&dir, self.db.clone())
+            .map_err(|e| AppError::Io(format!("backups unavailable: {} ({e})", dir.display())))?;
+        let service = Arc::new(service);
+        *slot = Some(service.clone());
+        Ok(service)
     }
 
     /// The configured game folder, validated now. Until T5 lands this reads
@@ -99,8 +125,12 @@ impl AppCore {
 
     /// The write gate for game-file changes, with backups as its safety net.
     #[allow(dead_code)] // first caller is restore (T9)
-    pub fn write_gate(&self) -> WriteGate {
-        WriteGate::new(self.game.clone(), self.backups.clone(), self.db.clone())
+    pub fn write_gate(&self) -> AppResult<WriteGate> {
+        Ok(WriteGate::new(
+            self.game.clone(),
+            self.backups()?,
+            self.db.clone(),
+        ))
     }
 
     /// What a change to the active game folder writes into.
@@ -156,5 +186,56 @@ mod tests {
 
         AppCore::new(paths).unwrap();
         assert!(!leftover.exists());
+    }
+
+    fn set_location(core: &AppCore, dir: &std::path::Path) {
+        core.settings
+            .update(|s| s.backup.location = Some(dir.to_path_buf()))
+            .unwrap();
+    }
+
+    /// Review must-fix 3: an unplugged backup drive never stops the app
+    /// from starting; backup commands report it, and it recovers when the
+    /// drive comes back.
+    #[test]
+    fn missing_backup_drive_does_not_block_startup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = AppPaths::under(&tmp.path().join("app"));
+        // A file where the drive's folder should be makes the location unusable.
+        let unplugged = tmp.path().join("E-drive");
+        std::fs::write(&unplugged, b"not a folder").unwrap();
+        {
+            let core = AppCore::new(paths.clone()).unwrap();
+            set_location(&core, &unplugged.join("WoWBackups"));
+        }
+
+        let core = AppCore::new(paths).expect("starts without the backup drive");
+        let err = core.backups().err().expect("store is unavailable");
+        assert!(
+            matches!(err, AppError::Io(ref m) if m.contains("backups unavailable")),
+            "{err:?}"
+        );
+
+        // The drive comes back.
+        std::fs::remove_file(&unplugged).unwrap();
+        std::fs::create_dir(&unplugged).unwrap();
+        assert!(core.backups().is_ok());
+    }
+
+    #[test]
+    fn changing_the_location_reopens_the_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = AppCore::new(AppPaths::under(&tmp.path().join("app"))).unwrap();
+        let first = core.backups().unwrap();
+        assert_eq!(first.dir(), core.paths.local_data_dir.join("backups"));
+
+        let elsewhere = tmp.path().join("Elsewhere");
+        set_location(&core, &elsewhere);
+        let second = core.backups().unwrap();
+        assert_eq!(second.dir(), elsewhere);
+        assert!(
+            Arc::ptr_eq(&second, &core.backups().unwrap()),
+            "reused while unchanged"
+        );
     }
 }
