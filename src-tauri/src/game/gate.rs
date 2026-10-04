@@ -359,16 +359,7 @@ mod tests {
         let s = setup();
         let outside = s.flavor.parent().unwrap().join("outside");
         std::fs::create_dir_all(&outside).unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&outside, s.flavor.join("WTF/Account/link")).unwrap();
-        #[cfg(windows)]
-        assert!(std::process::Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(s.flavor.join("WTF/Account/link"))
-            .arg(&outside)
-            .status()
-            .unwrap()
-            .success());
+        crate::test_support::link_dir(&outside, &s.flavor.join("WTF/Account/link"));
 
         let result = s.gate.begin(
             "macro_edit",
