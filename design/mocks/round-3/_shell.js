@@ -80,9 +80,11 @@
   const main = document.querySelector('main.main');
   const nav = NAV.map(n => n.group ? `<div class="nav-group">${n.group}</div>`
     : `<a class="nav-item ${n.id === page ? 'active' : ''} ${n.soon ? 'soon' : ''}" href="${n.href}" title="${n.label}">${icon(n.icon)}<span class="lbl">${n.label}</span>${n.soon ? '<span class="n">soon</span>' : n.n && wow !== 'nofolder' ? `<span class="n">${n.n}</span>` : ''}</a>`).join('');
-  const who = noAddon ? '' : ` · ${document.body.dataset.char || 'Thrandor'}`;
+  // The app only knows WowB.exe is running, not who is logged in (addon data lands at logout or /reload),
+  // so the character line is "last played", never a live claim.
+  const lastPlayed = noAddon ? '' : `<div class="st-row"><span class="okdot" style="background:transparent"></span><span class="st-t">Last played ${document.body.dataset.char || 'Thrandor'}</span></div>`;
   const wowRow = wow === 'running'
-    ? `<div class="st-row"><span class="live"></span><span class="st-t"><b>WoW is running</b>${who}</span></div>`
+    ? `<div class="st-row"><span class="live"></span><span class="st-t"><b>WoW is running</b></span></div>${lastPlayed}`
     : `<div class="st-row"><span class="okdot" style="background:#6a6358"></span><span class="st-t"><b>WoW is closed</b></span></div>`;
   const folderRow = wow === 'nofolder'
     ? `<div class="st-row"><span class="okdot" style="background:var(--ember-2)"></span><span class="st-t">Game folder not set</span></div>`
