@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Characters, no addon yet — WoW Forever Buddy (mock r3)</title>
+<title>Characters, no addon yet · WoW Forever Buddy (mock r3)</title>
 <link rel="stylesheet" href="_d.css">
 <style>
   /* v0.1: names + realm come from WTF\Account\<ACC>\<Realm>\<Char>; last played from folder mtime.
@@ -28,7 +28,7 @@
   .card { display: grid; grid-template-rows: 80px 34px auto; gap: 10px; padding: 12px 13px 12px; }
   .card .id { display: flex; gap: 12px; align-items: center; min-width: 0; }
   .card .id > div { min-width: 0; }
-  .card .nm { font: 700 15px/1.2 "Cinzel", serif; color: var(--chalk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .nm { font: 600 15.5px/1.2 "Geist", sans-serif; color: var(--chalk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card .cl { font-size: 11.5px; color: var(--soot); white-space: nowrap; }
   .card .loc { font-size: 11px; color: var(--soot); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* neutral portrait: stone slot with a plain silhouette, no class tint, no crest */
@@ -42,8 +42,8 @@
   .prog .lbl i { font-style: normal; color: #8f7d66; }
   .nobar { height: 6px; border-radius: 3px; border: 1px dashed rgba(205,191,169,.18); }
   .facts { display: grid; grid-template-columns: repeat(3, 1fr); padding-top: 9px; border-top: 1px solid rgba(0,0,0,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
-  .facts div { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); white-space: nowrap; }
-  .facts b { display: block; font: 500 13px "Geist", sans-serif; letter-spacing: 0; text-transform: none; color: #4f4a42; margin-top: 1px; }
+  .facts div { font-size: 11.5px; font-weight: 500; color: var(--soot); white-space: nowrap; }
+  .facts b { display: block; font: italic 500 12px "Geist", sans-serif; color: #5a544b; margin-top: 2px; }
 </style>
 </head>
 <body data-page="characters" data-wow="running" data-addon="none">
@@ -77,7 +77,7 @@
     <div class="panel card">
       <div class="id"><span class="blank"><span>${SIL}</span></span><div><div class="nm">${n}</div><div class="cl">Ashenvale</div><div class="loc">Last played ${lp}</div></div></div>
       <div class="prog"><div class="lbl"><span>Level &amp; experience</span><i>needs addon</i></div><div class="nobar"></div></div>
-      <div class="facts"><div>Gold<b>—</b></div><div>Satchels<b>—</b></div><div>Played<b>—</b></div></div>
+      <div class="facts"><div>Gold<b>n/a</b></div><div>Satchels<b>n/a</b></div><div>Played<b>n/a</b></div></div>
     </div>`).join('');
 </script>
 <script src="_shell.js"></script>
