@@ -1,18 +1,50 @@
-# Checks every PR and push to main on Windows (the real target) and macOS (where
-# development also happens). Releases are built separately by release.yml.
+# Checks Windows (the real target) and macOS (where development also happens).
+# Releases are built separately by release.yml.
+#
+# Kept cheap on purpose (private repo, Windows minutes bill 2x and macOS 10x):
+# - PRs run Windows only, and only when they touch the code where Windows-only
+#   bugs live (file IO, game detection, install, backup/restore) or the build.
+#   Everything else is covered by the reviewer's local macOS fmt/clippy/test.
+# - Pushes to main run Windows + macOS.
+# - A newer push cancels the run it replaces.
 name: CI
 
 on:
   pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/src/fsx/**"
+      - "src-tauri/src/game/**"
+      - "src-tauri/src/install/**"
+      - "src-tauri/src/backup/**"
+      - "src-tauri/src/restore/**"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/build.rs"
+      - "src-tauri/windows-app-manifest.xml"
+      - ".github/workflows/ci.yml"
   push:
     branches: [main]
+    paths-ignore:
+      - "design/**"
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # No debug info in test builds: much faster Windows compiles, smaller cache.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
   check:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["windows-latest","macos-latest"]') || fromJSON('["windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,9 +58,12 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Only main writes the cache, so PRs always restore a warm one instead of
+      # each branch saving its own copy.
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: npm ci
 
