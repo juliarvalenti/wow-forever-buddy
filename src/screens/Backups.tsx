@@ -16,6 +16,7 @@ import {
   Dialog,
   LiveDot,
   LockedAction,
+  Meter,
   Page,
   PageHeader,
   Panel,
@@ -377,7 +378,7 @@ export function Backups({
   /** A snapshot to open (e.g. "Open the safety copy"). */
   select?: string | null;
 }) {
-  const { list, error, progress, failed, backUpNow } = useBackups();
+  const { list, storage, error, progress, failed, backUpNow } = useBackups();
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<string | null>(select ?? null);
   const [scope, setScope] = useState<Scope>("characters");
@@ -445,6 +446,26 @@ export function Backups({
         </Callout>
       ) : null}
       {error && <Callout tone="bad">{error}</Callout>}
+
+      {storage && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 520 }}>
+          {/* Verbatim from the backend: it's generated from the real policy. */}
+          <p className="d-muted">{storage.retention_summary}</p>
+          {storage.budget_bytes != null && storage.used_bytes != null && (
+            <>
+              <Meter
+                fraction={storage.used_bytes / storage.budget_bytes}
+                over={storage.over_budget}
+              />
+              <p className="d-dim">
+                {bytes(storage.used_bytes)} of {bytes(storage.budget_bytes)}
+                {storage.over_budget &&
+                  ". Over budget: only manual, pinned and the newest few backups are left."}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       <Segmented<Filter>
         value={filter}

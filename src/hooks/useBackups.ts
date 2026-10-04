@@ -4,13 +4,16 @@ import {
   events,
   type SnapshotDetail,
   type SnapshotSummary,
+  type StorageInfo,
 } from "@/lib/bindings";
 import { errorText } from "@/lib/format";
 import { useEvent } from "./useEvent";
 
-/** The snapshot list, "Back up now" with progress, and the last failure. */
+/** The snapshot list, the storage meter and retention sentence, "Back up
+ *  now" with progress, and the last failure. */
 export function useBackups() {
   const [list, setList] = useState<SnapshotSummary[] | null>(null);
+  const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -23,6 +26,8 @@ export function useBackups() {
       },
       (e) => setError(errorText(e)),
     );
+    // Pruning runs after automatic backups, so this changes with the list.
+    commands.backupStorage().then(setStorage, () => setStorage(null));
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -46,7 +51,7 @@ export function useBackups() {
     [refresh],
   );
 
-  return { list, error, progress, failed, backUpNow, refresh };
+  return { list, storage, error, progress, failed, backUpNow, refresh };
 }
 
 /** One snapshot grouped by account, character and category, for the panel. */
