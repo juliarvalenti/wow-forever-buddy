@@ -7,6 +7,7 @@ mod fsx;
 mod game;
 mod install;
 mod secrets;
+mod startup;
 mod state;
 pub mod sv;
 #[cfg(test)]
@@ -54,6 +55,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::install::install_get,
             commands::install::install_set,
             commands::app::app_open_folder,
+            commands::app::startup_failure,
+            commands::app::startup_open_data_folder,
         ])
         .events(tauri_specta::collect_events![
             InstallChanged,
@@ -96,7 +99,14 @@ pub fn run() {
         .setup(move |app| {
             builder.mount_events(app);
             let paths = AppPaths::resolve(app.handle())?;
-            let core = AppCore::new(paths)?;
+            let core = match AppCore::new(paths.clone()) {
+                Ok(core) => core,
+                // Open the window anyway and explain; nothing else starts.
+                Err(e) => {
+                    app.manage(startup::StartupFailure::new(&paths, &e));
+                    return Ok(());
+                }
+            };
             let game = core.game.clone();
             app.manage(AppState { core });
 

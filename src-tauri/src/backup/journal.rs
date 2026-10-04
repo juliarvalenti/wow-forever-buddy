@@ -76,6 +76,36 @@ pub fn clear(dir: &Path) -> AppResult<()> {
     }
 }
 
+/// What the UI shows about interrupted restores.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecoveryStatus {
+    /// No interrupted restore.
+    None,
+    /// Roll back, finish or leave as is.
+    Pending { journal: Journal },
+    /// A journal exists but can't be read, so roll back and finish aren't
+    /// possible. `latest_safety` is the newest pre-restore snapshot, for
+    /// "Open the safety copy"; clearing the notice discards the journal.
+    Unreadable {
+        error: String,
+        latest_safety: Option<String>,
+    },
+}
+
+/// The recovery status of `dir`. `latest_safety` is only asked when the
+/// journal is unreadable.
+pub fn status(dir: &Path, latest_safety: impl FnOnce() -> Option<String>) -> RecoveryStatus {
+    match read(dir) {
+        Ok(None) => RecoveryStatus::None,
+        Ok(Some(journal)) => RecoveryStatus::Pending { journal },
+        Err(e) => RecoveryStatus::Unreadable {
+            error: e.to_string(),
+            latest_safety: latest_safety(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +161,41 @@ mod tests {
         write(tmp.path(), &journal).unwrap();
         let held = held_snapshots(tmp.path()).unwrap();
         assert_eq!(held, HashSet::from(["A".into(), "B".into(), "C".into()]));
+    }
+
+    #[test]
+    fn status_covers_none_pending_and_unreadable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let never = || -> Option<String> { panic!("only asked when unreadable") };
+        assert_eq!(status(tmp.path(), never), RecoveryStatus::None);
+
+        let journal = Journal {
+            source_snapshot: "A".into(),
+            original_pre_restore: "B".into(),
+            pre_restore_snapshot: "B".into(),
+            selection: RestoreSelection {
+                items: vec![ScopeItem::Everything],
+            },
+            mode: RestoreMode::Overlay,
+            flavor: "_classic_beta_".into(),
+            started_at: "2026-10-04T00:00:00Z".into(),
+            summary: "macros".into(),
+        };
+        write(tmp.path(), &journal).unwrap();
+        assert_eq!(
+            status(tmp.path(), never),
+            RecoveryStatus::Pending {
+                journal: journal.clone()
+            }
+        );
+
+        std::fs::write(tmp.path().join(FILE_NAME), b"{ damaged").unwrap();
+        let status = status(tmp.path(), || Some("SAFE".into()));
+        assert!(matches!(
+            &status,
+            RecoveryStatus::Unreadable { latest_safety: Some(id), .. } if id == "SAFE"
+        ));
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["kind"], "unreadable");
     }
 }

@@ -237,18 +237,25 @@ impl Restorer<'_> {
     /// snapshot the half-restored tree and replace the journal, so "roll
     /// back" could never reach the original state again. Only
     /// `roll_back`/`finish`/`discard` may proceed then.
+    ///
+    /// `confirmed_deletes` is the deletion list the user saw and confirmed in
+    /// the preview. If the run would delete anything else (say WoW wrote a new
+    /// file at logout after the preview), it's refused with
+    /// `DeletionsChanged` before any change, so a confirmed list is a
+    /// guarantee rather than a promise.
     pub fn run(
         &self,
         id: &str,
         selection: &RestoreSelection,
         mode: RestoreMode,
+        confirmed_deletes: &[RelPath],
         progress: RestoreProgress<'_>,
     ) -> AppResult<RestoreReport> {
         // An unreadable journal counts as pending too; `discard` clears it.
         if journal::read(self.journal_dir).map_or(true, |j| j.is_some()) {
             return Err(AppError::RestorePending);
         }
-        self.execute(id, selection, mode, None, progress)
+        self.execute(id, selection, mode, Some(confirmed_deletes), None, progress)
     }
 
     /// After a crash mid-restore: put back what was there before the user's
@@ -263,10 +270,13 @@ impl Restorer<'_> {
         };
         // The pre-restore snapshot is partial: restoring all of it writes the
         // original files back and removes the ones the restore created.
+        // No confirmation step here: roll back's deletions are by definition
+        // the files the original restore created.
         let report = self.execute(
             &journal.original_pre_restore,
             &everything,
             RestoreMode::Overlay,
+            None,
             Some(journal),
             progress,
         )?;
@@ -285,6 +295,7 @@ impl Restorer<'_> {
             &journal.source_snapshot,
             &journal.selection,
             journal.mode,
+            None,
             Some(journal),
             progress,
         )?;
@@ -308,6 +319,7 @@ impl Restorer<'_> {
         id: &str,
         selection: &RestoreSelection,
         mode: RestoreMode,
+        confirmed_deletes: Option<&[RelPath]>,
         resuming: Option<&Journal>,
         progress: RestoreProgress<'_>,
     ) -> AppResult<RestoreReport> {
@@ -325,6 +337,23 @@ impl Restorer<'_> {
             return Err(AppError::ReadOnly {
                 paths: resolved.read_only,
             });
+        }
+        if let Some(confirmed) = confirmed_deletes {
+            // Case-insensitive: folder casing can differ between preview and
+            // run on Windows.
+            let confirmed: HashSet<String> = confirmed
+                .iter()
+                .map(|p| p.as_string().to_lowercase())
+                .collect();
+            let unconfirmed: Vec<String> = resolved
+                .deletes
+                .iter()
+                .map(RelPath::as_string)
+                .filter(|p| !confirmed.contains(&p.to_lowercase()))
+                .collect();
+            if !unconfirmed.is_empty() {
+                return Err(AppError::DeletionsChanged { paths: unconfirmed });
+            }
         }
         if resolved.writes.is_empty() && resolved.deletes.is_empty() {
             return Ok(RestoreReport {
@@ -733,13 +762,25 @@ mod tests {
         plan(&manifest, &game.root, s, mode).unwrap()
     }
 
+    /// The deletions a user would confirm: the preview's list, as the UI
+    /// sends it.
+    fn confirmed(t: &T, id: &str, s: &RestoreSelection, mode: RestoreMode) -> Vec<RelPath> {
+        let game = t.core.active_game().unwrap();
+        let manifest = t.core.backups().unwrap().manifest(id).unwrap();
+        plan(&manifest, &game.root, s, mode)
+            .map(|p| p.delete.iter().map(|d| RelPath::new(d).unwrap()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Previews, then restores with that preview's deletions confirmed.
     fn restore(
         t: &T,
         id: &str,
         s: &RestoreSelection,
         mode: RestoreMode,
     ) -> AppResult<RestoreReport> {
-        with_restorer(&t.core, |r| r.run(id, s, mode, &mut |_, _| Ok(())))
+        let ok = confirmed(t, id, s, mode);
+        with_restorer(&t.core, |r| r.run(id, s, mode, &ok, &mut |_, _| Ok(())))
     }
 
     /// Every file under WTF, by relative path.
@@ -809,6 +850,70 @@ mod tests {
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn deletions_beyond_the_confirmed_list_are_refused() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t);
+        // The user previews and confirms the mirror deletions shown...
+        let ok = confirmed(&t, &id, &everything(), RestoreMode::Mirror);
+        assert_eq!(ok.len(), 1);
+        // ...then WoW writes a new file at logout, before Restore is clicked.
+        write(
+            &t,
+            &format!("{THRANDOR}/SavedVariables/FromLogout.lua"),
+            "X = 1\n",
+        );
+        let before = tree(&t);
+        let snapshots_before = snapshots(&t);
+
+        let err = with_restorer(&t.core, |r| {
+            r.run(&id, &everything(), RestoreMode::Mirror, &ok, &mut |_, _| {
+                Ok(())
+            })
+        })
+        .unwrap_err();
+        assert!(
+            matches!(&err, AppError::DeletionsChanged { paths }
+                if paths == &[format!("{THRANDOR}/SavedVariables/FromLogout.lua")]),
+            "{err}"
+        );
+        assert_eq!(tree(&t), before);
+        assert_eq!(snapshots(&t), snapshots_before);
+
+        // Confirmed paths match case-insensitively (Windows folder casing).
+        let shouting: Vec<RelPath> = confirmed(&t, &id, &everything(), RestoreMode::Mirror)
+            .iter()
+            .map(|p| RelPath::new(&p.as_string().to_uppercase()).unwrap())
+            .collect();
+        with_restorer(&t.core, |r| {
+            r.run(
+                &id,
+                &everything(),
+                RestoreMode::Mirror,
+                &shouting,
+                &mut |_, _| Ok(()),
+            )
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn overlay_of_a_full_snapshot_never_deletes() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t);
+        for s in [
+            everything(),
+            sel(vec![ScopeItem::Account {
+                account: "ACCOUNT1".into(),
+                categories: None,
+            }]),
+        ] {
+            assert!(preview(&t, &id, &s, RestoreMode::Overlay).delete.is_empty());
+        }
     }
 
     #[test]
@@ -1042,14 +1147,21 @@ mod tests {
 
     /// Runs a restore that "crashes" after its first change.
     fn interrupted(t: &T, id: &str) {
+        let ok = confirmed(t, id, &everything(), RestoreMode::Mirror);
         let err = with_restorer(&t.core, |r| {
-            r.run(id, &everything(), RestoreMode::Mirror, &mut |done, _| {
-                if done == 1 {
-                    Err(AppError::Io("simulated crash".into()))
-                } else {
-                    Ok(())
-                }
-            })
+            r.run(
+                id,
+                &everything(),
+                RestoreMode::Mirror,
+                &ok,
+                &mut |done, _| {
+                    if done == 1 {
+                        Err(AppError::Io("simulated crash".into()))
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
         })
         .unwrap_err();
         assert!(err.to_string().contains("simulated crash"));

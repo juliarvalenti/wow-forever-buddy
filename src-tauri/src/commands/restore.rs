@@ -2,12 +2,14 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
-use crate::backup::journal::{self, Journal};
+use crate::backup::journal::{self, RecoveryStatus};
+use crate::backup::manifest::Trigger;
 use crate::backup::restore::{
     self, with_restorer, RestoreMode, RestorePlan, RestoreReport, RestoreSelection, Restorer,
     VerifyReport,
 };
 use crate::error::{AppError, AppResult};
+use crate::fsx::relpath::RelPath;
 use crate::state::AppState;
 
 /// Emitted while a restore runs.
@@ -79,10 +81,12 @@ pub fn backup_restore_preview(
     restore::plan(&manifest, &game.root, &selection, mode.unwrap_or_default())
 }
 
-/// Restores `selection` from snapshot `id`. Fails with `GameRunning` while
-/// WoW runs (the UI waits for it to close, then the user confirms again),
-/// `ReadOnly` or `BackupCorrupt` before changing anything. Waits for any
-/// running backup or restore.
+/// Restores `selection` from snapshot `id`. `confirmed_deletes` is the
+/// preview's `delete` list the user confirmed. Fails before changing anything
+/// with `GameRunning` while WoW runs (the UI waits for it to close, then the
+/// user confirms again), `ReadOnly`, `BackupCorrupt`, `RestorePending`, or
+/// `DeletionsChanged` if it would remove a file not in `confirmed_deletes`.
+/// Waits for any running backup or restore.
 #[tauri::command]
 #[specta::specta]
 pub async fn backup_restore(
@@ -90,10 +94,11 @@ pub async fn backup_restore(
     id: String,
     selection: RestoreSelection,
     mode: Option<RestoreMode>,
+    confirmed_deletes: Vec<RelPath>,
 ) -> AppResult<RestoreReport> {
     let mode = mode.unwrap_or_default();
     restore_job(app, move |r, progress| {
-        r.run(&id, &selection, mode, progress)
+        r.run(&id, &selection, mode, &confirmed_deletes, progress)
     })
     .await
 }
@@ -110,11 +115,21 @@ pub fn backup_verify(state: State<'_, AppState>, id: String) -> AppResult<Verify
     Ok(restore::verify(&backups, &manifest))
 }
 
-/// The interrupted restore, if the app stopped in the middle of one.
+/// Whether a restore was interrupted, for the startup recovery dialog and the
+/// "restores locked" banner. `unreadable` carries the newest pre-restore
+/// safety snapshot for "Open the safety copy", since the journal can't say.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn restore_journal_status(state: State<'_, AppState>) -> AppResult<Option<Journal>> {
-    journal::read(&state.core.paths.local_data_dir)
+pub fn restore_journal_status(state: State<'_, AppState>) -> RecoveryStatus {
+    let core = &state.core;
+    journal::status(&core.paths.local_data_dir, || {
+        core.backups()
+            .and_then(|b| b.list())
+            .ok()?
+            .into_iter()
+            .find(|s| s.trigger == Trigger::PreRestore)
+            .map(|s| s.id)
+    })
 }
 
 /// Rolls back, finishes or discards an interrupted restore. Until one of

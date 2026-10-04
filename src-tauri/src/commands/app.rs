@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::config::paths::AppPaths;
 use crate::error::{AppError, AppResult};
 use crate::install;
+use crate::startup::StartupFailure;
 use crate::state::{AppCore, AppState};
 
 #[derive(Debug, Serialize, specta::Type)]
@@ -65,6 +66,27 @@ pub fn app_open_folder(
     }
     app.opener()
         .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| AppError::Io(e.to_string()))
+}
+
+/// Why the app couldn't start, or `null` when it started fine. The UI asks
+/// this first: in the failure case no other command has state to work with.
+#[tauri::command]
+#[specta::specta]
+pub fn startup_failure(app: AppHandle) -> Option<StartupFailure> {
+    app.try_state::<StartupFailure>().map(|s| s.inner().clone())
+}
+
+/// "Open data folder" on the startup error screen: the folder holding the
+/// file at fault. Works without `AppState`.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn startup_open_data_folder(app: AppHandle) -> AppResult<()> {
+    let failure = app
+        .try_state::<StartupFailure>()
+        .ok_or_else(|| AppError::NotFound("the app started normally".into()))?;
+    app.opener()
+        .open_path(failure.folder().to_string_lossy(), None::<&str>)
         .map_err(|e| AppError::Io(e.to_string()))
 }
 

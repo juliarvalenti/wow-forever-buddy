@@ -41,39 +41,26 @@ export const commands = {
 	 */
 	backupRestorePreview: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestorePlan>("backup_restore_preview", { id, selection, mode }),
 	/**
-	 *  Restores `selection` from snapshot `id`. Fails with `GameRunning` while
-	 *  WoW runs (the UI waits for it to close, then the user confirms again),
-	 *  `ReadOnly` or `BackupCorrupt` before changing anything. Waits for any
-	 *  running backup or restore.
+	 *  Restores `selection` from snapshot `id`. `confirmed_deletes` is the
+	 *  preview's `delete` list the user confirmed. Fails before changing anything
+	 *  with `GameRunning` while WoW runs (the UI waits for it to close, then the
+	 *  user confirms again), `ReadOnly`, `BackupCorrupt`, `RestorePending`, or
+	 *  `DeletionsChanged` if it would remove a file not in `confirmed_deletes`.
+	 *  Waits for any running backup or restore.
 	 */
-	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode }),
+	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null, confirmedDeletes: RelPath[]) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode, confirmedDeletes }),
 	/**
 	 *  Checks every stored copy in a snapshot against its checksum. Runs as a
 	 *  job, so a concurrent prune's GC can't remove blobs mid-check and make
 	 *  them look missing.
 	 */
 	backupVerify: (id: string) => __TAURI_INVOKE<VerifyReport>("backup_verify", { id }),
-	/**  The interrupted restore, if the app stopped in the middle of one. */
-	restoreJournalStatus: () => __TAURI_INVOKE<{
-	/**  The snapshot the user chose to restore. */
-	source_snapshot: string,
 	/**
-	 *  Taken before the user's restore changed anything. Rolling back always
-	 *  restores this one, even after an interrupted recovery.
+	 *  Whether a restore was interrupted, for the startup recovery dialog and the
+	 *  "restores locked" banner. `unreadable` carries the newest pre-restore
+	 *  safety snapshot for "Open the safety copy", since the journal can't say.
 	 */
-	original_pre_restore: string,
-	/**
-	 *  Taken before the latest attempt (the restore, or a recovery of it).
-	 *  Equal to `original_pre_restore` on the first attempt.
-	 */
-	pre_restore_snapshot: string,
-	selection: RestoreSelection,
-	mode: RestoreMode,
-	flavor: string,
-	started_at: string,
-	/**  The restore's one-line summary, for the recovery prompt. */
-	summary: string,
-} | null>("restore_journal_status"),
+	restoreJournalStatus: () => __TAURI_INVOKE<RecoveryStatus>("restore_journal_status"),
 	/**
 	 *  Rolls back, finishes or discards an interrupted restore. Until one of
 	 *  these succeeds, `backup_restore` is refused with `RestorePending`.
@@ -126,6 +113,23 @@ export const commands = {
 	 *  Rust, so the webview needs no opener permissions at all.
 	 */
 	appOpenFolder: (which: FolderTarget) => __TAURI_INVOKE<null>("app_open_folder", { which }),
+	/**
+	 *  Why the app couldn't start, or `null` when it started fine. The UI asks
+	 *  this first: in the failure case no other command has state to work with.
+	 */
+	startupFailure: () => __TAURI_INVOKE<{
+	problem: StartupProblem,
+	/**  The error, for "Error details" and "Copy error details". */
+	message: string,
+	paths: AppPaths,
+	/**  The file at fault, shown in red; `None` if it isn't one file. */
+	at_fault: string | null,
+} | null>("startup_failure"),
+	/**
+	 *  "Open data folder" on the startup error screen: the folder holding the
+	 *  file at fault. Works without `AppState`.
+	 */
+	startupOpenDataFolder: () => __TAURI_INVOKE<null>("startup_open_data_folder"),
 };
 
 /** Events */
@@ -180,7 +184,14 @@ export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind:
  *  A restore was interrupted; it must be rolled back, finished or
  *  discarded before another restore can start.
  */
-{ kind: "RestorePending" } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" } | 
+{ kind: "RestorePending" } | 
+/**
+ *  The restore would remove files the user didn't confirm (the folder
+ *  changed after the preview). Nothing was changed; preview again.
+ */
+{ kind: "DeletionsChanged"; detail: {
+	paths: string[],
+} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" } | 
 /**
  *  An export can't be saved there (inside the game or backup folder,
  *  or the folder doesn't exist).
@@ -479,6 +490,19 @@ export type PruneReport = {
 	over_budget: boolean,
 };
 
+/**  What the UI shows about interrupted restores. */
+export type RecoveryStatus = 
+/**  No interrupted restore. */
+{ kind: "none" } | 
+/**  Roll back, finish or leave as is. */
+{ kind: "pending"; journal: Journal } | 
+/**
+ *  A journal exists but can't be read, so roll back and finish aren't
+ *  possible. `latest_safety` is the newest pre-restore snapshot, for
+ *  "Open the safety copy"; clearing the notice discards the journal.
+ */
+{ kind: "unreadable"; error: string; latest_safety: string | null };
+
 /**
  *  A path relative to a base folder (usually the flavor dir) that can't name
  *  anything outside it (spec §4). Stored as components and written with `/`,
@@ -660,6 +684,24 @@ export type SnapshotSummary = {
 	total_bytes: number | null,
 	new_bytes: number | null,
 };
+
+export type StartupFailure = {
+	problem: StartupProblem,
+	/**  The error, for "Error details" and "Copy error details". */
+	message: string,
+	paths: AppPaths,
+	/**  The file at fault, shown in red; `None` if it isn't one file. */
+	at_fault: string | null,
+};
+
+/**  Which of the app's files is the problem, so the UI can mark it. */
+export type StartupProblem = 
+/**  `buddy.db`, e.g. written by a newer version of the app. */
+"database" | 
+/**  `settings.json`. */
+"settings" | 
+/**  Anything else, e.g. a data folder that can't be created. */
+"other";
 
 /**  The storage meter on the Backups screen. */
 export type StorageInfo = {

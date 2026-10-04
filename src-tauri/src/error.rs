@@ -41,6 +41,10 @@ pub enum AppError {
     /// discarded before another restore can start.
     #[error("an interrupted restore needs attention first")]
     RestorePending,
+    /// The restore would remove files the user didn't confirm (the folder
+    /// changed after the preview). Nothing was changed; preview again.
+    #[error("more files would be removed than you confirmed: {paths:?}")]
+    DeletionsChanged { paths: Vec<String> },
     #[error("secret store error: {0}")]
     Secret(String),
     #[error("database error: {0}")]
