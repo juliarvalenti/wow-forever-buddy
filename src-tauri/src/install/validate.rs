@@ -204,7 +204,7 @@ pub fn choose_flavor(install: &Install, requested: Option<&str>) -> AppResult<St
 mod tests {
     use super::*;
     use crate::fsx::relpath::LinkedFolder;
-    use crate::test_support::fixture_copy;
+    use crate::test_support::{fixture_copy, link_dir};
 
     #[test]
     fn scans_the_fixture_install() {
@@ -336,23 +336,6 @@ mod tests {
         // Only one has a WTF folder: that one.
         no_forever.flavors[1].has_wtf = false;
         assert_eq!(choose_flavor(&no_forever, None).unwrap(), "_classic_beta_");
-    }
-
-    /// A directory link: a symlink on Unix, a junction on Windows (what users
-    /// make with `mklink /J`, and it needs no admin rights).
-    fn link_dir(target: &Path, link: &Path) {
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(target, link).unwrap();
-        #[cfg(windows)]
-        {
-            let status = std::process::Command::new("cmd")
-                .args(["/C", "mklink", "/J"])
-                .arg(link)
-                .arg(target)
-                .output()
-                .unwrap();
-            assert!(status.status.success(), "mklink /J failed: {status:?}");
-        }
     }
 
     #[test]

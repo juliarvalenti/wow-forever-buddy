@@ -16,6 +16,33 @@ pub fn fixture_copy() -> (tempfile::TempDir, PathBuf) {
     (dir, root)
 }
 
+/// Makes `link` a directory link to `target`: a symlink on unix, a junction
+/// on Windows (what users make with `mklink /J`; needs no admin rights).
+pub fn link_dir(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        // cmd reads a '/' inside an argument as a switch: backslashes only.
+        let native = |p: &Path| p.to_string_lossy().replace('/', "\\");
+        let out = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(native(link))
+            .arg(native(target))
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "mklink /J failed: {out:?}");
+    }
+}
+
+/// Removes a link made by `link_dir`, leaving its target alone.
+pub fn unlink_dir(link: &Path) {
+    #[cfg(unix)]
+    std::fs::remove_file(link).unwrap();
+    #[cfg(windows)]
+    std::fs::remove_dir(link).unwrap();
+}
+
 fn copy_tree(from: &Path, to: &Path) {
     for entry in walkdir::WalkDir::new(from) {
         let entry = entry.expect("walk fixture");

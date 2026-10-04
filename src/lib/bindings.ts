@@ -172,6 +172,13 @@ export type InstallChoice = {
 	root: string,
 	/**  Flavor folder name, e.g. "_classic_beta_". */
 	flavor: string,
+	/**
+	 *  Where the flavor's linked folders (WTF, Interface/AddOns) pointed when
+	 *  the user confirmed this install. Recorded once by `install::set`; game
+	 *  paths are checked against these, so a link re-pointed later is refused
+	 *  instead of silently followed.
+	 */
+	links?: LinkedFolder[],
 };
 
 /**

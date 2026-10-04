@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 use crate::config::migrate::{self, CURRENT_SCHEMA_VERSION};
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::atomic_replace;
+use crate::fsx::relpath::LinkedFolder;
 
 /// settings.json (spec §6). Every field has a default, so a missing key never
 /// fails a load. Keys this build doesn't know are kept on disk by
@@ -46,6 +47,12 @@ pub struct InstallChoice {
     pub root: PathBuf,
     /// Flavor folder name, e.g. "_classic_beta_".
     pub flavor: String,
+    /// Where the flavor's linked folders (WTF, Interface/AddOns) pointed when
+    /// the user confirmed this install. Recorded once by `install::set`; game
+    /// paths are checked against these, so a link re-pointed later is refused
+    /// instead of silently followed.
+    #[serde(default)]
+    pub links: Vec<LinkedFolder>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -669,6 +676,7 @@ mod tests {
         let choice = InstallChoice {
             root: PathBuf::from("/games/wow"),
             flavor: "_classic_beta_".into(),
+            links: Vec::new(),
         };
         store.update(|s| s.install = Some(choice.clone())).unwrap();
         let saved = store
