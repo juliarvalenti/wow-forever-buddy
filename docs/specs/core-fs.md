@@ -1,6 +1,6 @@
 # Spec: core file-system layer
 
-Status: **PM-approved, awaiting Julia's sign-off** · Author: @coder · 2026-10-04 (rev 3: PM review notes + alignment with round-1/2 mocks)
+Status: **Approved** (PM + Julia, 2026-10-04) · Author: @coder · 2026-10-04 (rev 3: PM review notes + alignment with round-1/2 mocks)
 
 This covers the Rust layer under every feature that touches the game folder: finding the install, knowing when WoW is running, reading and writing files safely, backups and restore, app config, the local database, and secrets. Later features (companion-addon ingest, characters, AH, addon/macro management) get all their file access through this layer.
 
