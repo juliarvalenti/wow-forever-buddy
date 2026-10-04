@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Auction House — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* AH: market data you scanned = stone; your sales LEDGER = a record = parchment. */
+  .scanbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r); font-size: 12.5px; color: #e9d7bd;
+    background: linear-gradient(90deg, rgba(255,122,46,.11), rgba(255,122,46,.02) 60%); box-shadow: inset 0 0 0 1px rgba(255,140,60,.22), inset 0 2px 6px rgba(0,0,0,.4); }
+  .scanbar .stale { width: 8px; height: 8px; border-radius: 50%; background: var(--ember-2); box-shadow: 0 0 0 3px rgba(255,122,46,.15); flex-shrink: 0; }
+  .scanbar b { color: #fff0dc; font-weight: 600; }
+  .scanbar .sep { color: var(--soot); }
+  .scanbar .how { margin-left: auto; color: var(--ash); font-size: 11.5px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+  .row1 { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  .row2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+
+  /* price history */
+  .pick { display: flex; align-items: center; gap: 10px; padding: 12px 14px 0; }
+  .pick .field { flex: 1; max-width: 320px; }
+  .pick .seg { margin-left: auto; }
+  .itemhead { display: flex; align-items: flex-end; gap: 18px; padding: 12px 14px 4px; }
+  .itemhead .nm { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+  .itemhead .nm small { display: block; font-size: 11px; font-weight: 400; color: var(--soot); }
+  .fig { display: flex; flex-direction: column; }
+  .fig .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--soot); }
+  .fig .v { font-size: 17px; font-weight: 600; color: var(--chalk-hi); }
+  .fig .v .coins .s { font-size: 12px; }
+  .verdict { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .verdict .pill { height: 22px; font-size: 11.5px; }
+  .verdict small { font-size: 11px; color: var(--soot); }
+
+  .chartwrap { position: relative; padding: 4px 14px 6px; }
+  .chart { display: block; width: 100%; height: 190px; }
+  .chart .grid line { stroke: rgba(255,255,255,.06); }
+  .chart .axis text { fill: var(--soot); font: 10.5px "Geist", sans-serif; }
+  .chart .lmin { fill: none; stroke: #c9772a; stroke-width: 2; stroke-linejoin: round; }
+  .chart .lmed { fill: none; stroke: #5a8bd4; stroke-width: 2; stroke-dasharray: 5 4; stroke-linejoin: round; }
+  .chart .dmin { fill: #c9772a; stroke: #23211e; stroke-width: 2; }
+  .chart .dmed { fill: #5a8bd4; stroke: #23211e; stroke-width: 2; }
+  .chart .lab { font: 600 11px "Geist", sans-serif; fill: var(--chalk); }
+  .chart .lab tspan.m { fill: var(--ash); font-weight: 400; }
+  .chart .xh { stroke: rgba(255,255,255,.25); stroke-width: 1; }
+  .legend { display: flex; gap: 16px; font-size: 11.5px; color: var(--ash); padding: 0 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 16px; height: 0; border-top: 2px solid #c9772a; display: inline-block; }
+  .legend i.med { border-top: 2px dashed #5a8bd4; }
+  .legend .dotk { width: 8px; height: 8px; border-radius: 50%; background: var(--ash); }
+  .hfoot { display: flex; gap: 14px; padding: 8px 14px 12px; font-size: 11.5px; color: var(--soot); }
+  .hfoot b { color: var(--ash); font-weight: 500; }
+  .ctip { position: absolute; pointer-events: none; display: none; padding: 6px 9px; border-radius: 4px; font-size: 11.5px; line-height: 1.45; color: var(--chalk-hi); white-space: nowrap;
+    background: linear-gradient(180deg, #34312d, #22201d); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.08), 0 6px 14px rgba(0,0,0,.6); }
+  .ctip .d { color: var(--ash); }
+  .ctip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+
+  /* watchlist */
+  .watch li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 54px auto; gap: 9px; align-items: center; padding: 7px 14px; }
+  .watch li.on { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+  .watch .wn { min-width: 0; font-size: 12.5px; }
+  .watch .wn div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .watch .wn small { display: block; font-size: 10.5px; color: var(--soot); white-space: nowrap; }
+  .watch .wn small.old { color: var(--warn); }
+  .watch svg.sp { width: 54px; height: 20px; fill: none; stroke: var(--ash); stroke-width: 1.4; }
+  .watch .wp { text-align: right; font-size: 12.5px; white-space: nowrap; }
+  .watch .wp small { display: block; font-size: 10.5px; }
+
+  /* ledger (parchment) */
+  .ledger .totals { display: grid; grid-template-columns: repeat(4, 1fr); margin: 10px 0 6px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
+  .ledger .totals > div { padding: 7px 10px; min-width: 0; }
+  .ledger .totals > div + div { border-left: 1px solid rgba(58,38,22,.22); }
+  .ledger .totals .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .ledger .totals .v { font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .ledger .totals .net .v { font-family: "Cinzel", serif; font-weight: 700; }
+  .ledger table.grid { table-layout: auto; }
+  .ledger table.grid td { height: 38px; padding: 0 8px; }
+  .ledger table.grid th { padding: 8px 8px; }
+  .ledger table.grid td:first-child, .ledger table.grid th:first-child { padding-left: 0; }
+  .ledger table.grid td:last-child, .ledger table.grid th:last-child { padding-right: 0; }
+  .ledger td.when { line-height: 1.15; }
+  .ledger td.when .kind { display: block; font-size: 11px; }
+  .ledger td .it { display: inline-flex; align-items: center; gap: 8px; }
+  .ledger .ico { width: 20px; height: 20px; font-size: 9.5px; }
+  .kind { font: italic 12px Georgia, serif; }
+  .kind.sold { color: var(--ok-ink); } .kind.exp { color: var(--warn-ink); } .kind.buy { color: var(--ink-2); }
+  .ledger .foot { display: flex; gap: 22px; flex-wrap: wrap; padding: 10px 0 2px; font-size: 12px; color: var(--ink-2); }
+  .ledger .foot b { color: var(--ink); font-weight: 600; }
+  .ledger .foot .serif-i { color: var(--ink-3); }
+
+  /* sell suggestions */
+  .sugg li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 14px; }
+  .sugg .sn { min-width: 0; font-size: 12.5px; }
+  .sugg .sn small { display: block; font-size: 11px; color: var(--soot); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sugg .sv { text-align: right; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--chalk-hi); }
+  .sugg .sv small { display: block; font-size: 10.5px; font-weight: 500; margin-top: 1px; }
+  .conf { display: inline-flex; align-items: center; gap: 2px; }
+  .conf i:last-of-type { margin-right: 4px; }
+  .conf i { width: 4px; height: 9px; border-radius: 1px; background: rgba(255,255,255,.12); display: inline-block; }
+  .conf.hi i { background: var(--ok); } .conf.med i:nth-child(-n+2) { background: var(--ash); } .conf.lo i:first-child { background: var(--warn); }
+  .conf.hi { color: var(--ok); } .conf.med { color: var(--ash); } .conf.lo { color: var(--warn); }
+  .sugg li.hedge .sv { color: var(--ash); font-weight: 500; font-style: italic; }
+  .sugg li.hedge .sn > div { color: var(--ash); }
+  .sugg .why { grid-column: 2 / span 2; font-size: 11px; color: var(--warn); display: flex; align-items: center; gap: 5px; }
+  .sugg .why svg { width: 12px; height: 12px; }
+  .sugg-foot { padding: 9px 14px 12px; font-size: 11.5px; color: var(--soot); border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+
+  @media (max-width: 1100px) {
+    .row1 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+    .row2 { grid-template-columns: minmax(0, 1fr); }
+    .scanbar .how { display: none; }
+    .itemhead { gap: 12px; flex-wrap: wrap; }
+    .fig .v { font-size: 15px; }
+    .watch li { grid-template-columns: 24px minmax(0, 1fr) auto; }
+    .watch svg.sp { display: none; }
+    .chart { height: 170px; }
+  }
+</style>
+</head>
+<body data-page="ah" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Auction House</h1><div class="lede">Prices from your own in-game scans. Nothing is fetched online.</div></div>
+    <div class="actions"><button class="btn ghost"><i data-i="file"></i>Export CSV</button></div>
+  </header>
+
+  <div class="scanbar">
+    <span class="stale"></span>
+    <span><b>Last scan: 3 days ago</b> <span class="sep">·</span> 1 Oct, 21:04 by Coinpurse <span class="sep">·</span> 4,812 prices</span>
+    <span class="how"><i data-i="refresh" class="sm"></i><span>Scan in-game to refresh: press <b>Scan</b> at the Auction House; prices land here on logout.</span></span>
+  </div>
+
+  <section class="row1">
+    <article class="panel">
+      <div class="ph"><h2>Price history</h2><span class="meta">from your scans only</span></div>
+      <div class="pick">
+        <label class="field"><i data-i="search" class="sm" style="color:var(--soot)"></i><input value="Arcanite Bar" aria-label="Item"></label>
+        <div class="seg"><button>7 days</button><button class="on">30 days</button><button>All</button></div>
+      </div>
+      <div class="itemhead">
+        <div class="nm" data-tt="arcanite"><span class="ico lg q-uncommon"><b>A</b></span><div class="q-uncommon">Arcanite Bar<small>Trade goods</small></div></div>
+        <div class="fig"><span class="k">Lowest buyout</span><span class="v"><span class="coins"><span class="g">36</span><span class="s">40</span></span></span></div>
+        <div class="fig"><span class="k">30-day median</span><span class="v"><span class="coins"><span class="g">41</span><span class="s">10</span></span></span></div>
+        <div class="verdict"><span class="pill ok"><i data-i="trend" class="sm" style="transform:scaleY(-1)"></i>Cheap · 11% under usual</span><small>vs your 30-day median</small></div>
+      </div>
+      <div class="legend"><span><i></i>Lowest buyout</span><span><i class="med"></i>Median</span><span><span class="dotk"></span>Each dot is one of your scans</span></div>
+      <div class="chartwrap">
+        <svg class="chart" id="chart" viewBox="0 0 640 190" preserveAspectRatio="none"></svg>
+        <div class="ctip" id="ctip"></div>
+      </div>
+      <div class="hfoot"><span>Seen <b>12 times</b> in 30 days</span><span>Last seen <b>3 days ago</b></span><span>Typical listing <b>84 auctions</b></span></div>
+    </article>
+
+    <article class="panel">
+      <div class="ph"><h2>Watchlist</h2><a class="link">Edit</a></div>
+      <ul class="watch rows">
+        <li class="on" data-tt="arcanite" data-pin><span class="ico q-uncommon"><b>A</b></span><div class="wn"><div class="q-uncommon">Arcanite Bar</div><small>12 scans · last 3d ago</small></div><svg class="sp" viewBox="0 0 54 20"><polyline points="0,4 6,5 12,3 17,8 22,9 28,10 33,7 38,12 43,14 48,12 54,16"/></svg><div class="wp"><span class="coins"><span class="g">36</span><span class="s">40</span></span><small class="up">−6% · cheap</small></div></li>
+        <li data-tt="runecloth"><span class="ico q-common"><b>R</b></span><div class="wn"><div class="q-common">Runecloth</div><small>31 scans · last 3d ago</small></div><svg class="sp" viewBox="0 0 54 20"><polyline points="0,12 6,11 12,12 17,10 22,11 28,9 33,10 38,8 43,9 48,7 54,8"/></svg><div class="wp"><span class="coins"><span class="g">1</span><span class="s">12</span></span><small class="dim">+4%</small></div></li>
+        <li data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><div class="wn"><div class="q-uncommon">Black Lotus</div><small>4 scans · last 3d ago</small></div><svg class="sp" viewBox="0 0 54 20"><polyline points="0,14 18,11 36,12 54,5"/></svg><div class="wp"><span class="coins"><span class="g">82</span></span><small class="dim">+9%</small></div></li>
+        <li data-tt="potion"><span class="ico q-common"><b>P</b></span><div class="wn"><div class="q-common">Major Healing Potion</div><small>18 scans · last 3d ago</small></div><svg class="sp" viewBox="0 0 54 20"><polyline points="0,9 6,10 12,9 17,10 22,11 28,10 33,10 38,11 43,10 48,11 54,11"/></svg><div class="wp"><span class="coins"><span class="g">1</span><span class="s">85</span></span><small class="dim">−2%</small></div></li>
+        <li data-tt="flask"><span class="ico q-common"><b>F</b></span><div class="wn"><div class="q-common">Flask of the Titans</div><small class="old">6 scans · last 12d ago</small></div><svg class="sp" viewBox="0 0 54 20"><polyline points="0,10 11,8 22,9 33,7 44,8 54,6"/></svg><div class="wp"><span class="coins"><span class="g">64</span></span><small class="dim">+3%</small></div></li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="row2">
+    <article class="parchment ledger">
+      <div class="ph"><h2>Sales ledger</h2><span class="meta">Last 14 days · from Coinpurse's mailbox</span></div>
+      <div class="pb ruled">
+        <div class="totals">
+          <div><div class="k">Income</div><div class="v up">+<span class="coins"><span class="g">766</span></span></div></div>
+          <div><div class="k">Spent</div><div class="v down">−<span class="coins"><span class="g">164</span></span></div></div>
+          <div><div class="k">AH cut &amp; deposits</div><div class="v down">−<span class="coins"><span class="g">41</span><span class="s">20</span></span></div></div>
+          <div class="net"><div class="k">Net profit</div><div class="v up">+<span class="coins"><span class="g">560</span><span class="s">80</span></span></div></div>
+        </div>
+        <table class="grid">
+          <thead><tr><th>When</th><th>Item</th><th class="r">Qty</th><th class="r">Each</th><th class="r">Cut / deposit</th><th class="r">Net</th></tr></thead>
+          <tbody>
+            <tr><td class="when">3 Oct<span class="kind sold">Sold</span></td><td><span class="it" data-tt="arcanite"><span class="ico q-uncommon"><b>A</b></span><span class="q-uncommon">Arcanite Bar</span></span></td><td class="r">12</td><td class="r"><span class="coins"><span class="g">40</span></span></td><td class="r dim">−24g</td><td class="r up">+456g</td></tr>
+            <tr><td class="when">3 Oct<span class="kind sold">Sold</span></td><td><span class="it" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></span></td><td class="r">100</td><td class="r"><span class="coins"><span class="g">1</span><span class="s">10</span></span></td><td class="r dim">−5g 50s</td><td class="r up">+104g 50s</td></tr>
+            <tr><td class="when">2 Oct<span class="kind exp">Expired</span></td><td><span class="it" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><span class="q-uncommon">Black Lotus</span></span></td><td class="r">1</td><td class="r dim">listed 95g</td><td class="r dim">−2g 40s</td><td class="r down">−2g 40s</td></tr>
+            <tr><td class="when">2 Oct<span class="kind buy">Bought</span></td><td><span class="it" data-tt="thorium"><span class="ico q-common"><b>T</b></span><span class="q-common">Thorium Bar</span></span></td><td class="r">40</td><td class="r"><span class="coins"><span class="g">2</span><span class="s">15</span></span></td><td class="r dim">—</td><td class="r down">−86g</td></tr>
+            <tr><td class="when">30 Sep<span class="kind sold">Sold</span></td><td><span class="it" data-tt="potion"><span class="ico q-common"><b>P</b></span><span class="q-common">Major Healing Potion</span></span></td><td class="r">20</td><td class="r"><span class="coins"><span class="g">2</span></span></td><td class="r dim">−2g</td><td class="r up">+38g</td></tr>
+            <tr><td class="when">29 Sep<span class="kind sold">Sold</span></td><td><span class="it" data-tt="flask"><span class="ico q-common"><b>F</b></span><span class="q-common">Flask of the Titans</span></span></td><td class="r">2</td><td class="r"><span class="coins"><span class="g">68</span></span></td><td class="r dim">−6g 80s</td><td class="r up">+129g 20s</td></tr>
+            <tr><td class="when">28 Sep<span class="kind exp">Expired</span></td><td><span class="it" data-tt="orb"><span class="ico q-uncommon"><b>O</b></span><span class="q-uncommon">Righteous Orb</span></span></td><td class="r">5</td><td class="r dim">listed 4g</td><td class="r dim">−50s</td><td class="r down">−50s</td></tr>
+            <tr><td class="when">27 Sep<span class="kind buy">Bought</span></td><td><span class="it" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><span class="q-uncommon">Black Lotus</span></span></td><td class="r">1</td><td class="r"><span class="coins"><span class="g">78</span></span></td><td class="r dim">—</td><td class="r down">−78g</td></tr>
+          </tbody>
+        </table>
+        <div class="foot">
+          <span class="serif-i">Best sellers</span>
+          <span><b>Arcanite Bar</b> 480g</span><span><b>Flask of the Titans</b> 136g</span><span><b>Runecloth</b> 110g</span>
+          <span style="margin-left:auto"><b>2</b> listings expired <span class="serif-i">(−2g 90s in deposits)</span></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="ph"><h2>Worth selling</h2><span class="meta">on your alts · over 50g</span></div>
+      <ul class="sugg rows">
+        <li data-tt="arcanite"><span class="ico q-uncommon"><b>A</b></span><div class="sn"><div class="q-uncommon">Arcanite Bar ×24</div><small>Coinpurse · bank</small></div><div class="sv">≈ 874g<small class="conf hi"><i></i><i></i><i></i>sure</small></div></li>
+        <li data-tt="runecloth"><span class="ico q-common"><b>R</b></span><div class="sn"><div class="q-common">Runecloth ×340</div><small>Coinpurse · bank · +112 on 3 alts</small></div><div class="sv">≈ 380g<small class="conf hi"><i></i><i></i><i></i>sure</small></div></li>
+        <li class="hedge" data-tt="lotus"><span class="ico q-uncommon"><b>B</b></span><div class="sn"><div>Black Lotus ×1</div><small>Velyra · bank</small></div><div class="sv">~82g?<small class="conf lo"><i></i><i></i><i></i>rough</small></div>
+          <div class="why"><i data-i="alert"></i>Only 4 sightings, so the price swings a lot. Check before listing.</div></li>
+        <li data-tt="essence"><span class="ico q-common"><b>E</b></span><div class="sn"><div class="q-common">Essence of Undeath ×18</div><small>Thrandor · satchels</small></div><div class="sv">≈ 61g<small class="conf med"><i></i><i></i><i></i>fair</small></div></li>
+        <li class="hedge" data-tt="orb"><span class="ico q-uncommon"><b>O</b></span><div class="sn"><div>Righteous Orb ×14</div><small>Thrandor · bank</small></div><div class="sv">~56g?<small class="conf lo"><i></i><i></i><i></i>rough</small></div>
+          <div class="why"><i data-i="clock"></i>Last seen 12 days ago, so the price may be stale.</div></li>
+      </ul>
+      <div class="sugg-foot">Value = what you carry × your last scanned lowest buyout. Soulbound items are skipped.</div>
+    </article>
+  </section>
+</main>
+<script>
+  const C = (g, s, c) => `<span class="coins">${g ? `<span class="g">${g}</span>` : ''}${s ? `<span class="s">${s}</span>` : ''}${c ? `<span class="c">${c}</span>` : ''}</span>`;
+  window.EXTRA_ITEMS = {
+    arcanite: { q: 'uncommon', n: 'Arcanite Bar', lines: ['Max Stack: 20'], sell: C(0, 10), src: 'Your last scan: 36g 40s each · seen 12 times' },
+    lotus: { q: 'uncommon', n: 'Black Lotus', lines: ['Max Stack: 20', ['y', 'Requires Herbalism (300)']], src: 'Last scanned: 82g · seen 4 times' },
+    thorium: { q: 'common', n: 'Thorium Bar', lines: ['Max Stack: 20'], sell: C(0, 6), src: 'Last scanned: 2g 15s · seen 14 times' },
+    essence: { q: 'common', n: 'Essence of Undeath', lines: ['Max Stack: 10'], sell: C(0, 50), src: 'Last scanned: 3g 40s · seen 8 times' },
+  };
+</script>
+<script>
+  // price history: irregular scans over 30 days (day index 0 = 4 Sep, 30 = 4 Oct)
+  const S = [
+    [1, 44.0, 46.0, '5 Sep'], [3, 43.5, 45.8, '7 Sep'], [6, 45.0, 46.5, '10 Sep'], [8, 42.0, 45.0, '12 Sep'],
+    [10, 41.0, 44.8, '14 Sep'], [13, 40.5, 44.0, '17 Sep'], [15, 42.6, 43.5, '19 Sep'], [18, 39.8, 42.6, '22 Sep'],
+    [20, 38.4, 42.0, '24 Sep'], [22, 39.5, 41.8, '26 Sep'], [24, 37.9, 41.4, '28 Sep'], [27, 36.4, 41.1, '1 Oct'],
+  ];
+  const W = 640, H = 190, L = 34, R = 96, T = 10, B = 24;
+  const x = d => L + (d / 30) * (W - L - R), y = v => T + (1 - (v - 34) / (48 - 34)) * (H - T - B);
+  const g = (v) => { const gg = Math.floor(v), s = Math.round((v - gg) * 100); return `${gg}g${s ? ' ' + s + 's' : ''}`; };
+  let svg = '<g class="grid">';
+  [36, 40, 44, 48].forEach(v => { svg += `<line x1="${L}" x2="${W - R + 4}" y1="${y(v)}" y2="${y(v)}"/>`; });
+  svg += '</g><g class="axis">';
+  [36, 40, 44, 48].forEach(v => { svg += `<text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}g</text>`; });
+  [[0, '4 Sep'], [7, '11 Sep'], [14, '18 Sep'], [21, '25 Sep'], [30, '4 Oct']].forEach(([d, t]) => { svg += `<text x="${x(d)}" y="${H - 6}" text-anchor="middle">${t}</text>`; });
+  svg += '</g>';
+  svg += `<polyline class="lmed" points="${S.map(s => `${x(s[0])},${y(s[2])}`).join(' ')}"/>`;
+  svg += `<polyline class="lmin" points="${S.map(s => `${x(s[0])},${y(s[1])}`).join(' ')}"/>`;
+  svg += S.map(s => `<circle class="dmed" cx="${x(s[0])}" cy="${y(s[2])}" r="3.5"/>`).join('');
+  svg += S.map(s => `<circle class="dmin" cx="${x(s[0])}" cy="${y(s[1])}" r="4"/>`).join('');
+  const last = S[S.length - 1];
+  svg += `<text class="lab" x="${x(last[0]) + 8}" y="${y(last[2]) + 4}">Median <tspan class="m">41g 10s</tspan></text>`;
+  svg += `<text class="lab" x="${x(last[0]) + 8}" y="${y(last[1]) + 4}">Lowest <tspan class="m">36g 40s</tspan></text>`;
+  svg += `<line class="xh" id="xh" y1="${T}" y2="${H - B}" x1="-10" x2="-10"/>`;
+  svg += `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" id="hit"/>`;
+  const chart = document.getElementById('chart');
+  chart.innerHTML = svg;
+  const tip = document.getElementById('ctip'), xh = document.getElementById('xh');
+  chart.addEventListener('mousemove', e => {
+    const r = chart.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
+    let best = S[0]; S.forEach(s => { if (Math.abs(x(s[0]) - px) < Math.abs(x(best[0]) - px)) best = s; });
+    xh.setAttribute('x1', x(best[0])); xh.setAttribute('x2', x(best[0]));
+    tip.innerHTML = `<div class="d">Scan · ${best[3]}</div><div><span class="sw" style="background:#c9772a"></span>Lowest ${g(best[1])}</div><div><span class="sw" style="background:#5a8bd4"></span>Median ${g(best[2])}</div>`;
+    tip.style.display = 'block';
+    const cx = x(best[0]) / W * r.width + 14;
+    tip.style.left = Math.min(cx + 10, r.width - 130) + 'px'; tip.style.top = '20px';
+  });
+  chart.addEventListener('mouseleave', () => { tip.style.display = 'none'; xh.setAttribute('x1', -10); xh.setAttribute('x2', -10); });
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>

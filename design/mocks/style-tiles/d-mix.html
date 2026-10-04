@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Style tile D · Mix</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  /* D · MIX — Forge is the frame (stone hall, leather sidebar, one bronze action, ember = live).
+     Ledger parchment is the soul: every RECORD (last adventure, recaps, the Ledger, character sheets)
+     is a parchment page, carried with the red ribbon + wax seal. Tooltip glass on every item hover. */
+  :root {
+    --chalk: #ddd5c7; --ash: #9a9183; --soot: #6a6358;
+    --ember: #ff7a2e; --ember-2: #ffb15c;
+    --bronze-hi: #c9a26a; --bronze: #8a6a3e; --bronze-lo: #4e3a20;
+    --hide: #3b2a1e; --hide-2: #2a1d14; --stitch: rgba(214, 184, 134, 0.30);
+    --paper: #eadcb8; --paper-2: #e0cda2; --ink: #3a2616; --ink-2: #6e5537; --ink-3: #9a8162;
+    --rule: rgba(80, 110, 160, 0.15); --margin: rgba(170, 40, 30, 0.35); --wax: #8e1a16;
+    --grit: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .32 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    --mottle: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='4' seed='9'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .95  0 0 0 0 .85  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23m)'/></svg>");
+    --hidegrain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='h'><feTurbulence type='turbulence' baseFrequency='.6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .4 0'/></filter><rect width='100%' height='100%' filter='url(%23h)'/></svg>");
+    --fiber: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .22  0 0 0 0 .1  0 0 0 .16 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    --stain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='.008' numOctaves='3' seed='4'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .3  0 0 0 0 .12  0 0 0 .55 -.18'/></filter><rect width='100%' height='100%' filter='url(%23s)'/></svg>");
+  }
+  body { color: var(--chalk); background: #121110; }
+  .titlebar { background: #0b0a09; color: var(--soot); border-bottom: 1px solid #000; }
+  .tb-crest { color: var(--soot); }
+
+  /* ---- FORGE frame ---- */
+  .side { background: var(--hidegrain), linear-gradient(90deg, var(--hide-2), var(--hide) 60%, #31231a); color: #cdbfa9; box-shadow: 1px 0 0 #000, 6px 0 14px -4px rgba(0,0,0,.7); }
+  .side::after { content: ""; position: absolute; inset: 6px; border: 1px dashed var(--stitch); border-radius: 6px; pointer-events: none; }
+  .brand .mark { color: #2a1b12; background: radial-gradient(circle at 40% 35%, #e7d3a7, #b79c6c 70%, #7d6644); border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,.6), inset 0 -2px 3px rgba(0,0,0,.3); }
+  .brand .name { font-family: "Cinzel", serif; font-weight: 700; color: #e5d2a8; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.06); }
+  .brand .sub { color: #8f7d66; letter-spacing: .1em; }
+  .nav-group { color: #7d6c58; }
+  .nav-item { color: #cdbfa9; } .nav-item svg { color: #8f7d66; } .nav-item .n, .nav-item.soon { color: #7d6c58; }
+  .nav-item:hover { background: rgba(0,0,0,.2); }
+  /* ribbon bookmark (from Ledger) */
+  .nav-item.active { color: #fbe9c6; margin-left: -10px; padding-left: 20px; border-radius: 0;
+    background: linear-gradient(180deg, #a3231c, #7a1410); clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 50%, 100% 100%, 0 100%);
+    box-shadow: inset 0 1px 0 rgba(255,180,160,.25), inset 0 -2px 0 rgba(0,0,0,.3); text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+  .nav-item.active svg { color: #fbe9c6; } .nav-item.active .n { display: none; }
+  .status { background: rgba(0,0,0,.3); box-shadow: inset 0 2px 4px rgba(0,0,0,.6); color: #a8977f; }
+  .status b { color: #f1e4cf; font-weight: 500; }
+  .live { background: var(--ember-2); box-shadow: 0 0 0 2px rgba(255,122,46,.25), 0 0 10px var(--ember); animation: smoulder 2.2s ease-in-out infinite; }
+  @keyframes smoulder { 50% { box-shadow: 0 0 0 3px rgba(255,122,46,.15), 0 0 16px var(--ember); } }
+  .okdot { background: #8faa6a; }
+
+  .main { background: var(--grit), var(--mottle), radial-gradient(700px 500px at 0% 105%, rgba(255,110,40,.13), transparent 70%), radial-gradient(900px 500px at 90% -20%, rgba(150,165,190,.06), transparent 60%), linear-gradient(180deg, #1c1b19, #141311); }
+  .main::after { content: ""; position: fixed; inset: 32px 0 0 216px; pointer-events: none; box-shadow: inset 0 0 120px rgba(0,0,0,.6); }
+  .head { padding-bottom: 14px; }
+  .head::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(180deg, #000, rgba(255,255,255,.05)); }
+  .head h1 { font-family: "Cinzel", serif; font-weight: 700; font-size: 24px; color: #d8cfc0; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.07); }
+  .lede { color: var(--ash); }
+  .btn.ghost { color: #c9bda9; background: none; border: 0; }
+  .primary { position: relative; border: 0; border-radius: 4px; padding: 0 20px; color: #fff0d6; text-shadow: 0 1px 1px rgba(0,0,0,.7); font-family: "Cinzel", serif; letter-spacing: .05em;
+    background: var(--grit), radial-gradient(circle at 7px 50%, #d9b77f 0 1.6px, #3a2a14 2.2px, transparent 2.6px), radial-gradient(circle at calc(100% - 7px) 50%, #d9b77f 0 1.6px, #3a2a14 2.2px, transparent 2.6px), radial-gradient(120% 140% at 0% 100%, rgba(90,140,110,.35), transparent 40%), linear-gradient(180deg, var(--bronze-hi), var(--bronze) 45%, var(--bronze-lo));
+    box-shadow: inset 0 1px 0 rgba(255,230,190,.45), inset 0 -2px 0 rgba(0,0,0,.35), 0 0 0 1px #1a1208, 0 3px 8px rgba(0,0,0,.6); }
+
+  /* stone slabs: live/system data */
+  .tile, .panel { background: var(--grit), var(--mottle), linear-gradient(180deg, #2b2926, #1a1917); border-radius: 4px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -2px 0 rgba(0,0,0,.45), inset 0 0 30px rgba(0,0,0,.35), 0 0 0 1px #0a0908, 0 8px 18px rgba(0,0,0,.6); }
+  .tile .k { color: var(--ash); letter-spacing: .12em; }
+  .tile .v { color: #f1e8da; } .tile .v small, .tile .s { color: var(--ash); }
+  .tile .spark { stroke: var(--ember-2); opacity: .8; }
+  .up { color: #9fc27a; }
+  .ph { background: var(--hidegrain), linear-gradient(180deg, #3e2d20, #2b1f16); border-radius: 4px 4px 0 0; box-shadow: inset 0 1px 0 rgba(255,220,180,.08), 0 2px 3px rgba(0,0,0,.5); position: relative; }
+  .ph::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 3px; border-bottom: 1px dashed rgba(220,190,150,.28); }
+  .ph h2 { font-family: "Cinzel", serif; font-weight: 700; color: #ead9bf; letter-spacing: .08em; text-shadow: 0 1px 0 #000; }
+  .ph .meta { color: #a8977f; } .ph .link { color: var(--ember-2); }
+  .checks li + li, .roster li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .checks small { color: var(--soot); }
+  .ok { color: #9fc27a; } .warn { color: var(--ember-2); }
+  .roster .an { color: var(--cc); } .roster .note, .roster .lv { color: var(--soot); }
+
+  /* ---- LEDGER: records are parchment pages laid on the stone ---- */
+  .recap { background: var(--fiber), var(--stain), linear-gradient(175deg, var(--paper), var(--paper-2)); color: var(--ink); border-radius: 3px;
+    box-shadow: inset 0 0 34px rgba(120,75,25,.38), inset 0 0 2px rgba(90,55,20,.5), 0 10px 22px rgba(0,0,0,.65), 0 1px 3px rgba(0,0,0,.7);
+    transform: rotate(-0.25deg); }
+  .recap .ph { background: none; box-shadow: none; border-bottom: 1.5px solid rgba(58,38,22,.55); margin: 0 10px; padding: 11px 4px 8px; border-radius: 0; }
+  .recap .ph::after { left: 0; right: 0; bottom: -4px; border-bottom: 1px solid rgba(58,38,22,.25); }
+  .recap .ph h2 { color: var(--ink); text-shadow: none; font-size: 14px; letter-spacing: .04em; }
+  .recap .ph .meta { color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
+  .recap .ph .link { color: #7a1a12; font-weight: 600; }
+  .recap .pb { padding-left: 36px; background-image: linear-gradient(90deg, transparent 22px, var(--margin) 22px, var(--margin) 23px, transparent 23px, transparent 25px, var(--margin) 25px, var(--margin) 26px, transparent 26px), repeating-linear-gradient(180deg, transparent 0 27px, var(--rule) 27px 28px); background-position: 0 0, 0 8px; }
+  .recap .crest svg { fill: color-mix(in srgb, var(--cc) 25%, #e8d6b0); stroke: var(--ink); stroke-width: 1.3; }
+  .recap .crest b { color: var(--ink); }
+  .recap .who .wn { font-family: "Cinzel", serif; color: #8a2a52; }
+  .recap .wc2 { color: var(--ink-2); font-family: Georgia, serif; font-style: italic; }
+  .recap .wc2 .lvl { color: var(--ink); font-style: normal; }
+  .ding { width: 64px; height: 64px; transform: rotate(-9deg); }
+  .ding-ring { border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 45%, #5a0c09 80%); box-shadow: 0 2px 0 #3a0705, 0 4px 8px rgba(60,10,5,.5), inset 0 2px 3px rgba(255,160,140,.35), inset 0 -3px 5px rgba(0,0,0,.35); }
+  .ding-ring::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px solid rgba(40,4,2,.45); box-shadow: 0 1px 0 rgba(255,160,140,.25); }
+  .ding-t { top: 15px; font-size: 8px; color: rgba(255,210,190,.75); font-family: "Cinzel", serif; font-weight: 700; }
+  .ding-n { top: 25px; font-family: "Cinzel", serif; font-size: 20px; color: #f3b8a6; text-shadow: 0 -1px 0 rgba(0,0,0,.55), 0 1px 0 rgba(255,190,170,.35); }
+  .recap .tally { border-top: 1.5px solid rgba(58,38,22,.5); border-bottom: 1.5px solid rgba(58,38,22,.5); }
+  .recap .tally > div + div { border-left: 1px solid rgba(58,38,22,.22); }
+  .recap .tally .k { color: var(--ink-3); } .recap .tally .v { color: var(--ink); } .recap .up { color: #2f6b1e; }
+  .recap .goldline .line { stroke: #4a2e16; } .recap .goldline .area { fill: rgba(120,80,30,.12); } .recap .goldline .mark { fill: var(--wax); }
+  .recap .loot h3 { color: var(--ink-3); font-family: "Cinzel", serif; font-weight: 700; letter-spacing: .08em; }
+  .recap .items .x { color: var(--ink-2); }
+  .recap .repair .nm, .recap .repair .x { color: #8a1f14; }
+  .recap .q-poor { color: #6f6a62; } .recap .q-common { color: var(--ink); } .recap .q-uncommon { color: #23710f; } .recap .q-rare { color: #1a4f9c; } .recap .q-epic { color: #6b2a9a; }
+  .recap .ico { border: 1.5px solid currentColor; background: rgba(255,255,255,.25); box-shadow: inset 0 0 6px rgba(90,55,20,.25); }
+  .recap .ico b { color: var(--ink); }
+  .recap .zones { border-top: 1px solid rgba(58,38,22,.25); color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
+  .recap .zone { font-family: "Geist", sans-serif; font-style: normal; color: var(--ink); border: 1px solid rgba(58,38,22,.35); background: rgba(255,255,255,.18); }
+
+  /* stone-side item icons + quality */
+  .ico { background: linear-gradient(135deg, #3a3631, #141311); border: 1px solid currentColor; }
+  .q-common { color: #ece4d6; } .q-uncommon { color: #58d23c; } .q-rare { color: #4f95ff; } .q-epic { color: #b86cf0; } .q-poor { color: #8a8580; }
+
+  /* ---- TOOLTIP glass on item hover ---- */
+  .tt { position: absolute; z-index: 5; width: 250px; padding: 9px 11px 10px; font-size: 12.5px; line-height: 1.4; color: #fff;
+    background: linear-gradient(180deg, rgba(14,18,44,.97), rgba(4,5,14,.97)); border: 1px solid #a9afc0; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px #000, inset 0 0 0 2px rgba(108,113,132,.4), 0 14px 30px rgba(0,0,0,.75); text-shadow: 1px 1px 0 #000; transform: rotate(0.25deg); }
+  .tt .t { font-size: 14px; color: #3d8bff; font-weight: 600; }
+  .tt .row { display: flex; justify-content: space-between; }
+  .tt .g { color: #1eff00; }
+  .tt .src { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(108,113,132,.35); color: #9da3b8; font-size: 11.5px; }
+  .tt .coins span { color: #fff; }
+  .recap .loot > div:first-child .items li:first-child { background: rgba(26, 79, 156, 0.08); outline: 1px solid rgba(26,79,156,.25); border-radius: 3px; }
+
+  @media (max-width: 1100px) { .main::after { left: 60px; } }
+</style>
+</head>
+<body>
+<script src="_markup.js"></script>
+<script>
+  const li = document.querySelector('.recap .items li'), recap = document.querySelector('.recap');
+  const tt = document.createElement('div'); tt.className = 'tt';
+  tt.innerHTML = `<div class="t">Truestrike Shoulders</div><div>Binds when picked up</div>
+    <div class="row"><span>Shoulder</span><span>Leather</span></div><div>129 Armor</div><div>+24 Agility</div><div>+11 Stamina</div>
+    <div class="g">Equip: Improves your chance to hit by 2%.</div><div>Requires Level 58</div>
+    <div>Sell Price: <span class="coins"><span class="g">2</span><span class="s">31</span><span class="c">40</span></span></div>
+    <div class="src">Looted from Baron Rivendare · Stratholme · 21:47</div>`;
+  recap.appendChild(tt);
+  const r = li.getBoundingClientRect(), p = recap.getBoundingClientRect();
+  tt.style.left = (r.left - p.left + 200) + 'px'; tt.style.top = (r.top - p.top + 4) + 'px';
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Characters — WoW Forever Buddy (mock r1)</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .search {
+    flex: 1; max-width: 560px; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px;
+    border-style: solid; border-width: 6px 8px;
+    border-image: url("../../../src/components/ui/warcraftcn/assets/input-frame.webp") 40 60 fill / 6px 8px stretch;
+    background: none; color: var(--muted);
+  }
+  .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: 13px "Geist", sans-serif; }
+  .search input::placeholder { color: var(--dim); }
+  .search kbd { font: 10.5px ui-monospace, Menlo, monospace; color: var(--dim); border: 1px solid var(--line-2); border-radius: 3px; padding: 1px 5px; }
+  .toolbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .sortsel { display: inline-flex; align-items: center; gap: 6px; }
+
+  .totals { display: flex; gap: 22px; font-size: 12px; color: var(--dim); }
+  .totals b { color: var(--text); font-weight: 600; font-size: 13px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
+  .card { padding: 12px 13px 11px; display: grid; gap: 10px; cursor: pointer; transition: border-color .12s, transform .12s; text-decoration: none; color: inherit; }
+  .card:hover { border-color: rgba(214,178,106,0.45); transform: translateY(-1px); }
+  .card .top { display: flex; gap: 11px; align-items: center; }
+  .portrait { width: 46px; height: 46px; position: relative; flex-shrink: 0; }
+  .portrait .face { position: absolute; inset: 8px; border-radius: 2px; display: grid; place-items: center; font: 700 15px "Cinzel", serif; background: radial-gradient(circle at 50% 35%, #3a3024, #15110d); }
+  .portrait .frame { position: absolute; inset: -6px; background: center / contain no-repeat; }
+  .f-human .frame { background-image: url("../../../src/components/ui/warcraftcn/assets/avatar-human.webp"); }
+  .f-elf .frame { background-image: url("../../../src/components/ui/warcraftcn/assets/avatar-elf.webp"); }
+  .f-default .frame { background-image: url("../../../src/components/ui/warcraftcn/assets/avatar-default.webp"); }
+  .card .nm { font-family: "Cinzel", serif; font-weight: 700; font-size: 14.5px; line-height: 1.15; }
+  .card .cl { font-size: 11.5px; color: var(--muted); }
+  .card .lvl { margin-left: auto; align-self: flex-start; font: 600 18px "Geist", sans-serif; color: var(--gold-hi); line-height: 1; text-align: right; }
+  .card .lvl small { display: block; font-size: 9.5px; letter-spacing: .14em; color: var(--dim); font-weight: 500; text-transform: uppercase; margin-top: 3px; }
+  .card .facts { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); padding-top: 9px; }
+  .card .facts div { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+  .card .facts b { display: block; font: 600 13px "Geist", sans-serif; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 1px; }
+  .card .xp { display: grid; gap: 4px; }
+  .card .xp .lbl { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--dim); }
+  .card .xp .lbl .rest { color: #8fb4ee; }
+  .card .foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); }
+  .card .foot .on { color: var(--ok); display: flex; align-items: center; gap: 6px; }
+  .card .top > div:nth-child(2) { min-width: 0; }
+  .card { min-width: 0; }
+  .card.bank .cl::after { content: "BANK"; font: 600 9px "Geist", sans-serif; letter-spacing: .14em; color: var(--gold); border: 1px solid rgba(214,178,106,0.4); border-radius: 3px; padding: 1px 4px; margin-left: 7px; vertical-align: 2px; }
+
+  /* search state */
+  body.searching .card.miss { opacity: 0.35; }
+  .hit { display: none; position: absolute; top: -8px; right: 10px; height: 20px; padding: 0 8px; border-radius: 10px; font: 600 11px "Geist", sans-serif; color: #1a140d; background: linear-gradient(180deg, var(--gold-hi), var(--gold)); box-shadow: 0 2px 8px rgba(0,0,0,0.5); align-items: center; }
+  body.searching .card:not(.miss) .hit { display: inline-flex; }
+  .results { display: none; }
+  body.searching .results { display: block; }
+  .results td .item { display: flex; align-items: center; gap: 9px; }
+  .loc { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+  .loc svg { color: var(--gold-lo); }
+</style>
+</head>
+<body data-page="characters" data-wow="running">
+<main class="main">
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1>Characters</h1>
+        <div class="lede">Everything your alts own, as of their last logout.</div>
+      </div>
+      <div class="actions totals">
+        <span>Gold <b><span class="coins"><span class="g">6,812</span></span></b></span>
+        <span>Items <b>1,284</b></span>
+        <span>Est. net worth <b><span class="coins"><span class="g">9,430</span></span></b></span>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <label class="search"><i data-i="search"></i><input id="q" placeholder="Search every bag, bank and mailbox…  e.g. Runecloth, Arcanite, ilvl>60" /><kbd>Ctrl K</kbd></label>
+      <div class="right">
+        <span class="sortsel muted" style="font-size:12px">Sort</span>
+        <div class="seg"><button>Level</button><button class="on">Gold</button><button>Last seen</button></div>
+      </div>
+    </div>
+
+    <section class="panel results">
+      <div class="panel-h"><h2>Runecloth</h2><div class="meta"><b style="color:var(--text);font-weight:600">452</b> across 4 characters · ≈ <span class="coins"><span class="g">506</span></span> at last scan (3 days ago)</div></div>
+      <table class="grid">
+        <thead><tr><th>Item</th><th>Character</th><th>Where</th><th class="r">Count</th><th class="r">Value</th></tr></thead>
+        <tbody>
+          <tr><td><div class="item"><div class="ico q-common" style="background:linear-gradient(135deg,#5a4a3a,#1f1914)"><span>R</span></div><span class="q-common">Runecloth</span></div></td><td style="color:var(--c-warrior)">Coinpurse</td><td><span class="loc"><i data-i="bank" class="sm"></i>Bank</span></td><td class="r num">340</td><td class="r"><span class="coins"><span class="g">380</span><span class="s">80</span></span></td></tr>
+          <tr><td><div class="item"><div class="ico q-common" style="background:linear-gradient(135deg,#5a4a3a,#1f1914)"><span>R</span></div><span class="q-common">Runecloth</span></div></td><td style="color:var(--c-druid)">Velyra</td><td><span class="loc"><i data-i="bank" class="sm"></i>Bank</span></td><td class="r num">60</td><td class="r"><span class="coins"><span class="g">67</span><span class="s">20</span></span></td></tr>
+          <tr><td><div class="item"><div class="ico q-common" style="background:linear-gradient(135deg,#5a4a3a,#1f1914)"><span>R</span></div><span class="q-common">Runecloth</span></div></td><td style="color:var(--c-paladin)">Thrandor</td><td><span class="loc"><i data-i="bag" class="sm"></i>Bags</span></td><td class="r num">40</td><td class="r"><span class="coins"><span class="g">44</span><span class="s">80</span></span></td></tr>
+          <tr><td><div class="item"><div class="ico q-common" style="background:linear-gradient(135deg,#5a4a3a,#1f1914)"><span>R</span></div><span class="q-common">Runecloth</span></div></td><td style="color:var(--c-priest)">Sela</td><td><span class="loc"><i data-i="bag" class="sm"></i>Bags</span></td><td class="r num">12</td><td class="r"><span class="coins"><span class="g">13</span><span class="s">44</span></span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="cards">
+      <a class="panel card bank" href="character.html" style="position:relative">
+        <span class="hit">340</span>
+        <div class="top"><div class="portrait f-human"><div class="face" style="color:var(--c-warrior)">C</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-warrior)">Coinpurse</div><div class="cl">Human Warrior</div></div><div class="lvl">12<small>Level</small></div></div>
+        <div class="facts"><div>Gold<b><span class="coins"><span class="g">2,779</span></span></b></div><div>Items<b>486</b></div><div>Mail<b>14</b></div></div>
+        <div class="foot"><span>Stormwind City</span><span>2 days ago</span></div>
+      </a>
+      <a class="panel card" href="character.html" style="position:relative">
+        <span class="hit">40</span>
+        <div class="top"><div class="portrait f-human"><div class="face" style="color:var(--c-paladin)">T</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-paladin)">Thrandor</div><div class="cl">Human Paladin</div></div><div class="lvl">60<small>ilvl 63</small></div></div>
+        <div class="facts"><div>Gold<b><span class="coins"><span class="g">2,140</span></span></b></div><div>Bags<b>12 free</b></div><div>Played<b>9d 4h</b></div></div>
+        <div class="foot"><span class="on"><span class="dot live"></span>Online now</span><span>Eastern Plaguelands</span></div>
+      </a>
+      <a class="panel card" href="character.html" style="position:relative">
+        <span class="hit">60</span>
+        <div class="top"><div class="portrait f-elf"><div class="face" style="color:var(--c-druid)">V</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-druid)">Velyra</div><div class="cl">Night Elf Druid</div></div><div class="lvl">60<small>ilvl 58</small></div></div>
+        <div class="facts"><div>Gold<b><span class="coins"><span class="g">1,066</span></span></b></div><div>Bags<b>21 free</b></div><div>Played<b>7d 19h</b></div></div>
+        <div class="foot"><span>Moonglade</span><span>Yesterday</span></div>
+      </a>
+      <a class="panel card miss" href="character.html" style="position:relative">
+        <div class="top"><div class="portrait f-default"><div class="face" style="color:var(--c-hunter)">B</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-hunter)">Brannic</div><div class="cl">Dwarf Hunter</div></div><div class="lvl">52<small>Level</small></div></div>
+        <div class="xp"><div class="lbl"><span>64% to 53</span><span class="rest">Rested 30%</span></div><div class="bar"><i class="rested" style="width:94%"></i><i class="xp" style="width:64%"></i></div></div>
+        <div class="foot"><span><span class="coins"><span class="g">488</span></span></span><span>Ironforge · 2 days ago</span></div>
+      </a>
+      <a class="panel card miss" href="character.html" style="position:relative">
+        <div class="top"><div class="portrait f-default"><div class="face" style="color:var(--c-mage)">F</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-mage)">Fizzwick</div><div class="cl">Gnome Mage</div></div><div class="lvl">44<small>Level</small></div></div>
+        <div class="xp"><div class="lbl"><span>22% to 45</span><span class="rest">Fully rested</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:22%"></i></div></div>
+        <div class="foot"><span><span class="coins"><span class="g">212</span></span></span><span>Tanaris · 6 days ago</span></div>
+      </a>
+      <a class="panel card" href="character.html" style="position:relative">
+        <span class="hit">12</span>
+        <div class="top"><div class="portrait f-human"><div class="face" style="color:var(--c-priest)">S</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-priest)">Sela</div><div class="cl">Human Priest</div></div><div class="lvl">38<small>Level</small></div></div>
+        <div class="xp"><div class="lbl"><span>81% to 39</span><span class="rest">Rested 40%</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:81%"></i></div></div>
+        <div class="foot"><span><span class="coins"><span class="g">96</span></span></span><span>Desolace · 3 days ago</span></div>
+      </a>
+      <a class="panel card miss" href="character.html" style="position:relative">
+        <div class="top"><div class="portrait f-elf"><div class="face" style="color:var(--c-rogue)">K</div><div class="frame"></div></div><div><div class="nm" style="color:var(--c-rogue)">Kaelor</div><div class="cl">Night Elf Rogue</div></div><div class="lvl">27<small>Level</small></div></div>
+        <div class="xp"><div class="lbl"><span>10% to 28</span><span class="rest">Fully rested</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:10%"></i></div></div>
+        <div class="foot"><span><span class="coins"><span class="g">31</span></span></span><span>Ashenvale · 12 days ago</span></div>
+      </a>
+    </section>
+  </div>
+</main>
+<script src="_shell.js"></script>
+<script>
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) { document.body.classList.add('searching'); document.getElementById('q').value = q; }
+</script>
+</body>
+</html>

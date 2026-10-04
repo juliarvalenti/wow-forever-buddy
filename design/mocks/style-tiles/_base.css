@@ -1,0 +1,126 @@
+/* Layout only — geometry shared by all three style tiles. Materials live in each tile. */
+@font-face { font-family: "Cinzel"; font-weight: 400 700; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cinzel"; font-weight: 400 600; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Geist"; font-weight: 100 900; src: url("../../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2"); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font: 13px/1.45 "Geist", system-ui, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+a { color: inherit; text-decoration: none; cursor: pointer; }
+button { font: inherit; cursor: pointer; }
+ul { list-style: none; }
+
+.win { display: grid; grid-template-rows: 32px minmax(0, 1fr); height: 100vh; }
+.titlebar { display: flex; align-items: center; gap: 9px; padding-left: 12px; font-size: 12px; user-select: none; }
+.titlebar .grow { flex: 1; }
+.titlebar .wc { width: 46px; height: 100%; display: grid; place-items: center; }
+.titlebar .wc svg { width: 14px; height: 14px; }
+.tb-crest svg { width: 15px; height: 15px; }
+
+.app { display: grid; grid-template-columns: 216px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.side { display: flex; flex-direction: column; min-height: 0; padding-bottom: 8px; position: relative; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; }
+.brand .mark { width: 30px; height: 30px; display: grid; place-items: center; flex-shrink: 0; }
+.brand .mark svg { width: 20px; height: 20px; }
+.brand .name { font-size: 15px; line-height: 1.1; white-space: nowrap; }
+.brand .sub { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; margin-top: 2px; }
+.nav { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; display: flex; flex-direction: column; gap: 1px; }
+.nav-group { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; padding: 12px 10px 5px; }
+.nav-item { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; white-space: nowrap; }
+.nav-item .n { margin-left: auto; font-size: 11px; }
+.nav-item.soon .n { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.settings { margin: 0 10px; }
+.status { margin: 8px 10px; padding: 9px 11px; border-radius: 4px; display: grid; gap: 6px; font-size: 11.5px; }
+.st-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+.live, .okdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+.main { overflow: auto; min-width: 0; padding: 20px 24px 26px; display: flex; flex-direction: column; gap: 14px; position: relative; }
+.head { display: flex; align-items: flex-end; gap: 14px; position: relative; padding-bottom: 12px; }
+.head h1 { font-size: 22px; line-height: 1.1; }
+.lede { font-size: 12.5px; margin-top: 4px; }
+.actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; font-size: 12px; font-weight: 500; border-radius: 4px; white-space: nowrap; }
+.primary { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 16px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.tile { position: relative; padding: 10px 13px 11px; min-width: 0; }
+.tile .k { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+.tile .v { font-size: 19px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tile .v small { font-size: 12px; font-weight: 500; }
+.tile .s { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .spark { position: absolute; right: 12px; top: 12px; width: 70px; height: 22px; fill: none; stroke-width: 1.5; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel { position: relative; min-width: 0; }
+.ph { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.ph h2 { font-size: 12.5px; }
+.ph .meta { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+.ph .link { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
+.ph .meta + .link { margin-left: 4px; }
+.ph h2 + .link { margin-left: auto; }
+.ph .link svg { width: 14px; height: 14px; }
+.pb { padding: 12px 14px 14px; }
+
+.who { display: flex; align-items: center; gap: 12px; }
+.crest { position: relative; width: 40px; height: 44px; display: grid; place-items: center; flex-shrink: 0; }
+.crest svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.crest b { position: relative; font: 700 15px "Cinzel", serif; }
+.wn { font-size: 15px; font-weight: 700; line-height: 1.2; }
+.wc2 { font-size: 12px; }
+.ding { margin-left: auto; position: relative; width: 58px; height: 58px; display: grid; place-items: center; flex-shrink: 0; }
+.ding-ring { position: absolute; inset: 0; border-radius: 50%; }
+.ding-t { position: absolute; top: 11px; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.ding-n { position: absolute; top: 21px; font-size: 21px; font-weight: 700; line-height: 1; }
+
+.tally { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; }
+.tally > div { padding: 8px 12px; min-width: 0; }
+.tally .k { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
+.tally .v { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.goldline { display: block; width: 100%; height: 56px; margin-top: 12px; }
+.goldline .line { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.loot { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 10px; }
+.loot h3 { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; margin-bottom: 4px; }
+.items li { display: flex; align-items: center; gap: 9px; height: 28px; font-size: 12.5px; }
+.items .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.items .x { font-size: 12px; }
+.ico { width: 24px; height: 24px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 700 10.5px "Cinzel", serif; }
+.zones { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; font-size: 12px; }
+.zone { padding: 1px 8px; border-radius: 10px; font-size: 11.5px; }
+
+.checks li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 14px; font-size: 12.5px; }
+.checks li svg { margin-top: 2px; }
+.checks small { display: block; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.checks li > div { min-width: 0; }
+.roster li { display: grid; grid-template-columns: 8px auto 1fr auto 28px; gap: 9px; align-items: center; height: 30px; padding: 0 14px; font-size: 12.5px; }
+.roster .note { font-size: 11px; }
+.roster .ag { grid-column: 4; }
+.roster .lv { text-align: right; font-size: 11.5px; }
+.cdot { width: 8px; height: 8px; transform: rotate(45deg); border-radius: 1px; }
+
+.coins { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.coins span { display: inline-flex; align-items: center; gap: 2px; }
+.coins span::after { content: ""; width: 0.6em; height: 0.6em; border-radius: 50%; margin-left: 2px; box-shadow: inset 0 -1px 1px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.45); }
+.coins .g::after { background: #e9c45a; } .coins .s::after { background: #c3c7cc; } .coins .c::after { background: #c27a47; }
+.tile .v .coins .s, .tile .v .coins .c { font-size: 12.5px; font-weight: 500; }
+
+/* class colors (WoW canon) */
+.c-paladin { --cc: #f48cba; } .c-druid { --cc: #ff7c0a; } .c-hunter { --cc: #aad372; } .c-mage { --cc: #3fc7eb; } .c-warrior { --cc: #c69b6d; } .c-priest { --cc: #ffffff; }
+.cdot { background: var(--cc); }
+
+/* icon rail below 1100px */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 60px minmax(0, 1fr); }
+  .brand { justify-content: center; padding: 14px 0 12px; }
+  .brand .bt, .nav-group, .nav-item .lbl, .nav-item .n, .status .st-t { display: none; }
+  .nav { padding: 4px 8px; }
+  .nav-group { display: block; height: 10px; padding: 0; font-size: 0; }
+  .nav-item { justify-content: center; padding: 0; }
+  .settings { margin: 0 8px; }
+  .status { margin: 8px; justify-items: center; padding: 8px 0; }
+  .main { padding: 16px 18px 22px; }
+  .tile .spark { display: none; }
+  .tile .v { font-size: 17px; }
+  .tally > div { padding: 7px 9px; }
+}

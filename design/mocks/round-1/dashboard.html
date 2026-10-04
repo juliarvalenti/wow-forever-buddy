@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard — WoW Forever Buddy (mock r1)</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat { padding: 12px 14px 13px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .stat .label { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+  .stat .label svg { width: 13px; height: 13px; color: var(--gold-lo); }
+  .stat .value { font-size: 21px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; line-height: 1.25; }
+  .stat .value .coins { gap: 8px; }
+  .stat .value .coins .s, .stat .value .coins .c { font-size: 13px; font-weight: 500; }
+  .stat .sub { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .spark { position: absolute; right: 12px; top: 14px; width: 74px; height: 26px; }
+  .up { color: var(--ok); }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+  .who { display: flex; align-items: center; gap: 12px; }
+  .portrait { width: 44px; height: 44px; position: relative; flex-shrink: 0; }
+  .portrait .face { position: absolute; inset: 7px; border-radius: 2px; display: grid; place-items: center; font: 700 15px "Cinzel", serif; background: radial-gradient(circle at 50% 35%, #3a3024, #15110d); }
+  .portrait .frame { position: absolute; inset: -6px; background: url("../../../src/components/ui/warcraftcn/assets/avatar-human.webp") center / contain no-repeat; }
+  .who .nm { font-family: "Cinzel", serif; font-weight: 700; font-size: 15px; color: var(--c-paladin); }
+  .who .cl { font-size: 12px; color: var(--muted); }
+  .ding { margin-left: 4px; }
+
+  .tally { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--r); margin-top: 14px; background: rgba(0,0,0,0.18); }
+  .tally > div { padding: 9px 12px; border-right: 1px solid var(--line); }
+  .tally > div:last-child { border-right: 0; }
+  .tally .k { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+  .tally .v { font-size: 16px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+  .tally .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .loot { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+  .loot h3 { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); font-weight: 500; margin-bottom: 6px; }
+  .items { list-style: none; display: grid; gap: 2px; }
+  .items li { display: flex; align-items: center; gap: 9px; height: 30px; font-size: 12.5px; }
+  .items li .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .items li .x { color: var(--muted); font-size: 12px; }
+  .zones { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .zones .pill { color: var(--text); }
+  .goldline { margin-top: 14px; }
+
+  .checks { list-style: none; display: grid; }
+  .checks li { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid rgba(205,168,98,0.07); font-size: 12.5px; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks li .t { flex: 1; min-width: 0; }
+  .checks li .t small { display: block; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .checks li > svg.ok { color: var(--ok); }
+  .checks li > svg.warn { color: var(--warn); }
+
+  .roster { list-style: none; }
+  .roster li { display: grid; grid-template-columns: 8px 1fr auto auto; gap: 10px; align-items: center; padding: 0 14px; height: 31px; font-size: 12.5px; border-bottom: 1px solid rgba(205,168,98,0.07); }
+  .roster li:last-child { border-bottom: 0; }
+  .roster .cdot { width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg); }
+  .roster .lv { color: var(--dim); font-size: 11.5px; width: 34px; text-align: right; }
+
+  @media (max-width: 1100px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat .spark { display: none; }
+  }
+</style>
+</head>
+<body data-page="dashboard" data-wow="running">
+<main class="main">
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="lede">Sunday, 4 October · Realm Ashenvale · 7 characters</div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost"><i data-i="folder"></i>Open game folder</button>
+        <button class="btn-primary"><i data-i="archive"></i>Back up now</button>
+      </div>
+    </header>
+
+    <section class="stats">
+      <div class="panel stat">
+        <div class="label"><i data-i="coins"></i>Account gold</div>
+        <div class="value"><span class="coins"><span class="g">6,812</span><span class="s">47</span><span class="c">09</span></span></div>
+        <div class="sub"><span class="up">▲ 412g</span> this week</div>
+        <svg class="spark" viewBox="0 0 74 26"><polyline fill="none" stroke="#d6b26a" stroke-width="1.5" points="0,22 10,20 18,21 27,16 36,17 45,12 54,13 63,7 74,4"/><circle cx="74" cy="4" r="2" fill="#f1d898"/></svg>
+      </div>
+      <div class="panel stat">
+        <div class="label"><i data-i="archive"></i>Last backup</div>
+        <div class="value">2 hours ago</div>
+        <div class="sub"><span class="pill auto">Auto</span> on game exit · 48.2 MB</div>
+      </div>
+      <div class="panel stat">
+        <div class="label"><i data-i="play"></i>Game</div>
+        <div class="value" style="display:flex;align-items:center;gap:9px"><span class="dot live"></span>Running</div>
+        <div class="sub">Thrandor · session 1h 42m</div>
+      </div>
+      <div class="panel stat">
+        <div class="label"><i data-i="users"></i>Characters</div>
+        <div class="value">7 <span class="muted" style="font-size:13px;font-weight:500">· 2 at max level</span></div>
+        <div class="sub">3 fully rested · 1,284 items tracked</div>
+      </div>
+    </section>
+
+    <section class="cols">
+      <div class="panel framed">
+        <div class="panel-h">
+          <h2>Last session</h2>
+          <div class="meta">Yesterday 19:40 – 22:52 · 3h 12m <button class="btn ghost" style="height:24px">Journal <i data-i="chevron" class="sm"></i></button></div>
+        </div>
+        <div class="panel-b">
+          <div class="who">
+            <div class="portrait"><div class="face" style="color:var(--c-paladin)">T</div><div class="frame"></div></div>
+            <div>
+              <div class="nm">Thrandor</div>
+              <div class="cl">Human Paladin · Level 59 → <b style="color:var(--gold-hi)">60</b> <span class="pill manual ding">Ding!</span></div>
+            </div>
+          </div>
+
+          <div class="tally">
+            <div><div class="k">Gold</div><div class="v up">+<span class="coins"><span class="g">312</span><span class="s">40</span></span></div></div>
+            <div><div class="k">Experience</div><div class="v">+148,210</div></div>
+            <div><div class="k">Items looted</div><div class="v">47</div></div>
+            <div><div class="k">Quests</div><div class="v">9</div></div>
+          </div>
+
+          <svg class="goldline" viewBox="0 0 600 64" width="100%" height="64" preserveAspectRatio="none">
+            <defs><linearGradient id="gf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6b26a" stop-opacity="0.28"/><stop offset="1" stop-color="#d6b26a" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="63.5" x2="600" y2="63.5" stroke="rgba(205,168,98,0.14)"/>
+            <path d="M0,54 L40,52 80,50 110,51 150,44 190,45 230,38 260,40 300,30 340,33 380,24 420,26 450,27 470,34 500,22 540,16 580,12 600,10 L600,64 L0,64Z" fill="url(#gf)"/>
+            <polyline fill="none" stroke="#d6b26a" stroke-width="1.5" vector-effect="non-scaling-stroke" points="0,54 40,52 80,50 110,51 150,44 190,45 230,38 260,40 300,30 340,33 380,24 420,26 450,27 470,34 500,22 540,16 580,12 600,10"/>
+            <text x="470" y="48" fill="#a0947f" font-size="10" font-family="Geist">repairs −18g</text>
+          </svg>
+
+          <div class="loot">
+            <div>
+              <h3>Gained</h3>
+              <ul class="items">
+                <li><div class="ico q-rare" style="background:linear-gradient(135deg,#3b4a6b,#151c2b)"><span>S</span></div><span class="n q-rare">Truestrike Shoulders</span></li>
+                <li><div class="ico q-common" style="background:linear-gradient(135deg,#5a4a3a,#1f1914)"><span>R</span></div><span class="n q-common">Runecloth</span><span class="x">×40</span></li>
+                <li><div class="ico q-uncommon" style="background:linear-gradient(135deg,#3c5a3a,#141f14)"><span>O</span></div><span class="n q-uncommon">Righteous Orb</span><span class="x">×2</span></li>
+                <li><div class="ico q-common" style="background:linear-gradient(135deg,#6a2a2a,#1f0f0f)"><span>P</span></div><span class="n q-common">Major Healing Potion</span><span class="x">×6</span></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Used / lost</h3>
+              <ul class="items">
+                <li><div class="ico q-common" style="background:linear-gradient(135deg,#4a3a5a,#16101f)"><span>F</span></div><span class="n q-common">Flask of the Titans</span><span class="x">×1</span></li>
+                <li><div class="ico q-common" style="background:linear-gradient(135deg,#6a2a2a,#1f0f0f)"><span>P</span></div><span class="n q-common">Major Healing Potion</span><span class="x">×4</span></li>
+                <li><div class="ico q-poor" style="background:linear-gradient(135deg,#3a3a3a,#141414)"><span>J</span></div><span class="n q-poor">Vendor junk (sold)</span><span class="x">×22</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="zones">Zones <span class="pill">Eastern Plaguelands</span><span class="pill">Stratholme</span><span class="pill">Light's Hope Chapel</span></div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-h"><h2>Game folder</h2><div class="meta"><button class="btn ghost icon" style="height:24px;width:24px" title="Rescan"><i data-i="refresh" class="sm"></i></button></div></div>
+          <ul class="checks">
+            <li><i data-i="check" class="ok"></i><div class="t">Client detected<small>D:\Games\WoW Forever\_classic_ · 1.15.4</small></div></li>
+            <li><i data-i="check" class="ok"></i><div class="t">ForeverBuddy addon installed<small>v0.2.0 · enabled on 7 / 7 characters</small></div></li>
+            <li><i data-i="check" class="ok"></i><div class="t">SavedVariables read<small>4 minutes ago · next on logout or /reload</small></div></li>
+            <li><i data-i="alert" class="warn"></i><div class="t">Auction data is 3 days old<small>Scan the AH in-game to refresh prices</small></div></li>
+          </ul>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h2>Characters</h2><div class="meta"><a class="btn ghost" style="height:24px" href="characters.html">View all <i data-i="chevron" class="sm"></i></a></div></div>
+          <ul class="roster">
+            <li><span class="cdot" style="background:var(--c-warrior)"></span><span>Coinpurse <span class="dim">· bank</span></span><span class="coins"><span class="g">2,779</span></span><span class="lv">12</span></li>
+            <li><span class="cdot" style="background:var(--c-paladin)"></span><span>Thrandor</span><span class="coins"><span class="g">2,140</span></span><span class="lv">60</span></li>
+            <li><span class="cdot" style="background:var(--c-druid)"></span><span>Velyra</span><span class="coins"><span class="g">1,066</span></span><span class="lv">60</span></li>
+            <li><span class="cdot" style="background:var(--c-hunter)"></span><span>Brannic</span><span class="coins"><span class="g">488</span></span><span class="lv">52</span></li>
+            <li><span class="cdot" style="background:var(--c-mage)"></span><span>Fizzwick</span><span class="coins"><span class="g">212</span></span><span class="lv">44</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

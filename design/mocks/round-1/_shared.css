@@ -1,0 +1,267 @@
+/* WoW Forever Buddy — round 1 mock design language.
+   Ornate warcraftcn art is reserved for: panel corners (.panel), the active
+   nav plaque, ONE primary action per view (.btn-primary), the search frame,
+   and portrait frames. Everything else is flat, hairline, compact. */
+
+@font-face { font-family: "Cinzel"; font-weight: 400; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cinzel"; font-weight: 600; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cinzel"; font-weight: 700; src: url("../../../node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Geist"; font-weight: 100 900; src: url("../../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2"); }
+
+:root {
+  --art: "../../../src/components/ui/warcraftcn/assets";
+  --bg: #0d0b09;
+  --bg-2: #13100d;
+  --panel: #17130f;
+  --panel-2: #1e1914;
+  --raise: #251f18;
+  --line: rgba(205, 168, 98, 0.14);
+  --line-2: rgba(205, 168, 98, 0.28);
+  --gold: #d6b26a;
+  --gold-hi: #f1d898;
+  --gold-lo: #8f733f;
+  --text: #ece4d4;
+  --muted: #a0947f;
+  --dim: #6e6555;
+  --ok: #7cc47f;
+  --warn: #e0a54a;
+  --bad: #d9604c;
+  --info: #6fa8e2;
+  /* coin colors */
+  --coin-g: #e9c45a; --coin-s: #c3c7cc; --coin-c: #c27a47;
+  /* item quality */
+  --q-poor: #9d9d9d; --q-common: #ffffff; --q-uncommon: #1eff00; --q-rare: #2f8cff; --q-epic: #b553f5; --q-legendary: #ff8000;
+  /* class colors */
+  --c-paladin: #f48cba; --c-druid: #ff7c0a; --c-hunter: #aad372; --c-mage: #3fc7eb;
+  --c-priest: #ffffff; --c-rogue: #fff468; --c-warrior: #c69b6d; --c-warlock: #8788ee;
+  --r: 4px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "Geist", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1;
+}
+.fantasy { font-family: "Cinzel", serif; letter-spacing: 0.04em; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.gold { color: var(--gold); }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+svg.i.sm { width: 14px; height: 14px; }
+
+/* ---------- window shell ---------- */
+.window { display: grid; grid-template-rows: 32px minmax(0, 1fr); height: 100vh; }
+.titlebar {
+  display: flex; align-items: center; gap: 10px; padding-left: 14px;
+  background: #090807; border-bottom: 1px solid var(--line);
+  font-size: 12px; color: var(--muted); user-select: none;
+}
+.titlebar .crest { width: 16px; height: 16px; color: var(--gold); }
+.titlebar .grow { flex: 1; }
+.titlebar .wc { display: flex; height: 100%; }
+.titlebar .wc span { width: 46px; display: grid; place-items: center; color: var(--dim); }
+.titlebar .wc span:last-child:hover { background: #c42b1c; color: #fff; }
+
+.app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  display: flex; flex-direction: column; min-height: 0;
+  background:
+    linear-gradient(180deg, rgba(13,11,9,0.55), rgba(13,11,9,0.85)),
+    url("../../../src/components/ui/warcraftcn/assets/dropdown-menu-bg.webp") center / cover;
+  border-right: 1px solid var(--line-2);
+  box-shadow: inset -12px 0 24px -16px rgba(0,0,0,0.9);
+}
+.brand { padding: 18px 18px 14px; }
+.brand .name { font-family: "Cinzel", serif; font-weight: 700; font-size: 17px; color: var(--gold-hi); letter-spacing: 0.06em; line-height: 1.1; text-shadow: 0 0 14px rgba(241,216,152,0.25); }
+.brand .sub { font-size: 10px; letter-spacing: 0.16em; white-space: nowrap; text-transform: uppercase; color: var(--gold-lo); margin-top: 3px; }
+.rule {
+  height: 10px; margin: 0 14px;
+  background: url("../../../src/components/ui/warcraftcn/assets/accordion-header.webp") center bottom / 100% auto no-repeat;
+  opacity: 0.8;
+}
+.nav { padding: 6px 10px; display: flex; flex-direction: column; gap: 1px; flex: 1; min-height: 0; overflow: auto; }
+.nav .group { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); padding: 12px 10px 5px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px;
+  color: var(--muted); text-decoration: none; border-radius: var(--r);
+  border: 1px solid transparent;
+}
+.nav a:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.nav a .count { margin-left: auto; font-size: 11px; color: var(--dim); }
+.nav a.active {
+  color: var(--gold-hi);
+  border: 0; padding: 0 12px;
+  border-style: solid; border-width: 4px 8px;
+  border-image: url("../../../src/components/ui/warcraftcn/assets/tabs/tab-list.webp") 18 34 fill / 4px 8px stretch;
+  height: 34px;
+  text-shadow: 0 0 10px rgba(241,216,152,0.3);
+}
+.nav a.active svg { color: var(--gold); }
+.nav a.soon { opacity: 0.55; }
+.nav a .tag { margin-left: auto; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line); padding: 0 5px; border-radius: 3px; }
+
+.status { margin: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: rgba(9,8,7,0.7); font-size: 11.5px; display: grid; gap: 6px; }
+.status .row { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.status .row b { color: var(--text); font-weight: 500; }
+.status .path { font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 10.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--dim); }
+.dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(124,196,127,0.15), 0 0 8px rgba(124,196,127,0.6); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(224,165,74,0.15); }
+.dot.live { background: var(--ok); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(124,196,127,0.12), 0 0 10px rgba(124,196,127,0.7); } }
+
+/* ---------- main ---------- */
+.main {
+  min-width: 0; min-height: 0; overflow: auto;
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(214,178,106,0.07), transparent 60%),
+    var(--bg-2);
+}
+.page { padding: 20px 26px 28px; display: flex; flex-direction: column; gap: 16px; }
+.page-head { display: flex; align-items: flex-end; gap: 16px; padding-bottom: 12px; position: relative; }
+.page-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: linear-gradient(90deg, rgba(214,178,106,0.7), rgba(214,178,106,0.25) 40%, rgba(214,178,106,0.05));
+}
+.page-head::before {
+  content: ""; position: absolute; left: -3px; bottom: -3px; width: 7px; height: 7px;
+  background: var(--gold); transform: rotate(45deg); box-shadow: 0 0 8px rgba(241,216,152,0.5);
+}
+.page-head h1 { font-family: "Cinzel", serif; font-weight: 700; font-size: 22px; color: var(--gold-hi); letter-spacing: 0.05em; line-height: 1.1; }
+.page-head .lede { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.page-head .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* ---------- panels ---------- */
+.panel {
+  position: relative; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 6px 18px rgba(0,0,0,0.35);
+}
+/* iron corner brackets from the dropdown art, drawn as an overlay */
+.panel.framed::before {
+  content: ""; position: absolute; inset: -3px; pointer-events: none;
+  border: 12px solid transparent;
+  border-image: url("../../../src/components/ui/warcraftcn/assets/dropdown-menu-bg.webp") 44 / 12px / 0 stretch;
+  opacity: 0.85;
+}
+.panel-h { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.panel-h h2 { font-family: "Cinzel", serif; font-weight: 600; font-size: 12.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+.panel-h .meta { margin-left: auto; font-size: 11.5px; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+.panel-b { padding: 14px; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px;
+  font: 500 12px "Geist", sans-serif; color: var(--text);
+  background: linear-gradient(180deg, #2a231b, #1f1a14);
+  border: 1px solid var(--line-2); border-radius: var(--r);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: rgba(214,178,106,0.5); color: var(--gold-hi); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
+.btn.ghost:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.btn.icon { width: 28px; padding: 0; justify-content: center; }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn.danger { color: #f0b3a8; border-color: rgba(217,96,76,0.4); }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 16px;
+  font: 600 12.5px "Cinzel", serif; letter-spacing: 0.06em; color: #fff3d4;
+  border-style: solid; border-width: 5px 10px;
+  border-image: url("../../../src/components/ui/warcraftcn/assets/tabs/tab-list-active.webp") 22 40 fill / 5px 10px stretch;
+  background: none; cursor: pointer; white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 10px rgba(255,214,120,0.35);
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+.btn-primary:hover { filter: brightness(1.12) drop-shadow(0 2px 6px rgba(0,0,0,0.5)); }
+.btn-primary[disabled] { filter: grayscale(0.8) brightness(0.7); cursor: not-allowed; }
+
+/* segmented filter */
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; background: #110e0b; }
+.seg button { height: 26px; padding: 0 10px; font: 500 11.5px "Geist", sans-serif; color: var(--muted); background: none; border: 0; border-right: 1px solid var(--line); cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { color: var(--gold-hi); background: rgba(214,178,106,0.12); }
+
+/* ---------- small atoms ---------- */
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 7px; border-radius: 10px; font-size: 10.5px; font-weight: 500; border: 1px solid var(--line-2); color: var(--muted); white-space: nowrap; }
+.pill.auto { color: #b9c9de; border-color: rgba(111,168,226,0.35); background: rgba(111,168,226,0.08); }
+.pill.manual { color: var(--gold-hi); border-color: rgba(214,178,106,0.45); background: rgba(214,178,106,0.1); }
+.pill.safety { color: #d8b8f0; border-color: rgba(181,83,245,0.35); background: rgba(181,83,245,0.08); }
+.pill.ok { color: var(--ok); border-color: rgba(124,196,127,0.35); background: rgba(124,196,127,0.08); }
+.pill.warn { color: var(--warn); border-color: rgba(224,165,74,0.4); background: rgba(224,165,74,0.08); }
+
+.coins { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.coins span { display: inline-flex; align-items: center; gap: 2px; }
+.coins span::after { content: ""; width: 8px; height: 8px; border-radius: 50%; margin-left: 2px; box-shadow: inset 0 -1px 1px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.4); }
+.coins .g::after { background: var(--coin-g); }
+.coins .s::after { background: var(--coin-s); }
+.coins .c::after { background: var(--coin-c); }
+.coins .s, .coins .c { color: var(--muted); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px; }
+.kv dt { color: var(--dim); }
+.kv dd { color: var(--text); text-align: right; }
+
+.callout {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r);
+  border: 1px solid rgba(224,165,74,0.35); background: linear-gradient(90deg, rgba(224,165,74,0.12), rgba(224,165,74,0.03));
+  color: #f2d3a2; font-size: 12.5px;
+}
+.callout svg { color: var(--warn); }
+.callout .grow { flex: 1; }
+
+/* tables */
+table.grid { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.grid th { text-align: left; font-weight: 500; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--panel-2); }
+table.grid td { padding: 0 12px; height: 36px; border-bottom: 1px solid rgba(205,168,98,0.07); white-space: nowrap; }
+table.grid tr:hover td { background: rgba(255,255,255,0.02); }
+table.grid tr.sel td { background: rgba(214,178,106,0.07); }
+table.grid tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--gold); }
+table.grid .r { text-align: right; }
+
+/* bars */
+.bar { position: relative; height: 6px; border-radius: 3px; background: #0b0908; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+.bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+.bar .xp { background: linear-gradient(90deg, #7a3fa8, #a35ad6); }
+.bar .rested { background: rgba(70,130,230,0.55); }
+
+/* item quality text */
+.q-poor { color: var(--q-poor); } .q-common { color: var(--q-common); } .q-uncommon { color: var(--q-uncommon); }
+.q-rare { color: var(--q-rare); } .q-epic { color: var(--q-epic); } .q-legendary { color: var(--q-legendary); }
+
+/* item icon stand-in: quality-bordered square with a glyph tint */
+.ico {
+  width: 26px; height: 26px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center;
+  font: 700 11px "Cinzel", serif; color: rgba(255,255,255,0.75);
+  border: 1px solid currentColor; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.6), inset 0 0 10px rgba(0,0,0,0.6);
+}
+.ico span { color: rgba(255,255,255,0.8); text-shadow: 0 1px 2px #000; }
+
+/* scrollbars, Windows-ish but themed */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2c241b; border: 2px solid var(--bg-2); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- dialog ---------- */
+.scrim { position: fixed; inset: 0; background: rgba(5,4,3,0.72); backdrop-filter: blur(2px); display: none; place-items: center; z-index: 50; }
+.scrim.open { display: grid; }
+.dialog { width: 460px; max-width: calc(100vw - 48px); }
+.dialog .panel-h h2 { font-size: 14px; }
+.dialog .foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(0,0,0,0.2); }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 196px 1fr; }
+  .page { padding: 16px 18px 22px; }
+}

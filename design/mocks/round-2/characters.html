@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Characters — WoW Forever Buddy (mock r2)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .toolbar .field { flex: 1; max-width: 560px; height: 34px; }
+  .toolbar .field svg { color: var(--soot); }
+  .toolbar .field kbd { font: 10.5px ui-monospace, Menlo, monospace; color: var(--soot); padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .toolbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--ash); }
+  .totals { display: flex; gap: 20px; font-size: 12px; color: var(--ash); }
+  .totals b { color: var(--chalk-hi); font-weight: 600; font-size: 13px; }
+
+  /* crest fill: SVG attributes can't take var(); restate as CSS (see report: move into _d.css) */
+  .pslot .crest > path { fill: color-mix(in srgb, var(--cc) 34%, #15110d); stroke: color-mix(in srgb, var(--cc) 55%, #cfc6b8); }
+  .pslot .crest > g { fill: var(--cc); stroke: var(--cc); }
+  .pslot { display: inline-block; } .pslot .pi { display: block; }
+
+  /* ONE card anatomy: identity row · progress row · facts row · footer */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+  .card { display: grid; grid-template-rows: 80px 34px auto auto; gap: 10px; padding: 12px 13px 10px; cursor: pointer; transition: box-shadow .15s, opacity .15s; }
+  .card:hover { filter: brightness(1.06); }
+  .card .id { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .card .id > div { min-width: 0; }
+  .card .nm { font: 700 15px/1.2 "Cinzel", serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .cl { font-size: 11.5px; color: var(--ash); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .loc { font-size: 11px; color: var(--soot); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; display: flex; gap: 6px; align-items: center; }
+  .card .loc .live { width: 6px; height: 6px; }
+  .tag { font: 600 9px "Geist", sans-serif; letter-spacing: .12em; color: #f1dcb4; padding: 1px 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(201,162,106,.4); vertical-align: 1px; margin-left: 4px; }
+  .prog { display: grid; gap: 5px; align-content: center; }
+  .prog .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--ash); }
+  .prog .lbl b { color: var(--chalk-hi); font-weight: 600; }
+  .prog .rest { color: #8fb0e8; }
+  .bar .ilvl { background: linear-gradient(90deg, #5e4a2c, var(--ember-2)); }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); padding-top: 9px; border-top: 1px solid rgba(0,0,0,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+  .facts div { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); white-space: nowrap; }
+  .facts b { display: block; font: 600 13px "Geist", sans-serif; letter-spacing: 0; text-transform: none; color: var(--chalk-hi); margin-top: 1px; }
+
+  /* search state */
+  .results { display: none; }
+  body.searching .results { display: block; }
+  body.searching .card.miss { opacity: .35; filter: saturate(.5); }
+  body.searching .card.hit { box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -2px 0 rgba(0,0,0,.45), 0 0 0 1px rgba(255,150,70,.55), 0 0 16px rgba(255,122,46,.2), 0 8px 18px rgba(0,0,0,.6); }
+  .results td .item { display: flex; align-items: center; gap: 9px; }
+  .where { display: inline-flex; gap: 5px; align-items: center; color: var(--ash); }
+  .where svg { color: var(--soot); }
+</style>
+</head>
+<body data-page="characters" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Characters</h1><div class="lede">Everything your alts carry, as of their last logout.</div></div>
+    <div class="actions totals">
+      <span>Gold <b><span class="coins"><span class="g">6,812</span></span></b></span>
+      <span>Items <b>1,284</b></span>
+      <span>Net worth <b><span class="coins"><span class="g">9,430</span></span></b></span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <label class="field"><i data-i="search"></i><input id="q" placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite, ilvl>60"><kbd>Ctrl K</kbd></label>
+    <div class="right">Sort <div class="seg"><button>Level</button><button class="on">Gold</button><button>Last seen</button></div></div>
+  </div>
+
+  <section class="panel results">
+    <div class="ph"><h2>Runecloth</h2><span class="meta"><b style="color:var(--chalk-hi)">452</b> on 4 characters · ≈ <span class="coins"><span class="g">506</span></span> at last scan (3 days ago)</span></div>
+    <table class="grid">
+      <thead><tr><th>Item</th><th>Character</th><th>Where</th><th class="r">Count</th><th class="r">Value</th></tr></thead>
+      <tbody>
+        <tr><td><div class="item" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></div></td><td class="c-warrior cc">Coinpurse</td><td><span class="where"><i data-i="bank" class="sm"></i>Bank</span></td><td class="r">340</td><td class="r"><span class="coins"><span class="g">380</span><span class="s">80</span></span></td></tr>
+        <tr><td><div class="item" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></div></td><td class="c-druid cc">Velyra</td><td><span class="where"><i data-i="bank" class="sm"></i>Bank</span></td><td class="r">60</td><td class="r"><span class="coins"><span class="g">67</span><span class="s">20</span></span></td></tr>
+        <tr><td><div class="item" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></div></td><td class="c-paladin cc">Thrandor</td><td><span class="where"><i data-i="bag" class="sm"></i>Satchels</span></td><td class="r">40</td><td class="r"><span class="coins"><span class="g">44</span><span class="s">80</span></span></td></tr>
+        <tr><td><div class="item" data-tt="runecloth"><span class="ico q-common"><b>R</b></span><span class="q-common">Runecloth</span></div></td><td class="c-priest cc">Sela</td><td><span class="where"><i data-i="bag" class="sm"></i>Satchels</span></td><td class="r">12</td><td class="r"><span class="coins"><span class="g">13</span><span class="s">44</span></span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="cards">
+    <a class="panel card hit" href="character.html">
+      <div class="id"><span data-portrait="crest" data-class="warrior" data-race="Hu" data-w="64"></span><div><div class="nm c-warrior cc">Coinpurse<span class="tag">BANK</span></div><div class="cl">Level 12 Human Warrior</div><div class="loc">Stormwind City · 2 days ago</div></div></div>
+      <div class="prog"><div class="lbl"><span>58% to 13</span><span class="rest">Rested 100%</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:58%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">2,779</span></span></b></div><div>Satchels<b>3 free</b></div><div>Mail<b>14</b></div></div>
+    </a>
+    <a class="panel card hit" href="character.html">
+      <div class="id"><span data-portrait="armory" data-class="paladin" data-w="64" data-online="1"></span><div><div class="nm c-paladin cc">Thrandor</div><div class="cl">Level 60 Human Paladin</div><div class="loc"><span class="live"></span><span class="ember">Online now</span></div></div></div>
+      <div class="prog"><div class="lbl"><span>Item level</span><b>63.4</b></div><div class="bar"><i class="ilvl" style="width:83%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">2,140</span></span></b></div><div>Satchels<b>12 free</b></div><div>Played<b>9d 4h</b></div></div>
+    </a>
+    <a class="panel card hit" href="character.html">
+      <div class="id"><span data-portrait="shot" data-class="druid" data-w="64"></span><div><div class="nm c-druid cc">Velyra</div><div class="cl">Level 60 Night Elf Druid</div><div class="loc">Moonglade · yesterday</div></div></div>
+      <div class="prog"><div class="lbl"><span>Item level</span><b>58.1</b></div><div class="bar"><i class="ilvl" style="width:76%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">1,066</span></span></b></div><div>Satchels<b>21 free</b></div><div>Played<b>7d 19h</b></div></div>
+    </a>
+    <a class="panel card miss" href="character.html">
+      <div class="id"><span data-portrait="crest" data-class="hunter" data-race="Dw" data-w="64"></span><div><div class="nm c-hunter cc">Brannic</div><div class="cl">Level 52 Dwarf Hunter</div><div class="loc">Ironforge · 2 days ago</div></div></div>
+      <div class="prog"><div class="lbl"><span>64% to 53</span><span class="rest">Rested 30%</span></div><div class="bar"><i class="rested" style="width:94%"></i><i class="xp" style="width:64%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">488</span></span></b></div><div>Satchels<b>9 free</b></div><div>Played<b>4d 2h</b></div></div>
+    </a>
+    <a class="panel card miss" href="character.html">
+      <div class="id"><span data-portrait="crest" data-class="mage" data-race="Gn" data-w="64"></span><div><div class="nm c-mage cc">Fizzwick</div><div class="cl">Level 44 Gnome Mage</div><div class="loc">Tanaris · 6 days ago</div></div></div>
+      <div class="prog"><div class="lbl"><span>22% to 45</span><span class="rest">Fully rested</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:22%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">212</span></span></b></div><div>Satchels<b>15 free</b></div><div>Played<b>3d 11h</b></div></div>
+    </a>
+    <a class="panel card hit" href="character.html">
+      <div class="id"><span data-portrait="crest" data-class="priest" data-race="Hu" data-w="64"></span><div><div class="nm c-priest cc">Sela</div><div class="cl">Level 38 Human Priest</div><div class="loc">Desolace · 3 days ago</div></div></div>
+      <div class="prog"><div class="lbl"><span>81% to 39</span><span class="rest">Rested 40%</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:81%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">96</span></span></b></div><div>Satchels<b>6 free</b></div><div>Played<b>2d 8h</b></div></div>
+    </a>
+    <a class="panel card miss" href="character.html">
+      <div class="id"><span data-portrait="crest" data-class="rogue" data-race="NE" data-w="64"></span><div><div class="nm c-rogue cc">Kaelor</div><div class="cl">Level 27 Night Elf Rogue</div><div class="loc">Ashenvale · 12 days ago</div></div></div>
+      <div class="prog"><div class="lbl"><span>10% to 28</span><span class="rest">Fully rested</span></div><div class="bar"><i class="rested" style="width:100%"></i><i class="xp" style="width:10%"></i></div></div>
+      <div class="facts"><div>Gold<b><span class="coins"><span class="g">31</span></span></b></div><div>Satchels<b>4 free</b></div><div>Played<b>1d 6h</b></div></div>
+    </a>
+  </section>
+</main>
+<script src="_shell.js"></script>
+<script>
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) { document.body.classList.add('searching'); document.getElementById('q').value = q; }
+</script>
+</body>
+</html>

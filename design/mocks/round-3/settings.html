@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr); gap: 14px; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 14px; }
+  .set + .set { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .set .t { font-size: 12.5px; color: var(--chalk-hi); }
+  .set .d { grid-column: 1; font-size: 11.5px; color: var(--soot); }
+  .set .ctl { grid-row: 1 / span 2; grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .set.full { grid-template-columns: 1fr; }
+  .set.full .ctl { grid-row: auto; grid-column: 1; margin-top: 4px; }
+  .set .field { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 30px; }
+  .set .field svg { vertical-align: -3px; margin-right: 6px; }
+  .num { width: 54px; display: flex !important; justify-content: center; }
+  .num input { text-align: center; }
+  .locked-note { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--warn); }
+  .locked-note svg { width: 12px; height: 12px; }
+  .switch.locked { opacity: .9; }
+
+  .note { display: flex; gap: 10px; align-items: flex-start; margin: 12px 14px 4px; padding: 9px 11px; border-radius: var(--r); font-size: 12px; color: #cdbfa9;
+    background: rgba(0,0,0,.28); box-shadow: inset 0 2px 5px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04); }
+  .note svg { color: #b79c6c; margin-top: 1px; }
+  .note b { color: var(--chalk-hi); font-weight: 500; }
+
+  .svc { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 3px 12px; padding: 10px 14px; }
+  .svc + .svc { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .lm { grid-row: 1 / span 3; width: 34px; height: 34px; border-radius: 5px; display: grid; place-items: center; font: 700 13px "Cinzel", serif; color: var(--chalk-hi);
+    background: var(--grit), linear-gradient(160deg, #4a4540, #23211e); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.12), 0 2px 5px rgba(0,0,0,.5); }
+  .svc .nm { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--chalk-hi); min-width: 0; }
+  .svc .opt { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); font-weight: 500; }
+  .svc .what { grid-column: 2 / span 2; font-size: 11.5px; color: var(--ash); }
+  .svc .st { grid-column: 3; grid-row: 1; justify-self: end; }
+  .svc .keys { grid-column: 2 / span 2; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .svc .keys .field { flex: 1; min-width: 150px; height: 28px; }
+  .svc .keys .field.mono { letter-spacing: .1em; }
+  .svc .keys .lbl { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--soot); flex-shrink: 0; }
+  .svc .err { grid-column: 2 / span 2; font-size: 11px; color: var(--bad); display: flex; gap: 5px; align-items: center; }
+  .svc .err svg { width: 12px; height: 12px; }
+  .svc .caveat { grid-column: 2 / span 2; font-size: 11px; color: var(--soot); font-style: italic; }
+  .btn.sm { height: 26px; padding: 0 9px; font-size: 11.5px; }
+  .pill .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.none { color: var(--soot); }
+
+  @media (max-width: 1100px) {
+    .cols { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr); gap: 12px; }
+    .svc .keys .field { min-width: 120px; }
+    .svc .lm { width: 30px; height: 30px; }
+    .svc { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  }
+  .keep { display: grid; gap: 4px; margin: 6px 0 10px; font-size: 12px; }
+  .keep li { display: grid; grid-template-columns: 112px 1fr; gap: 10px; }
+  .keep span { color: var(--soot); }
+  .keep b { font-weight: 500; color: var(--chalk); }
+  .budget { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto auto; align-items: center; gap: 10px; font-size: 12px; }
+  .budget b { color: var(--chalk-hi); font-weight: 600; }
+  .btn.sm { height: 24px; padding: 0 8px; font-size: 11.5px; }
+</style>
+</head>
+<body data-page="settings" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Settings</h1><div class="lede">Everything stays on this PC. Integrations are optional extras.</div></div>
+    <div class="actions"><span class="muted" style="font-size:11.5px">Changes save automatically</span></div>
+  </header>
+
+  <section class="cols">
+    <div class="stack">
+      <article class="panel">
+        <div class="ph"><h2>Game</h2></div>
+        <div class="set full">
+          <div class="t">World of Warcraft folder</div>
+          <div class="ctl"><span class="field mono" style="flex:1"><i data-i="folder" class="sm" style="color:var(--soot)"></i>C:\Program Files (x86)\World of Warcraft\_classic_beta_</span><button class="btn sm">Change…</button></div>
+          <div class="d" style="margin-top:2px"><span class="ok">✓</span> WoW: Forever (Beta) · 1.60.1 · WowB.exe · 7 characters on Ashenvale</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="ph"><h2>Backups</h2></div>
+        <div class="set"><div class="t">Back up when WoW closes</div><div class="d">The safest moment: files are fully written.</div><div class="ctl"><span class="switch on"></span></div></div>
+        <div class="set"><div class="t">Back up when the app starts</div><div class="d">If it's been more than 6 hours. Waits for game exit if WoW is running.</div><div class="ctl"><span class="switch on"></span></div></div>
+        <div class="set"><div class="t">Back up every 24 hours</div><div class="d">While the app is open. Skipped while WoW runs; the game-exit backup covers it.</div><div class="ctl"><span class="switch on"></span></div></div>
+        <div class="set full">
+          <div class="t">What's kept</div>
+          <ul class="keep">
+            <li><span>Auto</span><b>everything from 48 h, then daily for 2 weeks, weekly for 2 months</b></li>
+            <li><span>Safety</span><b>30 days, and always the last 20</b></li>
+            <li><span>Manual &amp; pinned</span><b>forever, until you delete them</b></li>
+          </ul>
+          <div class="budget"><span class="muted">Storage budget</span><span class="bar"><i class="fill" style="width:22%"></i></span><span><b>1.08 GB</b> <span class="muted">of 5 GB</span></span><button class="btn ghost sm">Prune now</button></div>
+        </div>
+        <div class="set full">
+          <div class="t">Store backups in</div>
+          <div class="ctl"><span class="field mono" style="flex:1">%LOCALAPPDATA%\ForeverBuddy\backups</span><button class="btn sm">Change…</button></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="ph"><h2>Safety</h2></div>
+        <div class="set">
+          <div class="t">Block writes while WoW is running</div>
+          <div class="d">WoW overwrites WTF and SavedVariables on exit, so edits made now would be lost or corrupted.</div>
+          <div class="ctl"><span class="locked-note"><i data-i="lock"></i>Always on</span><span class="switch on locked" title="Locked on"></span></div>
+        </div>
+      </article>
+    </div>
+
+    <article class="panel">
+      <div class="ph"><h2>Integrations</h2><span class="meta">2 of 5 connected</span></div>
+      <div class="note"><i data-i="key" class="sm"></i><span><b>Every key is optional.</b> The app works fully offline without them. Keys are stored in <b>Windows Credential Manager</b>, never in app files or backups.</span></div>
+
+      <div class="svc">
+        <span class="lm">CF</span>
+        <span class="nm">CurseForge <span class="opt">optional</span></span>
+        <span class="st pill ok"><span class="d"></span>Connected</span>
+        <span class="what">Search and update addons hosted on CurseForge.</span>
+        <div class="keys"><span class="field mono"><span>••••••••••••••••••••3f9a</span></span><button class="btn sm">Test</button><button class="btn ghost sm">Remove</button></div>
+      </div>
+
+      <div class="svc">
+        <span class="lm">WA</span>
+        <span class="nm">Wago Addons <span class="opt">optional</span></span>
+        <span class="st pill none"><span class="d"></span>Not set</span>
+        <span class="what">Update addons distributed through Wago.</span>
+        <div class="keys"><span class="field mono"><input placeholder="Paste API key"></span><button class="btn sm">Save</button></div>
+      </div>
+
+      <div class="svc">
+        <span class="lm">W</span>
+        <span class="nm">Wago.io <span class="opt">optional</span></span>
+        <span class="st pill ok"><span class="d"></span>Connected</span>
+        <span class="what">Import WeakAuras and get notified when yours have updates.</span>
+        <div class="keys"><span class="field mono"><span>••••••••••••••••••••a71c</span></span><button class="btn sm">Test</button><button class="btn ghost sm">Remove</button></div>
+      </div>
+
+      <div class="svc">
+        <span class="lm">GH</span>
+        <span class="nm">GitHub token <span class="opt">optional</span></span>
+        <span class="st pill bad"><span class="d"></span>Invalid</span>
+        <span class="what">Higher rate limits when updating GitHub-hosted addons.</span>
+        <div class="keys"><span class="field mono"><span>ghp_••••••••••••••••••9d02</span></span><button class="btn sm">Test</button><button class="btn ghost sm">Remove</button></div>
+        <span class="err"><i data-i="alert"></i>Token expired on 28 Sep. Paste a new one.</span>
+      </div>
+
+      <div class="svc">
+        <span class="lm">B</span>
+        <span class="nm">Battle.net <span class="opt">optional</span></span>
+        <span class="st pill none"><span class="d"></span>Not set</span>
+        <span class="what">Armory portraits and character data. Create a client at develop.battle.net.</span>
+        <div class="keys"><span class="field mono"><input placeholder="Client ID"></span><span class="field mono"><input placeholder="Client secret" type="password"></span><button class="btn sm">Save</button></div>
+        <span class="caveat">May not cover WoW: Forever realms yet. We'll test with your character before relying on it.</span>
+      </div>
+    </article>
+  </section>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

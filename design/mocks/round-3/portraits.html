@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Portrait slot — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .pslot .crest > path { fill: color-mix(in srgb, var(--cc) 34%, #15110d); stroke: color-mix(in srgb, var(--cc) 55%, #cfc6b8); }
+  .pslot .crest > g { fill: var(--cc); stroke: var(--cc); }
+  .pslot { display: inline-block; } .pslot .pi { display: block; }
+
+  .srcs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .src-col .ph .pill { margin-left: auto; }
+  .stage { display: flex; align-items: flex-end; gap: 18px; padding: 16px 16px 12px; }
+  .stage figcaption, .paper figcaption { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); margin-top: 8px; text-align: center; }
+  .stage figure, .paper figure { display: flex; flex-direction: column; align-items: center; }
+  .paper { margin: 0 12px 12px; padding: 12px 14px; display: flex; align-items: flex-end; gap: 18px; }
+  .paper figcaption { color: var(--ink-3); }
+  .paper .who { margin-left: auto; align-self: center; }
+  .paper .who b { font: 700 14px "Cinzel", serif; display: block; }
+  .paper .who span { font-size: 11.5px; }
+  .notes { padding: 0 16px 14px; font-size: 12px; color: var(--ash); display: grid; gap: 5px; }
+  .notes li { display: flex; gap: 8px; }
+  .notes li svg { margin-top: 2px; color: var(--soot); }
+  .notes b { color: var(--chalk-hi); font-weight: 500; }
+
+  .crop { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 18px; padding: 14px 16px 16px; align-items: start; }
+  .shotbox { position: relative; aspect-ratio: 16 / 9; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(255,255,255,.06); background: #0b0a09; }
+  .shotbox img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 60%; }
+  .cropframe { position: absolute; top: 12%; left: 44%; height: 76%; aspect-ratio: 4 / 5; box-shadow: 0 0 0 2000px rgba(0,0,0,.6); outline: 1px solid rgba(255,177,92,.9); }
+  .cropframe::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(90deg, transparent 33%, rgba(255,255,255,.2) 33% calc(33% + 1px), transparent calc(33% + 1px) 66%, rgba(255,255,255,.2) 66% calc(66% + 1px), transparent calc(66% + 1px)), linear-gradient(180deg, transparent 33%, rgba(255,255,255,.2) 33% calc(33% + 1px), transparent calc(33% + 1px) 66%, rgba(255,255,255,.2) 66% calc(66% + 1px), transparent calc(66% + 1px)); }
+  .cropframe i { position: absolute; width: 10px; height: 10px; border: 2px solid var(--ember-2); }
+  .cropframe i:nth-child(1) { left: -2px; top: -2px; border-right: 0; border-bottom: 0; }
+  .cropframe i:nth-child(2) { right: -2px; top: -2px; border-left: 0; border-bottom: 0; }
+  .cropframe i:nth-child(3) { left: -2px; bottom: -2px; border-right: 0; border-top: 0; }
+  .cropframe i:nth-child(4) { right: -2px; bottom: -2px; border-left: 0; border-top: 0; }
+  .thumbs { display: flex; gap: 6px; margin-top: 8px; }
+  .thumbs span { width: 56px; aspect-ratio: 16/9; border-radius: 3px; background: linear-gradient(135deg, #2b4a6b, #0d1a33); box-shadow: 0 0 0 1px #000; opacity: .6; }
+  .thumbs span.on { opacity: 1; box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--ember-2); }
+  .thumbs span:nth-child(2) { background: linear-gradient(135deg, #6b4a2b, #1a0f08); }
+  .thumbs span:nth-child(3) { background: linear-gradient(135deg, #3a5a3a, #0d1a0d); }
+  .thumbs span:nth-child(4) { background: linear-gradient(135deg, #5a3a5a, #150d18); }
+  .result { display: grid; gap: 10px; justify-items: start; font-size: 12px; color: var(--ash); }
+  .result .row { display: flex; gap: 12px; align-items: flex-end; }
+  .result .acts { display: flex; gap: 8px; margin-top: 4px; }
+  .zoom { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 11px; color: var(--soot); }
+  .zoom .bar { flex: 1; }
+
+  @media (max-width: 1100px) {
+    .stage { gap: 12px; padding: 12px; }
+    .paper { gap: 12px; }
+    .paper .who { display: none; }
+    .crop { grid-template-columns: minmax(0, 1fr) 170px; }
+  }
+</style>
+</head>
+<body data-page="characters" data-wow="closed">
+<main class="main">
+  <div>
+    <div class="crumbs"><a href="characters.html">Characters</a><i data-i="chevron" class="sm"></i><span>Portrait slot</span></div>
+    <header class="head">
+      <div><h1>Portrait slot</h1><div class="lede">One 4:5 slot, three sources. Every character looks good with no key at all; an armory render is an upgrade.</div></div>
+    </header>
+  </div>
+
+  <section class="srcs">
+    <article class="panel src-col">
+      <div class="ph"><h2>Class crest</h2><span class="pill ok">Default · bundled</span></div>
+      <div class="stage">
+        <figure><span data-portrait="crest" data-class="hunter" data-race="Dw" data-w="112"></span><figcaption>Sheet · 112</figcaption></figure>
+        <figure><span data-portrait="crest" data-class="mage" data-race="Gn" data-w="64"></span><figcaption>Card · 64</figcaption></figure>
+        <figure><span data-portrait="crest" data-class="rogue" data-race="NE" data-w="40"></span><figcaption>Row · 40</figcaption></figure>
+      </div>
+      <div class="parchment paper">
+        <figure><span data-portrait="crest" data-class="hunter" data-race="Dw" data-w="64"></span><figcaption>On a record</figcaption></figure>
+        <div class="who"><b class="c-hunter cc">Brannic</b><span class="serif-i">Level 52 Dwarf Hunter</span></div>
+      </div>
+      <ul class="notes">
+        <li><i data-i="shield" class="sm"></i><span>Shield in the class tint with the class glyph, plus a <b>race badge</b>. Drawn as SVG, so it's crisp at any size.</span></li>
+        <li><i data-i="check" class="sm"></i><span>Used whenever there's no render or screenshot. Fully offline.</span></li>
+      </ul>
+    </article>
+
+    <article class="panel src-col">
+      <div class="ph"><h2>Armory render</h2><span class="pill warn">Needs Battle.net key</span></div>
+      <div class="stage">
+        <figure><span data-portrait="armory" data-class="paladin" data-w="112" data-tag="1"></span><figcaption>Sheet · 112</figcaption></figure>
+        <figure><span data-portrait="armory" data-class="paladin" data-w="64"></span><figcaption>Card · 64</figcaption></figure>
+        <figure><span data-portrait="armory" data-class="paladin" data-w="40"></span><figcaption>Row · 40</figcaption></figure>
+      </div>
+      <div class="parchment paper">
+        <figure><span data-portrait="armory" data-class="paladin" data-w="64"></span><figcaption>On a record</figcaption></figure>
+        <div class="who"><b class="c-paladin cc">Thrandor</b><span class="serif-i">Level 60 Human Paladin</span></div>
+      </div>
+      <ul class="notes">
+        <li><i data-i="globe" class="sm"></i><span>Bust render from the Battle.net Profile API. Cropped to the slot at <b>50% / 22%</b> so the face lands in the upper third.</span></li>
+        <li><i data-i="alert" class="sm"></i><span>Forever realms may not be covered. If the lookup fails, quietly fall back to the crest.</span></li>
+      </ul>
+    </article>
+
+    <article class="panel src-col">
+      <div class="ph"><h2>Your screenshot</h2><span class="pill">Local · optional</span></div>
+      <div class="stage">
+        <figure><span data-portrait="shot" data-class="druid" data-w="112" data-tag="1"></span><figcaption>Sheet · 112</figcaption></figure>
+        <figure><span data-portrait="shot" data-class="druid" data-w="64"></span><figcaption>Card · 64</figcaption></figure>
+        <figure><span data-portrait="shot" data-class="druid" data-w="40"></span><figcaption>Row · 40</figcaption></figure>
+      </div>
+      <div class="parchment paper">
+        <figure><span data-portrait="shot" data-class="druid" data-w="64"></span><figcaption>On a record</figcaption></figure>
+        <div class="who"><b class="c-druid cc">Velyra</b><span class="serif-i">Level 60 Night Elf Druid</span></div>
+      </div>
+      <ul class="notes">
+        <li><i data-i="camera" class="sm"></i><span><b>Set portrait from screenshot</b>: pick any shot from your Screenshots folder and crop it. It never leaves your machine.</span></li>
+        <li><i data-i="check" class="sm"></i><span>Overrides the armory render for that character.</span></li>
+      </ul>
+    </article>
+  </section>
+
+  <article class="panel">
+    <div class="ph"><h2>Set portrait from screenshot</h2><span class="meta">Velyra · Screenshots\WoWScrnShot_100326_214455.jpg</span></div>
+    <div class="crop">
+      <div>
+        <div class="shotbox"><img src="portraits/screenshot-velyra.svg" alt=""><div class="cropframe"><i></i><i></i><i></i><i></i></div></div>
+        <div class="thumbs"><span class="on"></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="result">
+        <span class="sec">Preview</span>
+        <div class="row"><span data-portrait="shot" data-class="druid" data-w="88"></span><span data-portrait="shot" data-class="druid" data-w="44"></span></div>
+        <div class="zoom">Zoom <div class="bar"><i class="fill" style="width:40%"></i></div></div>
+        <div class="acts"><button class="btn ghost">Cancel</button><button class="primary">Use portrait</button></div>
+      </div>
+    </div>
+  </article>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>

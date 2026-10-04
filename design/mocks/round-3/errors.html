@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>First run &amp; error states — WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .card { display: flex; flex-direction: column; }
+  .card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: var(--r) var(--r) 0 0; box-shadow: 0 0 0 1px #000; }
+  .card .cap { padding: 10px 12px 12px; display: grid; gap: 4px; }
+  .card .cap b { font: 700 12.5px "Cinzel", serif; color: var(--chalk-hi); letter-spacing: .04em; }
+  .card .cap span { font-size: 12px; color: var(--ash); }
+  .card .cap code { font: 11px ui-monospace, Menlo, monospace; color: var(--ember-2); }
+  .sec2 { font: 700 13px "Cinzel", serif; letter-spacing: .08em; color: #d8cfc0; text-transform: uppercase; margin-top: 6px; }
+</style>
+</head>
+<body data-page="none" data-wow="closed">
+<main class="main">
+  <header class="head"><div><h1>First run &amp; error states</h1><div class="lede">Every state below lives on its real screen. Click a card to open it.</div></div></header>
+  <div class="sec2">First run</div>
+  <section class="gal" id="first"></section>
+  <div class="sec2">When something goes wrong</div>
+  <section class="gal" id="errs"></section>
+</main>
+<script>
+  const card = ([url, shot, t, d]) => `<a class="panel card" href="${url}"><img src="shots/${shot}-1280x800.webp" alt=""><div class="cap"><b>${t}</b><span>${d}</span><code>${url}</code></div></a>`;
+  document.getElementById('first').innerHTML = [
+    ['onboarding.html?state=detecting', 'onboarding-detecting', 'Looking for the game', 'Saved folder → registry → common folders, with a skip to pick manually.'],
+    ['onboarding.html', 'onboarding-found', 'Found it', 'Root found via registry; WoW: Forever (Beta) preselected among the flavors.'],
+    ['onboarding.html?state=notfound', 'onboarding-notfound', "Couldn't find it", 'Where we looked, and that root, _classic_beta_ or WTF all work.'],
+    ['onboarding.html?state=pick', 'onboarding-pick', 'Picked a WTF folder', 'Normalized up to the root; settings-only copy caveat.'],
+  ].map(card).join('');
+  document.getElementById('errs').innerHTML = [
+    ['backups.html?error=backup', 'backups-error', 'Backup failed', 'Disk full: one red callout, one failed row, Retry / Change location.'],
+    ['dashboard.html?recover', 'dashboard-recover', 'Restore interrupted', 'Startup dialog: Roll back (recommended) or Finish restore.'],
+    ['backups.html?error=corrupt', 'backups-corrupt', 'Damaged snapshot', 'Stopped before any write; lists files; verify all or use an older one.'],
+    ['dashboard.html?folder=missing', 'dashboard-folder-missing', 'Game folder gone', 'Drive unplugged: calm stone banner, data shown as last known.'],
+  ].map(card).join('');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>

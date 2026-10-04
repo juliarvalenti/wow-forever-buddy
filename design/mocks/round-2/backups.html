@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backups — WoW Forever Buddy (mock r2)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); display: flex; gap: 14px; align-items: center; white-space: nowrap; }
+  .toolbar .meta b { color: var(--ash); font-weight: 500; }
+  .meter { width: 90px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+  .tablewrap { max-height: 500px; overflow: auto; }
+  .tablewrap table.grid th { position: sticky; top: 0; z-index: 1; background: #26241f; }
+  td .when { display: flex; flex-direction: column; line-height: 1.2; }
+  td .when small { color: var(--soot); font-size: 11px; }
+  td.note { color: var(--ash); max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+  td.note b { color: var(--chalk-hi); font-weight: 500; }
+  /* locked restore affordance — identical everywhere while WoW runs */
+  .lockact { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 24px; min-width: 24px; padding: 0 6px; border-radius: 3px;
+    color: var(--soot); background: rgba(0,0,0,.25); box-shadow: inset 0 1px 2px rgba(0,0,0,.6); cursor: not-allowed; font-size: 11.5px; white-space: nowrap; }
+  .lockact svg { width: 13px; height: 13px; }
+  td .rowact { display: flex; justify-content: flex-end; gap: 4px; }
+  td .rowact .btn.ghost { height: 24px; width: 24px; }
+
+  .detail .pb { display: grid; gap: 13px; }
+  .snaptitle { font: 700 15px "Cinzel", serif; color: var(--chalk-hi); letter-spacing: .03em; }
+  .scope { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+  .tree { border-radius: var(--r); background: rgba(0,0,0,.28); box-shadow: inset 0 2px 5px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.04); max-height: 216px; overflow: auto; }
+  .tree li { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 10px; font-size: 12.5px; }
+  .tree li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .tree li.child { padding-left: 32px; color: var(--ash); font-size: 12px; }
+  .tree li .sz { margin-left: auto; color: var(--soot); font-size: 11px; }
+  /* stone checkbox with ember tick */
+  .cb { width: 15px; height: 15px; flex-shrink: 0; border-radius: 3px; position: relative; background: rgba(0,0,0,.5); box-shadow: inset 0 2px 3px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.06); }
+  .cb.on { background: linear-gradient(180deg, #4a3a26, #2e2418); box-shadow: inset 0 1px 0 rgba(255,220,170,.15), 0 0 0 1px rgba(255,177,92,.45); }
+  .cb.on::after { content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px; border: solid var(--ember-2); border-width: 0 2px 2px 0; transform: rotate(45deg); filter: drop-shadow(0 0 3px var(--ember)); }
+  .lockrow { display: grid; gap: 8px; }
+  .lockrow .lockact { height: 30px; justify-content: flex-start; padding: 0 11px; font-size: 12px; }
+  .lockrow .why { font-size: 11.5px; color: var(--warn); display: flex; gap: 6px; align-items: center; }
+  .lockrow .why svg { width: 13px; height: 13px; }
+
+  /* dialog */
+  .dialog .body { padding: 14px 16px 6px; display: grid; gap: 12px; font-size: 13px; }
+  .dialog .body p { color: var(--ash); }
+  .dialog .body p b { color: var(--chalk-hi); font-weight: 500; }
+  .replace { border-radius: var(--r); background: rgba(0,0,0,.3); box-shadow: inset 0 2px 5px rgba(0,0,0,.6); }
+  .replace li { display: flex; gap: 8px; align-items: center; padding: 6px 10px; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 11px; color: var(--ash); white-space: nowrap; overflow: hidden; }
+  .replace li + li { border-top: 1px solid rgba(0,0,0,.45); }
+  .replace li svg { color: var(--soot); width: 13px; height: 13px; }
+  .safety { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: #cdbfa9; }
+  .safety svg { color: #b79c6c; margin-top: 1px; width: 14px; height: 14px; }
+  .waiting { display: flex; align-items: center; gap: 8px; margin-right: auto; font-size: 11.5px; color: #f3d6b4; line-height: 1.3; }
+  .waiting small { display: block; color: var(--soot); font-size: 10.5px; }
+
+  @media (max-width: 1100px) {
+    .split { grid-template-columns: minmax(0, 1fr) 280px; }
+    th.contents, td.contents { display: none; }
+    .toolbar .meta .m2 { display: none; }
+    td.note { max-width: 170px; }
+  }
+</style>
+</head>
+<body data-page="backups" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Backups</h1><div class="lede">Snapshots of your WTF and SavedVariables, taken every time the game closes.</div></div>
+    <div class="actions">
+      <button class="btn ghost"><i data-i="gear"></i>Schedule</button>
+      <button class="primary"><i data-i="archive"></i>Back up now</button>
+    </div>
+  </header>
+
+  <div class="callout">
+    <i data-i="lock"></i>
+    <span class="grow"><b>WoW is running — restores are locked.</b> Backing up is safe now. Close the game to restore; WoW rewrites these files when it exits.</span>
+    <span class="live"></span>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg"><button class="on">All 23</button><button>Auto 18</button><button>Manual 4</button><button>Safety 1</button></div>
+    <div class="meta">
+      <span class="m2">Auto-prune after <b>30 days</b> · manual kept forever</span>
+      <span style="display:flex;align-items:center;gap:8px"><b>1.08 GB</b> of 5 GB <span class="meter"><span class="bar" style="display:block"><i class="fill" style="width:22%"></i></span></span></span>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="panel tablewrap">
+      <table class="grid">
+        <thead><tr><th>When</th><th>Type</th><th>Note</th><th class="contents">Contents</th><th class="r">Size</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="panel detail">
+      <div class="ph"><h2>Snapshot</h2><span class="meta"><span class="pill auto">Auto</span></span></div>
+      <div class="pb">
+        <div>
+          <div class="snaptitle">Today, 11:52</div>
+          <div class="muted" style="font-size:12px">Taken when WoW closed · 48.2 MB · 1,912 files</div>
+        </div>
+        <div>
+          <div class="sec" style="margin-bottom:6px">Restore scope</div>
+          <div class="seg scope"><button>Everything</button><button class="on">Characters</button><button>Addons</button></div>
+        </div>
+        <ul class="tree">
+          <li class="c-paladin"><span class="cb on"></span><span class="cdot"></span>Thrandor<span class="sz">2.1 MB</span></li>
+          <li class="child"><span class="cb on"></span>Keybindings &amp; macros<span class="sz">48 KB</span></li>
+          <li class="child"><span class="cb on"></span>Addon settings (41)<span class="sz">1.9 MB</span></li>
+          <li class="child"><span class="cb"></span>Chat &amp; layout<span class="sz">96 KB</span></li>
+          <li class="c-druid"><span class="cb"></span><span class="cdot"></span>Velyra<span class="sz">1.8 MB</span></li>
+          <li class="c-hunter"><span class="cb"></span><span class="cdot"></span>Brannic<span class="sz">1.2 MB</span></li>
+          <li class="c-mage"><span class="cb"></span><span class="cdot"></span>Fizzwick<span class="sz">1.1 MB</span></li>
+          <li class="c-priest"><span class="cb"></span><span class="cdot"></span>Sela<span class="sz">0.9 MB</span></li>
+        </ul>
+        <div class="lockrow">
+          <span class="lockact" title="Close WoW first"><i data-i="lock"></i>Restore 1 character…</span>
+          <span class="why"><i data-i="clock"></i>Unlocks when WoW closes — you can still pick what to restore.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- confirm restore (backups.html?confirm) -->
+  <div class="scrim" id="confirm">
+    <div class="panel dialog">
+      <div class="ph"><h2>Restore Thrandor?</h2><span class="meta"><button class="btn ghost icon" style="height:22px;width:22px"><i data-i="x" class="sm"></i></button></span></div>
+      <div class="body">
+        <p>Thrandor's <b>keybindings, macros and 41 addon settings</b> will be replaced with the copy from <b>today, 11:52</b>.</p>
+        <ul class="replace">
+          <li><i data-i="file"></i>…\Ashenvale\Thrandor\bindings-cache.wtf</li>
+          <li><i data-i="file"></i>…\Ashenvale\Thrandor\macros-cache.txt</li>
+          <li><i data-i="file"></i>…\Thrandor\SavedVariables\ (41 files)</li>
+        </ul>
+        <div class="callout"><i data-i="alert"></i><span class="grow"><b>Close WoW first.</b> The game is running and would overwrite these files when it exits.</span></div>
+        <div class="safety"><i data-i="archive"></i><span>A safety snapshot of the current files is taken before anything changes, so you can undo this.</span></div>
+      </div>
+      <div class="foot">
+        <span class="waiting"><span class="live"></span><span>Waiting for WoW to close…<small>Restore enables automatically when it exits.</small></span></span>
+        <button class="btn ghost">Cancel</button>
+        <span class="lockact" style="height:28px;padding:0 11px"><i data-i="lock"></i>Restore</span>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  const R = [
+    ['Today, 11:52', '2 hours ago', 'auto', 'On game exit', '7 chars · 52 addons', '48.2 MB', 1],
+    ['Today, 09:10', '5 hours ago', 'safety', 'Before restoring <b>Velyra</b>', '7 chars · 52 addons', '47.9 MB'],
+    ['Yesterday, 22:53', '3 Oct', 'auto', 'On game exit', '7 chars · 52 addons', '47.9 MB'],
+    ['Yesterday, 18:02', '3 Oct', 'manual', '<b>Before patch 1.15.4</b>', '7 chars · 51 addons', '47.1 MB'],
+    ['2 Oct, 23:40', 'Fri', 'auto', 'On game exit', '7 chars · 51 addons', '46.8 MB'],
+    ['1 Oct, 21:15', 'Thu', 'auto', 'On game exit', '7 chars · 51 addons', '46.7 MB'],
+    ['30 Sep, 20:02', 'Wed', 'manual', '<b>Clean UI before ElvUI experiment</b>', '6 chars · 38 addons', '39.4 MB'],
+    ['29 Sep, 22:31', 'Tue', 'auto', 'On game exit', '6 chars · 38 addons', '39.2 MB'],
+    ['27 Sep, 19:48', 'Sun', 'auto', 'On game exit', '6 chars · 38 addons', '39.0 MB'],
+    ['25 Sep, 23:05', 'Fri', 'auto', 'On game exit', '6 chars · 37 addons', '38.6 MB'],
+    ['22 Sep, 20:40', 'Tue', 'manual', '<b>Fresh keybinds</b>', '5 chars · 37 addons', '36.1 MB'],
+  ];
+  const T = { auto: 'Auto', manual: 'Manual', safety: 'Safety' };
+  document.getElementById('rows').innerHTML = R.map(r => `<tr class="${r[6] ? 'sel' : ''}">
+    <td><div class="when">${r[0]}<small>${r[1]}</small></div></td>
+    <td><span class="pill ${r[2]}">${T[r[2]]}</span></td>
+    <td class="note">${r[3]}</td><td class="contents muted">${r[4]}</td><td class="r">${r[5]}</td>
+    <td><div class="rowact"><span class="lockact" title="Restore — close WoW first"><i data-i="lock"></i></span><button class="btn ghost icon"><i data-i="more" class="sm"></i></button></div></td></tr>`).join('');
+  if (location.search.includes('confirm')) document.getElementById('confirm').classList.add('open');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>
