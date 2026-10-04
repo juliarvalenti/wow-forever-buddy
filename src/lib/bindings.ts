@@ -32,7 +32,11 @@ export const commands = {
 	 *  running backup or restore.
 	 */
 	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode }),
-	/**  Checks every stored copy in a snapshot against its checksum. */
+	/**
+	 *  Checks every stored copy in a snapshot against its checksum. Runs as a
+	 *  job, so a concurrent prune's GC can't remove blobs mid-check and make
+	 *  them look missing.
+	 */
 	backupVerify: (id: string) => __TAURI_INVOKE<VerifyReport>("backup_verify", { id }),
 	/**  The interrupted restore, if the app stopped in the middle of one. */
 	restoreJournalStatus: () => __TAURI_INVOKE<{

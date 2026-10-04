@@ -95,10 +95,13 @@ pub async fn backup_restore(
     .await
 }
 
-/// Checks every stored copy in a snapshot against its checksum.
+/// Checks every stored copy in a snapshot against its checksum. Runs as a
+/// job, so a concurrent prune's GC can't remove blobs mid-check and make
+/// them look missing.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn backup_verify(state: State<'_, AppState>, id: String) -> AppResult<VerifyReport> {
+    let _job = state.core.jobs.lock().expect("job lock poisoned");
     let backups = state.core.backups()?;
     let manifest = backups.manifest(&id)?;
     Ok(restore::verify(&backups, &manifest))
