@@ -5,5 +5,6 @@ pub mod app;
 pub mod backup;
 pub mod game;
 pub mod install;
+pub mod restore;
 pub mod secrets;
 pub mod settings;

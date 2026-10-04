@@ -1,7 +1,9 @@
 //! Backups (spec §5): snapshots of the game's settings stored in a
 //! content-addressed blob store, described by manifests, indexed in SQLite.
 
+pub mod journal;
 pub mod manifest;
+pub mod restore;
 pub mod store;
 pub mod tree;
 
@@ -337,7 +339,6 @@ impl BackupService {
         })
     }
 
-    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn manifest(&self, id: &str) -> AppResult<Manifest> {
         self.manifests.read(id)
     }
@@ -387,7 +388,6 @@ impl BackupService {
         self.manifests.all_blob_refs()
     }
 
-    #[allow(dead_code)] // first production callers are GC (T8) and restore (T9)
     pub fn blobs(&self) -> &BlobStore {
         &self.blobs
     }

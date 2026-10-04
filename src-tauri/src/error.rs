@@ -33,6 +33,10 @@ pub enum AppError {
     },
     #[error("backup is corrupt: {files:?}")]
     BackupCorrupt { files: Vec<String> },
+    /// Game files marked read-only (players pin e.g. Config.wtf this way).
+    /// Never overridden; the user clears the flag to allow the change.
+    #[error("read-only files: {paths:?}")]
+    ReadOnly { paths: Vec<String> },
     #[error("secret store error: {0}")]
     Secret(String),
     #[error("database error: {0}")]
