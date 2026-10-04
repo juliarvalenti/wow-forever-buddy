@@ -43,6 +43,15 @@ pub fn run() {
     export_bindings(&builder);
 
     tauri::Builder::default()
+        // Must be the first plugin. A second launch focuses the running app
+        // instead of starting another one that would race on settings,
+        // backups and game-file writes (and sweep its temp files).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {

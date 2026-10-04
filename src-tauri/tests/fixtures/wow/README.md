@@ -6,7 +6,7 @@ dir before touching it; never write here.
 - `.build.info`: two products, `wow_classic_beta` (WoW: Forever, 1.60.x) and `wow_classic_era`.
 - `_classic_beta_/`: the Forever flavor, with an exe stub (`WowB.exe`), AddOns, and a WTF tree:
   - `ACCOUNT1`: account-level SavedVariables (including a `.lua.bak`) and the
-    account cache files, plus characters on two realms (one realm name has a space).
+    account cache files, plus characters on three realms (one realm name has a space, one character name is non-ASCII: `Lúthien`).
   - `ACCOUNT2`: one character.
   - `Cache/`, `Logs/`, `Screenshots/`, which backups must exclude.
 - `_classic_era_/`: a WTF-only flavor with no exe, which must still count as valid.

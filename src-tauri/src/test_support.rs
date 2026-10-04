@@ -32,18 +32,19 @@ fn copy_tree(from: &Path, to: &Path) {
 mod tests {
     use super::*;
     use crate::fsx::read::safe_read;
-    use crate::fsx::relpath::RelPath;
+    use crate::fsx::relpath::{GameRoot, RelPath};
 
     #[test]
     fn fixture_copy_is_complete_and_byte_exact() {
         let (_dir, root) = fixture_copy();
-        let flavor = root.join("_classic_beta_");
+        let flavor = GameRoot::new(&root.join("_classic_beta_")).unwrap();
 
         for rel in [
             "WowB.exe",
             "WTF/Config.wtf",
             "WTF/Account/ACCOUNT1/SavedVariables/Details.lua.bak",
             "WTF/Account/ACCOUNT1/Old Blanchy/Brannic/SavedVariables/Questie.lua",
+            "WTF/Account/ACCOUNT1/Pyrewood Village/Lúthien/SavedVariables/Details.lua",
             "WTF/Account/ACCOUNT2/Ashenvale/Fizzwick/macros-cache.txt",
             "Cache/WDB/enUS/itemcache.wdb",
         ] {

@@ -26,17 +26,7 @@ fn read_stable(
     after_read: &mut dyn FnMut(u32),
 ) -> AppResult<Vec<u8>> {
     for attempt in 0..attempts {
-        let before = stamp(path)?;
-        let bytes = {
-            let mut file = open_shared(path)?;
-            let mut buf = Vec::with_capacity(before.0 as usize);
-            file.read_to_end(&mut buf)?;
-            buf
-        }; // handle dropped here, before anything else happens
-        after_read(attempt);
-        let after = stamp(path)?;
-
-        if before == after && bytes.len() as u64 == after.0 {
+        if let Some(bytes) = read_once(path, attempt, after_read)? {
             return Ok(bytes);
         }
         if attempt + 1 < attempts {
@@ -46,11 +36,55 @@ fn read_stable(
     Err(AppError::Unstable(path.display().to_string()))
 }
 
-fn stamp(path: &Path) -> AppResult<(u64, SystemTime)> {
-    let meta = std::fs::metadata(path).map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => AppError::NotFound(path.display().to_string()),
-        _ => e.into(),
-    })?;
+/// One attempt: `Some(bytes)` if the file held still while we read it,
+/// `None` if it's worth trying again.
+fn read_once(
+    path: &Path,
+    attempt: u32,
+    after_read: &mut dyn FnMut(u32),
+) -> AppResult<Option<Vec<u8>>> {
+    let Some(before) = retryable(path, stamp(path))? else {
+        return Ok(None);
+    };
+    let read = open_shared(path).and_then(|mut file| {
+        let mut buf = Vec::with_capacity(before.0 as usize);
+        file.read_to_end(&mut buf)?;
+        Ok(buf)
+    }); // handle dropped here, before anything else happens
+    let bytes = retryable(path, read)?;
+    after_read(attempt);
+    let Some(after) = retryable(path, stamp(path))? else {
+        return Ok(None);
+    };
+    Ok(bytes.filter(|b| before == after && b.len() as u64 == after.0))
+}
+
+/// Sorts I/O errors: someone holding the file without read sharing (a backup
+/// tool, antivirus, WoW mid-save) means "try again" (`None`); anything else
+/// is a real error.
+fn retryable<T>(path: &Path, result: std::io::Result<T>) -> AppResult<Option<T>> {
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const ERROR_LOCK_VIOLATION: i32 = 33;
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(e)
+            if cfg!(windows)
+                && matches!(
+                    e.raw_os_error(),
+                    Some(ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+                ) =>
+        {
+            Ok(None)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(AppError::NotFound(path.display().to_string()))
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn stamp(path: &Path) -> std::io::Result<(u64, SystemTime)> {
+    let meta = std::fs::metadata(path)?;
     Ok((meta.len(), meta.modified()?))
 }
 
@@ -142,5 +176,29 @@ mod tests {
         std::fs::write(&replacement, b"new").unwrap();
         std::fs::rename(&replacement, &path).expect("rename blocked by our read handle");
         std::fs::remove_file(&path).expect("delete blocked by our read handle");
+    }
+
+    /// Someone else holding the file without read sharing is "try later",
+    /// not a hard I/O error, and we recover once they let go.
+    #[cfg(windows)]
+    #[test]
+    fn exclusive_holder_means_unstable_then_recovers() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("Foo.lua");
+        std::fs::write(&path, b"data").unwrap();
+
+        let exclusive = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        assert!(matches!(
+            read_stable(&path, 2, Duration::ZERO, &mut |_| {}),
+            Err(AppError::Unstable(_))
+        ));
+        drop(exclusive);
+        assert_eq!(safe_read(&path).unwrap(), b"data");
     }
 }

@@ -18,9 +18,14 @@ const RETRY_DELAYS: [Duration; 5] = [
 ];
 
 /// Replace `path` with `bytes` atomically: temp file in the same directory
-/// (`.<name>.wfb-tmp-<rand>`), fsync, then rename over the target. A crash
-/// leaves either the old file or the new one, never a half-written file. A
-/// failed write never leaves its temp file behind.
+/// (`.<name>.wfb-tmp-<rand>`), fsync, rename over the target, then flush the
+/// directory so the rename itself is on disk. A crash leaves either the old
+/// file or the new one, never a half-written file. A failed write never
+/// leaves its temp file behind.
+///
+/// The rename is `std::fs::rename`, which on Windows uses POSIX semantics
+/// (`FileRenameInfoEx`) where available, so it succeeds even while a reader
+/// holds the target open with delete sharing (as our own `safe_read` does).
 ///
 /// This does no safety checks of its own. App-owned files (settings,
 /// manifests, blobs) call it directly; game files go through the guarded
@@ -44,21 +49,51 @@ fn replace_with_retry(path: &Path, bytes: &[u8], delays: &[Duration]) -> AppResu
         .tempfile_in(dir)?;
     tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
+    // Close our handle before renaming; the temp file is still deleted if we
+    // return early.
+    let tmp = tmp.into_temp_path();
 
     let mut delays = delays.iter();
     loop {
-        match tmp.persist(path) {
-            Ok(_) => return Ok(()),
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => {
+                // It's been renamed away; nothing left to delete.
+                let _ = tmp.keep();
+                flush_dir(dir)?;
+                return Ok(());
+            }
             Err(e) => match delays.next() {
-                Some(delay) if is_transient(&e.error) => {
-                    std::thread::sleep(*delay);
-                    tmp = e.file;
-                }
-                // Dropping `e.file` deletes the temp file.
-                _ => return Err(e.error.into()),
+                Some(delay) if is_transient(&e) => std::thread::sleep(*delay),
+                // Dropping `tmp` deletes the temp file.
+                _ => return Err(e.into()),
             },
         }
     }
+}
+
+/// Makes a rename in `dir` durable by flushing the directory entry.
+#[cfg(not(windows))]
+fn flush_dir(dir: &Path) -> AppResult<()> {
+    std::fs::File::open(dir)?.sync_all()?;
+    Ok(())
+}
+
+/// Windows: NTFS journals the rename's metadata, and flushing a directory
+/// handle asks it to commit that now. Best effort, because some file systems
+/// and network shares refuse a directory handle with write access. The data
+/// itself was already fsynced before the rename.
+#[cfg(windows)]
+fn flush_dir(dir: &Path) -> AppResult<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    if let Ok(handle) = std::fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(dir)
+    {
+        let _ = handle.sync_all();
+    }
+    Ok(())
 }
 
 /// Errors that mean "someone briefly has the file open", worth retrying.
@@ -83,11 +118,25 @@ fn is_transient(e: &std::io::Error) -> bool {
 /// Deletes temp files left by a crash mid-write anywhere under `root`.
 /// Doesn't follow symlinks. Returns how many were removed.
 pub fn sweep_temp_files(root: &Path) -> AppResult<usize> {
+    sweep(root, usize::MAX)
+}
+
+/// Like `sweep_temp_files`, but only `root` itself, not subfolders. For
+/// folders with big trees under them (the backup store), which handle their
+/// own in-progress files.
+pub fn sweep_temp_files_shallow(root: &Path) -> AppResult<usize> {
+    sweep(root, 1)
+}
+
+fn sweep(root: &Path, max_depth: usize) -> AppResult<usize> {
     if !root.exists() {
         return Ok(0);
     }
     let mut removed = 0;
-    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+    for entry in walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .max_depth(max_depth)
+    {
         let Ok(entry) = entry else { continue };
         if entry.file_type().is_file()
             && entry.file_name().to_string_lossy().contains(TMP_MARKER)
@@ -151,6 +200,18 @@ mod tests {
         assert_eq!(sweep_temp_files(tmp.path()).unwrap(), 2);
         assert_eq!(names_in(&deep), ["Foo.lua"]);
         assert_eq!(sweep_temp_files(&tmp.path().join("missing")).unwrap(), 0);
+    }
+
+    #[test]
+    fn shallow_sweep_leaves_subfolders_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("backups/objects/ab");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join(".blob.wfb-tmp-1"), b"in progress").unwrap();
+        std::fs::write(tmp.path().join(".buddy.db.wfb-tmp-2"), b"junk").unwrap();
+
+        assert_eq!(sweep_temp_files_shallow(tmp.path()).unwrap(), 1);
+        assert!(nested.join(".blob.wfb-tmp-1").exists());
     }
 
     /// WoW (or our own reader) holding the file open with full sharing must

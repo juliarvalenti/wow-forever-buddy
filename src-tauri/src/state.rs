@@ -2,7 +2,7 @@ use crate::config::paths::AppPaths;
 use crate::config::settings::SettingsStore;
 use crate::db::Db;
 use crate::error::AppResult;
-use crate::fsx::atomic::sweep_temp_files;
+use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
 
 /// Everything the app does, minus Tauri. Integration tests build this directly
 /// against temp dirs; later tickets add install, game status, jobs.
@@ -19,9 +19,11 @@ impl AppCore {
             std::fs::create_dir_all(dir)?;
         }
         // Leftovers from a crash mid-write (spec §8 startup step 3). The game
-        // folder is swept once the install is resolved.
+        // folder is swept once the install is resolved. Local data is swept
+        // shallowly: the backup store under it can be large, and the backup
+        // code cleans up its own in-progress files (T7).
         sweep_temp_files(&paths.config_dir)?;
-        sweep_temp_files(&paths.local_data_dir)?;
+        sweep_temp_files_shallow(&paths.local_data_dir)?;
 
         let settings = SettingsStore::load(paths.settings_file())?;
         let db = Db::open(&paths.db_file())?;
