@@ -57,7 +57,9 @@ We skip parsing Battle.net's `product.db` (protobuf, undocumented) for v0.1. Reg
 ## 2. Game-running detection
 
 - **Polling with `sysinfo`** every **2 s**. We refresh only process names and exe paths, which is cheap. WMI process events would be more "correct" but much more complex, and a 2 s delay doesn't matter here.
-- **Match rule:** a process whose **exe path lives under the active install root** (case-insensitive). If the path can't be read (access denied), fall back to the file name: `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowT.exe`, `Wow-64.exe`, plus whatever Forever's exe turns out to be. The name list is a constant plus a hidden setting.
+- **Match rules** (the name list is `KNOWN_EXES`, including Forever's `WowB.exe`/`WowB-arm64.exe`, plus `process_names_extra` from settings):
+  - **Display** ("WoW is running"): a process whose exe lives under the install root, compared case-insensitively after canonicalizing both paths, so a game launched through a junction, `subst` drive or other alias still matches. If the path can't be read (access denied) or no install is set, the process is matched by name.
+  - **Write gate** (`is_running_now`): **fails closed**. Anything the display rule matches, plus any process with a known name wherever it lives. A second WoW install blocks our writes while it runs; that's the safe direction.
 - **State:** `GameStatus { running: bool, pids: Vec<u32>, since: Option<Timestamp> }`, held in `AppState` behind a `watch` channel.
 - **UI notification:** emits the event `game://status-changed` on each transition. The frontend also calls `game_status()` on mount to get the initial state.
 - **Exit hook:** a running→stopped transition triggers the *game-exit backup* (§5) **after** the WTF tree has been stable for 5 s. WoW writes SavedVariables while shutting down.
