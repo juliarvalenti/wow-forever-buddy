@@ -10,7 +10,10 @@ use rusqlite_migration::{Migrations, M};
 
 use crate::error::{AppError, AppResult};
 
-const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!("migrations/001_init.sql"))];
+const MIGRATION_LIST: &[M<'_>] = &[
+    M::up(include_str!("migrations/001_init.sql")),
+    M::up(include_str!("migrations/002_hash_cache_key.sql")),
+];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 
 impl From<rusqlite::Error> for AppError {

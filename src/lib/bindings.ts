@@ -8,6 +8,18 @@ export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
+	 *  "Back up now": a full manual snapshot. Allowed while WoW runs, and then
+	 *  flagged as taken mid-session. Waits if another backup or restore is running.
+	 */
+	backupCreate: (label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_create", { label }),
+	backupDelete: (id: string) => __TAURI_INVOKE<null>("backup_delete", { id }),
+	/**  One snapshot, grouped by account, character and category for the restore panel. */
+	backupGet: (id: string) => __TAURI_INVOKE<SnapshotDetail>("backup_get", { id }),
+	/**  Every snapshot, newest first. */
+	backupList: () => __TAURI_INVOKE<SnapshotSummary[]>("backup_list"),
+	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
+	backupSetPinned: (id: string, pinned: boolean) => __TAURI_INVOKE<SnapshotSummary>("backup_set_pinned", { id, pinned }),
+	/**
 	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
 	 *  on mount, then follows `game-status-changed`.
 	 */
@@ -56,11 +68,28 @@ export const commands = {
 
 /** Events */
 export const events = {
+	backupCreated: makeEvent<BackupCreated>("backup-created"),
+	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 };
 
 /* Types */
+export type AccountNode = {
+	name: string,
+	totals: Totals,
+	/**  Account-wide files (account SavedVariables, macros, bindings…). */
+	categories: CategoryNode[],
+	characters: CharacterNode[],
+};
+
+export type AddonNode = {
+	/**  SavedVariables file stem, e.g. "Details". */
+	name: string,
+	/**  Across every account and character. */
+	totals: Totals,
+};
+
 /**
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
@@ -88,6 +117,9 @@ export type AppPaths = {
 	log_dir: string,
 };
 
+/**  Emitted when a snapshot has been written. */
+export type BackupCreated = SnapshotSummary;
+
 export type BackupPatch = BackupPatch_Serialize | BackupPatch_Deserialize;
 
 export type BackupPatch_Deserialize = {
@@ -110,6 +142,12 @@ export type BackupPatch_Serialize = {
 	schedule_hours: number | null,
 };
 
+/**  Emitted while a backup runs. */
+export type BackupProgress = {
+	done: number,
+	total: number,
+};
+
 export type BackupSettings = {
 	/**  None = the default, `<local_data_dir>/backups`. */
 	location?: string | null,
@@ -125,6 +163,32 @@ export type BackupSettings = {
 };
 
 export type CandidateSource = "saved" | "registry" | "common_path";
+
+/**
+ *  What a file in a character (or account) folder is for. The restore panel
+ *  lets you pick these per character.
+ */
+export type Category = 
+/**  `bindings-cache.wtf`, `macros-cache.txt` */
+"BindingsMacros" | 
+/**  `SavedVariables/**`, `AddOns.txt` */
+"AddonSettings" | 
+/**  `chat-cache.txt`, `layout-local.txt` */
+"ChatLayout" | 
+/**  Anything else, e.g. `config-cache.wtf` */
+"Other";
+
+export type CategoryNode = {
+	category: Category,
+	totals: Totals,
+};
+
+export type CharacterNode = {
+	realm: string,
+	name: string,
+	totals: Totals,
+	categories: CategoryNode[],
+};
 
 /**
  *  What `install_detect` returns: every install found, plus every place we
@@ -258,6 +322,12 @@ export type LookedIn = {
 	path: string,
 };
 
+export type Scope = 
+/**  The whole tree that backups cover. */
+"full" | 
+/**  Only specific paths (safety snapshots before a write). */
+"partial";
+
 /**
  *  One row of the Integrations panel. Each id is checked on its own, so one
  *  unreadable credential shows as that row's error instead of failing all.
@@ -325,6 +395,46 @@ export type SettingsPatch_Serialize = {
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui: { [key in string]: string | null } | null,
 };
+
+export type SnapshotDetail = {
+	summary: SnapshotSummary,
+	accounts: AccountNode[],
+	addons: AddonNode[],
+	/**  Files outside `WTF/Account` (e.g. `WTF/Config.wtf`, AddOns folders). */
+	other: Totals,
+};
+
+export type SnapshotKind = "Manual" | "Auto" | "Safety";
+
+/**  One row of the Backups list. */
+export type SnapshotSummary = {
+	id: string,
+	created_at: string,
+	trigger: Trigger,
+	kind: SnapshotKind,
+	label: string | null,
+	pinned: boolean,
+	scope: Scope,
+	flavor: string,
+	game_running: boolean,
+	file_count: number,
+	char_count: number,
+	addon_count: number,
+	/**
+	 *  Bytes are f64 because TypeScript numbers can't hold a u64 safely;
+	 *  exact up to 9 PB.
+	 */
+	total_bytes: number | null,
+	new_bytes: number | null,
+};
+
+export type Totals = {
+	files: number,
+	/**  f64 so TypeScript can hold it safely. */
+	bytes: number | null,
+};
+
+export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;

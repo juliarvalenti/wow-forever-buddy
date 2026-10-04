@@ -43,6 +43,9 @@ keyring = { version = "3", features = ["windows-native", "apple-native"] }
 secrecy = "0.10"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 chrono = "0.4"
+blake3 = "1"
+zstd = "0.14"
+ulid = "3"
 
 [dev-dependencies]
 full_moon = "3"
