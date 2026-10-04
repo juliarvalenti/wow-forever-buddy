@@ -4,6 +4,7 @@ mod db;
 mod error;
 mod fsx;
 mod state;
+pub mod sv;
 
 use tauri::Manager;
 

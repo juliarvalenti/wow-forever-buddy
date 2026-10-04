@@ -31,6 +31,11 @@ rusqlite_migration = "2.6"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+memchr = "2"
+
+[dev-dependencies]
+full_moon = "3"
+proptest = "1"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
