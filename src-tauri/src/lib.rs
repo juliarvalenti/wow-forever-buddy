@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod fsx;
+mod game;
 mod install;
 mod secrets;
 mod state;
@@ -27,6 +28,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::app::app_info,
+            commands::game::game_status,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,
@@ -37,7 +39,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::install::install_set,
             commands::app::app_open_folder,
         ])
-        .events(tauri_specta::collect_events![InstallChanged])
+        .events(tauri_specta::collect_events![
+            InstallChanged,
+            commands::game::GameStatusChanged
+        ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
 
@@ -71,20 +76,32 @@ pub fn run() {
             builder.mount_events(app);
             let paths = AppPaths::resolve(app.handle())?;
             let core = AppCore::new(paths)?;
+            let game = core.game.clone();
             app.manage(AppState { core });
 
             // Startup step 4 (spec §8) runs in the background; the window
             // shows right away and hears about the result via the event.
             let handle = app.handle().clone();
+            let install_handle = handle.clone();
             std::thread::spawn(move || {
-                let state = handle.state::<AppState>();
+                let state = install_handle.state::<AppState>();
                 if let Some(install) = install::resolve_on_startup(&state.core.settings) {
                     let _ = InstallChanged {
                         install: Some(install),
                     }
-                    .emit(&handle);
+                    .emit(&install_handle);
                 }
             });
+
+            // Spec §2: poll for WoW every 2 s and tell the UI on each change.
+            // The game-exit backup (T8) hooks in here too.
+            let target_handle = handle.clone();
+            game.spawn(
+                move || target_handle.state::<AppState>().core.probe_target(),
+                move |_transition, status| {
+                    let _ = commands::game::GameStatusChanged(status).emit(&handle);
+                },
+            );
             Ok(())
         })
         .run(tauri::generate_context!())

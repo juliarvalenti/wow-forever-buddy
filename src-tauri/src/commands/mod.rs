@@ -2,6 +2,7 @@
 //! Commands only translate between Tauri and `AppCore`; logic lives in the core modules.
 
 pub mod app;
+pub mod game;
 pub mod install;
 pub mod secrets;
 pub mod settings;

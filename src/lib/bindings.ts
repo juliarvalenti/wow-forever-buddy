@@ -7,6 +7,11 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	/**
+	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
+	 *  on mount, then follows `game-status-changed`.
+	 */
+	gameStatus: () => __TAURI_INVOKE<GameStatus>("game_status"),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -51,6 +56,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 };
 
@@ -164,6 +170,16 @@ export type Flavor = {
 export type FolderTarget = "backups" | "logs" | 
 /**  The active flavor folder, e.g. `<root>/_classic_beta_`. */
 "game";
+
+export type GameStatus = {
+	running: boolean,
+	pids: number[],
+	/**  When the game was first seen running (RFC 3339, UTC), for "session 1h 42m". */
+	since: string | null,
+};
+
+/**  Emitted when WoW starts or stops. */
+export type GameStatusChanged = GameStatus;
 
 /**  A WoW root folder and the game flavors found in it. */
 export type Install = {

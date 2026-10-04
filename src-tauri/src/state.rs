@@ -5,16 +5,18 @@ use crate::config::settings::SettingsStore;
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
+use crate::game::process::{GameWatcher, ProbeTarget, ProcessProbe, SysinfoProbe};
 use crate::secrets::{KeyringStore, SecretStore};
 
 /// Everything the app does, minus Tauri. Integration tests build this directly
-/// against temp dirs; later tickets add install, game status, jobs.
+/// against temp dirs; later tickets add install and jobs.
 pub struct AppCore {
     pub paths: AppPaths,
     pub settings: SettingsStore,
     #[allow(dead_code)] // first read by the backup store (T7)
     pub db: Db,
     pub secrets: Arc<dyn SecretStore>,
+    pub game: Arc<GameWatcher>,
 }
 
 impl AppCore {
@@ -23,9 +25,18 @@ impl AppCore {
         Self::with_secrets(paths, Arc::new(KeyringStore::new()))
     }
 
-    /// The one real constructor. Tests pass an in-memory store so they never
-    /// touch the OS keyring.
+    /// Tests pass an in-memory store so they never touch the OS keyring.
     pub fn with_secrets(paths: AppPaths, secrets: Arc<dyn SecretStore>) -> AppResult<Self> {
+        Self::with_parts(paths, secrets, Arc::new(SysinfoProbe::new()))
+    }
+
+    /// The one real constructor: the secret store and the process probe are
+    /// the seams tests replace.
+    pub fn with_parts(
+        paths: AppPaths,
+        secrets: Arc<dyn SecretStore>,
+        probe: Arc<dyn ProcessProbe>,
+    ) -> AppResult<Self> {
         for dir in [&paths.config_dir, &paths.local_data_dir, &paths.log_dir] {
             std::fs::create_dir_all(dir)?;
         }
@@ -43,7 +54,17 @@ impl AppCore {
             settings,
             db,
             secrets,
+            game: Arc::new(GameWatcher::new(probe)),
         })
+    }
+
+    /// How to recognize our running game, from the current settings.
+    pub fn probe_target(&self) -> ProbeTarget {
+        let settings = self.settings.get();
+        ProbeTarget {
+            root: settings.install.map(|i| i.root),
+            extra_names: settings.process_names_extra,
+        }
     }
 }
 
