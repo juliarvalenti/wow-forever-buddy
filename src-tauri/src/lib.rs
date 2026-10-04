@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod fsx;
+mod secrets;
 mod state;
 pub mod sv;
 #[cfg(test)]
@@ -25,6 +26,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_info,
             commands::settings::settings_get,
             commands::settings::settings_update,
+            commands::secrets::secrets_status,
+            commands::secrets::secrets_set,
+            commands::secrets::secrets_delete,
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }

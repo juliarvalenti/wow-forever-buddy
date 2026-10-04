@@ -36,6 +36,10 @@ specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 memchr = "2"
+# Windows Credential Manager / macOS Keychain (spec §7). Without these features
+# keyring silently falls back to an in-memory mock store.
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
+secrecy = "0.10"
 
 [dev-dependencies]
 full_moon = "3"
