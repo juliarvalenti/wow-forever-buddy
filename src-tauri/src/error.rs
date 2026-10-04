@@ -37,6 +37,10 @@ pub enum AppError {
     /// Never overridden; the user clears the flag to allow the change.
     #[error("read-only files: {paths:?}")]
     ReadOnly { paths: Vec<String> },
+    /// A restore was interrupted; it must be rolled back, finished or
+    /// discarded before another restore can start.
+    #[error("an interrupted restore needs attention first")]
+    RestorePending,
     #[error("secret store error: {0}")]
     Secret(String),
     #[error("database error: {0}")]

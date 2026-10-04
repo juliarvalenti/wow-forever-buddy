@@ -29,6 +29,9 @@ pub enum JournalAction {
     RollBack,
     /// Run the restore again to completion.
     Finish,
+    /// Forget it without changing files (e.g. the journal is unreadable).
+    /// Its pre-restore snapshot stays in the Safety list.
+    Discard,
 }
 
 /// Runs `work` as the one backup/restore job, off the main thread, emitting
@@ -114,7 +117,8 @@ pub fn restore_journal_status(state: State<'_, AppState>) -> AppResult<Option<Jo
     journal::read(&state.core.paths.local_data_dir)
 }
 
-/// Rolls back or finishes an interrupted restore.
+/// Rolls back, finishes or discards an interrupted restore. Until one of
+/// these succeeds, `backup_restore` is refused with `RestorePending`.
 #[tauri::command]
 #[specta::specta]
 pub async fn restore_journal_resolve(
@@ -122,11 +126,25 @@ pub async fn restore_journal_resolve(
     action: JournalAction,
 ) -> AppResult<RestoreReport> {
     restore_job(app, move |r, progress| {
-        let journal = journal::read(r.journal_dir)?
-            .ok_or_else(|| AppError::NotFound("no interrupted restore".into()))?;
+        let pending = || {
+            journal::read(r.journal_dir)?
+                .ok_or_else(|| AppError::NotFound("no interrupted restore".into()))
+        };
         match action {
-            JournalAction::RollBack => r.roll_back(&journal, progress),
-            JournalAction::Finish => r.finish(&journal, progress),
+            JournalAction::RollBack => r.roll_back(&pending()?, progress),
+            JournalAction::Finish => r.finish(&pending()?, progress),
+            JournalAction::Discard => {
+                // Works even when the journal can't be read.
+                let source = pending().map(|j| j.source_snapshot).unwrap_or_default();
+                r.discard()?;
+                Ok(RestoreReport {
+                    snapshot_id: source,
+                    pre_restore_snapshot: None,
+                    written: 0,
+                    deleted: 0,
+                    summary: "interrupted restore discarded".into(),
+                })
+            }
         }
     })
     .await

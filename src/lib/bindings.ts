@@ -40,9 +40,17 @@ export const commands = {
 	backupVerify: (id: string) => __TAURI_INVOKE<VerifyReport>("backup_verify", { id }),
 	/**  The interrupted restore, if the app stopped in the middle of one. */
 	restoreJournalStatus: () => __TAURI_INVOKE<{
-	/**  The snapshot being restored. */
+	/**  The snapshot the user chose to restore. */
 	source_snapshot: string,
-	/**  Taken before anything changed; rolling back restores it. */
+	/**
+	 *  Taken before the user's restore changed anything. Rolling back always
+	 *  restores this one, even after an interrupted recovery.
+	 */
+	original_pre_restore: string,
+	/**
+	 *  Taken before the latest attempt (the restore, or a recovery of it).
+	 *  Equal to `original_pre_restore` on the first attempt.
+	 */
 	pre_restore_snapshot: string,
 	selection: RestoreSelection,
 	mode: RestoreMode,
@@ -51,7 +59,10 @@ export const commands = {
 	/**  The restore's one-line summary, for the recovery prompt. */
 	summary: string,
 } | null>("restore_journal_status"),
-	/**  Rolls back or finishes an interrupted restore. */
+	/**
+	 *  Rolls back, finishes or discards an interrupted restore. Until one of
+	 *  these succeeds, `backup_restore` is refused with `RestorePending`.
+	 */
 	restoreJournalResolve: (action: JournalAction) => __TAURI_INVOKE<RestoreReport>("restore_journal_resolve", { action }),
 	/**
 	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
@@ -146,7 +157,12 @@ export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind:
  */
 { kind: "ReadOnly"; detail: {
 	paths: string[],
-} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
+} } | 
+/**
+ *  A restore was interrupted; it must be rolled back, finished or
+ *  discarded before another restore can start.
+ */
+{ kind: "RestorePending" } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
 
 export type AppInfo = {
 	version: string,
@@ -354,9 +370,17 @@ export type IntegrationsPatch = {
 
 /**  An interrupted restore: enough to roll it back or run it again. */
 export type Journal = {
-	/**  The snapshot being restored. */
+	/**  The snapshot the user chose to restore. */
 	source_snapshot: string,
-	/**  Taken before anything changed; rolling back restores it. */
+	/**
+	 *  Taken before the user's restore changed anything. Rolling back always
+	 *  restores this one, even after an interrupted recovery.
+	 */
+	original_pre_restore: string,
+	/**
+	 *  Taken before the latest attempt (the restore, or a recovery of it).
+	 *  Equal to `original_pre_restore` on the first attempt.
+	 */
 	pre_restore_snapshot: string,
 	selection: RestoreSelection,
 	mode: RestoreMode,
@@ -371,7 +395,12 @@ export type JournalAction =
 /**  Put back what was there before the restore started (recommended). */
 "roll_back" | 
 /**  Run the restore again to completion. */
-"finish";
+"finish" | 
+/**
+ *  Forget it without changing files (e.g. the journal is unreadable).
+ *  Its pre-restore snapshot stays in the Safety list.
+ */
+"discard";
 
 export type LinkedFolder = {
 	/**  `/`-separated path relative to the game root, e.g. "WTF". */

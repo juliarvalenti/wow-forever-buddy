@@ -232,12 +232,83 @@ pub fn with_restorer<T>(
 pub type RestoreProgress<'a> = &'a mut dyn FnMut(u32, u32) -> AppResult<()>;
 
 impl Restorer<'_> {
-    /// Restores `selection` from snapshot `id`.
+    /// Restores `selection` from snapshot `id`. Refused with `RestorePending`
+    /// while an interrupted restore's journal exists: a new restore would
+    /// snapshot the half-restored tree and replace the journal, so "roll
+    /// back" could never reach the original state again. Only
+    /// `roll_back`/`finish`/`discard` may proceed then.
     pub fn run(
         &self,
         id: &str,
         selection: &RestoreSelection,
         mode: RestoreMode,
+        progress: RestoreProgress<'_>,
+    ) -> AppResult<RestoreReport> {
+        // An unreadable journal counts as pending too; `discard` clears it.
+        if journal::read(self.journal_dir).map_or(true, |j| j.is_some()) {
+            return Err(AppError::RestorePending);
+        }
+        self.execute(id, selection, mode, None, progress)
+    }
+
+    /// After a crash mid-restore: put back what was there before the user's
+    /// restore started, even if an earlier recovery was itself interrupted.
+    pub fn roll_back(
+        &self,
+        journal: &Journal,
+        progress: RestoreProgress<'_>,
+    ) -> AppResult<RestoreReport> {
+        let everything = RestoreSelection {
+            items: vec![ScopeItem::Everything],
+        };
+        // The pre-restore snapshot is partial: restoring all of it writes the
+        // original files back and removes the ones the restore created.
+        let report = self.execute(
+            &journal.original_pre_restore,
+            &everything,
+            RestoreMode::Overlay,
+            Some(journal),
+            progress,
+        )?;
+        journal::clear(self.journal_dir)?;
+        Ok(report)
+    }
+
+    /// After a crash mid-restore: finish the user's restore. Files already
+    /// written count as unchanged.
+    pub fn finish(
+        &self,
+        journal: &Journal,
+        progress: RestoreProgress<'_>,
+    ) -> AppResult<RestoreReport> {
+        let report = self.execute(
+            &journal.source_snapshot,
+            &journal.selection,
+            journal.mode,
+            Some(journal),
+            progress,
+        )?;
+        journal::clear(self.journal_dir)?;
+        Ok(report)
+    }
+
+    /// Forgets an interrupted restore without changing any files, e.g. when
+    /// the journal is unreadable. Its pre-restore snapshot stays in the
+    /// Safety list, so the user can still restore it by hand.
+    pub fn discard(&self) -> AppResult<()> {
+        journal::clear(self.journal_dir)
+    }
+
+    /// The restore itself. `resuming` is the interrupted restore's journal
+    /// when recovering: the journal written for this run keeps its source,
+    /// selection and original pre-restore snapshot, so another interruption
+    /// still rolls back to the state before the user's restore.
+    fn execute(
+        &self,
+        id: &str,
+        selection: &RestoreSelection,
+        mode: RestoreMode,
+        resuming: Option<&Journal>,
         progress: RestoreProgress<'_>,
     ) -> AppResult<RestoreReport> {
         let manifest = self.backups.manifest(id)?;
@@ -279,18 +350,24 @@ impl Restorer<'_> {
         let label = short(&format!("Before restoring {summary}"));
         // Refuses while WoW runs; takes the pre-restore snapshot.
         let guard = self.gate.begin("restore", self.target, &touched, &label)?;
-        journal::write(
-            self.journal_dir,
-            &Journal {
+        let pre_restore = guard.snapshot_id().to_string();
+        let entry = match resuming {
+            Some(original) => Journal {
+                pre_restore_snapshot: pre_restore,
+                ..original.clone()
+            },
+            None => Journal {
                 source_snapshot: manifest.id.clone(),
-                pre_restore_snapshot: guard.snapshot_id().to_string(),
+                original_pre_restore: pre_restore.clone(),
+                pre_restore_snapshot: pre_restore,
                 selection: selection.clone(),
                 mode,
                 flavor: manifest.flavor.clone(),
                 started_at: chrono::Utc::now().to_rfc3339(),
                 summary: summary.clone(),
             },
-        )?;
+        };
+        journal::write(self.journal_dir, &entry)?;
 
         let total = touched.len() as u32;
         let mut done = 0;
@@ -316,44 +393,6 @@ impl Restorer<'_> {
             deleted: resolved.deletes.len() as u32,
             summary,
         })
-    }
-
-    /// After a crash mid-restore: put back what was there before it started.
-    pub fn roll_back(
-        &self,
-        journal: &Journal,
-        progress: RestoreProgress<'_>,
-    ) -> AppResult<RestoreReport> {
-        let everything = RestoreSelection {
-            items: vec![ScopeItem::Everything],
-        };
-        // The pre-restore snapshot is partial: restoring all of it writes the
-        // original files back and removes the ones the restore created.
-        let report = self.run(
-            &journal.pre_restore_snapshot,
-            &everything,
-            RestoreMode::Overlay,
-            progress,
-        )?;
-        journal::clear(self.journal_dir)?;
-        Ok(report)
-    }
-
-    /// After a crash mid-restore: finish what was started. Files already
-    /// written count as unchanged.
-    pub fn finish(
-        &self,
-        journal: &Journal,
-        progress: RestoreProgress<'_>,
-    ) -> AppResult<RestoreReport> {
-        let report = self.run(
-            &journal.source_snapshot,
-            &journal.selection,
-            journal.mode,
-            progress,
-        )?;
-        journal::clear(self.journal_dir)?;
-        Ok(report)
     }
 }
 
@@ -1052,6 +1091,71 @@ mod tests {
             .unwrap();
         with_restorer(&t.core, |r| r.finish(&journal, &mut |_, _| Ok(()))).unwrap();
         assert_eq!(tree(&t), original);
+        assert!(journal::read(&t.core.paths.local_data_dir)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn a_new_restore_is_refused_while_one_is_pending() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t);
+        interrupted(&t, &id);
+        let half_restored = tree(&t);
+        let journal_before = journal::read(&t.core.paths.local_data_dir).unwrap();
+
+        let err = restore(&t, &id, &everything(), RestoreMode::Overlay).unwrap_err();
+        assert!(matches!(err, AppError::RestorePending), "{err}");
+        assert_eq!(tree(&t), half_restored);
+        assert_eq!(
+            journal::read(&t.core.paths.local_data_dir).unwrap(),
+            journal_before
+        );
+
+        // An unreadable journal blocks restores too, until it's discarded.
+        let dir = &t.core.paths.local_data_dir;
+        std::fs::write(dir.join(journal::FILE_NAME), b"{ damaged").unwrap();
+        let err = restore(&t, &id, &everything(), RestoreMode::Overlay).unwrap_err();
+        assert!(matches!(err, AppError::RestorePending), "{err}");
+        with_restorer(&t.core, |r| r.discard()).unwrap();
+        restore(&t, &id, &everything(), RestoreMode::Overlay).unwrap();
+    }
+
+    #[test]
+    fn an_interrupted_recovery_still_rolls_back_to_the_original() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t);
+        let mutated = tree(&t);
+        interrupted(&t, &id);
+        let first = journal::read(&t.core.paths.local_data_dir)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.original_pre_restore, first.pre_restore_snapshot);
+
+        // "Finish" is itself interrupted after one more change.
+        let err = with_restorer(&t.core, |r| {
+            r.finish(&first, &mut |done, _| {
+                if done == 1 {
+                    Err(AppError::Io("crashed again".into()))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("crashed again"));
+        let second = journal::read(&t.core.paths.local_data_dir)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.original_pre_restore, first.original_pre_restore);
+        assert_eq!(second.source_snapshot, first.source_snapshot);
+        assert_ne!(second.pre_restore_snapshot, first.pre_restore_snapshot);
+
+        // Rolling back now still returns to the state before the user's restore.
+        with_restorer(&t.core, |r| r.roll_back(&second, &mut |_, _| Ok(()))).unwrap();
+        assert_eq!(tree(&t), mutated);
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()
             .is_none());

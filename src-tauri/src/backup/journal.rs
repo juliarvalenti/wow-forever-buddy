@@ -16,9 +16,13 @@ pub const FILE_NAME: &str = "restore-journal.json";
 /// An interrupted restore: enough to roll it back or run it again.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Journal {
-    /// The snapshot being restored.
+    /// The snapshot the user chose to restore.
     pub source_snapshot: String,
-    /// Taken before anything changed; rolling back restores it.
+    /// Taken before the user's restore changed anything. Rolling back always
+    /// restores this one, even after an interrupted recovery.
+    pub original_pre_restore: String,
+    /// Taken before the latest attempt (the restore, or a recovery of it).
+    /// Equal to `original_pre_restore` on the first attempt.
     pub pre_restore_snapshot: String,
     pub selection: RestoreSelection,
     pub mode: RestoreMode,
@@ -67,6 +71,7 @@ mod tests {
         assert_eq!(read(tmp.path()).unwrap(), None);
         let journal = Journal {
             source_snapshot: "A".into(),
+            original_pre_restore: "B".into(),
             pre_restore_snapshot: "B".into(),
             selection: RestoreSelection {
                 items: vec![ScopeItem::Everything],
