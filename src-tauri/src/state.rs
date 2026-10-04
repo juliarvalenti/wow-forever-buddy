@@ -1,12 +1,15 @@
 use crate::config::paths::AppPaths;
 use crate::config::settings::SettingsStore;
+use crate::db::Db;
 use crate::error::AppResult;
 
 /// Everything the app does, minus Tauri. Integration tests build this directly
-/// against temp dirs; later tickets add db, install, game status, jobs.
+/// against temp dirs; later tickets add install, game status, jobs.
 pub struct AppCore {
     pub paths: AppPaths,
     pub settings: SettingsStore,
+    #[allow(dead_code)] // first read by the backup store (T7)
+    pub db: Db,
 }
 
 impl AppCore {
@@ -15,7 +18,12 @@ impl AppCore {
             std::fs::create_dir_all(dir)?;
         }
         let settings = SettingsStore::load(paths.settings_file())?;
-        Ok(Self { paths, settings })
+        let db = Db::open(&paths.db_file())?;
+        Ok(Self {
+            paths,
+            settings,
+            db,
+        })
     }
 }
 
@@ -36,5 +44,6 @@ mod tests {
         assert!(core.paths.local_data_dir.is_dir());
         assert!(core.paths.log_dir.is_dir());
         assert!(core.paths.settings_file().is_file());
+        assert!(core.paths.db_file().is_file());
     }
 }

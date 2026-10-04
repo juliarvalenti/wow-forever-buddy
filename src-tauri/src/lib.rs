@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod db;
 mod error;
 mod fsx;
 mod state;
