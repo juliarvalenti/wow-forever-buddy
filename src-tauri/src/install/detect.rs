@@ -23,6 +23,36 @@ pub struct InstallCandidate {
     pub source: CandidateSource,
 }
 
+/// What `install_detect` returns: every install found, plus every place we
+/// looked, so onboarding's "not found" state can say where.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct DetectReport {
+    pub candidates: Vec<InstallCandidate>,
+    pub looked_in: Vec<LookedIn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct LookedIn {
+    pub source: CandidateSource,
+    pub path: PathBuf,
+}
+
+/// Runs the sources and reports both the installs and the places checked.
+pub fn detect_report(sources: &[Box<dyn InstallSource>]) -> DetectReport {
+    DetectReport {
+        candidates: detect(sources),
+        looked_in: sources
+            .iter()
+            .flat_map(|s| {
+                s.paths().into_iter().map(|path| LookedIn {
+                    source: s.source(),
+                    path,
+                })
+            })
+            .collect(),
+    }
+}
+
 /// Where to look. Each source returns raw paths; `detect` normalizes and
 /// validates them.
 pub trait InstallSource {
@@ -84,7 +114,7 @@ pub fn system_sources() -> Vec<Box<dyn InstallSource>> {
 }
 
 /// `Program Files` locations and `X:\World of Warcraft` /
-/// `X:\Games\World of Warcraft` on each drive (Windows), or
+/// `X:\Games\World of Warcraft` on each drive that exists (Windows), or
 /// `/Applications/World of Warcraft` (macOS).
 pub fn common_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
@@ -96,6 +126,9 @@ pub fn common_paths() -> Vec<PathBuf> {
         }
         for letter in b'C'..=b'Z' {
             let drive = PathBuf::from(format!("{}:\\", letter as char));
+            if !drive.exists() {
+                continue;
+            }
             paths.push(drive.join("World of Warcraft"));
             paths.push(drive.join("Games").join("World of Warcraft"));
         }
@@ -187,11 +220,43 @@ mod tests {
     }
 
     #[test]
+    fn report_lists_every_place_looked() {
+        let (_a, root) = fixture_copy();
+        let tmp = tempfile::tempdir().unwrap();
+        let sources: Vec<Box<dyn InstallSource>> = vec![
+            Box::new(FixedPaths(
+                CandidateSource::Registry,
+                vec![tmp.path().into()],
+            )),
+            Box::new(FixedPaths(CandidateSource::CommonPath, vec![root.clone()])),
+        ];
+        let report = detect_report(&sources);
+        assert_eq!(report.candidates.len(), 1);
+        assert_eq!(
+            report.looked_in,
+            [
+                LookedIn {
+                    source: CandidateSource::Registry,
+                    path: tmp.path().into()
+                },
+                LookedIn {
+                    source: CandidateSource::CommonPath,
+                    path: root
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn common_paths_for_this_platform() {
         let paths = common_paths();
         if cfg!(windows) {
-            assert!(paths.iter().any(|p| p.ends_with("World of Warcraft")));
-            assert!(paths.contains(&PathBuf::from(r"D:\Games\World of Warcraft")));
+            assert!(paths.contains(&PathBuf::from(r"C:\Games\World of Warcraft")));
+            // Only drives that exist are listed.
+            for p in &paths {
+                let drive = p.ancestors().last().unwrap(); // e.g. "C:\"
+                assert!(drive.exists(), "{}", p.display());
+            }
         } else if cfg!(target_os = "macos") {
             assert_eq!(paths, [PathBuf::from("/Applications/World of Warcraft")]);
         }

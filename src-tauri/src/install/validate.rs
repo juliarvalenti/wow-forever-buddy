@@ -101,18 +101,40 @@ fn find_exe(dir: &Path, preferred: &[&str]) -> Option<PathBuf> {
     found.into_iter().next()
 }
 
-fn accounts(wtf: &Path) -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(wtf.join("Account")) else {
+/// Sorted subfolder names, minus `SavedVariables` (which sits next to realm
+/// and character folders in the WTF tree).
+fn subdirs(dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut names: Vec<String> = entries
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) || e.path().is_dir())
         .filter_map(|e| e.file_name().to_str().map(str::to_string))
         .filter(|name| name != "SavedVariables")
         .collect();
     names.sort();
     names
+}
+
+/// The WTF roster: accounts, realms across all accounts, and how many
+/// character folders there are (`Account/<account>/<realm>/<character>`).
+fn roster(wtf: &Path) -> (Vec<String>, Vec<String>, u32) {
+    let accounts_dir = wtf.join("Account");
+    let accounts = subdirs(&accounts_dir);
+    let mut realms: Vec<String> = Vec::new();
+    let mut characters = 0;
+    for account in &accounts {
+        let account_dir = accounts_dir.join(account);
+        for realm in subdirs(&account_dir) {
+            characters += subdirs(&account_dir.join(&realm)).len() as u32;
+            if !realms.contains(&realm) {
+                realms.push(realm);
+            }
+        }
+    }
+    realms.sort();
+    (accounts, realms, characters)
 }
 
 /// Scans a root and validates it. Fails unless at least one flavor folder has
@@ -154,12 +176,15 @@ pub fn scan(root: &Path) -> AppResult<Install> {
             continue;
         }
 
+        let (accounts, realms, characters) = roster(&wtf);
         flavors.push(Flavor {
             label: known.map_or_else(|| label_from_folder(&id), |k| k.label.to_string()),
             is_forever: known.is_some_and(|k| k.is_forever),
             product: product.map(str::to_string),
             version: version.map(str::to_string),
-            accounts: accounts(&wtf),
+            accounts,
+            realms,
+            characters,
             // The same record T4's resolver checks paths against.
             links: GameRoot::new(&dir).map(|r| r.links).unwrap_or_default(),
             id,
@@ -225,6 +250,13 @@ mod tests {
         );
         assert!(forever.has_wtf);
         assert_eq!(forever.accounts, ["ACCOUNT1", "ACCOUNT2"]);
+        // ACCOUNT1: Thrandor + Velyra on Ashenvale, Brannic on Old Blanchy,
+        // Lúthien on Pyrewood Village. ACCOUNT2: Fizzwick on Ashenvale.
+        assert_eq!(
+            forever.realms,
+            ["Ashenvale", "Old Blanchy", "Pyrewood Village"]
+        );
+        assert_eq!(forever.characters, 5);
 
         let era = &install.flavors[1];
         assert_eq!(era.label, "Classic Era");
@@ -232,6 +264,8 @@ mod tests {
         assert!(era.exe.is_none());
         assert!(era.has_wtf);
         assert_eq!(era.accounts, ["ERA1"]);
+        assert_eq!(era.realms, ["Whitemane"]);
+        assert_eq!(era.characters, 1);
     }
 
     #[test]

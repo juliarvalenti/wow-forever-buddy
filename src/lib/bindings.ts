@@ -22,8 +22,11 @@ export const commands = {
 	/**  Stores a key (trimmed). There is no command to read it back. */
 	secretsSet: (id: IntegrationId, value: string) => __TAURI_INVOKE<null>("secrets_set", { id, value }),
 	secretsDelete: (id: IntegrationId) => __TAURI_INVOKE<null>("secrets_delete", { id }),
-	/**  Every WoW install found: the saved one first, then registry and common paths. */
-	installDetect: () => __TAURI_INVOKE<InstallCandidate[]>("install_detect"),
+	/**
+	 *  Every WoW install found (the saved one first, then registry and common
+	 *  paths, each with its source), plus every place we looked.
+	 */
+	installDetect: () => __TAURI_INVOKE<DetectReport>("install_detect"),
 	/**
 	 *  The active install, re-validated. Fails with `InvalidInstall` if the saved
 	 *  folder is gone, and is `null` if none has been chosen.
@@ -117,6 +120,15 @@ export type BackupSettings = {
 
 export type CandidateSource = "saved" | "registry" | "common_path";
 
+/**
+ *  What `install_detect` returns: every install found, plus every place we
+ *  looked, so onboarding's "not found" state can say where.
+ */
+export type DetectReport = {
+	candidates: InstallCandidate[],
+	looked_in: LookedIn[],
+};
+
 /**  One `_<name>_` folder under the root. */
 export type Flavor = {
 	/**  Folder name, e.g. "_classic_beta_". */
@@ -133,6 +145,13 @@ export type Flavor = {
 	has_wtf: boolean,
 	/**  Account folder names under `WTF/Account`. */
 	accounts: string[],
+	/**
+	 *  Realm (on Forever, ruleset) folder names across all accounts, for
+	 *  "7 characters on Ashenvale".
+	 */
+	realms: string[],
+	/**  Character folders under `WTF/Account/<account>/<realm>/`. */
+	characters: number,
 	/**
 	 *  `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
 	 *  recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked
@@ -216,6 +235,11 @@ export type LinkedFolder = {
 	 *  The UI shows it as "WTF is linked to …".
 	 */
 	target: string,
+};
+
+export type LookedIn = {
+	source: CandidateSource,
+	path: string,
 };
 
 /**

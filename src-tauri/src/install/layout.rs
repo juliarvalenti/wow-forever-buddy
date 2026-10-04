@@ -42,6 +42,11 @@ pub struct Flavor {
     pub has_wtf: bool,
     /// Account folder names under `WTF/Account`.
     pub accounts: Vec<String>,
+    /// Realm (on Forever, ruleset) folder names across all accounts, for
+    /// "7 characters on Ashenvale".
+    pub realms: Vec<String>,
+    /// Character folders under `WTF/Account/<account>/<realm>/`.
+    pub characters: u32,
     /// `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
     /// recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked
     /// to D:\Sync\WTF").

@@ -17,7 +17,7 @@ use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::sweep_temp_files;
 use crate::fsx::relpath::{GameRoot, LinkedFolder};
 use detect::{
-    detect, system_sources, CandidateSource, FixedPaths, InstallCandidate, InstallSource,
+    detect, detect_report, system_sources, CandidateSource, DetectReport, FixedPaths, InstallSource,
 };
 use layout::Install;
 use validate::{choose_flavor, locate, scan};
@@ -139,8 +139,8 @@ pub fn set(settings: &SettingsStore, path: &Path, flavor: Option<&str>) -> AppRe
 }
 
 /// Every install we can find: the saved one first (with its saved flavor
-/// active), then registry and common paths.
-pub fn detect_all(settings: &SettingsStore) -> Vec<InstallCandidate> {
+/// active), then registry and common paths, plus every place we looked.
+pub fn detect_all(settings: &SettingsStore) -> DetectReport {
     let saved = settings.get().install;
     let mut sources: Vec<Box<dyn InstallSource>> = Vec::new();
     if let Some(choice) = &saved {
@@ -150,14 +150,14 @@ pub fn detect_all(settings: &SettingsStore) -> Vec<InstallCandidate> {
         )));
     }
     sources.extend(system_sources());
-    let mut found = detect(&sources);
-    if let (Some(choice), Some(first)) = (&saved, found.first_mut()) {
+    let mut report = detect_report(&sources);
+    if let (Some(choice), Some(first)) = (&saved, report.candidates.first_mut()) {
         if first.source == CandidateSource::Saved && first.install.flavor(&choice.flavor).is_some()
         {
             first.install.active = Some(choice.flavor.clone());
         }
     }
-    found
+    report
 }
 
 /// Startup step 4. Returns the saved install if it's still valid. If nothing

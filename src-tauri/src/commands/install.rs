@@ -4,16 +4,17 @@ use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
 use crate::error::AppResult;
-use crate::install::{self, detect::InstallCandidate, layout::Install, InstallChanged};
+use crate::install::{self, detect::DetectReport, layout::Install, InstallChanged};
 use crate::state::AppState;
 
-// These scan folders (and on Windows, every drive letter), so they run off
-// the main thread via `command(async)`.
+// These scan folders (and on Windows, every drive), so they run off the main
+// thread via `command(async)`.
 
-/// Every WoW install found: the saved one first, then registry and common paths.
+/// Every WoW install found (the saved one first, then registry and common
+/// paths, each with its source), plus every place we looked.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn install_detect(state: State<'_, AppState>) -> AppResult<Vec<InstallCandidate>> {
+pub fn install_detect(state: State<'_, AppState>) -> AppResult<DetectReport> {
     Ok(install::detect_all(&state.core.settings))
 }
 
