@@ -1,8 +1,9 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::config::paths::AppPaths;
 use crate::error::AppResult;
-use crate::state::{AppPaths, AppState};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, specta::Type)]
 pub struct AppInfo {

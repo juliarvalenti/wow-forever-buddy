@@ -1,10 +1,13 @@
 mod commands;
+mod config;
 mod error;
+mod fsx;
 mod state;
 
 use tauri::Manager;
 
-use crate::state::{AppCore, AppPaths, AppState};
+use crate::config::paths::AppPaths;
+use crate::state::{AppCore, AppState};
 
 /// Where the generated TypeScript bindings live, relative to `src-tauri/`.
 const BINDINGS_PATH: &str = "../src/lib/bindings.ts";
@@ -13,7 +16,11 @@ const BINDINGS_PATH: &str = "../src/lib/bindings.ts";
 /// the `export_bindings` test, so the TS bindings can never drift from Rust.
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
-        .commands(tauri_specta::collect_commands![commands::app::app_info])
+        .commands(tauri_specta::collect_commands![
+            commands::app::app_info,
+            commands::settings::settings_get,
+            commands::settings::settings_update,
+        ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
 

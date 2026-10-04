@@ -6,6 +6,13 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
+	/**
+	 *  Saves a full settings object (typically `settings_get()` with edits).
+	 *  `schema_version` and `install` are backend-owned and ignored here; the game
+	 *  folder is changed through the install commands, which validate it.
+	 */
+	settingsUpdate: (settings: Settings) => __TAURI_INVOKE<Settings>("settings_update", { settings }),
 };
 
 /* Types */
@@ -13,7 +20,7 @@ export const commands = {
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
  */
-export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
+export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
 	file: string,
 	line: number,
 	col: number,
@@ -34,5 +41,55 @@ export type AppPaths = {
 	/**  buddy.db and the default backups/ location (%LOCALAPPDATA% on Windows) */
 	local_data_dir: string,
 	log_dir: string,
+};
+
+export type BackupSettings = {
+	/**  None = the default, `<local_data_dir>/backups`. */
+	location?: string | null,
+	include_addons?: boolean,
+	on_app_start?: boolean,
+	on_game_exit?: boolean,
+	/**  None = no scheduled backups. */
+	schedule_hours?: number | null,
+};
+
+export type InstallChoice = {
+	root: string,
+	/**  Flavor folder name, e.g. "_classic_". */
+	flavor: string,
+};
+
+export type IntegrationSetting = {
+	enabled?: boolean,
+};
+
+/**  A closed set: each optional integration is a named field, never a free-form key. */
+export type Integrations = {
+	curseforge?: IntegrationSetting,
+	wago?: IntegrationSetting,
+	wago_io?: IntegrationSetting,
+	github?: IntegrationSetting,
+	battlenet?: IntegrationSetting,
+};
+
+/**
+ *  settings.json (spec §6). Every field has a default, so a missing key never
+ *  fails a load, and unknown top-level keys survive in `extra` so running an
+ *  older build doesn't wipe settings a newer one wrote.
+ */
+export type Settings = {
+	/**  Backend-owned: set by load/migrate, ignored on update. */
+	schema_version?: number,
+	/**  Backend-owned: changed only through install commands, which validate it. */
+	install?: InstallChoice | null,
+	backup?: BackupSettings,
+	/**  Extra game process names to treat as WoW, e.g. if Forever's exe has an unusual name. */
+	process_names_extra?: string[],
+	integrations?: Integrations,
+	/**
+	 *  Free-form UI preferences (remembered tabs, filters). The backend never reads it.
+	 *  Strings only; the frontend JSON-encodes anything structured.
+	 */
+	ui?: { [key in string]: string },
 };
 

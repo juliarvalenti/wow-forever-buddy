@@ -327,7 +327,7 @@ jobs.rs           serialized background job queue + progress events
 ```rust
 #[derive(thiserror::Error, Debug, Serialize, specta::Type)]
 #[serde(tag = "kind", content = "detail")]
-pub enum AppError { GameRunning, NoInstall, InvalidInstall(String), PathEscape(String),
+pub enum AppError { GameRunning, NoInstall, InvalidInstall(String), InvalidSettings(String), PathEscape(String),
                     NotFound(String), Io(String), Unstable(String), Parse { file: String, line: u32, col: u32, msg: String },
                     BackupCorrupt { files: Vec<String> }, Secret(String), Db(String), Busy /* job queue */ }
 ```

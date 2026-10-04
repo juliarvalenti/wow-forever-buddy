@@ -14,6 +14,8 @@ pub enum AppError {
     NoInstall,
     #[error("invalid game install: {0}")]
     InvalidInstall(String),
+    #[error("invalid settings: {0}")]
+    InvalidSettings(String),
     #[error("path escapes the game folder: {0}")]
     PathEscape(String),
     #[error("not found: {0}")]
