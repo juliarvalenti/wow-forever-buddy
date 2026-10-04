@@ -82,9 +82,12 @@ impl LuaTable {
     /// where every number is a double, so `[2]`, `[2.0]` and the second
     /// positional field are all the same slot. Positional fields are stored
     /// after keyed ones by the constructor, so they win; among keyed fields
-    /// the last wins.
+    /// the last wins. (Strictly, Lua 5.1 flushes positional fields every 50
+    /// items, so a keyed field after 50+ positional ones can win. WoW never
+    /// writes a slot both ways, so this doesn't come up.)
     pub fn get_index(&self, i: i64) -> Option<&LuaValue> {
-        if let Some(v) = usize::try_from(i - 1).ok().and_then(|n| self.array.get(n)) {
+        let slot = i.checked_sub(1).and_then(|n| usize::try_from(n).ok());
+        if let Some(v) = slot.and_then(|n| self.array.get(n)) {
             return Some(v);
         }
         self.hash

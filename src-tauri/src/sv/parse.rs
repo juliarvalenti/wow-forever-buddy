@@ -841,6 +841,8 @@ mod tests {
         assert_eq!(t.get_index(4), Some(&s("y")));
         assert_eq!(t.get_index(0), None);
         assert_eq!(t.get_index(-1), None);
+        assert_eq!(t.get_index(i64::MIN), None);
+        assert_eq!(t.get_index(i64::MAX), None);
         assert_eq!(t.get("missing"), None);
     }
 
