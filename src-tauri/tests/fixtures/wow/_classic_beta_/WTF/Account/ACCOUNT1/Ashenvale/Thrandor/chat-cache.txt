@@ -1,0 +1,4 @@
+WINDOW 1
+NAME General
+SIZE 0
+END

@@ -1,0 +1,3 @@
+Details: enabled
+WeakAuras: enabled
+Questie: disabled

@@ -5,6 +5,8 @@ mod error;
 mod fsx;
 mod state;
 pub mod sv;
+#[cfg(test)]
+mod test_support;
 
 use tauri::Manager;
 

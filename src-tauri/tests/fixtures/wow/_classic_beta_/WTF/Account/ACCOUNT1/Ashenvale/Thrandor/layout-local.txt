@@ -1,0 +1,2 @@
+VERSION 5
+MinimapCluster:TOPRIGHT:UIParent:TOPRIGHT:-10:-10
