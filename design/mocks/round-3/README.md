@@ -8,7 +8,9 @@ This is the complete set of mocks for engineering. The material rules are unchan
 - ember = live/pending
 - gold = coins only
 
-Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a tooltip. PNGs at 1280x800 and 1024x700 are in `shots/`, and `errors.html` is a gallery linking every first-run and error state.
+Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a tooltip. Screenshots (WebP, 1280x800 and 1024x700) are in `shots/`, and `errors.html` is a gallery linking every first-run and error state.
+
+**Building it?** Start with [`IMPLEMENTING.md`](IMPLEMENTING.md). It covers the component vocabulary for plain screens, tokens and fonts, CSP, the Backups states and copy, and the startup error.
 
 ## Screens and states
 
@@ -17,6 +19,7 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 | **First run** | `onboarding.html` | `found` (default), `?state=detecting`, `?state=notfound`, `?state=pick` |
 | **No addon yet** | `dashboard-noaddon.html`, `characters-noaddon.html` | **v0.1 (default):** step 1 reads "Coming in the next update", with no Install button, and "Back up now" is the bronze action. **`?v=0.2`:** the bronze "Install addon" step (locked while WoW runs). Both show only what the app knows: folder, WTF characters, backups, WoW running, and **recent sessions from the process watcher** (start, end, duration, and the character whose WTF folder changed; the running session says "Character known after you log out"; no gold or loot) |
 | Dashboard | `dashboard.html` | `?recover` (restore interrupted: Roll back / Finish), `?folder=missing` |
+| **Can't start** | `startup-error.html` | `AppCore::new` failed. No sidebar. `?case=newer` (default, a database from a newer version) or `?case=settings` (unreadable settings) |
 | Backups | `backups.html` | `?confirm`, `?error=backup` (disk full), `?error=corrupt` (damaged snapshot) |
 | Characters | `characters.html`, `character.html`, `portraits.html` | `?q=Runecloth` |
 | Ledger / Adventures | `gold.html`, `session.html` | session timeline with Forever "secret values" fallbacks |

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Startup error · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* AppCore::new failed: no nav, no data. A calm stone panel in the empty hall. */
+  .main { align-items: center; justify-content: center; }
+  .card { width: 560px; max-width: 100%; }
+  .card .pb { display: grid; gap: 14px; padding: 18px 20px 20px; }
+  .card h1 { font: 400 26px/1.15 "Marcellus", Georgia, serif; color: #d8cfc0; text-shadow: 0 -1px 0 #000, 0 1px 0 rgba(255,255,255,.07); }
+  .what { color: var(--chalk); font-size: 13.5px; line-height: 1.55; }
+  .safe { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--ok); }
+  .safe svg { margin-top: 2px; }
+  .paths { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: rgba(0,0,0,.3); box-shadow: inset 0 2px 4px rgba(0,0,0,.6); }
+  .paths div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; font-size: 12px; }
+  .paths span { color: var(--soot); }
+  .paths code { font: 11.5px ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--chalk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* the path at fault is red */
+  body.c-newer .p-db code, body.c-settings .p-set code { color: var(--bad); }
+  .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  details { font-size: 12px; color: var(--ash); }
+  details summary { cursor: pointer; color: var(--ash); }
+  details pre { margin-top: 8px; padding: 10px 12px; border-radius: var(--r); background: rgba(0,0,0,.35); font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--soot); white-space: pre-wrap; }
+  .case { display: none; } body.c-newer .c-newer, body.c-settings .c-settings { display: revert; }
+</style>
+</head>
+<body data-shell="bare" class="c-newer">
+<main class="main">
+  <article class="panel card">
+    <div class="ph"><h2>Something stopped Forever Buddy from starting</h2></div>
+    <div class="pb">
+      <h1 class="case c-newer">This database is from a newer version</h1>
+      <h1 class="case c-settings">Your settings file can't be read</h1>
+
+      <p class="what case c-newer">Forever Buddy's database was last opened by version 0.3.0, and this is 0.2.1. Opening it with an older version could lose data, so nothing was changed. Install 0.3.0 or newer to carry on.</p>
+      <p class="what case c-settings">The settings file looks damaged, so Forever Buddy stopped before using it. Nothing was changed. You can open the folder and move the file aside; Forever Buddy will start with default settings and find your game again.</p>
+
+      <div class="safe"><i data-i="check"></i><span>Your backups and your game files are untouched.</span></div>
+
+      <div class="paths">
+        <div class="p-db"><span>Database</span><code>%LOCALAPPDATA%\com.juliarvalenti.wowforeverbuddy\buddy.db</code></div>
+        <div class="p-set"><span>Settings</span><code>%APPDATA%\com.juliarvalenti.wowforeverbuddy\settings.json</code></div>
+        <div><span>Backups</span><code>%LOCALAPPDATA%\com.juliarvalenti.wowforeverbuddy\backups</code></div>
+      </div>
+
+      <div class="acts">
+        <button class="primary"><i data-i="folder"></i>Open data folder</button>
+        <button class="btn"><i data-i="file" class="sm"></i>Copy error details</button>
+        <button class="btn ghost">Quit</button>
+      </div>
+
+      <details>
+        <summary>Error details</summary>
+        <pre class="case c-newer">AppCore::new: SchemaTooNew { found: 4, supported: 3 }
+buddy.db user_version 4 · app 0.2.1 · 2026-10-04 22:41:07</pre>
+        <pre class="case c-settings">AppCore::new: Settings(Parse { line: 14, column: 3 })
+settings.json · app 0.2.1 · 2026-10-04 22:41:07</pre>
+      </details>
+    </div>
+  </article>
+</main>
+<script>
+  const c = new URLSearchParams(location.search).get('case');
+  if (c === 'settings') document.body.className = 'c-settings';
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>

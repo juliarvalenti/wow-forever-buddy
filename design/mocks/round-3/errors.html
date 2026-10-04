@@ -36,6 +36,8 @@
     ['dashboard.html?recover', 'dashboard-recover', 'Restore interrupted', 'Startup dialog: Roll back (recommended) or Finish restore.'],
     ['backups.html?error=corrupt', 'backups-corrupt', 'Damaged snapshot', 'Stopped before any write; lists files; verify all or use an older one.'],
     ['dashboard.html?folder=missing', 'dashboard-folder-missing', 'Game folder gone', 'Drive unplugged: calm stone banner, data shown as last known.'],
+    ['startup-error.html', 'startup-error', "Can't start: newer database", 'AppCore::new failed. No nav; what happened, where the data lives, Open data folder.'],
+    ['startup-error.html?case=settings', 'startup-error-settings', "Can't start: settings unreadable", 'Same screen, settings.json flagged; start fresh by moving the file aside.'],
   ].map(card).join('');
 </script>
 <script src="_shell.js"></script>

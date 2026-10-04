@@ -101,9 +101,15 @@
         <div class="side-foot"><a class="nav-item ${page === 'settings' ? 'active' : ''}" href="settings.html" title="Settings">${icon('gear')}<span class="lbl">Settings</span></a></div>
       </aside>
     </div>`;
+  // data-shell="bare": the app couldn't start (AppCore::new failed), so there is no nav or status to show
+  if (document.body.dataset.shell === 'bare') {
+    win.querySelector('.side').remove();
+    win.querySelector('.app').style.gridTemplateColumns = 'minmax(0, 1fr)';
+  }
   document.body.prepend(win);
   win.querySelector('.app').appendChild(main);
   main.insertAdjacentHTML('afterbegin', '<div class="vignette"></div>');
+  if (document.body.dataset.shell === 'bare') main.querySelector('.vignette').style.left = '0';
 
   document.querySelectorAll('i[data-i]').forEach(el => { el.outerHTML = icon(el.dataset.i, el.className); });
 
