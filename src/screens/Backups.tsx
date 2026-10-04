@@ -435,7 +435,9 @@ export function Backups({
   const [mirror, setMirror] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const { detail } = useSnapshot(selected);
-  const running = game?.running ?? false;
+  // Can't tell (the process list failed) locks restores like running does.
+  const unknown = game?.unknown ?? false;
+  const running = (game?.running ?? false) || unknown;
 
   useEffect(() => {
     if (select) setSelected(select);
@@ -482,7 +484,15 @@ export function Backups({
         }
       />
 
-      {running ? (
+      {unknown ? (
+        <Callout tone="ember">
+          <LiveDot />
+          <span>
+            <b>Can't tell if WoW is running, so restores are locked.</b> Backing up still works. This
+            usually clears up on its own within a few seconds.
+          </span>
+        </Callout>
+      ) : running ? (
         <Callout tone="ember">
           <LiveDot />
           <span>
