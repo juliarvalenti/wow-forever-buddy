@@ -13,6 +13,13 @@ export const commands = {
 	 */
 	backupCreate: (label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_create", { label }),
 	backupDelete: (id: string) => __TAURI_INVOKE<null>("backup_delete", { id }),
+	/**
+	 *  "Export as .zip". `dest` comes from the save dialog; it may not be inside
+	 *  the game folder (or a linked folder's target) or the backup store. Runs
+	 *  as the one backup/restore job, so pruning can't remove the snapshot
+	 *  mid-export.
+	 */
+	backupExportZip: (id: string, dest: string) => __TAURI_INVOKE<ExportReport>("backup_export_zip", { id, dest }),
 	/**  One snapshot, grouped by account, character and category for the restore panel. */
 	backupGet: (id: string) => __TAURI_INVOKE<SnapshotDetail>("backup_get", { id }),
 	/**  Every snapshot, newest first. */
@@ -129,6 +136,7 @@ export const commands = {
 export const events = {
 	backupCreated: makeEvent<BackupCreated>("backup-created"),
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
+	exportProgress: makeEvent<ExportProgress>("export-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
@@ -183,7 +191,12 @@ export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind:
  */
 { kind: "DeletionsChanged"; detail: {
 	paths: string[],
-} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
+} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" } | 
+/**
+ *  An export can't be saved there (inside the game or backup folder,
+ *  or the folder doesn't exist).
+ */
+{ kind: "BadDestination"; detail: string };
 
 export type AppInfo = {
 	version: string,
@@ -279,6 +292,22 @@ export type CharacterNode = {
 export type DetectReport = {
 	candidates: InstallCandidate[],
 	looked_in: LookedIn[],
+};
+
+/**  Emitted while an export runs. */
+export type ExportProgress = {
+	done: number,
+	total: number,
+};
+
+/**  What an export wrote. */
+export type ExportReport = {
+	snapshot_id: string,
+	/**  Where the zip was saved (`.zip` is added if the name lacked it). */
+	path: string,
+	files: number,
+	/**  Size of the zip. */
+	bytes: number | null,
 };
 
 /**  One `_<name>_` folder under the root. */
