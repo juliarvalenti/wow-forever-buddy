@@ -27,15 +27,23 @@ pub struct Db {
     conn: Arc<Mutex<Connection>>,
 }
 
+/// Meta key set when the db was recreated, so derived indexes get rebuilt.
+pub const NEEDS_REINDEX: &str = "needs_reindex";
+
 impl Db {
     /// Opens (creating if needed) and migrates the db. A file SQLite reports as
     /// corrupt or not-a-database is moved aside and replaced with a fresh one:
-    /// everything in it is either a cache or rebuildable from backup manifests.
+    /// everything in it is either a cache or rebuildable from backup manifests
+    /// (except the write audit, which starts over). After a quarantine the
+    /// `needs_reindex` meta flag is set, and the backup store rebuilds its
+    /// index before it prunes anything.
     pub fn open(path: &Path) -> AppResult<Self> {
+        let mut quarantined = false;
         let conn = match Self::open_and_migrate(path) {
             Ok(conn) => conn,
             Err(e) if is_corruption(&e) => {
                 quarantine(path)?;
+                quarantined = true;
                 Self::open_and_migrate(path).map_err(migration_error)?
             }
             Err(e) => return Err(migration_error(e)),
@@ -44,6 +52,9 @@ impl Db {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.set_meta("last_opened_by", env!("CARGO_PKG_VERSION"))?;
+        if quarantined {
+            db.set_meta(NEEDS_REINDEX, "1")?;
+        }
         Ok(db)
     }
 
@@ -85,7 +96,6 @@ impl Db {
             .map_err(|e| AppError::Db(format!("db task failed: {e}")))?
     }
 
-    #[allow(dead_code)] // first used by retention/GC bookkeeping (T8)
     pub fn get_meta(&self, key: &str) -> AppResult<Option<String>> {
         self.with_conn(|c| {
             Ok(
@@ -216,6 +226,12 @@ mod tests {
                     .starts_with("buddy.db.corrupt-")
             });
         assert!(quarantined);
+        assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
+
+        // A healthy reopen doesn't set it.
+        let fresh = tempfile::tempdir().unwrap();
+        let db = Db::open(&fresh.path().join("buddy.db")).unwrap();
+        assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap(), None);
     }
 
     #[test]

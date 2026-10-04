@@ -11,6 +11,7 @@ mod state;
 pub mod sv;
 #[cfg(test)]
 mod test_support;
+mod triggers;
 
 use tauri::Manager;
 use tauri_specta::Event;
@@ -33,8 +34,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::backup_delete,
             commands::backup::backup_get,
             commands::backup::backup_list,
+            commands::backup::backup_prune_now,
             commands::backup::backup_set_label,
             commands::backup::backup_set_pinned,
+            commands::backup::backup_storage,
             commands::game::game_status,
             commands::settings::settings_get,
             commands::settings::settings_update,
@@ -90,6 +93,7 @@ pub fn run() {
 
             // Startup step 4 (spec §8) runs in the background; the window
             // shows right away and hears about the result via the event.
+            // Automatic backups start after it, since they need the install.
             let handle = app.handle().clone();
             let install_handle = handle.clone();
             std::thread::spawn(move || {
@@ -100,21 +104,75 @@ pub fn run() {
                     }
                     .emit(&install_handle);
                 }
+                spawn_auto_backups(&install_handle);
             });
 
             // Spec §2: poll for WoW every 2 s and tell the UI on each change.
-            // The game-exit backup (T8) hooks in here too.
+            // When the game stops, the game-exit backup runs (spec §5).
             let target_handle = handle.clone();
             game.spawn(
                 move || target_handle.state::<AppState>().core.probe_target(),
-                move |_transition, status| {
+                move |transition, status| {
                     let _ = commands::game::GameStatusChanged(status).emit(&handle);
+                    if transition == game::process::Transition::Stopped {
+                        spawn_game_exit_backup(&handle);
+                    }
                 },
             );
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Emits `backup-created` for an automatic snapshot.
+fn announce(handle: &tauri::AppHandle) -> impl Fn(&backup::manifest::SnapshotSummary) + '_ {
+    move |summary| {
+        let _ = commands::backup::BackupCreated(summary.clone()).emit(handle);
+    }
+}
+
+/// App-start and scheduled backups (spec §5), each on its own thread so
+/// startup and the UI never wait for them. Failures (no game folder yet,
+/// backup drive missing) just mean no automatic backup this time.
+fn spawn_auto_backups(handle: &tauri::AppHandle) {
+    use backup::manifest::Trigger;
+
+    let h = handle.clone();
+    std::thread::spawn(move || {
+        let core = &h.state::<AppState>().core;
+        if triggers::app_start_due(core, chrono::Utc::now()).unwrap_or(false) {
+            let _ = triggers::run_auto(core, Trigger::AppStart, &announce(&h));
+        }
+    });
+
+    let h = handle.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(triggers::SCHEDULE_TICK);
+        let core = &h.state::<AppState>().core;
+        if triggers::schedule_due(core, chrono::Utc::now()).unwrap_or(false) {
+            let _ = triggers::run_auto(core, Trigger::Scheduled, &announce(&h));
+        }
+    });
+}
+
+/// After WoW exits: wait for its last SavedVariables writes, then back up.
+fn spawn_game_exit_backup(handle: &tauri::AppHandle) {
+    let h = handle.clone();
+    std::thread::spawn(move || {
+        let core = &h.state::<AppState>().core;
+        if !core.settings.get().backup.on_game_exit {
+            return;
+        }
+        if let Ok(game) = core.active_game() {
+            triggers::wait_until_settled(
+                &game.root.base.join("WTF"),
+                triggers::EXIT_SETTLE,
+                triggers::EXIT_SETTLE_TIMEOUT,
+            );
+        }
+        let _ = triggers::run_auto(core, backup::manifest::Trigger::GameExit, &announce(&h));
+    });
 }
 
 #[cfg(test)]

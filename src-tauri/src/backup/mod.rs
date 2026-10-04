@@ -2,6 +2,7 @@
 //! content-addressed blob store, described by manifests, indexed in SQLite.
 
 pub mod manifest;
+pub mod retention;
 pub mod store;
 pub mod tree;
 
@@ -15,8 +16,9 @@ use crate::backup::manifest::{
     Manifest, ManifestDir, ManifestFile, Scope, SnapshotKind, SnapshotSummary, Trigger,
     MANIFEST_VERSION,
 };
+use crate::backup::retention::Policy;
 use crate::backup::store::BlobStore;
-use crate::db::Db;
+use crate::db::{Db, NEEDS_REINDEX};
 use crate::error::{AppError, AppResult};
 use crate::fsx::read::safe_read;
 use crate::fsx::relpath::{GameRoot, RelPath};
@@ -48,6 +50,30 @@ pub struct SnapshotRequest<'a> {
     pub label: Option<String>,
     pub scope: SnapshotScope<'a>,
     pub game_running: bool,
+}
+
+/// What a prune did.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct PruneReport {
+    pub pruned: Vec<String>,
+    pub blobs_removed: u32,
+    pub freed_bytes: f64,
+    /// Store size on disk afterwards.
+    pub used_bytes: f64,
+    pub budget_bytes: f64,
+    /// Still over budget after pruning everything allowed (only manual,
+    /// pinned or the newest few are left): the UI shows a warning.
+    pub over_budget: bool,
+}
+
+/// The storage meter on the Backups screen.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct StorageInfo {
+    pub used_bytes: f64,
+    pub budget_bytes: f64,
+    pub over_budget: bool,
+    /// Generated from the policy, shown as is (spec §5).
+    pub retention_summary: String,
 }
 
 /// Reports progress while files are captured: (done, total).
@@ -86,6 +112,7 @@ impl BackupService {
         if indexed as usize != service.manifests.all()?.len() {
             service.reindex()?;
         }
+        service.reindex_if_flagged()?;
         Ok(service)
     }
 
@@ -349,12 +376,90 @@ impl BackupService {
     /// Removes a snapshot. Its blobs are freed by the next GC (T8).
     pub fn delete(&self, id: &str) -> AppResult<()> {
         let _edit = self.edits.lock().expect("edit lock poisoned");
+        self.delete_unlocked(id)
+    }
+
+    fn delete_unlocked(&self, id: &str) -> AppResult<()> {
         self.manifests.read(id)?;
         self.manifests.delete(id)?;
         self.db.with_conn(|c| {
             c.execute("DELETE FROM snapshots WHERE id = ?1", [id])?;
             Ok(())
         })
+    }
+
+    /// Applies the retention policy, then the storage budget, then frees
+    /// blobs nothing references any more (spec §5).
+    ///
+    /// Must run under `AppCore::jobs`, never alongside a backup: a backup's
+    /// new blobs aren't referenced until its manifest is written, so GC in
+    /// between would delete them.
+    pub fn prune(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        policy: &Policy,
+    ) -> AppResult<PruneReport> {
+        let _edit = self.edits.lock().expect("edit lock poisoned");
+        // After a db quarantine the index may be incomplete; pruning from it
+        // could miss which snapshots are pinned or manual.
+        self.reindex_if_flagged()?;
+
+        let mut report = PruneReport::default();
+        for id in retention::expired(&self.list()?, now, policy) {
+            self.delete_unlocked(&id)?;
+            report.pruned.push(id);
+        }
+        self.collect_garbage(&mut report)?;
+
+        if self.blobs.size_on_disk() > policy.budget_bytes {
+            let candidates = retention::budget_candidates(&self.list()?, policy);
+            for batch in candidates.chunks(5) {
+                for id in batch {
+                    self.delete_unlocked(id)?;
+                    report.pruned.push(id.clone());
+                }
+                self.collect_garbage(&mut report)?;
+                if self.blobs.size_on_disk() <= policy.budget_bytes {
+                    break;
+                }
+            }
+        }
+        let used = self.blobs.size_on_disk();
+        report.used_bytes = used as f64;
+        report.budget_bytes = policy.budget_bytes as f64;
+        // Only manual/pinned (or the floor) left and still over: tell the user.
+        report.over_budget = used > policy.budget_bytes;
+        Ok(report)
+    }
+
+    fn collect_garbage(&self, report: &mut PruneReport) -> AppResult<()> {
+        let refs = self.referenced_blobs()?;
+        let (removed, freed) = self.blobs.retain(&refs)?;
+        report.blobs_removed += removed as u32;
+        report.freed_bytes += freed as f64;
+        Ok(())
+    }
+
+    fn reindex_if_flagged(&self) -> AppResult<()> {
+        if self.db.get_meta(NEEDS_REINDEX)?.is_some() {
+            self.reindex()?;
+            self.db.with_conn(|c| {
+                c.execute("DELETE FROM meta WHERE key = ?1", [NEEDS_REINDEX])?;
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Store size and policy, for the Backups header and Settings.
+    pub fn storage(&self, policy: &Policy) -> StorageInfo {
+        let used = self.blobs.size_on_disk();
+        StorageInfo {
+            used_bytes: used as f64,
+            budget_bytes: policy.budget_bytes as f64,
+            over_budget: used > policy.budget_bytes,
+            retention_summary: policy.summary(),
+        }
     }
 
     /// Pinned snapshots are never pruned. Stored in the manifest too, so a
@@ -382,12 +487,11 @@ impl BackupService {
     }
 
     /// Blob ids referenced by any manifest (for GC, T8).
-    #[allow(dead_code)] // first caller is GC (T8)
     pub fn referenced_blobs(&self) -> AppResult<HashSet<String>> {
         self.manifests.all_blob_refs()
     }
 
-    #[allow(dead_code)] // first production callers are GC (T8) and restore (T9)
+    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn blobs(&self) -> &BlobStore {
         &self.blobs
     }
@@ -822,6 +926,134 @@ mod tests {
         for hash in &all_refs {
             assert!(s.service.blobs().contains(hash));
         }
+    }
+
+    /// Moves a snapshot's creation time back, as if it were taken long ago.
+    fn backdate(s: &Setup, id: &str, hours: i64) {
+        let mut m = s.service.manifests.read(id).unwrap();
+        m.created_at = (chrono::Utc::now() - chrono::Duration::hours(hours)).to_rfc3339();
+        s.service.manifests.write(&m).unwrap();
+        s.service.index(&m).unwrap();
+    }
+
+    /// A full automatic snapshot after changing Config.wtf, so it's never
+    /// skipped as identical and has one blob of its own.
+    fn changed_auto(s: &Setup, n: usize) -> SnapshotSummary {
+        std::fs::write(
+            s.flavor_dir.join("WTF/Config.wtf"),
+            format!("SET change \"{n}\"\n"),
+        )
+        .unwrap();
+        full(s, Trigger::GameExit).unwrap()
+    }
+
+    #[test]
+    fn prune_expires_old_autos_and_frees_only_their_blobs() {
+        let s = setup();
+        let old = changed_auto(&s, 1);
+        let recent = changed_auto(&s, 2);
+        let manual = full(&s, Trigger::Manual).unwrap();
+        backdate(&s, &old.id, 24 * 70);
+        let old_config = s
+            .service
+            .manifest(&old.id)
+            .unwrap()
+            .files
+            .into_iter()
+            .find(|f| f.path == "WTF/Config.wtf")
+            .unwrap()
+            .blake3;
+
+        let report = s
+            .service
+            .prune(chrono::Utc::now(), &retention::POLICY)
+            .unwrap();
+        assert_eq!(report.pruned, vec![old.id.clone()]);
+        assert!(report.blobs_removed >= 1 && report.freed_bytes > 0.0);
+        assert!(
+            !s.service.blobs().contains(&old_config),
+            "its unique blob is gone"
+        );
+        for id in [&recent.id, &manual.id] {
+            for f in s.service.manifest(id).unwrap().files {
+                assert!(s.service.blobs().contains(&f.blake3), "shared blobs stay");
+            }
+        }
+        assert!(!report.over_budget);
+    }
+
+    #[test]
+    fn over_budget_prunes_oldest_autos_down_to_the_floor() {
+        let s = setup();
+        let manual = full(&s, Trigger::Manual).unwrap();
+        let autos: Vec<_> = (0..5).map(|n| changed_auto(&s, n)).collect();
+        let tiny = Policy {
+            budget_bytes: 1,
+            ..retention::POLICY
+        };
+
+        let report = s.service.prune(chrono::Utc::now(), &tiny).unwrap();
+        assert_eq!(report.pruned, [autos[0].id.clone(), autos[1].id.clone()]);
+        assert!(
+            report.over_budget,
+            "manual + the newest 3 still exceed 1 byte"
+        );
+        let left: Vec<String> = s
+            .service
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|x| x.id)
+            .collect();
+        assert!(left.contains(&manual.id));
+        assert_eq!(left.len(), 4);
+    }
+
+    /// T3 carry-over: after a db quarantine, prune rebuilds the index first
+    /// and never deletes a pinned or manual snapshot.
+    #[test]
+    fn prune_after_quarantine_rebuilds_index_and_keeps_protected() {
+        let s = setup();
+        let manual = full(&s, Trigger::Manual).unwrap();
+        let pinned = changed_auto(&s, 1);
+        let old = changed_auto(&s, 2);
+        s.service.set_pinned(&pinned.id, true).unwrap();
+        backdate(&s, &pinned.id, 24 * 400);
+        backdate(&s, &old.id, 24 * 400);
+
+        // The db was recreated: index lost, flag set.
+        s.db.with_conn(|c| {
+            c.execute("DELETE FROM snapshots", [])?;
+            Ok(())
+        })
+        .unwrap();
+        s.db.set_meta(NEEDS_REINDEX, "1").unwrap();
+
+        let report = s
+            .service
+            .prune(chrono::Utc::now(), &retention::POLICY)
+            .unwrap();
+        assert_eq!(report.pruned, vec![old.id.clone()]);
+        let left: Vec<String> = s
+            .service
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|x| x.id)
+            .collect();
+        assert!(left.contains(&manual.id) && left.contains(&pinned.id));
+        assert_eq!(s.db.get_meta(NEEDS_REINDEX).unwrap(), None, "flag cleared");
+    }
+
+    #[test]
+    fn storage_reports_size_budget_and_summary() {
+        let s = setup();
+        full(&s, Trigger::Manual).unwrap();
+        let info = s.service.storage(&retention::POLICY);
+        assert!(info.used_bytes > 0.0);
+        assert_eq!(info.budget_bytes, retention::POLICY.budget_bytes as f64);
+        assert!(!info.over_budget);
+        assert_eq!(info.retention_summary, retention::POLICY.summary());
     }
 
     #[test]

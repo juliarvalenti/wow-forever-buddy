@@ -3,8 +3,9 @@ use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::backup::manifest::{SnapshotSummary, Trigger};
+use crate::backup::retention::POLICY;
 use crate::backup::tree::SnapshotDetail;
-use crate::backup::{clean_label, SnapshotRequest, SnapshotScope};
+use crate::backup::{clean_label, PruneReport, SnapshotRequest, SnapshotScope, StorageInfo};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -103,4 +104,20 @@ pub fn backup_set_label(
     label: Option<String>,
 ) -> AppResult<SnapshotSummary> {
     state.core.backups()?.set_label(&id, label)
+}
+
+/// The storage meter and the retention sentence for the Backups header.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_storage(state: State<'_, AppState>) -> AppResult<StorageInfo> {
+    Ok(state.core.backups()?.storage(&POLICY))
+}
+
+/// Settings' "Prune now". Waits for any running backup or restore, because
+/// garbage collection must never overlap one.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
+    let _job = state.core.jobs.lock().expect("job lock poisoned");
+    state.core.backups()?.prune(chrono::Utc::now(), &POLICY)
 }

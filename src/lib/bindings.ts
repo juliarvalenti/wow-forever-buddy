@@ -17,8 +17,15 @@ export const commands = {
 	backupGet: (id: string) => __TAURI_INVOKE<SnapshotDetail>("backup_get", { id }),
 	/**  Every snapshot, newest first. */
 	backupList: () => __TAURI_INVOKE<SnapshotSummary[]>("backup_list"),
+	/**
+	 *  Settings' "Prune now". Waits for any running backup or restore, because
+	 *  garbage collection must never overlap one.
+	 */
+	backupPruneNow: () => __TAURI_INVOKE<PruneReport>("backup_prune_now"),
 	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
 	backupSetPinned: (id: string, pinned: boolean) => __TAURI_INVOKE<SnapshotSummary>("backup_set_pinned", { id, pinned }),
+	/**  The storage meter and the retention sentence for the Backups header. */
+	backupStorage: () => __TAURI_INVOKE<StorageInfo>("backup_storage"),
 	/**
 	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
 	 *  on mount, then follows `game-status-changed`.
@@ -322,6 +329,21 @@ export type LookedIn = {
 	path: string,
 };
 
+/**  What a prune did. */
+export type PruneReport = {
+	pruned: string[],
+	blobs_removed: number,
+	freed_bytes: number | null,
+	/**  Store size on disk afterwards. */
+	used_bytes: number | null,
+	budget_bytes: number | null,
+	/**
+	 *  Still over budget after pruning everything allowed (only manual,
+	 *  pinned or the newest few are left): the UI shows a warning.
+	 */
+	over_budget: boolean,
+};
+
 export type Scope = 
 /**  The whole tree that backups cover. */
 "full" | 
@@ -426,6 +448,15 @@ export type SnapshotSummary = {
 	 */
 	total_bytes: number | null,
 	new_bytes: number | null,
+};
+
+/**  The storage meter on the Backups screen. */
+export type StorageInfo = {
+	used_bytes: number | null,
+	budget_bytes: number | null,
+	over_budget: boolean,
+	/**  Generated from the policy, shown as is (spec §5). */
+	retention_summary: string,
 };
 
 export type Totals = {

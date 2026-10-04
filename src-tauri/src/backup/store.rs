@@ -78,7 +78,7 @@ impl BlobStore {
     }
 
     /// Reads a blob back and verifies it against its hash.
-    #[allow(dead_code)] // used by GC/storage (T8) and restore (T9)
+    #[allow(dead_code)] // first production caller is restore (T9)
     pub fn get(&self, hash: &str) -> AppResult<Vec<u8>> {
         let corrupt = || AppError::BackupCorrupt {
             files: vec![hash.to_string()],
@@ -92,7 +92,6 @@ impl BlobStore {
     }
 
     /// Deletes every blob not in `keep`. Returns (blobs removed, bytes freed).
-    #[allow(dead_code)] // used by GC/storage (T8) and restore (T9)
     pub fn retain(&self, keep: &std::collections::HashSet<String>) -> AppResult<(u64, u64)> {
         let (mut removed, mut freed) = (0, 0);
         for entry in walkdir::WalkDir::new(&self.objects)
@@ -119,7 +118,6 @@ impl BlobStore {
     }
 
     /// Bytes the store actually occupies on disk.
-    #[allow(dead_code)] // used by GC/storage (T8) and restore (T9)
     pub fn size_on_disk(&self) -> u64 {
         walkdir::WalkDir::new(&self.objects)
             .into_iter()
