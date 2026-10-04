@@ -133,6 +133,12 @@ export type Flavor = {
 	has_wtf: boolean,
 	/**  Account folder names under `WTF/Account`. */
 	accounts: string[],
+	/**
+	 *  `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
+	 *  recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked
+	 *  to D:\Sync\WTF").
+	 */
+	links: LinkedFolder[],
 };
 
 /**  The folders the UI can reveal. A fixed set: the frontend never passes a path. */
@@ -193,6 +199,16 @@ export type IntegrationsPatch = {
 	wago_io?: IntegrationSetting | null,
 	github?: IntegrationSetting | null,
 	battlenet?: IntegrationSetting | null,
+};
+
+export type LinkedFolder = {
+	/**  `/`-separated path relative to the game root, e.g. "WTF". */
+	folder: string,
+	/**
+	 *  Canonical target recorded at validation, e.g. `D:\Dropbox\WTF`.
+	 *  The UI shows it as "WTF is linked to …".
+	 */
+	target: string,
 };
 
 /**

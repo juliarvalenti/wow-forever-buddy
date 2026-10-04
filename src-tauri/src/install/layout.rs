@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::fsx::relpath::LinkedFolder;
+
 /// A WoW root folder and the game flavors found in it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Install {
@@ -40,6 +42,10 @@ pub struct Flavor {
     pub has_wtf: bool,
     /// Account folder names under `WTF/Account`.
     pub accounts: Vec<String>,
+    /// `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
+    /// recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked
+    /// to D:\Sync\WTF").
+    pub links: Vec<LinkedFolder>,
 }
 
 /// What we know about a flavor folder. Data, not code, so a new Forever

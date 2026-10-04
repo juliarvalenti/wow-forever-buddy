@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 use crate::fsx::read::safe_read;
+use crate::fsx::relpath::GameRoot;
 use crate::install::layout::{
     label_from_folder, lookup, parse_build_info, product_matches_folder, BuildRow, Flavor, Install,
     KNOWN_FLAVORS,
@@ -21,12 +22,31 @@ pub fn is_flavor_dir_name(name: &str) -> bool {
 /// Walks up from whatever the user (or the registry) pointed at, the root, a
 /// flavor folder, `WTF` or deeper, to the WoW root.
 pub fn normalize_root(picked: &Path) -> Option<PathBuf> {
-    let picked = dunce::canonicalize(picked).ok()?;
-    picked
+    locate(picked).map(|(root, _)| root)
+}
+
+/// Like `normalize_root`, plus the flavor folder the pick was inside, if any.
+///
+/// Walks the path as given, not its canonical form: if `WTF` is a link to
+/// another drive, canonicalizing first would leave the install entirely.
+/// Only the root that's found gets canonicalized.
+pub fn locate(picked: &Path) -> Option<(PathBuf, Option<String>)> {
+    let picked = std::path::absolute(picked).ok()?;
+    if !picked.exists() {
+        return None;
+    }
+    let found = picked
         .ancestors()
         .take(MAX_LEVELS_UP + 1)
-        .find(|dir| looks_like_root(dir))
-        .map(Path::to_path_buf)
+        .find(|dir| looks_like_root(dir))?;
+    let flavor = picked
+        .strip_prefix(found)
+        .ok()
+        .and_then(|rel| rel.components().next())
+        .and_then(|c| c.as_os_str().to_str())
+        .filter(|name| is_flavor_dir_name(name))
+        .map(str::to_string);
+    Some((dunce::canonicalize(found).ok()?, flavor))
 }
 
 fn looks_like_root(dir: &Path) -> bool {
@@ -140,6 +160,8 @@ pub fn scan(root: &Path) -> AppResult<Install> {
             product: product.map(str::to_string),
             version: version.map(str::to_string),
             accounts: accounts(&wtf),
+            // The same record T4's resolver checks paths against.
+            links: GameRoot::new(&dir).map(|r| r.links).unwrap_or_default(),
             id,
             dir,
             exe,
@@ -181,6 +203,7 @@ pub fn choose_flavor(install: &Install, requested: Option<&str>) -> AppResult<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fsx::relpath::LinkedFolder;
     use crate::test_support::fixture_copy;
 
     #[test]
@@ -313,5 +336,79 @@ mod tests {
         // Only one has a WTF folder: that one.
         no_forever.flavors[1].has_wtf = false;
         assert_eq!(choose_flavor(&no_forever, None).unwrap(), "_classic_beta_");
+    }
+
+    /// A directory link: a symlink on Unix, a junction on Windows (what users
+    /// make with `mklink /J`, and it needs no admin rights).
+    fn link_dir(target: &Path, link: &Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .unwrap();
+            assert!(status.status.success(), "mklink /J failed: {status:?}");
+        }
+    }
+
+    #[test]
+    fn linked_wtf_and_addons_are_allowed_and_reported() {
+        let (tmp, root) = fixture_copy();
+        let flavor = root.join("_classic_beta_");
+        // No spaces: `cmd /C` quoting rules make mklink brittle with them.
+        let elsewhere = tmp.path().join("syncdrive");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::rename(flavor.join("WTF"), elsewhere.join("WTF")).unwrap();
+        std::fs::rename(flavor.join("Interface/AddOns"), elsewhere.join("AddOns")).unwrap();
+        link_dir(&elsewhere.join("WTF"), &flavor.join("WTF"));
+        link_dir(&elsewhere.join("AddOns"), &flavor.join("Interface/AddOns"));
+
+        let install = scan(&root).unwrap();
+        let f = &install.flavors[0];
+        assert!(f.has_wtf);
+        assert_eq!(f.accounts, ["ACCOUNT1", "ACCOUNT2"]);
+        let wtf_target = dunce::canonicalize(elsewhere.join("WTF")).unwrap();
+        let addons_target = dunce::canonicalize(elsewhere.join("AddOns")).unwrap();
+        assert_eq!(
+            f.links,
+            [
+                LinkedFolder {
+                    folder: "WTF".into(),
+                    target: wtf_target
+                },
+                LinkedFolder {
+                    folder: "Interface/AddOns".into(),
+                    target: addons_target
+                },
+            ]
+        );
+        // Exactly what the resolver will check paths against.
+        assert_eq!(f.links, GameRoot::new(&f.dir).unwrap().links);
+        // Unlinked flavors report nothing.
+        assert!(install.flavors[1].links.is_empty());
+
+        // Picking the linked WTF still finds this install and flavor.
+        let canon_root = dunce::canonicalize(&root).unwrap();
+        assert_eq!(
+            locate(&flavor.join("WTF/Account")),
+            Some((canon_root, Some("_classic_beta_".into())))
+        );
+    }
+
+    #[test]
+    fn locate_reports_the_flavor_picked_into() {
+        let (_tmp, root) = fixture_copy();
+        assert_eq!(locate(&root).unwrap().1, None);
+        assert_eq!(
+            locate(&root.join("_classic_era_/WTF"))
+                .unwrap()
+                .1
+                .as_deref(),
+            Some("_classic_era_")
+        );
     }
 }

@@ -19,7 +19,7 @@ use detect::{
     detect, system_sources, CandidateSource, FixedPaths, InstallCandidate, InstallSource,
 };
 use layout::Install;
-use validate::{choose_flavor, normalize_root, scan};
+use validate::{choose_flavor, locate, scan};
 
 /// Emitted when the active install is set or resolved at startup.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
@@ -49,7 +49,7 @@ pub fn current(settings: &SettingsStore) -> AppResult<Option<Install>> {
 /// chooses the active flavor and saves both. Picking inside a flavor folder
 /// selects that flavor unless `flavor` says otherwise.
 pub fn set(settings: &SettingsStore, path: &Path, flavor: Option<&str>) -> AppResult<Install> {
-    let root = normalize_root(path).ok_or_else(|| {
+    let (root, inside) = locate(path).ok_or_else(|| {
         AppError::InvalidInstall(format!(
             "{} isn't a World of Warcraft folder",
             path.display()
@@ -58,7 +58,7 @@ pub fn set(settings: &SettingsStore, path: &Path, flavor: Option<&str>) -> AppRe
     let mut install = scan(&root)?;
     let picked = flavor
         .map(str::to_string)
-        .or_else(|| flavor_containing(&install, path));
+        .or_else(|| inside.filter(|id| install.flavor(id).is_some()));
     let id = choose_flavor(&install, picked.as_deref())?;
     settings.update(|s| {
         s.install = Some(InstallChoice {
@@ -69,15 +69,6 @@ pub fn set(settings: &SettingsStore, path: &Path, flavor: Option<&str>) -> AppRe
     install.active = Some(id);
     sweep(&install);
     Ok(install)
-}
-
-fn flavor_containing(install: &Install, path: &Path) -> Option<String> {
-    let path = dunce::canonicalize(path).ok()?;
-    install
-        .flavors
-        .iter()
-        .find(|f| path.starts_with(&f.dir))
-        .map(|f| f.id.clone())
 }
 
 /// Every install we can find: the saved one first (with its saved flavor
