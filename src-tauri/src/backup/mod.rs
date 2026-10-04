@@ -1,6 +1,7 @@
 //! Backups (spec §5): snapshots of the game's settings stored in a
 //! content-addressed blob store, described by manifests, indexed in SQLite.
 
+pub mod export;
 pub mod journal;
 pub mod manifest;
 pub mod restore;

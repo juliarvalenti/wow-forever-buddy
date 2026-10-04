@@ -32,6 +32,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_info,
             commands::backup::backup_create,
             commands::backup::backup_delete,
+            commands::backup::backup_export_zip,
             commands::backup::backup_get,
             commands::backup::backup_list,
             commands::backup::backup_prune_now,
@@ -58,6 +59,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             InstallChanged,
             commands::backup::BackupCreated,
             commands::backup::BackupProgress,
+            commands::backup::ExportProgress,
             commands::restore::RestoreProgress,
             commands::restore::RestoreCompleted,
             commands::game::GameStatusChanged

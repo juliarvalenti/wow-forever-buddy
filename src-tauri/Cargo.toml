@@ -46,6 +46,8 @@ chrono = "0.4"
 blake3 = "1"
 zstd = "0.14"
 ulid = "3"
+# "Export snapshot as .zip" (spec §5). Deflate only: plain zips any OS opens.
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "chrono"] }
 
 [dev-dependencies]
 full_moon = "3"
