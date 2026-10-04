@@ -1,6 +1,6 @@
 # Spec: core file-system layer
 
-Status: **PM-approved, awaiting Julia's sign-off** · Author: @coder · 2026-10-04 (rev 2: PM review notes folded in)
+Status: **PM-approved, awaiting Julia's sign-off** · Author: @coder · 2026-10-04 (rev 3: PM review notes + alignment with round-1/2 mocks)
 
 This covers the Rust layer under every feature that touches the game folder: finding the install, knowing when WoW is running, reading and writing files safely, backups and restore, app config, the local database, and secrets. Later features (companion-addon ingest, characters, AH, addon/macro management) get all their file access through this layer.
 
@@ -47,7 +47,8 @@ We skip parsing Battle.net's `product.db` (protobuf, undocumented) for v0.1. Reg
 - **Flavor discovery:** enumerate `_*_` dirs. Read product codes from `.build.info` (`Product` column, e.g. `wow`, `wow_classic`, `wow_classic_era`) for display labels.
 - **Model:**
   - `Install { root, flavors: Vec<Flavor> }`
-  - `Flavor { id: "_classic_", label, dir, exe: Option<PathBuf>, has_wtf, accounts: Vec<String> }`
+  - `Flavor { id: "_classic_", label, dir, exe: Option<PathBuf>, version: Option<String>, has_wtf, accounts: Vec<String> }`
+  - `version` comes from the `.build.info` `Version` column, e.g. "1.15.4". The dashboard shows it under "Client detected".
 - The user picks one **active flavor**, which is saved in settings. If only one flavor has a WTF folder, it is picked automatically.
 - **Multiple roots** (e.g. a PTR copy on another drive) show up as separate candidates. For v0.1 only one is active at a time.
 
@@ -173,25 +174,34 @@ All backup and restore jobs run on one **serialized job queue** (one at a time),
 - **manual** and **pinned**: kept until the user deletes them.
 - **app_start / game_exit / scheduled**: keep everything from the last 48 h, then the newest snapshot per day for 14 days, then the newest per week for 8 weeks. Everything else is pruned.
 - **pre_write / pre_restore**: keep 30 days, and always at least the last 20.
+- **Storage budget** (the mock's "1.08 GB of 5 GB" meter): a soft cap, default **5 GB** of *actual* store size (after dedup and compression, not the sum of snapshot sizes). Over budget, the oldest auto snapshots, then the oldest safety snapshots, are pruned beyond the time rules above, but never the newest 3 of each. Manual and pinned snapshots are never auto-pruned. If they alone exceed the budget, the UI shows a warning instead.
 - Pruning runs after each new snapshot. Then **GC** (mark blobs referenced by any manifest, sweep the rest) runs, throttled to once an hour.
+- `backup_storage()` returns `{ used_bytes, budget_bytes, retention_summary }`. `retention_summary` is a short string generated from the policy constants (e.g. "Auto: 48 h, then daily for 2 weeks, weekly for 2 months · manual kept forever"). The UI shows it as is, so the copy can't drift from the policy. The mock's "Auto-prune after 30 days" text gets replaced by this string.
 - Settings shows the total store size and a "Prune now" button.
+- **UI type labels:** `manual` → Manual, `app_start`/`game_exit`/`scheduled` → Auto, `pre_write`/`pre_restore` → **Safety**. Safety snapshots get a generated label describing the operation, e.g. "Before restoring Velyra" or "Before macro edit".
 
 ### Restore
 
-- **Scopes:**
-  - `Full`
-  - `Account { account }`
-  - `Character { account, realm, character }`
-  - `AddonData { addon, target: Account(account) | Character(…) | Everywhere }`, which covers `SavedVariables/<addon>.lua` and `.lua.bak`
-  - `Paths(Vec<RelPath>)`, which backs the pre-write undo
+- **Scope = a selection.** The mock's restore panel multi-selects characters and, within a character, categories, so a restore takes a `RestoreSelection { items: Vec<ScopeItem> }`. The backend resolves it to a deduplicated set of paths:
+  - `Everything`: the whole snapshot.
+  - `Account { account, categories: Option<Vec<Category>> }`
+  - `Character { account, realm, character, categories: Option<Vec<Category>> }`. `None` means the whole character folder.
+  - `AddonData { addon, target: Account(account) | Character(…) | Everywhere }`, which covers `SavedVariables/<addon>.lua` and `.lua.bak` (the mock's "Addons" tab).
+  - `Paths(Vec<RelPath>)`, which backs the pre-write undo.
+- **Categories** (fixed mapping of files to categories in `install/layout.rs`, matching the mock):
+  - `BindingsMacros`: `bindings-cache.wtf`, `macros-cache.txt`
+  - `AddonSettings`: `SavedVariables/**`, `AddOns.txt`
+  - `ChatLayout`: `chat-cache.txt`, `layout-local.txt`
+  - `Other`: anything else in the folder, e.g. `config-cache.wtf`
+- `backup_get(id)` returns the manifest as a tree with **aggregate sizes and file counts** per account, realm, character and category, plus per-addon entries. That's what the panel shows as "Thrandor 2.1 MB", "Addon settings (41) 1.9 MB" and so on.
 - **Modes:**
   - **overlay (default for every scope):** write the snapshot's files, leave extra files alone.
   - **mirror (explicit opt-in):** also remove current files under the scope that aren't in the snapshot.
   - **Why overlay everywhere:** files that exist now but not in the snapshot are almost always newer, legitimate data, such as SavedVariables for an addon installed since then. Deleting them is the one restore action that can surprise you. Leftover extra files do no harm, because WoW ignores SavedVariables for addons that aren't loaded. Mirror is there for "put it back exactly" (e.g. undoing a broken UI setup). Even then, the deleted files go into the pre-restore snapshot, so it can be undone.
   - **Preview must show deletions prominently:** the `RestorePlan` lists `to_delete` separately, and the confirm dialog shows that list with its own count.
 - **Flow:**
-  1. `restore_preview` returns a plan: files to write, files to delete, unchanged count, and bytes.
-  2. The user confirms.
+  1. `restore_preview` returns a plan: files to write (grouped per folder, so the dialog can show "…\Thrandor\SavedVariables\ (41 files)"), files to delete, unchanged count, bytes, and a one-line human summary ("keybindings, macros and 41 addon settings").
+  2. The user confirms. While WoW is running, the dialog shows "Waiting for WoW to close…" with Restore disabled. It enables on `game://status-changed` → stopped, but **never runs on its own**: the user still clicks. The restore job queues behind the game_exit backup, so it always runs after WoW's exit writes have settled and been captured.
   3. `begin_mutation(all touched paths)`: this blocks if WoW is running and takes the pre-restore snapshot.
   4. Write a **restore journal** (`restore-journal.json` in app data).
   5. Verify each blob's blake3 → `atomic_write`, and remove files for mirror mode.
@@ -236,7 +246,8 @@ All backup and restore jobs run on one **serialized job queue** (one at a time),
 - **Crate:** `rusqlite` with the `bundled` feature, so no system SQLite is needed on Windows, plus `rusqlite_migration` for embedded, ordered SQL migrations.
 - One connection behind a `Mutex`, used from `spawn_blocking`. WAL mode, `foreign_keys=ON`.
 - **Alternative:** `sqlx` (async, compile-time-checked queries) is heavier and needs a DB at build time for its macros. That's not worth it at this size.
-- **v1 schema:** `snapshots` (index of manifests: id, created_at, trigger, label, pinned, scope, flavor, file_count, total_bytes, new_bytes), `file_hash_cache`, `write_audit`, `meta`.
+- **v1 schema:** `snapshots` (index of manifests: id, created_at, trigger, label, pinned, scope, flavor, file_count, total_bytes, new_bytes, **char_count, addon_count**, game_running), `file_hash_cache`, `write_audit`, `meta`.
+  - `char_count` and `addon_count` back the mock's "7 chars · 52 addons" column. They're derived from manifest paths: character folders, and distinct `SavedVariables/<addon>.lua` names, or AddOns folders when those are included. They're computed at snapshot time so the list never opens manifests.
 - Manifests on disk stay the source of truth for backups. `backup_reindex` rebuilds `snapshots` from them, so losing the DB never loses backups.
 - Later features (characters, gold history, AH) add their own migrations to the same DB.
 
@@ -291,12 +302,13 @@ jobs.rs           serialized background job queue + progress events
 | `game_status()` | `GameStatus` |
 | `wtf_tree()` | `WtfTree` (accounts → realms → characters → addons with SavedVariables), used by restore pickers |
 | `backup_create(label?)` | `JobId` (result arrives via event) |
-| `backup_list()` | `Vec<SnapshotSummary>` |
+| `backup_list()` | `Vec<SnapshotSummary>` (incl. type label, char/addon counts, size) |
+| `backup_storage()` | `{ used_bytes, budget_bytes, retention_summary }` |
 | `backup_get(id)` | `SnapshotDetail` (manifest as a tree) |
 | `backup_set_pinned(id, pinned)` / `backup_set_label(id, label)` | `()` |
 | `backup_delete(id)` | `()` |
-| `backup_restore_preview(id, scope, mode?)` | `RestorePlan` |
-| `backup_restore(id, scope, mode?)` | `JobId` |
+| `backup_restore_preview(id, selection, mode?)` | `RestorePlan` |
+| `backup_restore(id, selection, mode?)` | `JobId` |
 | `backup_verify(id)` | `VerifyReport` |
 | `backup_export_zip(id, dest)` | `JobId` (`dest` comes from the save dialog) |
 | `backup_prune_now()` | `PruneReport` |
@@ -385,6 +397,10 @@ The window shows right away. Steps 4–9 run in the background and report throug
 4. ~~Retention defaults user-editable in v0.1?~~ **Resolved (PM):** constants for v0.1.
 5. ~~Backup location default?~~ **Resolved (PM):** `%LOCALAPPDATA%`, movable in settings.
 6. ~~tauri-specta RC?~~ **Resolved (PM):** yes, with ts-rs as the fallback.
+7. **Mock data this layer can't provide in v0.1** (for @designer/@project-mgmt):
+   - "WoW is running · **Thrandor**": process detection only knows the game is running, not which character is logged in. That needs the companion addon (v0.2). v0.1 shows "WoW is running" plus the session duration.
+   - Class colors, level and ilvl on character rows (including the Backups restore list): the WTF folder only gives account, realm and character names. v0.1 shows names in a neutral color, and class data arrives with the addon.
+   - The mocks assume Forever lives in `_classic_` with version 1.15.4. That's a placeholder until Julia's `dir` listing (Q1).
 
 ---
 
