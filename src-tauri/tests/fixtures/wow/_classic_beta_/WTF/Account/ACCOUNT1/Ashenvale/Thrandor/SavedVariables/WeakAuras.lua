@@ -1,0 +1,6 @@
+
+WeakAurasSavedPerChar = {
+	["minimap"] = {
+		["hide"] = false,
+	},
+}

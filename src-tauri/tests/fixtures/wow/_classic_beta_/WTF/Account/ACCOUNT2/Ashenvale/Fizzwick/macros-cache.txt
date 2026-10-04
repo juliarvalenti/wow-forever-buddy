@@ -1,0 +1,3 @@
+MACRO 16777217 "Bomb" INV_Misc_QuestionMark
+/use Iron Grenade
+END

@@ -4,6 +4,8 @@ mod db;
 mod error;
 mod fsx;
 mod state;
+#[cfg(test)]
+mod test_support;
 
 use tauri::Manager;
 

@@ -1,0 +1,4 @@
+MACRO 1 "Mount" INV_Misc_QuestionMark
+/cast [nomounted] Summon Warhorse
+/dismount [mounted]
+END
