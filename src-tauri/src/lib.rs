@@ -1,19 +1,27 @@
 mod commands;
+mod config;
 mod error;
+mod fsx;
 mod state;
 
 use tauri::Manager;
 
-use crate::state::{AppCore, AppPaths, AppState};
+use crate::config::paths::AppPaths;
+use crate::state::{AppCore, AppState};
 
-/// Where the generated TypeScript bindings live, relative to `src-tauri/`.
-const BINDINGS_PATH: &str = "../src/lib/bindings.ts";
+/// Where the generated TypeScript bindings live. Absolute, so a debug build
+/// launched from any working directory still writes into the repo.
+const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/lib/bindings.ts");
 
 /// The one place commands and events are registered. Used by `run()` and by
 /// the `export_bindings` test, so the TS bindings can never drift from Rust.
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
-        .commands(tauri_specta::collect_commands![commands::app::app_info])
+        .commands(tauri_specta::collect_commands![
+            commands::app::app_info,
+            commands::settings::settings_get,
+            commands::settings::settings_update,
+        ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
 

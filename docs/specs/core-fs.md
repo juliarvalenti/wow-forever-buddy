@@ -224,14 +224,20 @@ All backup and restore jobs run on one **serialized job queue** (one at a time),
 
 ### Settings
 
-- A Rust struct with serde `#[serde(default)]` on every field, so missing keys get defaults and unknown keys are kept in a `#[serde(flatten)] extra` map so a downgrade doesn't wipe them.
+- A Rust struct with `#[serde(default)]` on every field, so missing keys get defaults.
+- The store keeps the file's raw JSON next to the typed view:
+  - Loading never rewrites a valid file.
+  - A mistyped or out-of-range value falls back to its own default without touching the others.
+  - Saving writes only the values that changed, so unknown keys survive at any depth and a downgrade never wipes them.
+  - Only a file that isn't JSON is quarantined.
+- **Updates are patches** (`settings_update(patch)`): only the fields present change, so a stale UI copy can't overwrite newer values. The patch type has no `install`/`schema_version` fields and rejects unknown fields. `null` means "back to the default" (e.g. `backup.location`) and never "off": turning scheduled backups off is `schedule_hours: 0`.
 - Saved with the atomic-write helper.
 
 ```jsonc
 { "schema_version": 1,
-  "install": { "root": "C:\\…\\World of Warcraft", "flavor": "_classic_" },   // or null
-  "backup": { "location": null, "include_addons": false,
-              "on_app_start": true, "on_game_exit": true, "schedule_hours": 24 },
+  "install": { "root": "C:\\…\\World of Warcraft", "flavor": "_classic_beta_" },   // or null
+  "backup": { "location": null, "include_addons": false,           // location null = default
+              "on_app_start": true, "on_game_exit": true, "schedule_hours": 24 },  // 0 = off
   "process_names_extra": [],
   "integrations": { "curseforge": { "enabled": false }, "wago": { "enabled": false },
                     "wago_io": { "enabled": false }, "github": { "enabled": false }, "battlenet": { "enabled": false } },
@@ -327,7 +333,7 @@ jobs.rs           serialized background job queue + progress events
 ```rust
 #[derive(thiserror::Error, Debug, Serialize, specta::Type)]
 #[serde(tag = "kind", content = "detail")]
-pub enum AppError { GameRunning, NoInstall, InvalidInstall(String), PathEscape(String),
+pub enum AppError { GameRunning, NoInstall, InvalidInstall(String), InvalidSettings(String), PathEscape(String),
                     NotFound(String), Io(String), Unstable(String), Parse { file: String, line: u32, col: u32, msg: String },
                     BackupCorrupt { files: Vec<String> }, Secret(String), Db(String), Busy /* job queue */ }
 ```

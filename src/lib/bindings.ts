@@ -6,6 +6,13 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
+	/**
+	 *  Changes only the fields present in `patch` and returns the new settings.
+	 *  The game folder isn't part of it: that goes through the install
+	 *  commands, which validate it.
+	 */
+	settingsUpdate: (patch: SettingsPatch_Deserialize) => __TAURI_INVOKE<Settings>("settings_update", { patch }),
 };
 
 /* Types */
@@ -13,7 +20,7 @@ export const commands = {
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
  */
-export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
+export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
 	file: string,
 	line: number,
 	col: number,
@@ -34,5 +41,125 @@ export type AppPaths = {
 	/**  buddy.db and the default backups/ location (%LOCALAPPDATA% on Windows) */
 	local_data_dir: string,
 	log_dir: string,
+};
+
+export type BackupPatch = BackupPatch_Serialize | BackupPatch_Deserialize;
+
+export type BackupPatch_Deserialize = {
+	/**  A path to use it, or null to go back to the default location. */
+	location?: string | null,
+	include_addons?: boolean | null,
+	on_app_start?: boolean | null,
+	on_game_exit?: boolean | null,
+	/**  0 turns scheduled backups off. */
+	schedule_hours?: number | null,
+};
+
+export type BackupPatch_Serialize = {
+	/**  A path to use it, or null to go back to the default location. */
+	location: string | null,
+	include_addons: boolean | null,
+	on_app_start: boolean | null,
+	on_game_exit: boolean | null,
+	/**  0 turns scheduled backups off. */
+	schedule_hours: number | null,
+};
+
+export type BackupSettings = {
+	/**  None = the default, `<local_data_dir>/backups`. */
+	location?: string | null,
+	include_addons?: boolean,
+	on_app_start?: boolean,
+	on_game_exit?: boolean,
+	/**
+	 *  Hours between scheduled backups while the app is open; 0 = off.
+	 *  Off is an explicit value so that a missing or null key always means
+	 *  "use the default", never "turned off".
+	 */
+	schedule_hours?: number,
+};
+
+export type InstallChoice = {
+	root: string,
+	/**  Flavor folder name, e.g. "_classic_beta_". */
+	flavor: string,
+};
+
+export type IntegrationSetting = {
+	enabled?: boolean,
+};
+
+/**  A closed set: each optional integration is a named field, never a free-form key. */
+export type Integrations = {
+	curseforge?: IntegrationSetting,
+	wago?: IntegrationSetting,
+	wago_io?: IntegrationSetting,
+	github?: IntegrationSetting,
+	battlenet?: IntegrationSetting,
+};
+
+export type IntegrationsPatch = {
+	curseforge?: IntegrationSetting | null,
+	wago?: IntegrationSetting | null,
+	wago_io?: IntegrationSetting | null,
+	github?: IntegrationSetting | null,
+	battlenet?: IntegrationSetting | null,
+};
+
+/**
+ *  settings.json (spec §6). Every field has a default, so a missing key never
+ *  fails a load. Keys this build doesn't know are kept on disk by
+ *  `SettingsStore`, at any depth, so a downgrade never wipes them.
+ */
+export type Settings = {
+	/**  Backend-owned: set by load/migrate, ignored on update. */
+	schema_version?: number,
+	/**  Backend-owned: changed only through install commands, which validate it. */
+	install?: InstallChoice | null,
+	backup?: BackupSettings,
+	/**  Extra game process names to treat as WoW, e.g. if Forever's exe has an unusual name. */
+	process_names_extra?: string[],
+	integrations?: Integrations,
+	/**
+	 *  Free-form UI preferences (remembered tabs, filters). The backend never reads it.
+	 *  Strings only; the frontend JSON-encodes anything structured.
+	 */
+	ui?: { [key in string]: string },
+};
+
+/**
+ *  A partial update from the UI (spec §8 `settings_update(patch)`): only the
+ *  fields present change, so a stale copy of the settings can't overwrite
+ *  newer values. There are no `install` or `schema_version` fields, and
+ *  unknown fields are rejected, so a patch can't touch backend-owned state.
+ */
+export type SettingsPatch = SettingsPatch_Serialize | SettingsPatch_Deserialize;
+
+/**
+ *  A partial update from the UI (spec §8 `settings_update(patch)`): only the
+ *  fields present change, so a stale copy of the settings can't overwrite
+ *  newer values. There are no `install` or `schema_version` fields, and
+ *  unknown fields are rejected, so a patch can't touch backend-owned state.
+ */
+export type SettingsPatch_Deserialize = {
+	backup?: BackupPatch_Deserialize | null,
+	process_names_extra?: string[] | null,
+	integrations?: IntegrationsPatch | null,
+	/**  Set keys to a string to store them, or to null to remove them. */
+	ui?: { [key in string]: string | null } | null,
+};
+
+/**
+ *  A partial update from the UI (spec §8 `settings_update(patch)`): only the
+ *  fields present change, so a stale copy of the settings can't overwrite
+ *  newer values. There are no `install` or `schema_version` fields, and
+ *  unknown fields are rejected, so a patch can't touch backend-owned state.
+ */
+export type SettingsPatch_Serialize = {
+	backup: BackupPatch_Serialize | null,
+	process_names_extra: string[] | null,
+	integrations: IntegrationsPatch | null,
+	/**  Set keys to a string to store them, or to null to remove them. */
+	ui: { [key in string]: string | null } | null,
 };
 
