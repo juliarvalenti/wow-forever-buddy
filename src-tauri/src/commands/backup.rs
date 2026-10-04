@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
+use crate::backup::export::{export_zip, ExportReport};
 use crate::backup::journal;
 use crate::backup::manifest::{SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
@@ -105,6 +106,50 @@ pub fn backup_set_label(
     label: Option<String>,
 ) -> AppResult<SnapshotSummary> {
     state.core.backups()?.set_label(&id, label)
+}
+
+/// Emitted while an export runs.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+pub struct ExportProgress {
+    pub done: u32,
+    pub total: u32,
+}
+
+/// "Export as .zip". `dest` comes from the save dialog; it may not be inside
+/// the game folder (or a linked folder's target) or the backup store. Runs
+/// as the one backup/restore job, so pruning can't remove the snapshot
+/// mid-export.
+#[tauri::command]
+#[specta::specta]
+pub async fn backup_export_zip(
+    app: AppHandle,
+    id: String,
+    dest: std::path::PathBuf,
+) -> AppResult<ExportReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let core = &app.state::<AppState>().core;
+        let _job = core.jobs.lock().expect("job lock poisoned");
+        let mut forbidden = vec![core.backups_dir()];
+        if let Some(install) = core.settings.get().install {
+            forbidden.push(install.root);
+            forbidden.extend(install.links.into_iter().map(|l| l.target));
+        }
+        let mut last_sent = 0;
+        export_zip(
+            &*core.backups()?,
+            &id,
+            &dest,
+            &forbidden,
+            &mut |done, total| {
+                if done == total || done >= last_sent + (total / 50).max(1) {
+                    last_sent = done;
+                    let _ = ExportProgress { done, total }.emit(&app);
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|e| AppError::Io(format!("export task failed: {e}")))?
 }
 
 /// The storage meter and the retention sentence for the Backups header.

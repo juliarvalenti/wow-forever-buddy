@@ -47,6 +47,10 @@ pub enum AppError {
     Db(String),
     #[error("another backup or restore is in progress")]
     Busy,
+    /// An export can't be saved there (inside the game or backup folder,
+    /// or the folder doesn't exist).
+    #[error("can't save the export there: {0}")]
+    BadDestination(String),
 }
 
 impl From<std::io::Error> for AppError {

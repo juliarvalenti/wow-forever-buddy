@@ -159,7 +159,7 @@ impl Settings {
 /// `path` with links resolved as far as it exists: the deepest existing
 /// ancestor is canonicalized and the rest re-appended. (A backup location
 /// often doesn't exist yet.)
-fn resolve_existing(path: &Path) -> PathBuf {
+pub(crate) fn resolve_existing(path: &Path) -> PathBuf {
     let mut existing = path;
     let mut rest = Vec::new();
     loop {
@@ -177,7 +177,7 @@ fn resolve_existing(path: &Path) -> PathBuf {
 }
 
 /// `path` is `root` or inside it, comparing names case-insensitively.
-fn is_within(path: &Path, root: &Path) -> bool {
+pub(crate) fn is_within(path: &Path, root: &Path) -> bool {
     let mut path = path.components();
     root.components().all(|r| {
         path.next().is_some_and(|c| {
