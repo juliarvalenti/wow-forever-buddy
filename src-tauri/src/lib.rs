@@ -44,6 +44,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::restore::backup_restore,
             commands::restore::backup_verify,
             commands::restore::restore_journal_status,
+            commands::restore::restore_journal_preview,
             commands::restore::restore_journal_resolve,
             commands::game::game_status,
             commands::settings::settings_get,

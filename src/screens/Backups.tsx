@@ -31,6 +31,7 @@ import {
 import { useBackups, useSnapshot } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
+import { PlanDetails, planBlocked } from "@/screens/PlanDetails";
 import { ago, bytes, plural, when } from "@/lib/format";
 
 // Copy from design/mocks/round-3/IMPLEMENTING.md §4.
@@ -333,13 +334,7 @@ function ConfirmRestore({
           </Button>
           <PrimaryButton
             onClick={() => plan && start(id, selection, mode, plan)}
-            disabled={
-              busy ||
-              loading ||
-              !plan ||
-              plan.read_only.length > 0 ||
-              plan.write_count + plan.delete.length === 0
-            }
+            disabled={busy || loading || planBlocked(plan)}
           >
             Restore
           </PrimaryButton>
@@ -361,43 +356,7 @@ function ConfirmRestore({
       {!plan && !planError && <p className="d-muted">Working out what changes…</p>}
       {plan && (
         <>
-          <p>
-            <b>{plan.summary}</b>
-          </p>
-          {plan.write.length > 0 && (
-            <ul className="d-files">
-              {plan.write.map((f) => (
-                <li key={f.folder}>
-                  <span className="d-mono">{f.folder}/</span>{" "}
-                  <span className="folder">({plural(f.files.length, "file", "files")})</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {plan.delete.length > 0 && (
-            <>
-              <p>
-                <b>{plural(plan.delete.length, "file", "files")} will be removed</b>, because{" "}
-                {plan.delete.length === 1 ? "it isn't" : "they aren't"} in this snapshot:
-              </p>
-              <ul className="d-files d-mono">
-                {plan.delete.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          {plan.read_only.length > 0 && (
-            <Callout tone="bad">
-              <span>
-                These files are marked read-only, so nothing will be restored until you clear the
-                flag: <span className="d-mono">{plan.read_only.join(", ")}</span>
-              </span>
-            </Callout>
-          )}
-          {plan.unchanged > 0 && (
-            <p className="d-muted">{plural(plan.unchanged, "file already matches", "files already match")}.</p>
-          )}
+          <PlanDetails plan={plan} />
           <p className="d-muted">
             A safety snapshot of the current files is taken before anything changes, so you can
             undo this.
