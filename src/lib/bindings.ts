@@ -13,6 +13,14 @@ export const commands = {
 	 *  commands, which validate it.
 	 */
 	settingsUpdate: (patch: SettingsPatch_Deserialize) => __TAURI_INVOKE<Settings>("settings_update", { patch }),
+	/**
+	 *  Which integration keys are set, with a per-row error if one can't be
+	 *  read. Never returns the values.
+	 */
+	secretsStatus: () => __TAURI_INVOKE<SecretStatus[]>("secrets_status"),
+	/**  Stores a key (trimmed). There is no command to read it back. */
+	secretsSet: (id: IntegrationId, value: string) => __TAURI_INVOKE<null>("secrets_set", { id, value }),
+	secretsDelete: (id: IntegrationId) => __TAURI_INVOKE<null>("secrets_delete", { id }),
 };
 
 /* Types */
@@ -85,6 +93,12 @@ export type InstallChoice = {
 	flavor: string,
 };
 
+/**
+ *  The only keys the app stores. A closed enum, so the frontend can't write
+ *  arbitrary keychain entries.
+ */
+export type IntegrationId = "curseforge" | "wago" | "wago_io" | "github" | "battlenet_client_id" | "battlenet_client_secret";
+
 export type IntegrationSetting = {
 	enabled?: boolean,
 };
@@ -104,6 +118,17 @@ export type IntegrationsPatch = {
 	wago_io?: IntegrationSetting | null,
 	github?: IntegrationSetting | null,
 	battlenet?: IntegrationSetting | null,
+};
+
+/**
+ *  One row of the Integrations panel. Each id is checked on its own, so one
+ *  unreadable credential shows as that row's error instead of failing all.
+ */
+export type SecretStatus = {
+	id: IntegrationId,
+	is_set: boolean,
+	/**  Why the store couldn't be read for this id. Never contains the value. */
+	error: string | null,
 };
 
 /**
