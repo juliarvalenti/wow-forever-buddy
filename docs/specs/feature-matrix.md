@@ -73,12 +73,12 @@ Every feature in the round-3 mocks, with its data source on the WoW: Forever cli
 | 46 | Addons | Out of date vs interface 16001 | v0.5 | local files | TOC `## Interface:` (may list several) | **partial** | The number alone misleads: many Retail addons check `>= 100000` and take Classic code paths on 16001. **Fallback:** "Interface lists 16001" = OK; otherwise "Not marked for Forever" (amber, not red). |
 | 47 | Addons | Updates from CurseForge / Wago / GitHub | v0.5 | web APIs (optional keys) | CurseForge, Wago Addons, GitHub Releases | **partial** | No addon site has a Forever game flavour yet, and "Forever" in titles is author-chosen. **Fallback:** match by project id + check the files' TOC for 16001; GitHub Releases works for anything hosted there. |
 | 48 | Macros | List/edit macros | v0.6 | WTF files | `WTF/Account/<A>/macros-cache.txt`, `.../<Char>/macros-cache.txt` | **yes** | Edits need the guarded write path (T6), with WoW closed. |
-| 49 | WeakAuras | Installed auras + import library | v0.6 | WeakAuras SV | – | **no** | **WeakAuras does not support Forever** (the team stopped at Midnight's restrictions, which Forever carries; [Icy Veins](https://www.icy-veins.com/wow/news/weakauras-to-end-support-in-midnight/), [PCGamesN](https://www.pcgamesn.com/world-of-warcraft/midnight-weakauras-update)). Flagged below. |
-| 50 | WeakAuras | Wago.io update check | v0.6 | – | – | **no** | Follows 49. |
+| 49 | WeakAuras | ~~Installed auras + import library~~ | **dropped** | – | – | **no** | **Dropped from the roadmap** (Julia, 2026-10-04). WeakAuras does not support Forever: the team stopped at Midnight's restrictions, which Forever carries ([Icy Veins](https://www.icy-veins.com/wow/news/weakauras-to-end-support-in-midnight/), [PCGamesN](https://www.pcgamesn.com/world-of-warcraft/midnight-weakauras-update)). |
+| 50 | WeakAuras | ~~Wago.io update check~~ | **dropped** | – | – | **no** | Dropped with 49, along with the Wago.io key. |
 
 ## Roadmap flags
 
-1. **Drop WeakAuras (rows 49–50) and the Wago.io key.** WeakAuras won't run on Forever. Remove the WeakAuras sketch and the Wago.io row from Settings → Integrations. The Wago **Addons** key (row 47) stays.
+1. **Drop WeakAuras (rows 49–50) and the Wago.io key.** *Decided: dropped.* WeakAuras won't run on Forever. Remove the WeakAuras sketch and the Wago.io row from Settings → Integrations. The Wago **Addons** key (row 47) stays.
 2. **The restore caveat in round 3 (#5) is out of date.** The "client doesn't load SavedVariables" bug is fixed in build 70009. Drop the caveat, or keep it only for clients older than 70009 (we know the version from `.build.info`).
 3. **The live "WoW is running · Thrandor" (row 3) can't be live.** Design for "WoW is running" + "last played Thrandor", updated at each logout or `/reload`. The v0.1 mock already does this without the addon.
 4. **Sessions arrive earlier than planned (row 29).** Game sessions (start, end, duration) come from the T6 process watcher, so v0.1 can show "Last session: 2h 14m, ended 23:40" with no addon. Suggest pulling a minimal session list into v0.1/v0.2.
@@ -96,8 +96,15 @@ Every feature in the round-3 mocks, with its data source on the WoW: Forever cli
 1. Copy the `ForeverBuddyProbe` folder into `<WoW root>\_classic_beta_\Interface\AddOns\`.
 2. Start WoW, make sure "ForeverBuddy Probe" is enabled at character select, and log in.
 3. After about 10 seconds, type `/fbprobe`. It prints a one-line summary.
-4. Play normally for a bit: kill and loot something, turn in a quest, visit a vendor (repair if you can), open your **bank**, open your **mailbox**, and open the **auction house**. At the AH, type `/fbprobe search`, wait a few seconds, then `/fbprobe scan` and leave the AH open for a minute. The scan is throttled by the server; if nothing happens, that's a result too.
+4. Play normally for a bit: kill and loot something, turn in a quest, visit a vendor (repair if you can), open your **bank**, open your **mailbox**, and open the **auction house**. At the AH, type `/fbprobe search`, wait a few seconds, then `/fbprobe scan` and leave the AH open for a minute. If nothing happens, that's a result too. **Heads-up:** the full-scan throttle is account-wide, so Auctionator's own full scan won't work for about 15 minutes afterwards. Skip `/fbprobe scan` if you need Auctionator right then.
 5. Log out normally (not "Exit Now"). Then launch once more, log in, and log out again. The second launch tells us whether the client reads the file back.
 6. Send the file `<WoW root>\_classic_beta_\WTF\Account\<ACCOUNT>\SavedVariables\ForeverBuddyProbe.lua`.
 
-It only reads game state; the one write-like action is the opt-in AH scan request. It's safe to delete afterwards.
+**What it does to your game:** nothing. It never uses items, touches mail, spends money, bids, posts or chats. It does send these read-only requests to the server:
+
+- at login: `RequestTimePlayed` (you'll see the usual "Total time played" lines in chat) and `RequestRaidInfo`;
+- at a mailbox: `CheckInbox`;
+- at the auction house: `QueryOwnedAuctions`;
+- only when you type them: `/fbprobe search` (one item search for Linen Cloth) and `/fbprobe scan` (one full scan).
+
+**What's in the file:** your own characters' data (names, gear, gold, bags, professions). Anything that could hold *other* players' names or text is stored as shape only, i.e. numbers and booleans plus `<string:LENGTH>` in place of text: mail headers and invoices, loot, death, auction listings and every event sample. So no mail senders, subjects, auction owners or chat text reach the file. It's safe to delete afterwards.

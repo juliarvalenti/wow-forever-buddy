@@ -3,12 +3,25 @@
 -- real data, not nil or secret values. Everything is written to
 -- ForeverBuddyProbeDB, one top-level table, keyed by character.
 --
--- It only reads. The one exception is /fbprobe scan, which asks the auction
--- house for a full scan (throttled by the server, so it's opt-in).
+-- It never changes game state (no item, mail, money, AH or chat actions). It
+-- does send these harmless read requests to the server:
+--   at login:      RequestTimePlayed (prints "Total time played" in chat),
+--                  RequestRaidInfo
+--   at a mailbox:  CheckInbox
+--   at the AH:     QueryOwnedAuctions
+--   on request:    /fbprobe search (one item search), /fbprobe scan (full
+--                  scan; uses the account-wide 15-minute throttle)
+--
+-- Privacy: anything that can contain other players' names or text (mail,
+-- loot, death, auction house, and every event sample) is stored as shape
+-- only: numbers and booleans kept, strings replaced by "<string:LENGTH>".
 
 local ADDON_NAME = ...
-local PROBE_VERSION = 1
+local PROBE_VERSION = 2
 local MAX_SAMPLES = 5
+
+-- Sections whose strings are redacted (see the header).
+local REDACTED = { mail = true, loot = true, death = true, ah = true }
 
 local db -- ForeverBuddyProbeDB
 local char -- this character's entry
@@ -40,14 +53,17 @@ local function isSecret(v)
 end
 
 -- A SavedVariables-safe copy of v: secrets become markers, depth and size
--- are capped so the file stays small.
-local function describe(v, depth)
+-- are capped so the file stays small. With `redact`, strings keep only their
+-- length, so names and mail text never reach the file.
+local function describe(v, redact, depth)
     depth = depth or 0
     if isSecret(v) then
         return "<secret>"
     end
     local t = type(v)
-    if t == "table" then
+    if t == "string" and redact then
+        return "<string:" .. #v .. ">"
+    elseif t == "table" then
         if issecrettable and issecrettable(v) then
             return "<secret table>"
         end
@@ -62,7 +78,7 @@ local function describe(v, depth)
                 break
             end
             if type(k) == "string" or type(k) == "number" then
-                out[k] = describe(val, depth + 1)
+                out[k] = describe(val, redact, depth + 1)
             end
         end
         return out
@@ -94,7 +110,7 @@ local function try(section, label, path, ...)
     end
     local values, anySecret, anyValue = {}, false, false
     for i = 2, r.n do
-        values[i - 1] = describe(r[i])
+        values[i - 1] = describe(r[i], REDACTED[section])
         if isSecret(r[i]) then
             anySecret = true
         elseif r[i] ~= nil then
@@ -119,7 +135,8 @@ local function sample(event, ...)
     e.count = e.count + 1
     e.last = now()
     if #e.samples < MAX_SAMPLES then
-        table.insert(e.samples, { t = now(), args = describe(pack(...)) })
+        -- Event args can carry chat text and player names: shape only.
+        table.insert(e.samples, { t = now(), args = describe(pack(...), true) })
     end
 end
 
@@ -437,7 +454,8 @@ SlashCmdList.FBPROBE = function(msg)
     if msg == "scan" then
         scanStarted = now()
         try("ah", "ReplicateItems", "C_AuctionHouse.ReplicateItems")
-        print("ForeverBuddy Probe: full scan requested. Keep the auction house open until it finishes.")
+        print("ForeverBuddy Probe: full scan requested. Keep the auction house open until it finishes."
+            .. " Full scans are throttled account-wide: Auctionator's own full scan won't work for about 15 minutes.")
         return
     elseif msg == "search" then
         try("ah", "SendSearchQuery.linen", function()
