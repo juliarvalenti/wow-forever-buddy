@@ -351,6 +351,11 @@ export type GameStatus = {
 	pids: number[],
 	/**  When the game was first seen running (RFC 3339, UTC), for "session 1h 42m". */
 	since: string | null,
+	/**
+	 *  The last poll couldn't list processes, so `running` is stale. The UI
+	 *  says it can't tell; restores stay locked.
+	 */
+	unknown: boolean,
 };
 
 /**  Emitted when WoW starts or stops. */

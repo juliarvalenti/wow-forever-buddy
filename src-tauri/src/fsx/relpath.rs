@@ -142,11 +142,20 @@ impl RelPath {
             None => root.base.as_path(),
         };
 
+        // Normally the walk stops at the game root at the latest. If even
+        // that is gone (USB drive unplugged, network share dropped), say so
+        // instead of panicking: release builds abort on panic.
         let mut existing = joined.as_path();
         while std::fs::symlink_metadata(existing).is_err() {
-            existing = existing
-                .parent()
-                .expect("the game root exists, so the walk stops there at the latest");
+            existing = match existing.parent() {
+                Some(parent) if starts_with_ignore_case(parent, &root.base) => parent,
+                _ => {
+                    return Err(AppError::InvalidInstall(format!(
+                        "the game folder isn't available: {}",
+                        root.base.display()
+                    )))
+                }
+            };
         }
         let existing_canon = dunce::canonicalize(existing)
             .map_err(|_| escape("goes through a broken link".into()))?;
@@ -310,6 +319,20 @@ mod tests {
         for ok in ["CONFIG.wtf", "console.txt", "COM10", "auxiliary"] {
             assert!(RelPath::new(ok).is_ok(), "should accept {ok:?}");
         }
+    }
+
+    /// R2: the game folder vanishing (USB drive unplugged) is an error, not
+    /// a panic (release builds abort on panic).
+    #[test]
+    fn a_vanished_game_folder_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let flavor = tmp.path().join("_classic_beta_");
+        std::fs::create_dir_all(flavor.join("WTF")).unwrap();
+        let root = GameRoot::new(&flavor).unwrap();
+        std::fs::remove_dir_all(&flavor).unwrap();
+
+        let err = RelPath::new("WTF/Config.wtf").unwrap().resolve(&root);
+        assert!(matches!(err, Err(AppError::InvalidInstall(_))), "{err:?}");
     }
 
     #[test]

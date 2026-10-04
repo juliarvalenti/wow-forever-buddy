@@ -19,6 +19,7 @@ use crate::backup::manifest::{Scope, SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
 use crate::backup::{journal, Gc, SnapshotRequest, SnapshotScope};
 use crate::error::AppResult;
+use crate::game::process::GameCheck;
 use crate::state::AppCore;
 
 pub const APP_START_MIN_AGE: Duration = Duration::from_secs(6 * 3600);
@@ -54,9 +55,14 @@ pub fn run_auto_locked(
 ) -> AppResult<Option<SnapshotSummary>> {
     core.db
         .set_meta(LAST_AUTO_ATTEMPT, &Utc::now().to_rfc3339())?;
-    if core.game.is_running_now(&core.probe_target()) {
-        return Ok(None);
-    }
+    // Running: wait for the game-exit backup. Unknown (the process list
+    // failed): back up anyway, flagged like a mid-session manual backup,
+    // so a broken probe can't silently stop every automatic backup.
+    let game_running = match core.game.check_now(&core.probe_target()) {
+        GameCheck::Running => return Ok(None),
+        GameCheck::Unknown => true,
+        GameCheck::NotRunning => false,
+    };
     let game = core.active_game()?;
     let store = core.backups()?;
     let include_addons = core.settings.get().backup.include_addons;
@@ -67,7 +73,7 @@ pub fn run_auto_locked(
             trigger,
             label: None,
             scope: SnapshotScope::Full { include_addons },
-            game_running: false,
+            game_running,
         },
         &mut |_, _| {},
     )?;
@@ -235,6 +241,20 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(s.core.backups().unwrap().list().unwrap().is_empty());
+    }
+
+    /// R2: when the process list fails ("unknown"), automatic backups still
+    /// run, flagged as taken while the game may be running; writes stay
+    /// blocked.
+    #[test]
+    fn unknown_game_state_still_backs_up_flagged() {
+        let s = setup();
+        s.probe.set_blind(true);
+        let created = run_auto(&s.core, Trigger::Scheduled, &|_| {})
+            .unwrap()
+            .expect("backed up");
+        assert!(created.game_running);
+        assert!(s.core.game.is_running_now(&s.core.probe_target()));
     }
 
     #[test]
