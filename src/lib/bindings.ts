@@ -20,6 +20,51 @@ export const commands = {
 	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
 	backupSetPinned: (id: string, pinned: boolean) => __TAURI_INVOKE<SnapshotSummary>("backup_set_pinned", { id, pinned }),
 	/**
+	 *  What restoring `selection` from snapshot `id` would do: files to write
+	 *  (per folder), files to delete, unchanged and read-only files, and a
+	 *  one-line summary. Changes nothing.
+	 */
+	backupRestorePreview: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestorePlan>("backup_restore_preview", { id, selection, mode }),
+	/**
+	 *  Restores `selection` from snapshot `id`. Fails with `GameRunning` while
+	 *  WoW runs (the UI waits for it to close, then the user confirms again),
+	 *  `ReadOnly` or `BackupCorrupt` before changing anything. Waits for any
+	 *  running backup or restore.
+	 */
+	backupRestore: (id: string, selection: RestoreSelection, mode: "overlay" | "mirror" | null) => __TAURI_INVOKE<RestoreReport>("backup_restore", { id, selection, mode }),
+	/**
+	 *  Checks every stored copy in a snapshot against its checksum. Runs as a
+	 *  job, so a concurrent prune's GC can't remove blobs mid-check and make
+	 *  them look missing.
+	 */
+	backupVerify: (id: string) => __TAURI_INVOKE<VerifyReport>("backup_verify", { id }),
+	/**  The interrupted restore, if the app stopped in the middle of one. */
+	restoreJournalStatus: () => __TAURI_INVOKE<{
+	/**  The snapshot the user chose to restore. */
+	source_snapshot: string,
+	/**
+	 *  Taken before the user's restore changed anything. Rolling back always
+	 *  restores this one, even after an interrupted recovery.
+	 */
+	original_pre_restore: string,
+	/**
+	 *  Taken before the latest attempt (the restore, or a recovery of it).
+	 *  Equal to `original_pre_restore` on the first attempt.
+	 */
+	pre_restore_snapshot: string,
+	selection: RestoreSelection,
+	mode: RestoreMode,
+	flavor: string,
+	started_at: string,
+	/**  The restore's one-line summary, for the recovery prompt. */
+	summary: string,
+} | null>("restore_journal_status"),
+	/**
+	 *  Rolls back, finishes or discards an interrupted restore. Until one of
+	 *  these succeeds, `backup_restore` is refused with `RestorePending`.
+	 */
+	restoreJournalResolve: (action: JournalAction) => __TAURI_INVOKE<RestoreReport>("restore_journal_resolve", { action }),
+	/**
 	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
 	 *  on mount, then follows `game-status-changed`.
 	 */
@@ -72,6 +117,8 @@ export const events = {
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
+	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
+	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
 };
 
 /* Types */
@@ -90,6 +137,8 @@ export type AddonNode = {
 	totals: Totals,
 };
 
+export type AddonTarget = { kind: "Account"; account: string } | { kind: "Character"; account: string; realm: string; character: string } | { kind: "Everywhere" };
+
 /**
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
@@ -101,7 +150,19 @@ export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind:
 	msg: string,
 } } | { kind: "BackupCorrupt"; detail: {
 	files: string[],
-} } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
+} } | 
+/**
+ *  Game files marked read-only (players pin e.g. Config.wtf this way).
+ *  Never overridden; the user clears the flag to allow the change.
+ */
+{ kind: "ReadOnly"; detail: {
+	paths: string[],
+} } | 
+/**
+ *  A restore was interrupted; it must be rolled back, finished or
+ *  discarded before another restore can start.
+ */
+{ kind: "RestorePending" } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" };
 
 export type AppInfo = {
 	version: string,
@@ -307,6 +368,40 @@ export type IntegrationsPatch = {
 	battlenet?: IntegrationSetting | null,
 };
 
+/**  An interrupted restore: enough to roll it back or run it again. */
+export type Journal = {
+	/**  The snapshot the user chose to restore. */
+	source_snapshot: string,
+	/**
+	 *  Taken before the user's restore changed anything. Rolling back always
+	 *  restores this one, even after an interrupted recovery.
+	 */
+	original_pre_restore: string,
+	/**
+	 *  Taken before the latest attempt (the restore, or a recovery of it).
+	 *  Equal to `original_pre_restore` on the first attempt.
+	 */
+	pre_restore_snapshot: string,
+	selection: RestoreSelection,
+	mode: RestoreMode,
+	flavor: string,
+	started_at: string,
+	/**  The restore's one-line summary, for the recovery prompt. */
+	summary: string,
+};
+
+/**  What to do about a restore that was interrupted. */
+export type JournalAction = 
+/**  Put back what was there before the restore started (recommended). */
+"roll_back" | 
+/**  Run the restore again to completion. */
+"finish" | 
+/**
+ *  Forget it without changing files (e.g. the journal is unreadable).
+ *  Its pre-restore snapshot stays in the Safety list.
+ */
+"discard";
+
 export type LinkedFolder = {
 	/**  `/`-separated path relative to the game root, e.g. "WTF". */
 	folder: string,
@@ -322,11 +417,95 @@ export type LookedIn = {
 	path: string,
 };
 
+/**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
+export type PlanFolder = {
+	/**  Relative to the flavor folder, `/`-separated. */
+	folder: string,
+	files: string[],
+	bytes: number | null,
+};
+
+/**
+ *  A path relative to a base folder (usually the flavor dir) that can't name
+ *  anything outside it (spec §4). Stored as components and written with `/`,
+ *  which is also the format backup manifests use (`WTF/Account/X/...`).
+ * 
+ *  Rejected: empty paths, absolute paths, drive (`C:`) and UNC prefixes, `.`
+ *  and `..`, `:` anywhere (drives, NTFS alternate data streams), NUL,
+ *  components ending in a dot or space (Windows strips those, so `a.` would
+ *  alias `a`), and DOS device names like `CON` or `com1.txt`.
+ */
+export type RelPath = string;
+
+/**  Emitted when a restore (or a recovery) has finished. */
+export type RestoreCompleted = RestoreReport;
+
+/**
+ *  Overlay writes the snapshot's files and leaves others alone (the default
+ *  for every scope). Mirror also removes files under the scope that the
+ *  snapshot doesn't have.
+ */
+export type RestoreMode = "overlay" | "mirror";
+
+export type RestorePlan = {
+	snapshot_id: string,
+	mode: RestoreMode,
+	write: PlanFolder[],
+	write_count: number,
+	/**  Shown prominently, with its own count, in the confirm dialog. */
+	delete: string[],
+	/**  Files that already match the snapshot. */
+	unchanged: number,
+	bytes: number | null,
+	/**
+	 *  Targets marked read-only. The restore refuses until the flag is
+	 *  cleared; players do this on purpose (e.g. to pin Config.wtf).
+	 */
+	read_only: string[],
+	/**  "keybindings, macros and 41 addon settings". */
+	summary: string,
+};
+
+/**  Emitted while a restore runs. */
+export type RestoreProgress = {
+	done: number,
+	total: number,
+};
+
+export type RestoreReport = {
+	snapshot_id: string,
+	/**
+	 *  The safety snapshot taken before anything changed; `None` if there
+	 *  was nothing to do.
+	 */
+	pre_restore_snapshot: string | null,
+	written: number,
+	deleted: number,
+	summary: string,
+};
+
+/**  What to restore. A file is restored if any item matches it. */
+export type RestoreSelection = {
+	items: ScopeItem[],
+};
+
 export type Scope = 
 /**  The whole tree that backups cover. */
 "full" | 
 /**  Only specific paths (safety snapshots before a write). */
 "partial";
+
+export type ScopeItem = 
+/**  Every file in the snapshot. */
+{ kind: "Everything" } | 
+/**  Account-wide files (not its characters). `None` = every category. */
+{ kind: "Account"; account: string; categories: Category[] | null } | 
+/**  One character's folder. `None` = every category. */
+{ kind: "Character"; account: string; realm: string; character: string; categories: Category[] | null } | 
+/**  One addon's SavedVariables (`<addon>.lua` and `.lua.bak`). */
+{ kind: "AddonData"; addon: string; target: AddonTarget } | 
+/**  Exact files or folders, relative to the flavor folder. */
+{ kind: "Paths"; paths: RelPath[] };
 
 /**
  *  One row of the Integrations panel. Each id is checked on its own, so one
@@ -435,6 +614,13 @@ export type Totals = {
 };
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
+
+export type VerifyReport = {
+	snapshot_id: string,
+	files: number,
+	/**  Files whose stored copy is missing or fails its checksum. */
+	corrupt: string[],
+};
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
