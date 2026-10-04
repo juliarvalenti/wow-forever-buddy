@@ -1,6 +1,6 @@
 # Spec: core file-system layer
 
-Status: **draft for review** (@project-mgmt → Julia sign-off) · Author: @coder · 2026-10-04
+Status: **PM-approved, awaiting Julia's sign-off** · Author: @coder · 2026-10-04 (rev 2: PM review notes folded in)
 
 This covers the Rust layer under every feature that touches the game folder: finding the install, knowing when WoW is running, reading and writing files safely, backups and restore, app config, the local database, and secrets. Later features (companion-addon ingest, characters, AH, addon/macro management) get all their file access through this layer.
 
@@ -147,7 +147,7 @@ We cover portability with **"Export snapshot as .zip"**, which builds a plain zi
 - **Hash cache:** SQLite `file_hash_cache(path, size, mtime_ns, blake3)`. Unchanged files aren't re-read, so a no-change snapshot of a large WTF folder takes milliseconds.
 - **Skip identical:** auto triggers skip creating a snapshot when the file set and hashes match the latest full snapshot. Manual snapshots are always created.
 - **Writes:** blobs are written with the atomic-write helper (to app storage, not the game folder, so no guard is needed). Existing blobs are skipped. The manifest is written last, so a crash leaves only orphan blobs, which GC removes.
-- **Snapshots while WoW is running** are allowed (read-only) and flagged `game_running: true` in the UI ("taken mid-session").
+- **Snapshots while WoW is running:** only **manual** snapshots are taken mid-session, and they're flagged `game_running: true` in the UI ("taken mid-session"). Automatic triggers wait for the game to exit, so they never capture a half-written SavedVariables file from a `/reload`.
 
 ### What's included
 
@@ -160,9 +160,9 @@ We cover portability with **"Export snapshot as .zip"**, which builds a plain zi
 | Trigger | When | Default |
 |---|---|---|
 | manual | "Back up now" | always available |
-| app_start | on launch, if more than 6 h since the last full snapshot | on |
+| app_start | on launch, if more than 6 h since the last full snapshot. If WoW is running, it waits for the game_exit backup instead | on |
 | game_exit | running → stopped, after WTF has been stable for 5 s | on |
-| scheduled | every N hours while the app is open (tokio interval) | 24 h |
+| scheduled | every N hours while the app is open (tokio interval). **Skipped while WoW is running**; game_exit covers the session | 24 h |
 | pre_write | automatically, inside `begin_mutation` (partial) | always |
 | pre_restore | automatically, before every restore (partial: the paths restore will touch) | always |
 
@@ -185,8 +185,10 @@ All backup and restore jobs run on one **serialized job queue** (one at a time),
   - `AddonData { addon, target: Account(account) | Character(…) | Everywhere }`, which covers `SavedVariables/<addon>.lua` and `.lua.bak`
   - `Paths(Vec<RelPath>)`, which backs the pre-write undo
 - **Modes:**
-  - **overlay:** write the snapshot's files, leave extra files alone. Default for AddonData and Paths.
-  - **mirror:** also remove current files under the scope that aren't in the snapshot. Default for Full, Account and Character.
+  - **overlay (default for every scope):** write the snapshot's files, leave extra files alone.
+  - **mirror (explicit opt-in):** also remove current files under the scope that aren't in the snapshot.
+  - **Why overlay everywhere:** files that exist now but not in the snapshot are almost always newer, legitimate data, such as SavedVariables for an addon installed since then. Deleting them is the one restore action that can surprise you. Leftover extra files do no harm, because WoW ignores SavedVariables for addons that aren't loaded. Mirror is there for "put it back exactly" (e.g. undoing a broken UI setup). Even then, the deleted files go into the pre-restore snapshot, so it can be undone.
+  - **Preview must show deletions prominently:** the `RestorePlan` lists `to_delete` separately, and the confirm dialog shows that list with its own count.
 - **Flow:**
   1. `restore_preview` returns a plan: files to write, files to delete, unchanged count, and bytes.
   2. The user confirms.
@@ -379,10 +381,10 @@ The window shows right away. Steps 4–9 run in the background and report throug
 
 1. **Forever's folder layout:** what's the flavor folder name (`_forever_`?), the exe name, and the `.build.info` product code? Does it share a root with retail/classic or install separately? *Ask Julia for a screenshot or `dir` of the install root and the flavor folder.* This blocks finalizing detection and the process name list, but not building them, since both are data-driven.
 2. **Retail vs classic client:** this doesn't affect this layer, but it does affect the companion addon (v0.2).
-3. **Include `Interface/AddOns` in backups by default?** Proposed: off, with a toggle.
-4. **Retention defaults:** are the proposed numbers OK, and should they be user-editable in v0.1? Proposed: constants for v0.1.
-5. **Backup location default:** `%LOCALAPPDATA%` (proposed) or next to the game folder?
-6. **tauri-specta RC:** OK to use it, with ts-rs as the fallback?
+3. ~~Include `Interface/AddOns` in backups by default?~~ **Resolved (PM):** off, with a toggle.
+4. ~~Retention defaults user-editable in v0.1?~~ **Resolved (PM):** constants for v0.1.
+5. ~~Backup location default?~~ **Resolved (PM):** `%LOCALAPPDATA%`, movable in settings.
+6. ~~tauri-specta RC?~~ **Resolved (PM):** yes, with ts-rs as the fallback.
 
 ---
 
@@ -400,7 +402,7 @@ Each ticket is about 0.5–2 days, with tests, and passes CI on Windows and macO
 8. **Retention + GC + triggers:** retention fn, prune + GC, debounced WTF watcher, app_start / game_exit / scheduled triggers, skip-identical.
 9. **Restore:** scopes, overlay/mirror, preview, pre-restore snapshot, journal + crash recovery, `backup_verify`.
 10. **Secrets interface:** keyring store, `IntegrationId`, `secrets_*` commands.
-11. **Frontend wiring:** generated bindings in `src/lib`, `useGameStatus`/`useInstall` hooks, Backups screen per the designer's mocks (list, back up now, restore flow with the "close WoW first" state).
+11. **Frontend wiring:** generated bindings in `src/lib`, `useGameStatus`/`useInstall`/`useBackups`/`useRestore` hooks, and a Backups screen following the **round-1 mock structure** (list, back up now, restore flow with the "close WoW first" state and the deletions list). Use **plain, unstyled components** with all logic in the hooks. The visual direction is being redone, so don't polish visuals yet; the restyle should only touch markup and CSS.
 12. **Export to zip** (nice-to-have for v0.1).
 13. **SavedVariables parser** (parallel track, v0.2 prerequisite): parser, differential + proptest + perf tests.
 
