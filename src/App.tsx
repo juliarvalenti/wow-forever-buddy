@@ -52,8 +52,11 @@ function Shell() {
     { id: "game", label: "Game folder" },
   ];
   const folderOk = install.state.kind === "ok";
-  // Backups need a game folder; until there is one, that's the screen.
-  const current: Screen = folderOk ? screen : "game";
+  // The saved folder went missing (drive unplugged, folder moved). Backups
+  // stay viewable, which is when you'd want them, with writes locked.
+  const folderMissing = install.state.kind === "invalid" ? install.state.error : null;
+  // Until a game folder has been set at all, that's the screen.
+  const current: Screen = folderOk || folderMissing != null ? screen : "game";
 
   return (
     <div className="d-app">
@@ -84,7 +87,13 @@ function Shell() {
           )}
           <div className="d-status-row">
             {folderOk ? <StatusDot /> : <LiveDot />}
-            <span>{folderOk ? "Game folder found" : "Game folder not set"}</span>
+            <span>
+              {folderOk
+                ? "Game folder found"
+                : folderMissing != null
+                  ? "Game folder missing"
+                  : "Game folder not set"}
+            </span>
           </div>
         </div>
       </aside>
@@ -99,6 +108,8 @@ function Shell() {
           <Backups
             game={game}
             restoresLocked={recovery.pending}
+            folderMissing={folderMissing}
+            onCheckFolder={() => setScreen("game")}
             select={openSnapshot}
             show={backupsFilter}
           />
