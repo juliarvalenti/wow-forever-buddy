@@ -23,9 +23,13 @@ const RETRY_DELAYS: [Duration; 5] = [
 /// file or the new one, never a half-written file. A failed write never
 /// leaves its temp file behind.
 ///
-/// The rename is `std::fs::rename`, which on Windows uses POSIX semantics
-/// (`FileRenameInfoEx`) where available, so it succeeds even while a reader
-/// holds the target open with delete sharing (as our own `safe_read` does).
+/// The rename is `std::fs::rename`. On Windows that's
+/// `MoveFileExW(REPLACE_EXISTING)` first; only if that fails with access
+/// denied (e.g. a reader holds the target open with delete sharing, as our
+/// own `safe_read` does) does std retry with POSIX semantics
+/// (`FileRenameInfoEx`), which also ignores the read-only attribute. So a
+/// read-only target is replaced, not refused; callers that want to honor
+/// read-only files must check before writing.
 ///
 /// This does no safety checks of its own. App-owned files (settings,
 /// manifests, blobs) call it directly; game files go through the guarded

@@ -330,13 +330,16 @@ mod tests {
         std::os::unix::fs::symlink(target, link).unwrap();
         #[cfg(windows)]
         {
+            // cmd reads a '/' inside an argument as a switch, so hand mklink
+            // backslashes only.
+            let native = |p: &Path| p.to_string_lossy().replace('/', "\\");
             let status = std::process::Command::new("cmd")
                 .args(["/C", "mklink", "/J"])
-                .arg(link)
-                .arg(target)
+                .arg(native(link))
+                .arg(native(target))
                 .status()
                 .unwrap();
-            assert!(status.success());
+            assert!(status.success(), "mklink /J {link:?} {target:?}");
         }
     }
 
