@@ -36,6 +36,8 @@ export const commands = {
 	 *  Changes only the fields present in `patch` and returns the new settings.
 	 *  The game folder isn't part of it: that goes through the install
 	 *  commands, which validate it.
+	 *  Runs off the main thread: validation resolves the backup location, which
+	 *  can stall on an offline network share.
 	 */
 	settingsUpdate: (patch: SettingsPatch_Deserialize) => __TAURI_INVOKE<Settings>("settings_update", { patch }),
 	/**
