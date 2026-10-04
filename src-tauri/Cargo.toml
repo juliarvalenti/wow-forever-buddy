@@ -22,6 +22,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 # Two instances would race on settings, backups and game-file writes.
 tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -55,3 +56,5 @@ strip = true
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.60", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+# Install detection reads Blizzard's install path from HKLM (spec §1).
+winreg = "0.56"

@@ -1,9 +1,13 @@
-use serde::Serialize;
-use tauri::State;
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::config::paths::AppPaths;
-use crate::error::AppResult;
-use crate::state::AppState;
+use crate::error::{AppError, AppResult};
+use crate::install;
+use crate::state::{AppCore, AppState};
 
 #[derive(Debug, Serialize, specta::Type)]
 pub struct AppInfo {
@@ -19,4 +23,92 @@ pub fn app_info(state: State<'_, AppState>) -> AppResult<AppInfo> {
         version: env!("CARGO_PKG_VERSION").to_string(),
         paths: state.core.paths.clone(),
     })
+}
+
+/// The folders the UI can reveal. A fixed set: the frontend never passes a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum FolderTarget {
+    Backups,
+    Logs,
+    /// The active flavor folder, e.g. `<root>/_classic_beta_`.
+    Game,
+}
+
+pub fn folder_path(core: &AppCore, which: FolderTarget) -> AppResult<PathBuf> {
+    match which {
+        FolderTarget::Backups => Ok(core
+            .settings
+            .get()
+            .backup
+            .location
+            .unwrap_or_else(|| core.paths.local_data_dir.join("backups"))),
+        FolderTarget::Logs => Ok(core.paths.log_dir.clone()),
+        FolderTarget::Game => install::current(&core.settings)?
+            .and_then(|i| i.active_flavor().map(|f| f.dir.clone()))
+            .ok_or(AppError::NoInstall),
+    }
+}
+
+/// Opens one of the app's folders in Explorer/Finder. The opening happens in
+/// Rust, so the webview needs no opener permissions at all.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn app_open_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    which: FolderTarget,
+) -> AppResult<()> {
+    let dir = folder_path(&state.core, which)?;
+    if which != FolderTarget::Game {
+        std::fs::create_dir_all(&dir)?;
+    }
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| AppError::Io(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::fixture_copy;
+
+    #[test]
+    fn folder_targets_resolve_to_app_or_game_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = AppCore::new(AppPaths::under(tmp.path())).unwrap();
+
+        assert_eq!(
+            folder_path(&core, FolderTarget::Backups).unwrap(),
+            core.paths.local_data_dir.join("backups")
+        );
+        assert_eq!(
+            folder_path(&core, FolderTarget::Logs).unwrap(),
+            core.paths.log_dir
+        );
+        assert!(matches!(
+            folder_path(&core, FolderTarget::Game),
+            Err(AppError::NoInstall)
+        ));
+
+        let (_w, root) = fixture_copy();
+        let install = install::set(&core.settings, &root, None).unwrap();
+        assert_eq!(
+            folder_path(&core, FolderTarget::Game).unwrap(),
+            install.active_flavor().unwrap().dir
+        );
+
+        let custom = tmp.path().join("elsewhere");
+        core.settings
+            .update(|s| s.backup.location = Some(custom.clone()))
+            .unwrap();
+        assert_eq!(folder_path(&core, FolderTarget::Backups).unwrap(), custom);
+    }
+
+    #[test]
+    fn unknown_targets_are_rejected() {
+        for bad in ["config", "../", "C:\\Windows", "Backups"] {
+            assert!(serde_json::from_value::<FolderTarget>(serde_json::json!(bad)).is_err());
+        }
+    }
 }
