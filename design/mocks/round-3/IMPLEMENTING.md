@@ -59,7 +59,8 @@ The spec's CSP (`default-src 'self'; img-src 'self' asset: data:; style-src 'sel
 | Confirm while running | Footer reads "Waiting for WoW to close…" with "Restore enables automatically when it exits." Restore enables on `game://status-changed` but never runs by itself. |
 | Backup failed | One red callout, "Today's 14:20 backup didn't finish: drive D: is full.", with Retry and "Change location…". Also a Failed row at the top of the table. |
 | Damaged snapshot | Dialog "This snapshot is damaged". "Nothing was changed. We stop before writing a single file." Lists the files, then "Verify all snapshots", Cancel, and "Use 1 Oct, 21:15 instead". |
-| Interrupted restore | Startup dialog "Your last restore didn't finish" with Roll back (recommended, primary), Finish restore, and Decide later. **Decide later:** a persistent stone banner on Dashboard and Backups, all restores locked, backups keep running. |
+| Interrupted restore | Startup dialog "Your last restore didn't finish" with Roll back (recommended, primary), Finish restore, and two ghost actions in the footer. "Leave files as they are" is `discard`: it changes nothing and keeps the safety copy, and its tooltip says so. "Decide later" shows a persistent stone banner on Dashboard and Backups; all restores stay locked (`RestorePending`) and backups keep running. |
+| Unreadable journal | `dashboard.html?recover=unreadable`. Roll back and Finish aren't possible. The dialog says nothing has changed since, and that the safety copy is in Backups. Primary: "Open the safety copy" (goes to that Safety snapshot). Ghost: "Clear notice" (`discard`). Restores stay locked until it's cleared. |
 
 ## 5. App status (sidebar), everywhere
 The app knows WowB.exe is running, but not who is logged in.
