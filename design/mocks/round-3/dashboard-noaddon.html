@@ -44,6 +44,13 @@
   .roster .nm small { color: var(--soot); font-size: 11px; margin-left: 6px; }
   .roster .lp { font-size: 11.5px; color: var(--soot); white-space: nowrap; }
   .ph .meta.src { font-style: normal; }
+  /* v0.1 sessions from the process watcher: when and how long, plus the character whose WTF folder changed */
+  .sessions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 14px; font-size: 12.5px; }
+  .sessions .when { color: var(--chalk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sessions .dur { text-align: right; color: var(--chalk-hi); font-weight: 600; white-space: nowrap; }
+  .sessions .who { grid-column: 1 / -1; font-size: 11.5px; color: var(--soot); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sessions .now .when { display: flex; align-items: center; gap: 7px; }
+  .sessions .foot { font-size: 11.5px; color: var(--soot); padding: 8px 14px 10px; }
   .checks .pend { width: 16px; height: 16px; display: grid; place-items: center; margin-top: 2px; flex-shrink: 0; }
   .checks .pend .live { width: 7px; height: 7px; }
 
@@ -80,11 +87,11 @@
     <article class="parchment tilt invite">
       <div class="ph"><h2>Your ledger is blank</h2><span class="meta">one small addon away</span></div>
       <div class="pb ruled">
-        <p class="intro">Your backups are already working. To fill this page with gold, gear and adventures, Forever Buddy needs its companion addon, which notes down each character when you log out.</p>
+        <p class="intro">Your backups and play sessions are already being kept. To fill this page with gold, gear and what happened in each session, Forever Buddy needs its companion addon, which notes down each character when you log out.</p>
         <div class="unlocks">
           <div><i data-i="trend"></i><b>Gold over time</b><span>Per character and account-wide.</span></div>
           <div><i data-i="bag"></i><b>Satchels &amp; gear</b><span>Search every alt's bags and bank.</span></div>
-          <div><i data-i="scroll"></i><b>Adventures</b><span>A journal entry for every session.</span></div>
+          <div><i data-i="scroll"></i><b>Adventures</b><span>Gold, XP and loot for each session.</span></div>
           <div><i data-i="scale"></i><b>AH prices</b><span>From your own in-game scans.</span></div>
         </div>
         <div class="trust"><i data-i="shield" class="sm"></i><span>The addon only writes to its own SavedVariables file. No network, and nothing else in your UI is touched.</span></div>
@@ -124,8 +131,18 @@
           <li><i data-i="check" class="ok"></i><div><div>WoW: Forever (Beta) · 1.60.1</div><small>…\World of Warcraft\_classic_beta_ · WowB.exe</small></div></li>
           <li><i data-i="check" class="ok"></i><div><div>WTF folder found</div><small>1 account · 7 characters on Ashenvale</small></div></li>
           <li><i data-i="check" class="ok"></i><div><div>Backups are on</div><small>On game exit · last one 2 hours ago</small></div></li>
-          <li><span class="pend"><span class="live"></span></span><div><div>ForeverBuddy addon not installed</div><small>Needed for gold, gear and sessions</small></div></li>
+          <li><span class="pend"><span class="live"></span></span><div><div>ForeverBuddy addon not installed</div><small>Needed for gold, gear and session details</small></div></li>
         </ul>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Recent sessions</h2><span class="meta src">from the game process</span></div>
+        <ul class="sessions rows">
+          <li class="now"><span class="when"><span class="live"></span>Today, since 19:12</span><span class="dur">1h 42m</span><span class="who">Character known after you log out</span></li>
+          <li><span class="when">Yesterday, 19:40 – 22:52</span><span class="dur">3h 12m</span><span class="who">Thrandor</span></li>
+          <li><span class="when">Yesterday, 14:05 – 14:27</span><span class="dur">22m</span><span class="who">Coinpurse</span></li>
+          <li><span class="when">Fri 2 Oct, 21:10 – 23:15</span><span class="dur">2h 05m</span><span class="who">Velyra</span></li>
+        </ul>
+        <div class="foot">This week: 7h 21m across 3 characters. The character is the one whose settings changed during the session.</div>
       </article>
       <article class="panel">
         <div class="ph"><h2>Characters</h2><span class="meta src">from WTF folders</span><a class="link" href="characters-noaddon.html">All <i data-i="chevron" class="sm"></i></a></div>
