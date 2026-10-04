@@ -444,6 +444,10 @@ export function Backups({
     if (show) setFilter(show);
   }, [show]);
   useEffect(() => setKeys(new Set()), [selected, scope]);
+  // A restore that failed partway hands over to the recovery dialog.
+  useEffect(() => {
+    if (restoresLocked) setConfirming(false);
+  }, [restoresLocked]);
 
   const counts = useMemo(() => {
     const c = { all: 0, Auto: 0, Manual: 0, Safety: 0 };
