@@ -164,14 +164,12 @@ fn spawn_game_exit_backup(handle: &tauri::AppHandle) {
         if !core.settings.get().backup.on_game_exit {
             return;
         }
-        if let Ok(game) = core.active_game() {
-            triggers::wait_until_settled(
-                &game.root.base.join("WTF"),
-                triggers::EXIT_SETTLE,
-                triggers::EXIT_SETTLE_TIMEOUT,
-            );
-        }
-        let _ = triggers::run_auto(core, backup::manifest::Trigger::GameExit, &announce(&h));
+        let _ = triggers::game_exit_backup(
+            core,
+            triggers::EXIT_SETTLE,
+            triggers::EXIT_SETTLE_TIMEOUT,
+            &announce(&h),
+        );
     });
 }
 

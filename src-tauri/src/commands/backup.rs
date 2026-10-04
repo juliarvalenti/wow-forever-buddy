@@ -119,5 +119,8 @@ pub fn backup_storage(state: State<'_, AppState>) -> AppResult<StorageInfo> {
 #[specta::specta]
 pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
     let _job = state.core.jobs.lock().expect("job lock poisoned");
-    state.core.backups()?.prune(chrono::Utc::now(), &POLICY)
+    state
+        .core
+        .backups()?
+        .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now)
 }

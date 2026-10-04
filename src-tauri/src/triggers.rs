@@ -10,13 +10,14 @@
 //! Each one runs as a job (`AppCore::jobs`), then applies retention.
 
 use std::path::Path;
+use std::sync::MutexGuard;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
 
 use crate::backup::manifest::{Scope, SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
-use crate::backup::{SnapshotRequest, SnapshotScope};
+use crate::backup::{Gc, SnapshotRequest, SnapshotScope};
 use crate::error::AppResult;
 use crate::state::AppCore;
 
@@ -26,15 +27,33 @@ pub const EXIT_SETTLE_TIMEOUT: Duration = Duration::from_secs(120);
 /// How often the scheduler checks whether a scheduled backup is due.
 pub const SCHEDULE_TICK: Duration = Duration::from_secs(60);
 
-/// Takes an automatic full snapshot and prunes. Returns `None` if it was
-/// skipped: WoW is running, or nothing changed since the last full snapshot.
-/// `on_created` runs for a new snapshot (the app emits `backup-created`).
+/// Meta key: when an automatic backup last ran (written or skipped), so a
+/// skipped run doesn't stay "due" and re-run every tick.
+const LAST_AUTO_ATTEMPT: &str = "last_auto_attempt";
+
+/// Takes an automatic full snapshot, then prunes if one was written.
+/// Returns `None` if it was skipped: WoW is running, or nothing changed
+/// since the last full snapshot. `on_created` runs for a new snapshot (the
+/// app emits `backup-created`).
 pub fn run_auto(
     core: &AppCore,
     trigger: Trigger,
     on_created: &dyn Fn(&SnapshotSummary),
 ) -> AppResult<Option<SnapshotSummary>> {
-    let _job = core.jobs.lock().expect("job lock poisoned");
+    let job = core.jobs.lock().expect("job lock poisoned");
+    run_auto_locked(core, &job, trigger, on_created)
+}
+
+/// `run_auto` for a caller that already holds `AppCore::jobs` (the guard is
+/// the proof).
+pub fn run_auto_locked(
+    core: &AppCore,
+    _job: &MutexGuard<'_, ()>,
+    trigger: Trigger,
+    on_created: &dyn Fn(&SnapshotSummary),
+) -> AppResult<Option<SnapshotSummary>> {
+    core.db
+        .set_meta(LAST_AUTO_ATTEMPT, &Utc::now().to_rfc3339())?;
     if core.game.is_running_now(&core.probe_target()) {
         return Ok(None);
     }
@@ -54,9 +73,26 @@ pub fn run_auto(
     )?;
     if let Some(summary) = &created {
         on_created(summary);
+        // Spec §5: prune after each *new* snapshot; GC itself is hourly.
+        store.prune(Utc::now(), &POLICY, Gc::Throttled)?;
     }
-    store.prune(Utc::now(), &POLICY)?;
     Ok(created)
+}
+
+/// The game-exit backup. Takes the job lock *before* waiting for WTF to
+/// settle, so a restore clicked the moment WoW closes queues behind this
+/// backup instead of running before WoW's exit writes are captured (spec §5).
+pub fn game_exit_backup(
+    core: &AppCore,
+    settle: Duration,
+    timeout: Duration,
+    on_created: &dyn Fn(&SnapshotSummary),
+) -> AppResult<Option<SnapshotSummary>> {
+    let job = core.jobs.lock().expect("job lock poisoned");
+    if let Ok(game) = core.active_game() {
+        wait_until_settled(&game.root.base.join("WTF"), settle, timeout);
+    }
+    run_auto_locked(core, &job, Trigger::GameExit, on_created)
 }
 
 /// When the newest full snapshot (any trigger) was taken, if there is one.
@@ -81,15 +117,18 @@ pub fn app_start_due(core: &AppCore, now: DateTime<Utc>) -> AppResult<bool> {
         && older_than(last_full_snapshot(core)?, now, APP_START_MIN_AGE))
 }
 
-/// A scheduled backup is due: a schedule is set and that long has passed.
+/// A scheduled backup is due: a schedule is set, and that long has passed
+/// since both the last full snapshot and the last automatic attempt (an
+/// attempt skipped as unchanged counts, so it doesn't re-run every tick).
 pub fn schedule_due(core: &AppCore, now: DateTime<Utc>) -> AppResult<bool> {
     let hours = core.settings.get().backup.schedule_hours;
-    Ok(hours > 0
-        && older_than(
-            last_full_snapshot(core)?,
-            now,
-            Duration::from_secs(u64::from(hours) * 3600),
-        ))
+    let last_attempt = core
+        .db
+        .get_meta(LAST_AUTO_ATTEMPT)?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|d| d.with_timezone(&Utc));
+    let last = last_full_snapshot(core)?.max(last_attempt);
+    Ok(hours > 0 && older_than(last, now, Duration::from_secs(u64::from(hours) * 3600)))
 }
 
 /// Waits until nothing under `dir` has changed for `settle`, checking every
@@ -217,6 +256,73 @@ mod tests {
         let later = now + chrono::Duration::days(30);
         assert!(!app_start_due(&s.core, later).unwrap());
         assert!(!schedule_due(&s.core, later).unwrap(), "0 means off");
+    }
+
+    /// Review item 2: a run skipped as unchanged counts as an attempt (so
+    /// the scheduler doesn't re-run it every minute) and doesn't prune.
+    #[test]
+    fn skipped_runs_count_as_attempts_and_skip_pruning() {
+        let s = setup();
+        run_auto(&s.core, Trigger::GameExit, &|_| {})
+            .unwrap()
+            .unwrap();
+        let gc_after_first = s.core.db.get_meta("last_gc").unwrap();
+        assert!(
+            gc_after_first.is_some(),
+            "a new snapshot prunes (GC was due)"
+        );
+
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(run_auto(&s.core, Trigger::Scheduled, &|_| {})
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            s.core.db.get_meta("last_gc").unwrap(),
+            gc_after_first,
+            "a skipped run doesn't prune or GC"
+        );
+
+        // The full snapshot is old, but an attempt was just made: not due.
+        s.core
+            .settings
+            .update(|st| st.backup.schedule_hours = 1)
+            .unwrap();
+        let in_two_hours = Utc::now() + chrono::Duration::hours(2);
+        s.core
+            .db
+            .set_meta(
+                LAST_AUTO_ATTEMPT,
+                &(in_two_hours - chrono::Duration::minutes(30)).to_rfc3339(),
+            )
+            .unwrap();
+        assert!(!schedule_due(&s.core, in_two_hours).unwrap());
+        assert!(schedule_due(&s.core, in_two_hours + chrono::Duration::hours(1)).unwrap());
+    }
+
+    /// Review item 3: the game-exit backup holds the job lock while it waits
+    /// for WTF to settle, so a restore can't slip in ahead of it.
+    #[test]
+    fn game_exit_backup_holds_the_job_lock_while_settling() {
+        let s = Arc::new(setup());
+        let worker = {
+            let s = s.clone();
+            std::thread::spawn(move || {
+                game_exit_backup(
+                    &s.core,
+                    Duration::from_millis(600),
+                    Duration::from_secs(5),
+                    &|_| {},
+                )
+            })
+        };
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            s.core.jobs.try_lock().is_err(),
+            "a restore would have to wait during the settle"
+        );
+        let created = worker.join().unwrap().unwrap().unwrap();
+        assert_eq!(created.trigger, Trigger::GameExit);
+        assert!(s.core.jobs.try_lock().is_ok(), "released afterwards");
     }
 
     #[test]

@@ -52,6 +52,18 @@ pub struct SnapshotRequest<'a> {
     pub game_running: bool,
 }
 
+/// Whether a prune runs garbage collection now or only if it's due.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gc {
+    /// At most once per `GC_EVERY` (automatic backups).
+    Throttled,
+    /// Always ("Prune now").
+    Now,
+}
+
+const GC_EVERY: Duration = Duration::from_secs(3600);
+const LAST_GC: &str = "last_gc";
+
 /// What a prune did.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PruneReport {
@@ -398,6 +410,7 @@ impl BackupService {
         &self,
         now: chrono::DateTime<chrono::Utc>,
         policy: &Policy,
+        gc: Gc,
     ) -> AppResult<PruneReport> {
         let _edit = self.edits.lock().expect("edit lock poisoned");
         // After a db quarantine the index may be incomplete; pruning from it
@@ -409,7 +422,11 @@ impl BackupService {
             self.delete_unlocked(&id)?;
             report.pruned.push(id);
         }
-        self.collect_garbage(&mut report)?;
+        // GC reads every manifest and walks the whole blob store, so it runs
+        // at most hourly (spec §5) unless asked for ("Prune now").
+        if gc == Gc::Now || self.gc_due(now)? {
+            self.collect_garbage(&mut report, now)?;
+        }
 
         if self.blobs.size_on_disk() > policy.budget_bytes {
             let candidates = retention::budget_candidates(&self.list()?, policy);
@@ -418,7 +435,8 @@ impl BackupService {
                     self.delete_unlocked(id)?;
                     report.pruned.push(id.clone());
                 }
-                self.collect_garbage(&mut report)?;
+                // Over budget, GC is how deleting a snapshot frees space.
+                self.collect_garbage(&mut report, now)?;
                 if self.blobs.size_on_disk() <= policy.budget_bytes {
                     break;
                 }
@@ -432,12 +450,26 @@ impl BackupService {
         Ok(report)
     }
 
-    fn collect_garbage(&self, report: &mut PruneReport) -> AppResult<()> {
+    fn collect_garbage(
+        &self,
+        report: &mut PruneReport,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<()> {
         let refs = self.referenced_blobs()?;
         let (removed, freed) = self.blobs.retain(&refs)?;
         report.blobs_removed += removed as u32;
         report.freed_bytes += freed as f64;
-        Ok(())
+        self.db.set_meta(LAST_GC, &now.to_rfc3339())
+    }
+
+    fn gc_due(&self, now: chrono::DateTime<chrono::Utc>) -> AppResult<bool> {
+        let last = self
+            .db
+            .get_meta(LAST_GC)?
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok());
+        Ok(last.is_none_or(|t| {
+            now.signed_duration_since(t) >= chrono::Duration::from_std(GC_EVERY).unwrap()
+        }))
     }
 
     fn reindex_if_flagged(&self) -> AppResult<()> {
@@ -966,7 +998,7 @@ mod tests {
 
         let report = s
             .service
-            .prune(chrono::Utc::now(), &retention::POLICY)
+            .prune(chrono::Utc::now(), &retention::POLICY, Gc::Now)
             .unwrap();
         assert_eq!(report.pruned, vec![old.id.clone()]);
         assert!(report.blobs_removed >= 1 && report.freed_bytes > 0.0);
@@ -992,7 +1024,10 @@ mod tests {
             ..retention::POLICY
         };
 
-        let report = s.service.prune(chrono::Utc::now(), &tiny).unwrap();
+        let report = s
+            .service
+            .prune(chrono::Utc::now(), &tiny, Gc::Throttled)
+            .unwrap();
         assert_eq!(report.pruned, [autos[0].id.clone(), autos[1].id.clone()]);
         assert!(
             report.over_budget,
@@ -1031,7 +1066,7 @@ mod tests {
 
         let report = s
             .service
-            .prune(chrono::Utc::now(), &retention::POLICY)
+            .prune(chrono::Utc::now(), &retention::POLICY, Gc::Now)
             .unwrap();
         assert_eq!(report.pruned, vec![old.id.clone()]);
         let left: Vec<String> = s
@@ -1043,6 +1078,41 @@ mod tests {
             .collect();
         assert!(left.contains(&manual.id) && left.contains(&pinned.id));
         assert_eq!(s.db.get_meta(NEEDS_REINDEX).unwrap(), None, "flag cleared");
+    }
+
+    /// Review item 2: GC runs at most hourly unless forced.
+    #[test]
+    fn gc_is_throttled_unless_forced() {
+        let s = setup();
+        full(&s, Trigger::Manual).unwrap();
+        let now = chrono::Utc::now();
+        // First prune: nothing recorded yet, so GC is due.
+        s.service
+            .prune(now, &retention::POLICY, Gc::Throttled)
+            .unwrap();
+
+        // An orphan blob appears (e.g. its snapshot was deleted).
+        let orphan = BlobStore::hash(b"orphan");
+        s.service.blobs().put(&orphan, b"orphan").unwrap();
+
+        let soon = now + chrono::Duration::minutes(10);
+        let r = s
+            .service
+            .prune(soon, &retention::POLICY, Gc::Throttled)
+            .unwrap();
+        assert_eq!(r.blobs_removed, 0, "throttled within the hour");
+        assert!(s.service.blobs().contains(&orphan));
+
+        let forced = s.service.prune(soon, &retention::POLICY, Gc::Now).unwrap();
+        assert_eq!(forced.blobs_removed, 1, "Prune now always collects");
+
+        s.service.blobs().put(&orphan, b"orphan").unwrap();
+        let later = soon + chrono::Duration::minutes(61);
+        let r = s
+            .service
+            .prune(later, &retention::POLICY, Gc::Throttled)
+            .unwrap();
+        assert_eq!(r.blobs_removed, 1, "due again after an hour");
     }
 
     #[test]
