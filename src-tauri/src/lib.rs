@@ -8,6 +8,7 @@ mod error;
 mod fsx;
 mod game;
 mod install;
+mod ledger;
 mod secrets;
 mod sessions;
 mod startup;
@@ -39,6 +40,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::addon::addon_install,
             commands::addon::addon_remove,
             commands::app::app_info,
+            commands::ledger::ledger_get,
+            commands::ledger::ledger_export_csv,
             commands::backup::backup_auto_status,
             commands::backup::backup_create,
             commands::backup::backup_delete,
