@@ -122,6 +122,23 @@ export const commands = {
 	 */
 	ledgerExportCsv: (range: LedgerRange, kind: LedgerExport, dest: string) => __TAURI_INVOKE<string>("ledger_export_csv", { range, kind, dest }),
 	/**
+	 *  The Macros screen (F7): every account's and character's macros in the
+	 *  active flavor, read-only. `null` before a game folder is set.
+	 */
+	macrosList: () => __TAURI_INVOKE<{
+	/**  The flavor folder, e.g. `_classic_beta_`. */
+	flavor: string,
+	/**  One per account folder, in name order. */
+	accounts: AccountMacros[],
+	/**
+	 *  One per character on the WTF roster (older settings folders left
+	 *  out), in the Characters screen's order, macros or not.
+	 */
+	characters: CharacterMacros[],
+	/**  The longest body the game allows. */
+	max: number,
+} | null>("macros_list"),
+	/**
 	 *  The scan bar: whether there are prices, how many, and when Auctionator
 	 *  last scanned.
 	 */
@@ -366,6 +383,13 @@ export const events = {
 };
 
 /* Types */
+export type AccountMacros = {
+	account: string,
+	macros: Macro[],
+	/**  When the file last changed (RFC 3339): "as of logout, 3 Oct". */
+	modified: string | null,
+};
+
 export type AccountNode = {
 	name: string,
 	totals: Totals,
@@ -782,6 +806,16 @@ export type CharacterKey = {
 	account: string,
 	group: string,
 	folder: string,
+};
+
+export type CharacterMacros = {
+	account: string,
+	group: string,
+	/**  The character folder, e.g. `Ellygie-Vargur`. */
+	folder: string,
+	macros: Macro[],
+	/**  When the file last changed (RFC 3339); `None` without a file. */
+	modified: string | null,
 };
 
 export type CharacterNode = {
@@ -1207,6 +1241,33 @@ export type Lockout = {
 export type LookedIn = {
 	source: CandidateSource,
 	path: string,
+};
+
+export type Macro = {
+	name: string,
+	/**  A texture name (`INV_Misc_QuestionMark`) or an icon file id. */
+	icon: string,
+	/**  Lines joined with `\n`. */
+	body: string,
+	/**
+	 *  The body's length as the game counts it (bytes), against
+	 *  `MACRO_MAX`.
+	 */
+	length: number,
+};
+
+export type MacrosList = {
+	/**  The flavor folder, e.g. `_classic_beta_`. */
+	flavor: string,
+	/**  One per account folder, in name order. */
+	accounts: AccountMacros[],
+	/**
+	 *  One per character on the WTF roster (older settings folders left
+	 *  out), in the Characters screen's order, macros or not.
+	 */
+	characters: CharacterMacros[],
+	/**  The longest body the game allows. */
+	max: number,
 };
 
 export type MailRow = {

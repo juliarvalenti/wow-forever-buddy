@@ -29,6 +29,7 @@ import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { Ledger } from "@/screens/Ledger";
+import { Macros } from "@/screens/Macros";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
@@ -42,6 +43,7 @@ type Screen =
   | "backups"
   | "game"
   | "addons"
+  | "macros"
   | "settings";
 
 type NavRow =
@@ -121,7 +123,7 @@ function Shell() {
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
     { id: "addons", label: "Addons", icon: Puzzle },
-    { soon: "Macros", icon: SquareTerminal },
+    { id: "macros", label: "Macros", icon: SquareTerminal },
   ];
   const folderOk = install.state.kind === "ok";
   // The saved folder went missing (drive unplugged, folder moved). Backups
@@ -244,6 +246,7 @@ function Shell() {
           />
         )}
         {current === "addons" && <Addons />}
+        {current === "macros" && <Macros />}
         {current === "ledger" && (
           <Ledger onOpenDashboard={() => setScreen("dashboard")} onOpenAdventure={openAdventure} />
         )}

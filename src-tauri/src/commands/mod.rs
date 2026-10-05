@@ -12,6 +12,7 @@ pub mod game;
 pub mod ingest;
 pub mod install;
 pub mod ledger;
+pub mod macros;
 pub mod restore;
 pub mod secrets;
 pub mod sessions;

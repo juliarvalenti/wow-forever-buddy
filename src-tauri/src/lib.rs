@@ -14,6 +14,7 @@ mod game;
 mod ingest;
 mod install;
 mod ledger;
+mod macros;
 mod secrets;
 mod sessions;
 mod startup;
@@ -52,6 +53,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_info,
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
+            commands::macros::macros_list,
             commands::ah::ah_status,
             commands::ah::ah_search,
             commands::ah::ah_history,

@@ -24,6 +24,8 @@ import type {
   JournalEntry,
   Ledger,
   LedgerRange,
+  Macro,
+  MacrosList,
   PlaySession,
   RestorePlan,
   SearchResults,
@@ -67,6 +69,7 @@ export const SCENARIOS = [
   "settings-pending", // moving is refused: an interrupted restore waits
   "addons-empty", // F4: no addons in Interface/AddOns yet (the Addons screen works in every scenario)
   "addons-linked", // F6: Velyra's settings folder is a link, so her row can't be switched
+  "macros-empty", // F7: no macros-cache.txt anywhere yet (the Macros screen works in every scenario)
   "ah", // F5: ah.html's market (any scenario has it; this one opens on it in shots)
   "ah-empty", // the AH before Auctionator has saved any prices
 ] as const;
@@ -657,6 +660,52 @@ export function installMockIpc(): void {
       };
     },
     app_open_folder: () => null,
+    // F7: macros-readonly.html's macros for Thrandor, plus account macros.
+    macros_list: (): MacrosList => {
+      const m = (name: string, body: string): Macro => ({
+        name,
+        icon: "INV_Misc_QuestionMark",
+        body,
+        length: new TextEncoder().encode(body).length,
+      });
+      const filler = (n: number) => `/run print("${"x".repeat(Math.max(0, n - 13))}")`;
+      const thrandor = [
+        m(
+          "Judge + Seal",
+          "#showtooltip Judgement\n/cast [mod:shift] Seal of Light; [mod:ctrl] Seal of Wisdom\n/cast [@target,harm,nodead] Judgement\n/use 13\n/startattack\n/cast [nomod] Seal of Command" +
+            " ".repeat(61), // 231 bytes, as in the mock: the warn state
+        ),
+        m("Holy Light @mouseover", "#showtooltip\n/cast [@mouseover,help,nodead][] Holy Light\n/stopmacro [nomod]\n/say Healing!"),
+        m("BoP focus", "#showtooltip Blessing of Protection\n/cast [@focus,help] Blessing of Protection"),
+        m("Cleanse self", "#showtooltip Cleanse\n/cast [@player] Cleanse"),
+        m("Mount", "#showtooltip\n/cast Summon Warhorse"),
+        m("Trinket + Wings", "#showtooltip\n/use 13\n/use 14\n/cast Avenging Wrath"),
+        m("Divine Shield + Hearth", filler(262)),
+        m("Seal twist", filler(143)),
+        m("Righteous Fury", "/cast Righteous Fury"),
+        m("Lay on Hands focus", "#showtooltip\n/cast [@focus] Lay on Hands"),
+        m("Wisdom party", filler(76)),
+      ];
+      const none = s === "macros-empty";
+      return {
+        flavor: "_classic_beta_",
+        accounts: [
+          {
+            account: "ACCOUNT1",
+            macros: none ? [] : [m("Assist main tank", "/assist [@focus]"), m("Ready check", "/readycheck")],
+            modified: none ? null : iso(60 * 24 * 2),
+          },
+        ],
+        characters: ["Thrandor", "Velyra-Duskmane", "Brannic", "Fizzwick", "Sela"].map((folder) => ({
+          account: "ACCOUNT1",
+          group: "70",
+          folder,
+          macros: folder === "Thrandor" && !none ? thrandor : [],
+          modified: folder === "Thrandor" && !none ? iso(60 * 24 * 2) : null,
+        })),
+        max: 255,
+      };
+    },
     // F6: a toggle remembers itself until undone (one level, like the app's
     // last-change Undo).
     addons_apply: ({ changes }) => {
