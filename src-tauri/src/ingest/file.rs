@@ -158,6 +158,10 @@ pub struct Snapshot {
     pub mail: Option<Mail>,
     pub professions: Option<Vec<Profession>>,
     pub lockouts: Option<Vec<Lockout>>,
+    /// Every quest the character has completed (addon 0.4.0 on), sorted
+    /// ids; `None` from older files or a client without the API. Read, not
+    /// stored yet: the quest planner (#94) is what will use it.
+    pub quests_done: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -452,6 +456,15 @@ fn check_counts(db: &LuaTable, meta: &LuaTable) -> Result<(), Rejected> {
             ));
         }
     }
+    // Only files with the list (0.4.0 on) count it; either both are there
+    // or neither is.
+    let quests_done = tbl(db, "snapshot").and_then(|s| tbl(s, "quests_done"));
+    if int(counts, "quests_done") != quests_done.map(|q| entries(Some(q))) {
+        return Err(rejected(
+            Status::Integrity,
+            "_meta.counts.quests_done doesn't match the file",
+        ));
+    }
     Ok(())
 }
 
@@ -569,6 +582,7 @@ fn snapshot(t: &LuaTable) -> Option<Snapshot> {
         mail,
         professions,
         lockouts,
+        quests_done: tbl(t, "quests_done").map(|q| q.array.iter().filter_map(as_int).collect()),
     })
 }
 
@@ -667,6 +681,24 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{name}: {e:?}"));
             assert!(file.at().is_some(), "{name}: has a time");
         }
+    }
+
+    #[test]
+    fn completed_quests_are_read_and_counted() {
+        let bytes = fixture("quests.lua");
+        let file = decode(&bytes).unwrap();
+        let snap = file.snapshot.unwrap();
+        assert_eq!(snap.quests_done, Some(vec![7, 176, 783]));
+        let accepted = &file.sessions[0].events[0];
+        assert_eq!(accepted.kind, "quest_accepted");
+        assert_eq!(accepted.data["id"], 176);
+
+        // A count that doesn't match the list is a half-applied write.
+        let text = String::from_utf8(bytes).unwrap();
+        let wrong = text.replace("[\"quests_done\"] = 3,", "[\"quests_done\"] = 4,");
+        assert_ne!(wrong, text);
+        let err = decode(wrong.as_bytes()).unwrap_err();
+        assert_eq!(err.status, Status::Integrity);
     }
 
     #[test]

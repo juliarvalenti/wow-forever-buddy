@@ -72,7 +72,17 @@ fn every_fixture_parses_and_its_counts_add_up() {
             .get("counts")
             .and_then(LuaValue::as_table)
             .expect("counts");
-        assert_eq!(counts.array.len() + counts.hash.len(), 4, "{name}: counts");
+        // `quests_done` is counted only in files that have the list.
+        let quests_done = db
+            .get("snapshot")
+            .and_then(LuaValue::as_table)
+            .and_then(|s| s.get("quests_done"));
+        let expected = if quests_done.is_some() { 5 } else { 4 };
+        assert_eq!(
+            counts.array.len() + counts.hash.len(),
+            expected,
+            "{name}: counts"
+        );
         for (key, want) in [
             ("sessions", entries(db.get("sessions"))),
             ("events", events),
@@ -80,6 +90,13 @@ fn every_fixture_parses_and_its_counts_add_up() {
             ("bag_items", bag_items),
         ] {
             assert_eq!(int(counts.get(key)), Some(want), "{name}: counts.{key}");
+        }
+        if quests_done.is_some() {
+            assert_eq!(
+                int(counts.get("quests_done")),
+                Some(entries(quests_done)),
+                "{name}: counts.quests_done"
+            );
         }
     }
 }
