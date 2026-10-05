@@ -47,6 +47,7 @@ CREATE TABLE char_snapshots (
     xp            INTEGER,
     xp_max        INTEGER,
     rested        INTEGER,
+    rest_state    TEXT,                    -- GetRestState's name, e.g. 'Rested'
     level         INTEGER,
     ilvl_avg      REAL,
     ilvl_equipped REAL,
@@ -54,6 +55,7 @@ CREATE TABLE char_snapshots (
     played_level  INTEGER,
     zone          TEXT,
     subzone       TEXT,
+    map           INTEGER,                 -- uiMapID (C_Map.GetBestMapForUnit)
     UNIQUE (character_id, at)
 ) STRICT;
 
@@ -106,7 +108,8 @@ CREATE TABLE professions (
     name         TEXT NOT NULL,
     skill        INTEGER,
     max          INTEGER,
-    spec         TEXT,
+    line         INTEGER,                  -- skill line id
+    spec         INTEGER,                  -- GetProfessionInfo's specialization index
     as_of        INTEGER NOT NULL,
     PRIMARY KEY (character_id, name)
 ) STRICT;
@@ -116,6 +119,7 @@ CREATE TABLE lockouts (
     name         TEXT NOT NULL,
     difficulty   TEXT NOT NULL DEFAULT '',
     reset_at     INTEGER,
+    raid         INTEGER NOT NULL DEFAULT 0 CHECK (raid IN (0, 1)),
     as_of        INTEGER NOT NULL,
     PRIMARY KEY (character_id, name, difficulty)
 ) STRICT;
