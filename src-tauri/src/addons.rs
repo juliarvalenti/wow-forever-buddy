@@ -528,8 +528,9 @@ fn is_addons_txt(path: &str) -> bool {
 
 /// Undoes a toggle: puts back exactly the AddOns.txt files its safety
 /// snapshot holds (and removes any it created), through the write gate with
-/// a snapshot of its own. Refused for any snapshot that isn't a toggle's:
-/// one holding anything but AddOns.txt files.
+/// a snapshot of its own. Refused for any snapshot that isn't a toggle's
+/// (one holding anything but AddOns.txt files) or that was taken in another
+/// flavor than the one `target` writes into.
 pub fn undo(
     gate: &WriteGate,
     target: &MutationTarget,
@@ -537,7 +538,16 @@ pub fn undo(
     blob: impl Fn(&str) -> AppResult<Vec<u8>>,
 ) -> AppResult<()> {
     let holds_something = !manifest.files.is_empty() || !manifest.absent.is_empty();
+    // The paths are relative to a flavor folder: a snapshot taken in another
+    // flavor would write its characters' AddOns.txt into this flavor's
+    // characters at the same paths. The flavor is the folder being written to.
+    let flavor = target
+        .game
+        .base
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned());
     if !holds_something
+        || flavor.as_deref() != Some(manifest.flavor.as_str())
         || manifest.trigger != Trigger::PreWrite
         || !manifest.files.iter().all(|f| is_addons_txt(&f.path))
         || !manifest.absent.iter().all(|p| is_addons_txt(p))
@@ -1007,6 +1017,52 @@ mod tests {
         let err = g.set("Questie", &[THRANDOR], true).unwrap_err();
         assert!(matches!(err, AppError::GameRunning(_)), "{err}");
         assert_eq!(g.txt("ACCOUNT1", "Thrandor"), before);
+    }
+
+    /// Undo after switching the active flavor: the toggle's snapshot belongs
+    /// to `_classic_beta_`, so it's refused rather than written into
+    /// `_classic_era_`'s characters at the same paths.
+    #[test]
+    fn undo_refuses_a_snapshot_from_another_flavor() {
+        let g = Game::new();
+        let r = g.set("Questie", &[THRANDOR], true).unwrap();
+        let id = r.snapshot_id.unwrap();
+
+        crate::install::set(&g.core.settings, &g.root, Some("_classic_era_")).unwrap();
+        let era = g.root.join("_classic_era_/WTF/Account");
+        let files_before: Vec<_> = walk_addons_txt(&era);
+        assert!(matches!(g.undo(&id), Err(AppError::NotFound(_))));
+        assert_eq!(
+            walk_addons_txt(&era),
+            files_before,
+            "nothing written in the other flavor"
+        );
+
+        // Back in its own flavor, the same undo works.
+        crate::install::set(&g.core.settings, &g.root, Some("_classic_beta_")).unwrap();
+        g.undo(&id).unwrap();
+        assert!(g
+            .txt("ACCOUNT1", "Thrandor")
+            .unwrap()
+            .contains("Questie: disabled"));
+    }
+
+    /// Every AddOns.txt under an Account folder, with its contents.
+    fn walk_addons_txt(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.file_name().is_some_and(|n| n == "AddOns.txt") {
+                    out.push((p.clone(), std::fs::read(&p).unwrap()));
+                }
+            }
+        }
+        out.sort();
+        out
     }
 
     #[test]
