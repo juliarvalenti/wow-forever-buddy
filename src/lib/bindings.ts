@@ -29,6 +29,12 @@ export const commands = {
 	 *  flagged as taken mid-session. Waits if another backup or restore is running.
 	 */
 	backupCreate: (label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_create", { label }),
+	/**
+	 *  Refused for a snapshot an interrupted restore still needs, and while the
+	 *  restore journal is unreadable (then nobody can tell which those are).
+	 *  Runs as a job, so it can't race a restore that's starting from the same
+	 *  snapshot before its journal is written; it waits behind a running backup.
+	 */
 	backupDelete: (id: string) => __TAURI_INVOKE<null>("backup_delete", { id }),
 	/**
 	 *  "Export as .zip". `dest` comes from the save dialog; it may not be inside
@@ -141,7 +147,8 @@ export const commands = {
 } | null>("install_get"),
 	/**
 	 *  Sets the install from a picked folder (root, flavor folder or WTF) and
-	 *  optionally a flavor id. Validates, normalizes and saves.
+	 *  optionally a flavor id. Validates, normalizes and saves. Waits for any
+	 *  running backup or restore (it sweeps temp files in WTF).
 	 */
 	installSet: (path: string, flavor: string | null) => __TAURI_INVOKE<Install>("install_set", { path, flavor }),
 	/**
@@ -833,6 +840,11 @@ export type StorageInfo = {
 	over_budget: boolean,
 	/**  Generated from the policy, shown as is (spec §5). */
 	retention_summary: string,
+	/**
+	 *  Cleanup is refused because a snapshot's record is damaged (which
+	 *  one, and why), so the budget isn't being enforced. Shown as a warning.
+	 */
+	cleanup_blocked: string | null,
 };
 
 export type Totals = {

@@ -38,12 +38,7 @@ pub enum FolderTarget {
 
 pub fn folder_path(core: &AppCore, which: FolderTarget) -> AppResult<PathBuf> {
     match which {
-        FolderTarget::Backups => Ok(core
-            .settings
-            .get()
-            .backup
-            .location
-            .unwrap_or_else(|| core.paths.local_data_dir.join("backups"))),
+        FolderTarget::Backups => Ok(core.backups_dir()),
         FolderTarget::Logs => Ok(core.paths.log_dir.clone()),
         FolderTarget::Game => install::current(&core.settings)?
             .and_then(|i| i.active_flavor().map(|f| f.dir.clone()))
@@ -124,7 +119,11 @@ mod tests {
         core.settings
             .update(|s| s.backup.location = Some(custom.clone()))
             .unwrap();
-        assert_eq!(folder_path(&core, FolderTarget::Backups).unwrap(), custom);
+        assert_eq!(
+            folder_path(&core, FolderTarget::Backups).unwrap(),
+            custom.join(crate::state::STORE_FOLDER),
+            "a picked location holds the store in its own subfolder"
+        );
     }
 
     #[test]

@@ -11,7 +11,7 @@
 //!
 //! Days and weeks are UTC calendar days and ISO weeks.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Datelike, Duration, Utc};
 
@@ -64,8 +64,29 @@ pub fn is_protected(s: &SnapshotSummary) -> bool {
     s.pinned || s.kind == SnapshotKind::Manual
 }
 
-/// Snapshots the time rules say to delete (ids).
+/// Snapshots grouped by flavor. Every rule applies within one flavor: the
+/// "one per day" slot, the safety minimum and the budget floor are each
+/// flavor's own, so playing Classic can't push out Forever's history.
+fn by_flavor(snapshots: &[SnapshotSummary]) -> BTreeMap<String, Vec<SnapshotSummary>> {
+    let mut groups: BTreeMap<String, Vec<SnapshotSummary>> = BTreeMap::new();
+    for s in snapshots {
+        groups
+            .entry(s.flavor.to_lowercase())
+            .or_default()
+            .push(s.clone());
+    }
+    groups
+}
+
+/// Snapshots the time rules say to delete (ids), per flavor.
 pub fn expired(snapshots: &[SnapshotSummary], now: DateTime<Utc>, p: &Policy) -> Vec<String> {
+    by_flavor(snapshots)
+        .values()
+        .flat_map(|group| expired_in_flavor(group, now, p))
+        .collect()
+}
+
+fn expired_in_flavor(snapshots: &[SnapshotSummary], now: DateTime<Utc>, p: &Policy) -> Vec<String> {
     let mut out = Vec::new();
 
     // Automatic: newest first, so the first one seen in a day/week is kept.
@@ -109,18 +130,25 @@ pub fn expired(snapshots: &[SnapshotSummary], now: DateTime<Utc>, p: &Policy) ->
 }
 
 /// When the store is over budget: the order to delete further snapshots in
-/// (oldest automatic first, then oldest safety), never touching protected
-/// ones or the newest `budget_floor` of each kind.
+/// (oldest automatic first, then oldest safety, across flavors), never
+/// touching protected ones or the newest `budget_floor` of each kind in each
+/// flavor.
 pub fn budget_candidates(snapshots: &[SnapshotSummary], p: &Policy) -> Vec<String> {
+    let groups = by_flavor(snapshots);
     let mut out = Vec::new();
     for kind in [SnapshotKind::Auto, SnapshotKind::Safety] {
-        let mut of_kind: Vec<&SnapshotSummary> = snapshots
-            .iter()
-            .filter(|s| s.kind == kind && !is_protected(s))
-            .collect();
-        of_kind.sort_by_key(|s| created(s));
-        let deletable = of_kind.len().saturating_sub(p.budget_floor);
-        out.extend(of_kind.into_iter().take(deletable).map(|s| s.id.clone()));
+        let mut deletable: Vec<SnapshotSummary> = Vec::new();
+        for group in groups.values() {
+            let mut of_kind: Vec<&SnapshotSummary> = group
+                .iter()
+                .filter(|s| s.kind == kind && !is_protected(s))
+                .collect();
+            of_kind.sort_by_key(|s| created(s));
+            let n = of_kind.len().saturating_sub(p.budget_floor);
+            deletable.extend(of_kind.into_iter().take(n).cloned());
+        }
+        deletable.sort_by_key(created);
+        out.extend(deletable.into_iter().map(|s| s.id));
     }
     out
 }
@@ -230,6 +258,47 @@ mod tests {
         assert_eq!(
             budget_candidates(&snaps, &POLICY),
             ["auto4", "auto3", "safe3"]
+        );
+    }
+
+    fn in_flavor(mut s: SnapshotSummary, flavor: &str) -> SnapshotSummary {
+        s.flavor = flavor.into();
+        s
+    }
+
+    /// H1: each flavor keeps its own daily slot, safety minimum and budget
+    /// floor, so one flavor's snapshots can't push out another's.
+    #[test]
+    fn rules_apply_per_flavor() {
+        // Two flavors, each with one auto snapshot 3 days ago on the same day.
+        let snaps = vec![
+            in_flavor(snap("forever", Trigger::GameExit, 72), "_classic_beta_"),
+            in_flavor(snap("classic", Trigger::GameExit, 72), "_classic_"),
+        ];
+        assert!(
+            expired(&snaps, now(), &POLICY).is_empty(),
+            "a daily slot each"
+        );
+
+        // Budget: 3 autos in each flavor are each flavor's floor.
+        let mut snaps: Vec<_> = (0..3)
+            .map(|i| {
+                in_flavor(
+                    snap(&format!("f{i}"), Trigger::GameExit, i),
+                    "_classic_beta_",
+                )
+            })
+            .collect();
+        snaps.extend((0..4).map(|i| {
+            in_flavor(
+                snap(&format!("c{i}"), Trigger::GameExit, 10 + i),
+                "_classic_",
+            )
+        }));
+        assert_eq!(
+            budget_candidates(&snaps, &POLICY),
+            ["c3"],
+            "only Classic's 4th-newest; Forever keeps all 3"
         );
     }
 

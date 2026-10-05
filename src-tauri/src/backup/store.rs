@@ -104,7 +104,19 @@ impl BlobStore {
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let hash = format!("{prefix}{}", entry.file_name().to_string_lossy());
+            let name = entry.file_name().to_string_lossy();
+            // Only ever delete files shaped like ours (`ab/<62 hex>`): a
+            // stray file someone put under objects/ isn't ours to remove.
+            // Lowercase only, exactly as `hash` writes them.
+            let hex = |s: &str, len| {
+                s.len() == len
+                    && s.bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            };
+            if !hex(&prefix, 2) || !hex(&name, 62) {
+                continue;
+            }
+            let hash = format!("{prefix}{name}");
             if entry.file_type().is_file() && !keep.contains(&hash) {
                 let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 if std::fs::remove_file(entry.path()).is_ok() {
@@ -183,6 +195,35 @@ mod tests {
         assert!(freed > 0);
         assert!(store.contains(&keep));
         assert!(!store.contains(&drop));
+    }
+
+    /// H1: GC only deletes files shaped like blobs; anything else under
+    /// objects/ (a user's own folder that happened to be called that) stays.
+    #[test]
+    fn retain_only_touches_blob_shaped_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = BlobStore::open(tmp.path()).unwrap();
+        let objects = tmp.path().join("objects");
+        let strays = [
+            objects.join("ab").join("notes.txt"),
+            objects.join("photos").join("a".repeat(62)),
+            objects.join("ab").join("a".repeat(61)),
+            objects.join("zz").join("a".repeat(62)),
+            objects.join("AB").join("A".repeat(62)), // our hashes are lowercase
+        ];
+        for p in &strays {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"mine").unwrap();
+        }
+        let orphan = BlobStore::hash(b"orphan");
+        store.put(&orphan, b"orphan").unwrap();
+
+        let (removed, _) = store.retain(&HashSet::new()).unwrap();
+        assert_eq!(removed, 1, "only the real orphan blob");
+        assert!(!store.contains(&orphan));
+        for p in &strays {
+            assert!(p.exists(), "{p:?} kept");
+        }
     }
 
     #[test]
