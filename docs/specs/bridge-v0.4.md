@@ -174,6 +174,7 @@ The planner the PM described (plan levels in the app, an in-game step list) need
 - **Now:** addon 0.4.0 records accepted and completed quest IDs (no text) into the session log. That's cheap, has no licensing question, and gives the app "what have I done" per character.
 - **Before any planner:** (a) Julia or the PM asks the Questie maintainers about the license, or we choose to read the user's installed QuestieDB at runtime instead of shipping its data; (b) sample QuestieDB's latest release against wago's QuestV2 IDs for the new zones. If coverage is under roughly 80% there, the planner waits.
 - **Never:** Wowhead scraping.
+- **Reading the user's Questie install: read it, never run it** (security). Questie's data ships as addon code, not SavedVariables, so it's usable only if the coverage sample shows it can be pulled out with a data-only parse: `sv` table constructors and string literals, or the release build's CBOR blocks (we already decode CBOR for Auctionator, F5). If it needs a Lua interpreter to evaluate, it's a no-go. We never embed a Lua VM to run third-party addon code. Reads follow the usual rules: read-only, `safe_read`, and a size cap.
 
 ---
 
