@@ -199,3 +199,25 @@ Prices come from Auctionator's own scan database, never a live feed. So every nu
   - **Dashboard:** the Game folder panel's "Auction prices are 3 days old" row, shown only once prices exist, in warn colour past 7 days.
 - **No Auctionator:** the Auction House nav entry stays live, and the screen shows one stone panel: "Prices come from the Auctionator addon's scans. Install Auctionator, scan once at the auction house, and prices appear here." Add a link to the Addons screen if Auctionator is installed but disabled.
 - **The Sales ledger** in `ah.html` stays out until mail invoices are read (matrix row 43). Leave it out and let the layout close up.
+
+## 11. F6: turning addons on and off per character (`addons-readonly.html?state=…`)
+The side panel's "Enabled for" list becomes editable. Everything else in §9 stands. The states are `?state=edit`, `staged`, `applied`, `running` and `linked`; without `?state`, the page is the F4 read-only screen.
+- **Switches:**
+  - Each character row gets a switch on the right, in place of "on" / "off". Off rows keep their dimmed name.
+  - "On for everyone" sits at the right of the "Enabled for" heading, and sets every switch on. It's staged like any other change.
+- **Stage, then apply. Never write on click:**
+  - Changed rows show "changed" in ember before the switch.
+  - Under the list, an apply bar reads "1 change" (or "3 changes"), with ghost "Discard" and bronze **Apply**, the screen's only primary.
+  - Switching to another addon with changes pending keeps them, and the count covers all addons.
+- **Apply:**
+  - It goes through the write gate: one safety snapshot of the affected characters' AddOns.txt first, then an atomic replace per file.
+  - On success, the bar turns into a green check line: "Questie is on for Thrandor. A safety snapshot was taken first." For several changes: "4 changes applied. A safety snapshot was taken first." Add a ghost **Undo**, which restores that snapshot.
+  - The line stays until the next change or until you leave the screen.
+  - On failure, use one red line under the list with the reason, keep the changes staged, and change nothing on disk.
+- **WoW running:**
+  - Show the ember callout above the toolbar: "**WoW is running, so addon changes are locked.** WoW rewrites each character's AddOns.txt when it closes, so changes wait until then." Add the live dot.
+  - The switches show their state but are locked (dimmed, `not-allowed`, title "Close WoW first"). There's no apply bar.
+  - If WoW starts while changes are staged, keep them and lock Apply as a `LockedAction`.
+- **Refused characters:** if a character's settings folder is a link, its row shows "linked folder" with a link icon instead of a switch. The tooltip reads "Velyra's settings folder is a link to another place, so Forever Buddy won't write there. Change it in-game." The same treatment applies to any character the write gate refuses for a reason known in advance.
+- **The note** under the panel becomes "Changes are written to each character's AddOns.txt when you apply them. A safety snapshot is taken first, so you can undo." While WoW runs, hide it, since the callout says enough.
+- **The table** keeps showing the saved state. Its diamonds update only after Apply succeeds.
