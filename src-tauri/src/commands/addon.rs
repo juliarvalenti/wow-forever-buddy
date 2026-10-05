@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::addon::{self, AddonStatus};
+use crate::applog;
 use crate::error::AppResult;
 use crate::state::AppState;
 
@@ -21,6 +22,14 @@ pub fn addon_install(state: State<'_, AppState>) -> AppResult<AddonStatus> {
     let _job = core.jobs.lock().expect("job lock poisoned");
     let target = core.mutation_target()?;
     addon::install(&core.write_gate()?, &target)?;
+    // The install wrote empty slot stubs: fill them in the same job, so the
+    // game never starts with an empty tooltip index (bridge spec §2).
+    if let Err(e) = core.send_to_game_locked() {
+        applog::append(
+            &core.paths.log_dir,
+            &format!("sending to the game failed: {e}"),
+        );
+    }
     addon::status(&target.game)
 }
 

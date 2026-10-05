@@ -142,6 +142,8 @@ function M.new(opts)
         -- until RequestLoadItemDataByID loads it.
         uncached = {},
         requests = { played = 0, raid = 0, items = 0 },
+        combat = false, -- InCombatLockdown
+        shift = false, -- IsShiftKeyDown
     }
     client.world = world
 
@@ -238,6 +240,26 @@ function M.new(opts)
         end,
         ["C_Bank.FetchPurchasedBankTabIDs"] = function()
             return world.bank_tabs
+        end,
+        InCombatLockdown = function()
+            return world.combat
+        end,
+        IsShiftKeyDown = function()
+            return world.shift
+        end,
+        -- Bags, and with `bank` the bank too, wherever the player is.
+        ["C_Item.GetItemCount"] = function(id, bank)
+            local n = 0
+            for b, bag in pairs(world.bags) do
+                if bank or (b >= 0 and b <= 5) then
+                    for _, item in pairs(bag.slots) do
+                        if item.id == id then
+                            n = n + item.count
+                        end
+                    end
+                end
+            end
+            return n
         end,
         ["C_QuestLog.GetTitleForQuestID"] = function(id)
             return M.QUESTS[id]
@@ -426,7 +448,19 @@ function M.new(opts)
                 table.insert(state.timers, { at = client.now + seconds, fn = fn })
             end,
         }
-        env.Enum = { BagIndex = { Bank = -1 }, BankType = { Character = 0 } }
+        env.Enum = { BagIndex = { Bank = -1 }, BankType = { Character = 0 }, TooltipDataType = { Item = 0 } }
+        -- The game's tooltip hook point: callbacks run after an item tooltip
+        -- is filled (client.hover).
+        env.TooltipDataProcessor = {
+            AddTooltipPostCall = function(kind, fn)
+                state.tooltip[kind] = state.tooltip[kind] or {}
+                table.insert(state.tooltip[kind], fn)
+            end,
+        }
+        env.RAID_CLASS_COLORS = {
+            WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
+            PALADIN = { r = 0.96, g = 0.55, b = 0.73 },
+        }
         for name, f in pairs(api) do
             if not applies(opts.missing, name) then
                 -- "C_Container.GetContainerNumSlots" goes in env.C_Container.
@@ -486,7 +520,7 @@ function M.new(opts)
     -- fails to load it (the beta bug fixed in build 70009).
     function client.login(text, o)
         o = o or {}
-        state = { frames = {}, timers = {} }
+        state = { frames = {}, timers = {}, tooltip = {} }
         state.env = environment()
         -- Every file in the TOC, in its order, as the client does: the bridge
         -- slots (opts.slots["Data/Tooltip1.lua"] = source, else the bundled
@@ -688,6 +722,27 @@ function M.new(opts)
         bagsChanged()
         client.fire("MAIL_CLOSED")
         world.mail_open = false
+    end
+
+    -- Shows the item tooltip for `id`: the game's own line, then whatever
+    -- the item post-calls add. Returns the lines as "left" or "left | right".
+    function client.hover(id)
+        local lines = { M.ITEMS[id] or ("Item " .. id) }
+        local tooltip = {
+            AddLine = function(_, text)
+                table.insert(lines, text)
+            end,
+            AddDoubleLine = function(_, left, right)
+                table.insert(lines, left .. " | " .. right)
+            end,
+        }
+        for _, fn in ipairs(state.tooltip[0] or {}) do
+            local ok, err = pcall(fn, tooltip, { id = id })
+            if not ok then
+                table.insert(client.errors, "tooltip: " .. tostring(err))
+            end
+        end
+        return lines
     end
 
     -- /reload: the file is written, then everything loads again from it.

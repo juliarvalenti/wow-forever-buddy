@@ -9,8 +9,9 @@
 --   listed in _meta.missing_events, and the rest still work.
 -- * This session is built from live APIs. What the client loaded from disk
 --   is only trusted if it validates, and only old sessions come from it.
--- * Nothing visible: no frames shown, no chat output, no Blizzard function
---   replaced or hooked.
+-- * Nothing visible but lines added to the game's own item tooltip, through
+--   TooltipDataProcessor (bridge spec §5): no frames shown, no chat output,
+--   no Blizzard function replaced.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
 -- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
@@ -540,9 +541,210 @@ local function repairCostNow()
     return nil
 end
 
+-- Alt-aware tooltips (bridge spec §5) ---------------------------------------------
+--
+-- Lines added to the game's own item tooltip from the tooltip index: which
+-- alts hold the item, where, and its last scan price. Read-only: the index
+-- is looked up, never run, and the whole callback is pcall'd, so a bad
+-- entry drops our lines rather than raising an error.
+
+local MAX_ROWS = 8 -- in the Shift view
+local COMPACT_NAMES = 3 -- in the default line
+local PLACES = { "bags", "bank", "mail", "worn" }
+local tooltipErrors = 0
+
+-- Slot text shown as text: every "|" doubled, so a name can't carry an item
+-- link, a texture or a colour code.
+local function plain(s)
+    return (string.gsub(tostring(s), "|", "||"))
+end
+
+-- "1g 12s", "45s", "8c".
+local function coins(copper)
+    local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+    if g > 0 then
+        return s > 0 and (g .. "g " .. s .. "s") or (g .. "g")
+    elseif s > 0 then
+        return c > 0 and (s .. "s " .. c .. "c") or (s .. "s")
+    end
+    return c .. "c"
+end
+
+-- "today", "1 day ago", "3 days ago".
+local function ago(t)
+    local days = math.floor(((now() or t) - t) / 86400)
+    if days < 1 then
+        return "today"
+    end
+    return days == 1 and "1 day ago" or (days .. " days ago")
+end
+
+local function isMe(alt)
+    return character ~= nil
+        and alt.name == character.name
+        and (alt.surname or "") == (character.surname or "")
+end
+
+local function classColor(class)
+    return RAID_CLASS_COLORS and RAID_CLASS_COLORS[class or ""]
+end
+
+-- An alt's place for the compact line: where most of its stack is.
+local function mainPlace(row)
+    local best = 1
+    for p = 2, 4 do
+        if row.places[p] > row.places[best] then
+            best = p
+        end
+    end
+    return PLACES[best]
+end
+
+-- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
+-- with names in class colour, at most three, then the price and a hint.
+local function compactLines(tooltip, others, price)
+    local parts = {}
+    for k = 1, math.min(#others, COMPACT_NAMES) do
+        local row = others[k]
+        local name, c = plain(row.name), classColor(row.class)
+        if c then
+            -- Our own colour code around the escaped name; |r returns to gold.
+            name = string.format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5),
+                math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) .. name .. "|r"
+        end
+        parts[#parts + 1] = name .. " " .. row.total .. " " .. mainPlace(row)
+    end
+    if #others > COMPACT_NAMES then
+        parts[#parts + 1] = "+" .. (#others - COMPACT_NAMES) .. " more"
+    end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Your alts: " .. table.concat(parts, " · "), 1, 0.82, 0)
+    if price > 0 then
+        -- "~", not "≈": the game's fonts may not have the glyph.
+        tooltip:AddLine("~" .. coins(price) .. " each at your last scan", 1, 1, 1)
+    end
+    tooltip:AddLine("Shift for details", 0.5, 0.6, 0.8)
+end
+
+-- The Shift view: a head, this character first with its live count, then
+-- each alt by place and date, the total and the scan.
+local function fullLines(tooltip, slot, id, others, price)
+    local rows, total = {}, 0
+    local mine = read("C_Item.GetItemCount", id, true)
+    if type(mine) == "number" and mine > 0 and character and character.name then
+        rows[1] = { name = character.name, class = character.class, total = mine, live = true }
+        total = mine
+    end
+    for _, row in ipairs(others) do
+        rows[#rows + 1] = row
+        total = total + row.total
+    end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
+    for k = 1, math.min(#rows, MAX_ROWS) do
+        local row = rows[k]
+        local right
+        if row.live then
+            right = row.total .. " · on you"
+        else
+            local where = {}
+            for p = 1, 4 do
+                if row.places[p] > 0 then
+                    where[#where + 1] = row.places[p] .. " " .. PLACES[p]
+                end
+            end
+            right = table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
+        end
+        local c = classColor(row.class)
+        if c then
+            tooltip:AddDoubleLine(plain(row.name), right, c.r, c.g, c.b, 1, 1, 1)
+        else
+            tooltip:AddDoubleLine(plain(row.name), right, 1, 1, 1, 1, 1, 1)
+        end
+    end
+    if #rows > MAX_ROWS then
+        tooltip:AddLine("+" .. (#rows - MAX_ROWS) .. " more", 0.6, 0.6, 0.6)
+    end
+    if #rows >= 2 then
+        tooltip:AddDoubleLine("All characters", tostring(total), 1, 0.82, 0, 1, 1, 1)
+    end
+    if price > 0 then
+        local scan = type(slot.scanAt) == "number" and (" · " .. ago(slot.scanAt)) or ""
+        tooltip:AddDoubleLine("Last scan", "~" .. coins(price) .. " each" .. scan, 1, 0.82, 0, 1, 1, 1)
+    end
+    tooltip:AddLine("As of each alt's last logout", 0.5, 0.5, 0.5)
+end
+
+local function addItemLines(tooltip, id)
+    if type(id) ~= "number" or isSecret(id) or read("InCombatLockdown") then
+        return
+    end
+    local name = (id % 2 == 0) and "Tooltip1" or "Tooltip2"
+    local slot = slots[name]
+    if not slot then
+        local r = receipts and receipts[name]
+        if r and r.schema and r.schema ~= SLOT_SCHEMA then
+            tooltip:AddLine(" ")
+            tooltip:AddLine("From a newer Forever Buddy. Update the addon from the app.", 0.6, 0.6, 0.6)
+        end
+        return
+    end
+    if slot.tooLarge then
+        tooltip:AddLine(" ")
+        tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
+        tooltip:AddLine("Alt data too large to send", 0.6, 0.6, 0.6)
+        return
+    end
+    local entry = type(slot.items) == "table" and slot.items[id]
+    local alts = type(slot.alts) == "table" and slot.alts or {}
+    -- The other alts holding it, from the index.
+    local others = {}
+    if type(entry) == "table" then
+        for i = 2, #entry, 5 do
+            local alt = alts[entry[i]]
+            if type(alt) == "table" and not isMe(alt) then
+                local row = { name = alt.name, class = alt.class, total = 0, places = {}, alt = alt }
+                for p = 1, 4 do
+                    local n = tonumber(entry[i + p]) or 0
+                    row.places[p] = n
+                    row.total = row.total + n
+                end
+                if row.total > 0 then
+                    others[#others + 1] = row
+                end
+            end
+        end
+    end
+    -- Nothing when only this character has it, or nobody does: never an
+    -- empty head (INGAME §8).
+    if #others == 0 then
+        return
+    end
+    local price = type(entry) == "table" and tonumber(entry[1]) or 0
+    if read("IsShiftKeyDown") then
+        fullLines(tooltip, slot, id, others, price)
+    else
+        compactLines(tooltip, others, price)
+    end
+end
+
+local hooked = false
+local function hookTooltips()
+    if hooked or not (TooltipDataProcessor and Enum and Enum.TooltipDataType) then
+        return
+    end
+    hooked = true
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if not pcall(addItemLines, tooltip, data and data.id) then
+            tooltipErrors = tooltipErrors + 1
+        end
+    end)
+end
+
 handlers.PLAYER_LOGIN = function()
     local t = now()
     character = identity()
+    hookTooltips()
     session = {
         id = t,
         login = t,
@@ -786,6 +988,7 @@ handlers.PLAYER_LOGOUT = function()
         loaded_prior = loaded ~= nil,
         truncated = truncated,
         secret_hits = secretHits,
+        tooltip_errors = tooltipErrors > 0 and tooltipErrors or nil,
         missing_events = missingEvents,
         errors = errors,
     }
