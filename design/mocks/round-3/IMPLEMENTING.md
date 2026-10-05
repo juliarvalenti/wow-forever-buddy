@@ -141,3 +141,35 @@ The addon records `lockouts[] = {name, difficulty, reset_at, raid}` at login, fo
   - The meta reads "N characters saved". Show at most five rows.
 - **Bank alt:** a switch labelled "Bank alt" in the sheet's top bar, left of the alt arrows. It's set by the user, stored in the app's database, never written to the game, and off by default.
   - When it's on, the card shows the "Bank" tag after the name (`characters.html`) and the Dashboard roster shows "bank" (`dashboard.html`). Nothing else changes: sorting and totals stay the same.
+
+## 9. F4: Addons, read-only (`addons-readonly.html`)
+This is the first cut of `addons.html` (the v0.5 sketch). **Nothing on this screen writes.** That means no sets, installs, updates, toggles, sources or sizes, no running callout, and no locked buttons. The sidebar's "Addons · soon" becomes a normal entry.
+- **Header:**
+  - The lede reads "51 installed in _classic_beta_\Interface\AddOns · WoW: Forever reads Interface 16001". Take the interface number from the flavour, not a constant, if it's known.
+  - The one action is a stone "Open AddOns folder". This screen has no bronze primary.
+- **Toolbar:**
+  - A filter field that matches the name or author.
+  - A `Segmented` with counts: "All 51 · Out of date 2 · Off everywhere 3".
+  - Meta on the right: "Read from each character's AddOns.txt · 4 min ago".
+- **Table:**
+  - **Addon:** a letter tile, the TOC title, and the version underneath.
+  - **Author:** hidden under 1100px.
+  - **Interface:** the number. If it's lower than the game's, use warn colour and "11504 · out of date".
+  - **Enabled for:** one class-coloured diamond per character, hollow when off, then "all", "none" or "3 of 5". The tooltip lists "Name: on/off".
+  - Sort by title. Clicking a row selects it, with an ember left edge as in `DataTable`.
+- **Side panel (the selected addon, the first one by default):**
+  - The title, with the version in the meta.
+  - The TOC `## Notes` as a sentence.
+  - Author, Interface, "Needs" (from `## Dependencies` / `## RequiredDeps`, or "nothing else"), and Folder (start-truncated, full path in the tooltip).
+  - **Enabled for:** each character in class colour with "on" or "off", and off rows dimmed.
+  - The closing note: "Toggling addons comes later, with a safety snapshot first. For now, change them in-game from the AddOns button on the character screen."
+  - For an out-of-date addon, add a warn note: "Built for an older interface. WoW loads it only with 'Load out of date AddOns' checked."
+- **Reading TOCs:**
+  - Strip WoW colour codes (`|cffRRGGBB…|r`) and texture tags (`|T…|t`) from titles and notes before showing them. Render everything as React text.
+  - Skip `Blizzard_*` folders.
+  - When a folder has several TOCs, use the one the game would load for this flavour, and fall back to the plain `<Folder>.toc`.
+  - A folder without a TOC isn't an addon, so leave it out of the count.
+- **Enabled state:**
+  - Read `WTF/Account/*/<group>/<Character>/AddOns.txt`. A missing line means the TOC's `## DefaultState` (enabled if unset). Characters without an AddOns.txt use the defaults.
+  - Show the same characters as Characters, older folders excluded (W1b).
+- **Empty:** if no AddOns folder or no addons exist, show one stone panel reading "No addons in _classic_beta_\Interface\AddOns yet.", with Open AddOns folder.
