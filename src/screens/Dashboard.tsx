@@ -160,7 +160,7 @@ export function Dashboard({
       />
 
       {folderMissing != null && (
-        <Callout tone="ember">
+        <Callout tone="stone">
           <span>
             <b>We can't find your game folder, so new backups are paused.</b> Your backups are safe.{" "}
             <span className="d-dim">({folderMissing})</span>

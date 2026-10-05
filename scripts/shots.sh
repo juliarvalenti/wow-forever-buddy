@@ -16,7 +16,8 @@ PORT=4173
 FONT=$(fc-match -f '%{file}' sans 2>/dev/null || echo /System/Library/Fonts/Supplemental/Arial.ttf)
 mkdir -p "$OUT"
 
-NAV='click:css=nav button >> text=Backups'
+# By title: below 1100px the nav is an icon rail and its labels are hidden.
+NAV='click:css=nav button[title="Backups"]'
 OPEN='click:text=On game exit >> nth=0'
 # (`wait:` takes a selector: each step waits for what the shot needs.)
 CONFIRM="click:Thrandor;click:css=.d-main button >> text=Restore >> nth=-1;wait:css=.d-dialog"

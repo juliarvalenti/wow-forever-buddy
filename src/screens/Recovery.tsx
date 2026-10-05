@@ -77,31 +77,53 @@ export function RecoveryDialog({
       onClose={busy ? undefined : onLater}
       footer={
         <>
-          <Button variant="ghost" onClick={onLater} disabled={busy}>
-            Decide later
-          </Button>
+          <span className="d-dim" style={{ fontSize: 11.5 }}>
+            Either way, the safety copy stays in Backups.
+          </span>
+          <span className="d-grow" />
           <Button variant="ghost" onClick={() => resolve("discard")} disabled={busy} title={LEAVE_WHY}>
             Leave files as they are
           </Button>
-          <span className="d-grow" />
-          <Button onClick={() => preview("finish")} disabled={busy}>
-            Finish restore…
+          <Button variant="ghost" onClick={onLater} disabled={busy}>
+            Decide later
           </Button>
-          <PrimaryButton onClick={() => preview("roll_back")} disabled={busy}>
-            Roll back…
-          </PrimaryButton>
         </>
       }
     >
       <p>
-        Restoring <b>{journal.summary}</b> stopped partway ({when(journal.started_at)}).
+        The app closed while restoring. Some files may be from the backup and some from before.
+        Pick one way to make them consistent again.
       </p>
-      <p>
-        <b>Roll back</b> (recommended) puts back exactly what was there before. <b>Finish restore</b>{" "}
-        completes it.
-      </p>
-      {takenAt && <p className="d-muted">Safety copy: taken {when(takenAt)}</p>}
-      <p className="d-dim">Either way, the safety copy stays in Backups.</p>
+      <dl className="d-facts">
+        <dt>Restoring</dt>
+        <dd>{journal.summary}</dd>
+        <dt>Started</dt>
+        <dd>{when(journal.started_at)}</dd>
+        {takenAt && (
+          <>
+            <dt>Safety copy</dt>
+            <dd>Taken {when(takenAt)}, before anything changed</dd>
+          </>
+        )}
+      </dl>
+      <div className="d-choices">
+        <div className="pick">
+          <div className="t">
+            Roll back <span className="d-pill manual">Recommended</span>
+          </div>
+          <div className="d">Put the files back exactly as they were before the restore, using the safety copy.</div>
+          <PrimaryButton onClick={() => preview("roll_back")} disabled={busy}>
+            Roll back…
+          </PrimaryButton>
+        </div>
+        <div>
+          <div className="t">Finish restore</div>
+          <div className="d">Write the remaining files from the snapshot, as you originally asked.</div>
+          <Button onClick={() => preview("finish")} disabled={busy}>
+            Finish restore…
+          </Button>
+        </div>
+      </div>
       {error && <Callout tone="bad">{error}</Callout>}
     </Dialog>
   );
