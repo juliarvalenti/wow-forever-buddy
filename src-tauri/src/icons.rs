@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::casc::{self, BuildInfo, Casc, IconCache};
+use crate::casc::{self, BuildInfo, Casc, CascError, IconCache};
 
 /// Close the storage after this long without a miss.
 const IDLE: Duration = Duration::from_secs(60);
@@ -35,7 +35,9 @@ pub struct IconCacheStatus {
     /// game's data can't be read (no install, or not a CASC install).
     pub build: Option<String>,
     /// This build's art files couldn't be read: the storage wouldn't open,
-    /// or every icon tried failed and none is cached. Items show letters.
+    /// or reads failed on damaged data with nothing read and none cached.
+    /// Icons not downloaded yet, encrypted or not in the build don't count:
+    /// those are one icon's letter, not a problem reading the game.
     pub unreadable: bool,
 }
 
@@ -79,7 +81,11 @@ impl Icons {
             open: None,
             open_failed: None,
             failed: HashSet::new(),
+            not_local: HashSet::new(),
+            not_local_index: Vec::new(),
+            not_local_since: None,
             read: 0,
+            broken: 0,
             build: None,
             health: Arc::default(),
         };
@@ -141,7 +147,7 @@ impl Icons {
         let unreadable = build.as_ref().is_some_and(|b| {
             self.health.lock().is_ok_and(|h| {
                 h.build.as_ref() == Some(b)
-                    && (h.open_failed || (h.read == 0 && h.failed > 0 && files == 0))
+                    && (h.open_failed || (h.read == 0 && h.broken > 0 && files == 0))
             })
         });
         IconCacheStatus {
@@ -174,11 +180,20 @@ struct Worker {
     open: Option<(Casc, Instant)>,
     /// The build whose storage wouldn't open, and when.
     open_failed: Option<(BuildInfo, Instant)>,
-    /// Icons that failed for `build`: not tried again until the build
-    /// changes or the cache is cleared.
+    /// Icons that failed for `build` (not in it, encrypted, damaged): not
+    /// tried again until the build changes or the cache is cleared.
     failed: HashSet<u32>,
+    /// Icons in the build but not downloaded yet (`NotLocal`): tried again
+    /// once the local index changes (Battle.net streamed something in), or
+    /// after `RETRY_OPEN` in case that was missed.
+    not_local: HashSet<u32>,
+    /// The index set those were missing from, and when the first one was.
+    not_local_index: Vec<PathBuf>,
+    not_local_since: Option<Instant>,
     /// Icons read for `build` since it was first seen (or the last clear).
     read: u32,
+    /// Reads that failed because the data couldn't be read (`is_broken`).
+    broken: u32,
     build: Option<BuildInfo>,
     health: Arc<Mutex<Health>>,
 }
@@ -189,7 +204,7 @@ struct Health {
     build: Option<BuildInfo>,
     open_failed: bool,
     read: u32,
-    failed: u32,
+    broken: u32,
 }
 
 impl Worker {
@@ -224,9 +239,8 @@ impl Worker {
     }
 
     fn clear(&mut self) -> std::io::Result<()> {
-        self.failed.clear();
+        self.forget();
         self.open_failed = None;
-        self.read = 0;
         self.publish();
         match std::fs::remove_dir_all(&self.dir) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
@@ -262,6 +276,7 @@ impl Worker {
             return finish(jobs, None, &IconFill::default());
         };
         self.use_build(&build);
+        self.check_index(flavor);
         let cache = IconCache::new(&self.dir);
 
         let mut wanted: Vec<u32> = Vec::new();
@@ -274,6 +289,7 @@ impl Worker {
             for &id in ids {
                 if !wanted.contains(&id)
                     && !self.failed.contains(&id)
+                    && !self.not_local.contains(&id)
                     && cache.cached(&build, id).is_none()
                 {
                     wanted.push(id);
@@ -282,13 +298,27 @@ impl Worker {
         }
         let mut fill = IconFill::default();
         if !wanted.is_empty() {
-            match self.casc(flavor, &build) {
-                Some(casc) => {
-                    for (id, result) in cache.fill(casc, &wanted) {
+            let outcome = self
+                .casc(flavor, &build)
+                .map(|casc| (cache.fill(casc, &wanted), casc.index_set()));
+            match outcome {
+                Some((results, index)) => {
+                    for (id, result) in results {
                         match result {
                             Ok(_) => fill.read += 1,
-                            Err(_) => {
+                            Err(CascError::NotLocal) => {
                                 fill.failed += 1;
+                                if self.not_local.is_empty() {
+                                    self.not_local_index = index.clone();
+                                    self.not_local_since = Some(Instant::now());
+                                }
+                                self.not_local.insert(id);
+                            }
+                            Err(e) => {
+                                fill.failed += 1;
+                                if e.is_broken() {
+                                    self.broken += 1;
+                                }
                                 self.failed.insert(id);
                             }
                         }
@@ -312,30 +342,66 @@ impl Worker {
                     .as_ref()
                     .is_some_and(|(b, _)| Some(b) == self.build.as_ref()),
                 read: self.read,
-                failed: self.failed.len() as u32,
+                broken: self.broken,
             };
         }
     }
 
-    /// A new build: forget what failed for the old one and delete its icons.
+    /// Everything remembered about this build's reads.
+    fn forget(&mut self) {
+        self.failed.clear();
+        self.not_local.clear();
+        self.not_local_since = None;
+        self.read = 0;
+        self.broken = 0;
+    }
+
+    /// Battle.net added files (a new index version): an open storage can't
+    /// see them, and what wasn't downloaded may be now.
+    fn check_index(&mut self, flavor: &Path) {
+        if self.not_local.is_empty() && self.open.is_none() {
+            return;
+        }
+        let Ok(now) = casc::index_set(flavor) else {
+            return;
+        };
+        if self
+            .open
+            .as_ref()
+            .is_some_and(|(c, _)| c.index_set() != now)
+        {
+            self.open = None;
+        }
+        let stale = self
+            .not_local_since
+            .is_some_and(|at| at.elapsed() > RETRY_OPEN);
+        if !self.not_local.is_empty() && (now != self.not_local_index || stale) {
+            self.not_local.clear();
+            self.not_local_since = None;
+        }
+    }
+
+    /// A new build: forget what failed for the old one and delete its
+    /// icons. Other products' icons (Classic next to Forever) are kept.
     fn use_build(&mut self, build: &BuildInfo) {
         if self.build.as_ref() == Some(build) {
             return;
         }
-        self.failed.clear();
-        self.read = 0;
+        self.forget();
         self.open = None;
-        let keep = casc::cache_path(&self.dir, build, 0)
-            .parent()
-            .map(Path::to_path_buf);
-        for entry in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
-            let path = entry.path();
-            let ours = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.len() == 32 && n.bytes().all(|b| b.is_ascii_hexdigit()));
-            if ours && Some(&path) != keep.as_ref() && path.is_dir() {
-                let _ = std::fs::remove_dir_all(&path);
+        let keep = casc::build_dir(&self.dir, build);
+        // This product's other builds, and builds from before icons were
+        // kept per product (`<cache>/<build key>`).
+        for parent in [self.dir.join(&build.product), self.dir.clone()] {
+            for entry in std::fs::read_dir(&parent).into_iter().flatten().flatten() {
+                let path = entry.path();
+                let is_build = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.len() == 32 && n.bytes().all(|b| b.is_ascii_hexdigit()));
+                if is_build && path != keep && path.is_dir() {
+                    let _ = std::fs::remove_dir_all(&path);
+                }
             }
         }
         self.build = Some(build.clone());
@@ -394,7 +460,7 @@ fn finish(jobs: Vec<Job>, cache: Option<(&IconCache, &BuildInfo)>, fill: &IconFi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::casc::tests::{install, ICON, LOCKED};
+    use crate::casc::tests::{install, ICON, LOCKED, STREAMED};
 
     fn get(icons: &Icons, flavor: &Path, id: u32) -> Option<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
@@ -475,19 +541,65 @@ mod tests {
     }
 
     #[test]
-    fn another_builds_icons_are_pruned_and_nothing_else() {
+    fn this_products_old_builds_are_pruned_and_nothing_else() {
         let game = install();
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("icons");
-        let old = dir.join("ffffffffffffffffffffffffffffffff");
+        let old = "ffffffffffffffffffffffffffffffff";
+        let ours_old = dir.join("wow_classic_beta").join(old);
+        let legacy = dir.join(old); // before icons were kept per product
+        let classic = dir.join("wow_classic").join(old);
         let other = dir.join("not-a-build");
-        std::fs::create_dir_all(&old).unwrap();
-        std::fs::create_dir_all(&other).unwrap();
-        std::fs::write(old.join("1.png"), b"old").unwrap();
+        for d in [&ours_old, &legacy, &classic, &other] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("1.png"), b"old").unwrap();
+        }
 
         let icons = Icons::start(dir.clone(), tmp.path().to_path_buf());
         assert!(get(&icons, &game.flavor, ICON).is_some());
-        assert!(!old.exists());
+        assert!(!ours_old.exists());
+        assert!(!legacy.exists());
+        assert!(classic.exists(), "another product's icons are kept");
         assert!(other.exists());
+    }
+
+    #[test]
+    fn a_streamed_icon_shows_once_the_game_downloads_it() {
+        let mut game = install();
+        let tmp = tempfile::tempdir().unwrap();
+        let icons = Icons::start(tmp.path().join("icons"), tmp.path().to_path_buf());
+
+        assert!(get(&icons, &game.flavor, ICON).is_some());
+        assert_eq!(get(&icons, &game.flavor, STREAMED), None);
+        // Asked again with nothing new downloaded: still no icon.
+        assert_eq!(get(&icons, &game.flavor, STREAMED), None);
+
+        // Battle.net streams it in (a new index version): the next request
+        // reopens the storage and reads it, without a Clear or a restart.
+        game.stream_in();
+        let png = get(&icons, &game.flavor, STREAMED).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
+    }
+
+    #[test]
+    fn only_damaged_data_says_the_art_files_cant_be_read() {
+        // Not downloaded and encrypted are one icon's letter, even when
+        // they're all that was asked for and nothing is cached.
+        let game = install();
+        let tmp = tempfile::tempdir().unwrap();
+        let icons = Icons::start(tmp.path().join("icons"), tmp.path().to_path_buf());
+        let fill = icons
+            .rebuild(game.flavor.clone(), vec![STREAMED, LOCKED, 999])
+            .unwrap();
+        assert_eq!(fill, IconFill { read: 0, failed: 3 });
+        let status = icons.status(Some(&game.flavor));
+        assert_eq!(status.files, 0);
+        assert!(!status.unreadable);
+
+        // Damaged data with nothing read does.
+        game.damage_icon();
+        let fill = icons.rebuild(game.flavor.clone(), vec![ICON]).unwrap();
+        assert_eq!(fill, IconFill { read: 0, failed: 1 });
+        assert!(icons.status(Some(&game.flavor)).unreadable);
     }
 }
