@@ -5,6 +5,7 @@ use tauri_specta::Event;
 use crate::backup::export::{export_zip, ExportReport};
 use crate::backup::journal;
 use crate::backup::manifest::{SnapshotSummary, Trigger};
+use crate::backup::relocate::MoveReport;
 use crate::backup::retention::POLICY;
 use crate::backup::tree::SnapshotDetail;
 use crate::backup::{clean_label, PruneReport, SnapshotRequest, SnapshotScope, StorageInfo};
@@ -192,4 +193,18 @@ pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
     let held = journal::held_snapshots(&core.paths.local_data_dir)?;
     core.backups()?
         .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now, &held)
+}
+
+/// Settings' "Store backups in": moves the store to a picked folder (into
+/// its own subfolder there), or back to the default with `None`, and points
+/// the setting at it. Waits for any running backup or restore.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_move_location(
+    state: State<'_, AppState>,
+    location: Option<String>,
+) -> AppResult<MoveReport> {
+    state
+        .core
+        .move_backups(location.map(std::path::PathBuf::from))
 }

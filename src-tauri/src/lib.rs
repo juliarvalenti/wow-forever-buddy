@@ -54,6 +54,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::backup_get,
             commands::backup::backup_list,
             commands::backup::backup_prune_now,
+            commands::backup::backup_move_location,
             commands::backup::backup_set_label,
             commands::backup::backup_set_pinned,
             commands::backup::backup_storage,

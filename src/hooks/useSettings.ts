@@ -15,9 +15,14 @@ export function useSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** Re-reads them, after a backend-side change (moving the backups). */
+  const reload = useCallback(
+    () => commands.settingsGet().then(setSettings, (e) => setError(errorText(e))),
+    [],
+  );
   useEffect(() => {
-    commands.settingsGet().then(setSettings, (e) => setError(errorText(e)));
-  }, []);
+    reload();
+  }, [reload]);
 
   /** Applies a patch; the backend's answer is what's shown. Errors (a
    *  backup location inside the game folder, say) are kept for the UI. */
@@ -32,7 +37,7 @@ export function useSettings() {
     }
   }, []);
 
-  return { settings, error, update };
+  return { settings, error, update, reload };
 }
 
 /** Which integration keys are saved in the OS credential store. The values

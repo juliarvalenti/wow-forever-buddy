@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use crate::backup::relocate::{self, MoveReport};
 use crate::backup::BackupService;
 use crate::config::paths::AppPaths;
 use crate::config::settings::SettingsStore;
@@ -88,10 +89,81 @@ impl AppCore {
     /// subfolder, never at the top: the store's GC deletes files it doesn't
     /// recognize as referenced, so it must only ever see a folder it owns.
     pub fn backups_dir(&self) -> PathBuf {
-        match self.settings.get().backup.location {
+        self.store_dir_for(self.settings.get().backup.location.as_deref())
+    }
+
+    fn store_dir_for(&self, location: Option<&std::path::Path>) -> PathBuf {
+        match location {
             Some(picked) => picked.join(STORE_FOLDER),
             None => self.paths.local_data_dir.join("backups"),
         }
+    }
+
+    /// Moves the backup store to `location` (None = the default) and points
+    /// the setting there (F1), as a job so no backup or restore runs
+    /// meanwhile. Refused while an interrupted restore waits, and for a
+    /// location the setting would refuse anyway. See `backup::relocate`:
+    /// the old store stays in use until the copy is complete and opens.
+    pub fn move_backups(&self, location: Option<PathBuf>) -> AppResult<MoveReport> {
+        let _job = self.jobs.lock().expect("job lock poisoned");
+        if crate::backup::journal::read(&self.paths.local_data_dir)?.is_some() {
+            return Err(AppError::RestorePending);
+        }
+        self.settings
+            .check(|s| s.backup.location = location.clone())?;
+
+        let src = self.backups_dir();
+        let dst = self.store_dir_for(location.as_deref());
+        let report = |files, bytes, left_behind| MoveReport {
+            dir: dst.display().to_string(),
+            files,
+            bytes: bytes as f64,
+            left_behind,
+        };
+        if relocate::same_dir(&src, &dst) {
+            self.settings.update(|s| s.backup.location = location)?;
+            return Ok(report(0, 0, None));
+        }
+
+        // Nothing to carry over if the store was never created (or its
+        // drive is gone): then this only points the setting elsewhere.
+        let (files, bytes) = if src.exists() {
+            relocate::copy_store(&src, &dst)?
+        } else {
+            (0, 0)
+        };
+        let service = match BackupService::open(&dst, self.db.clone()) {
+            Ok(s) => Arc::new(s),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&dst);
+                return Err(AppError::Io(format!(
+                    "the copied backups didn't open, so nothing was moved: {e}"
+                )));
+            }
+        };
+        if let Err(e) = self.settings.update(|s| s.backup.location = location) {
+            let _ = std::fs::remove_dir_all(&dst);
+            return Err(e);
+        }
+        *self.backups.lock().expect("backups lock poisoned") = Some(service);
+
+        // The new store is in use; the old copy goes. The old folder is the
+        // app's own (the default, or a picked folder's STORE_FOLDER), never
+        // the picked folder itself.
+        let left_behind = match src.exists().then(|| std::fs::remove_dir_all(&src)) {
+            Some(Err(e)) => {
+                crate::applog::append(
+                    &self.paths.log_dir,
+                    &format!(
+                        "moved backups, but the old folder stays: {} ({e})",
+                        src.display()
+                    ),
+                );
+                Some(src.display().to_string())
+            }
+            _ => None,
+        };
+        Ok(report(files, bytes, left_behind))
     }
 
     /// The backup store at the currently configured location, opened (or
@@ -278,6 +350,104 @@ mod tests {
             Arc::ptr_eq(&second, &core.backups().unwrap()),
             "reused while unchanged"
         );
+    }
+
+    /// A core with the fixture game and one full snapshot.
+    fn core_with_a_snapshot() -> (tempfile::TempDir, AppCore, String) {
+        let (dir, root) = crate::test_support::fixture_copy();
+        let core = AppCore::new(AppPaths::under(&dir.path().join("app"))).unwrap();
+        crate::install::set(&core.settings, &root, None).unwrap();
+        let game = core.active_game().unwrap();
+        let summary = core
+            .backups()
+            .unwrap()
+            .create(
+                crate::backup::SnapshotRequest {
+                    game: &game.root,
+                    flavor: &game.flavor,
+                    trigger: crate::backup::manifest::Trigger::Manual,
+                    label: None,
+                    scope: crate::backup::SnapshotScope::Full {
+                        include_addons: false,
+                    },
+                    game_running: false,
+                },
+                &mut |_, _| {},
+            )
+            .unwrap()
+            .unwrap();
+        (dir, core, summary.id)
+    }
+
+    /// Every snapshot listed, and every blob it needs readable.
+    fn assert_whole(core: &AppCore, id: &str) {
+        let store = core.backups().unwrap();
+        let ids: Vec<_> = store.list().unwrap().into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![id.to_string()]);
+        for hash in store.referenced_blobs().unwrap() {
+            assert!(store.blobs().check(&hash).is_none(), "blob {hash} readable");
+        }
+    }
+
+    /// F1: moving the store carries every snapshot over, switches to it,
+    /// and removes the old copy; moving back to the default works too.
+    #[test]
+    fn moving_the_store_carries_the_backups() {
+        let (dir, core, id) = core_with_a_snapshot();
+        let default = core.backups_dir();
+        let elsewhere = dir.path().join("Elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+
+        let report = core.move_backups(Some(elsewhere.clone())).unwrap();
+        assert!(
+            report.files > 0 && report.left_behind.is_none(),
+            "{report:?}"
+        );
+        assert_eq!(core.backups_dir(), elsewhere.join(STORE_FOLDER));
+        assert_eq!(core.settings.get().backup.location, Some(elsewhere.clone()));
+        assert!(!default.exists(), "the old copy is gone");
+        assert_whole(&core, &id);
+
+        core.move_backups(None).unwrap();
+        assert_eq!(core.backups_dir(), default);
+        assert!(!elsewhere.join(STORE_FOLDER).exists());
+        assert!(elsewhere.is_dir(), "the picked folder itself stays");
+        assert_whole(&core, &id);
+    }
+
+    /// Refusals change nothing: a folder with someone's files in it, one
+    /// inside the game folder, and any move while a restore waits.
+    #[test]
+    fn a_refused_move_changes_nothing() {
+        let (dir, core, id) = core_with_a_snapshot();
+        let before = core.backups_dir();
+
+        let used = dir.path().join("Used");
+        std::fs::create_dir_all(used.join(STORE_FOLDER)).unwrap();
+        std::fs::write(used.join(STORE_FOLDER).join("notes.txt"), b"mine").unwrap();
+        assert!(core.move_backups(Some(used)).is_err());
+
+        let game_root = core.settings.get().install.unwrap().root;
+        let inside = game_root.join("Backups");
+        assert!(matches!(
+            core.move_backups(Some(inside.clone())),
+            Err(AppError::InvalidSettings(_))
+        ));
+        assert!(!inside.exists(), "refused before copying anything");
+
+        std::fs::write(
+            core.paths
+                .local_data_dir
+                .join(crate::backup::journal::FILE_NAME),
+            b"{ interrupted",
+        )
+        .unwrap();
+        assert!(core.move_backups(Some(dir.path().join("Free"))).is_err());
+        assert!(!dir.path().join("Free").exists());
+
+        assert_eq!(core.backups_dir(), before);
+        assert_eq!(core.settings.get().backup.location, None);
+        assert_whole(&core, &id);
     }
 
     /// Review note: the game root comes from the links recorded when the

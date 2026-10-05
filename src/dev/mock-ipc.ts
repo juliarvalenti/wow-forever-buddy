@@ -547,6 +547,15 @@ export function installMockIpc(): void {
       over_budget: false,
     }),
     "plugin:dialog|open": () => "D:\\Backups",
+    backup_move_location: ({ location }) => {
+      settings.backup.location = (location as string | null) ?? null;
+      return {
+        dir: location ? `${location}\\WoW Forever Buddy backups` : "C:\\…\\backups",
+        files: 1843,
+        bytes: 1.16e9,
+        left_behind: null,
+      };
+    },
     app_open_folder: () => null,
     startup_open_data_folder: () => null,
     backup_list: () => list,

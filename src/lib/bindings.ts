@@ -125,6 +125,12 @@ export const commands = {
 	 *  restore still needs, and refuses while its journal is unreadable.
 	 */
 	backupPruneNow: () => __TAURI_INVOKE<PruneReport>("backup_prune_now"),
+	/**
+	 *  Settings' "Store backups in": moves the store to a picked folder (into
+	 *  its own subfolder there), or back to the default with `None`, and points
+	 *  the setting at it. Waits for any running backup or restore.
+	 */
+	backupMoveLocation: (location: string | null) => __TAURI_INVOKE<MoveReport>("backup_move_location", { location }),
 	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
 	backupSetPinned: (id: string, pinned: boolean) => __TAURI_INVOKE<SnapshotSummary>("backup_set_pinned", { id, pinned }),
 	/**  The storage meter and the retention sentence for the Backups header. */
@@ -945,6 +951,19 @@ export type Marker = {
 export type MoneyPoint = {
 	at: string,
 	money: number | null,
+};
+
+/**  What a move did, for the Settings screen. */
+export type MoveReport = {
+	/**  The store's folder now. */
+	dir: string,
+	files: number,
+	bytes: number | null,
+	/**
+	 *  The old folder, if removing it failed after the move. The backups
+	 *  are safe in the new one; this is a leftover copy to delete by hand.
+	 */
+	left_behind: string | null,
 };
 
 /**

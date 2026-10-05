@@ -96,7 +96,7 @@ export function Settings({
   install: ReturnType<typeof useInstall>;
   onOpenGameFolder: () => void;
 }) {
-  const { settings, error, update } = useSettings();
+  const { settings, error, update, reload } = useSettings();
   const { storage, refresh: refreshBackups } = useBackups();
   const info = useAppInfo();
   const secrets = useSecrets();
@@ -112,9 +112,33 @@ export function Settings({
       ? join(info.paths.local_data_dir, "backups")
       : "…";
 
+  // Moving copies every backup to the new folder, then removes the old one.
+  const [moving, setMoving] = useState(false);
+  const [moved, setMoved] = useState<{ ok: boolean; text: string } | null>(null);
+  const move = async (to: string | null) => {
+    setMoving(true);
+    setMoved(null);
+    try {
+      const r = await commands.backupMoveLocation(to);
+      await reload();
+      refreshBackups();
+      setMoved({
+        ok: true,
+        text: r.left_behind
+          ? `Moved. The old folder couldn't be removed; delete it by hand: ${r.left_behind}`
+          : r.files > 0
+            ? `Moved ${bytes(r.bytes)} of backups.`
+            : "Backups will be stored here from now on.",
+      });
+    } catch (e) {
+      setMoved({ ok: false, text: errorText(e) });
+    } finally {
+      setMoving(false);
+    }
+  };
   const chooseLocation = async () => {
     const path = await open({ directory: true, multiple: false });
-    if (typeof path === "string") await update({ backup: { location: path } });
+    if (typeof path === "string") await move(path);
   };
 
   const connected = SERVICES.filter((s) => s.keys.every((k) => secrets.isSet(k.id))).length;
@@ -200,20 +224,25 @@ export function Settings({
                 <span className="d-field d-mono" title={location}>
                   <span>{location}</span>
                 </span>
-                <Button onClick={chooseLocation} disabled={!settings}>
-                  Change…
+                <Button onClick={chooseLocation} disabled={!settings || moving}>
+                  {moving ? "Moving…" : "Change…"}
                 </Button>
               </div>
               <div className="d">
-                {picked
-                  ? "Backups already taken stay in the old folder. Switch back to see them again. "
-                  : "Pick another drive to keep backups off this one. "}
-                {picked && (
-                  <button className="d-link" onClick={() => update({ backup: { location: null } })}>
-                    Use the default folder
+                {moving
+                  ? "Copying your backups, then removing the old folder. Backups wait until this is done."
+                  : "Your backups move with it. "}
+                {picked && !moving && (
+                  <button className="d-link" onClick={() => move(null)}>
+                    Move them back to the default folder
                   </button>
                 )}
               </div>
+              {moved && (
+                <div className={moved.ok ? "d" : "d err"} style={{ marginTop: 2 }}>
+                  {moved.text}
+                </div>
+              )}
             </div>
           </Panel>
 
