@@ -17,9 +17,12 @@
 CREATE TABLE characters (
     id          INTEGER PRIMARY KEY,
     flavor      TEXT NOT NULL,             -- folder name, e.g. _classic_beta_
-    account     TEXT NOT NULL,             -- WTF/Account/<account>
-    group_dir   TEXT NOT NULL,             -- the folder between account and character
-    char_dir    TEXT NOT NULL,             -- the character's own folder
+    -- Case-insensitive, like Windows folders, so a case change on disk
+    -- doesn't split a character's history (SQLite NOCASE folds ASCII only).
+    -- Look characters up with `WHERE char_dir = ?` so this collation applies.
+    account     TEXT NOT NULL COLLATE NOCASE,  -- WTF/Account/<account>
+    group_dir   TEXT NOT NULL COLLATE NOCASE,  -- the folder between account and character
+    char_dir    TEXT NOT NULL COLLATE NOCASE,  -- the character's own folder
     name        TEXT NOT NULL,             -- UnitName('player'), first return
     surname     TEXT,                      -- UnitName's second return, if any
     realm       TEXT,                      -- GetRealmName()

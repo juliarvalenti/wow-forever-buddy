@@ -386,6 +386,16 @@ mod tests {
             c.execute(insert, ("_classic_", "Ellygie", None::<&str>))?;
             let dup = c.execute(insert, ("_classic_", "Ellygie-Vargur", "Vargur"));
             assert!(dup.is_err(), "unique per flavor and folder");
+            // Folder names compare case-insensitively, like on Windows.
+            let recased = c.execute(insert, ("_classic_", "ellygie-vargur", "Vargur"));
+            assert!(recased.is_err(), "a case change is the same character");
+            let found: i64 = c.query_row(
+                "SELECT count(*) FROM characters WHERE flavor = '_classic_'
+                   AND account = 'a' AND group_dir = '70' AND char_dir = 'ELLYGIE-VARGUR'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(found, 1, "lookups use the column's NOCASE collation");
             c.execute(
                 "INSERT INTO gold_points (character_id, at, money) VALUES (1, 10, 500)",
                 [],
