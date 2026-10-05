@@ -186,7 +186,12 @@ export function Dashboard({
         <Tile
           label="Game"
           value={
-            running ? (
+            game?.unknown ? (
+              <>
+                <LiveDot />
+                Can't tell
+              </>
+            ) : running ? (
               <>
                 <LiveDot />
                 Running
@@ -196,7 +201,9 @@ export function Dashboard({
             )
           }
           sub={
-            running
+            game?.unknown
+              ? "Can't read the process list right now"
+              : running
               ? [flavor?.exe?.split(/[\\/]/).pop(), game?.since && `${duration(game.since)} this session`]
                   .filter(Boolean)
                   .join(" · ")

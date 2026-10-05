@@ -16,7 +16,7 @@ pub mod sv;
 mod test_support;
 mod triggers;
 
-use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 use tauri::Manager;
 use tauri_specta::Event;
@@ -120,6 +120,7 @@ pub fn run() {
             let game = core.game.clone();
             // Before the watcher's first poll, which may start a new one.
             let _ = sessions::drop_unfinished(&core.db);
+            let db = core.db.clone();
             app.manage(AppState { core });
 
             // Startup step 4 (spec §8) runs in the background; the window
@@ -142,19 +143,24 @@ pub fn run() {
             // When the game stops, the game-exit backup runs (spec §5), and
             // the session is recorded (T14).
             let target_handle = handle.clone();
-            let tracker = Arc::new(sessions::SessionTracker::default());
+            let sessions = spawn_sessions(&handle, db);
             game.spawn(
                 move || target_handle.state::<AppState>().core.probe_target(),
                 move |transition, status| {
                     let _ = commands::game::GameStatusChanged(status.clone()).emit(&handle);
+                    let now = || chrono::Utc::now().to_rfc3339();
                     match transition {
                         game::process::Transition::Started => {
-                            spawn_session_start(&handle, &tracker, status.since)
+                            let at = status.since.unwrap_or_else(now);
+                            let _ = sessions.send(sessions::SessionEvent::Started(at));
                         }
                         game::process::Transition::Stopped => {
-                            spawn_session_end(&handle, &tracker);
+                            let _ = sessions.send(sessions::SessionEvent::Stopped(now()));
                             spawn_game_exit_backup(&handle);
                         }
+                        // Listing blipped and came back with the game's state
+                        // unchanged: the session carries on.
+                        game::process::Transition::Unknown | game::process::Transition::Known => {}
                     }
                 },
             );
@@ -213,49 +219,28 @@ fn spawn_auto_backups(handle: &tauri::AppHandle) {
     });
 }
 
-/// WoW started: opens a session and notes the WTF state (a short walk), off
-/// the watcher thread. No game folder means nothing to attribute or show.
-fn spawn_session_start(
-    handle: &tauri::AppHandle,
-    tracker: &Arc<sessions::SessionTracker>,
-    since: Option<String>,
-) {
-    let (h, tracker) = (handle.clone(), tracker.clone());
-    std::thread::spawn(move || {
-        let core = &h.state::<AppState>().core;
-        let Ok(game) = core.active_game() else {
-            return;
-        };
-        let started = since.unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-        if tracker
-            .started(&core.db, &game.flavor, &game.root.base, &started)
-            .is_ok()
-        {
-            let _ = sessions::SessionsChanged.emit(&h);
-        }
-    });
-}
-
-/// WoW exited: ends the session now, then, once its exit writes have
-/// settled, stores which characters changed.
-fn spawn_session_end(handle: &tauri::AppHandle, tracker: &Arc<sessions::SessionTracker>) {
-    let (h, tracker) = (handle.clone(), tracker.clone());
-    let ended = chrono::Utc::now().to_rfc3339();
-    std::thread::spawn(move || {
-        let core = &h.state::<AppState>().core;
-        let _ = tracker.stopped(&core.db, &ended);
-        let _ = sessions::SessionsChanged.emit(&h);
-        if let Ok(game) = core.active_game() {
-            triggers::wait_until_settled(
-                &game.root.base.join("WTF"),
-                triggers::EXIT_SETTLE,
-                triggers::EXIT_SETTLE_TIMEOUT,
-            );
-            if tracker.attribute(&core.db, &game.root.base).is_ok() {
-                let _ = sessions::SessionsChanged.emit(&h);
-            }
-        }
-    });
+/// The play-session worker (T14): records the watcher's starts and stops in
+/// order, off the watcher thread, and tells the UI after each change. A stop
+/// waits for WoW's exit writes before attributing characters.
+fn spawn_sessions(handle: &tauri::AppHandle, db: db::Db) -> Sender<sessions::SessionEvent> {
+    let (game_handle, change_handle) = (handle.clone(), handle.clone());
+    let (tx, _worker) = sessions::spawn_worker(
+        db,
+        move || {
+            let game = game_handle.state::<AppState>().core.active_game().ok()?;
+            Some(sessions::GameContext {
+                flavor: game.flavor,
+                dir: game.root.base,
+            })
+        },
+        |wtf| {
+            triggers::wait_until_settled(wtf, triggers::EXIT_SETTLE, triggers::EXIT_SETTLE_TIMEOUT);
+        },
+        move || {
+            let _ = sessions::SessionsChanged.emit(&change_handle);
+        },
+    );
+    tx
 }
 
 /// After WoW exits: wait for its last SavedVariables writes, then back up.

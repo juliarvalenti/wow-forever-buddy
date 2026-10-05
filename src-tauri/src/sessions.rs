@@ -5,8 +5,9 @@
 //! exit writes have settled.
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Sender};
+use std::thread::JoinHandle;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -139,81 +140,120 @@ fn changed(before: &Mtimes, after: &Mtimes) -> Vec<CharacterRef> {
     out
 }
 
-/// The session in progress, and the game folder's state when it started.
-struct Open {
+/// A session and the game folder's state when it started.
+pub struct Open {
     id: i64,
     before: Mtimes,
     /// Newest crash report in `<flavor>/Errors` at the start.
     errors_before: Option<SystemTime>,
 }
 
-/// Records sessions as the process watcher reports them.
-#[derive(Default)]
-pub struct SessionTracker {
-    open: Mutex<Option<Open>>,
+/// WoW started (`started_at` from the watcher): inserts the session and notes
+/// every character folder's newest mtime under `flavor_dir/WTF`, and the
+/// newest crash report.
+pub fn start(db: &Db, flavor: &str, flavor_dir: &Path, started_at: &str) -> AppResult<Open> {
+    let before = snapshot(&flavor_dir.join("WTF"));
+    let errors_before = newest_mtime(&flavor_dir.join("Errors"));
+    let id = db.with_conn(|c| {
+        c.execute(
+            "INSERT INTO play_sessions (flavor, started_at) VALUES (?1, ?2)",
+            params![flavor, started_at],
+        )?;
+        Ok(c.last_insert_rowid())
+    })?;
+    Ok(Open {
+        id,
+        before,
+        errors_before,
+    })
 }
 
-impl SessionTracker {
-    /// WoW started (`started_at` from the watcher). Notes every character
-    /// folder's newest mtime under `flavor_dir/WTF`, and the newest crash
-    /// report.
-    pub fn started(
-        &self,
-        db: &Db,
-        flavor: &str,
-        flavor_dir: &Path,
-        started_at: &str,
-    ) -> AppResult<()> {
-        let before = snapshot(&flavor_dir.join("WTF"));
-        let errors_before = newest_mtime(&flavor_dir.join("Errors"));
-        let id = db.with_conn(|c| {
-            c.execute(
-                "INSERT INTO play_sessions (flavor, started_at) VALUES (?1, ?2)",
-                params![flavor, started_at],
-            )?;
-            Ok(c.last_insert_rowid())
-        })?;
-        *self.open.lock().expect("sessions lock poisoned") = Some(Open {
-            id,
-            before,
-            errors_before,
-        });
-        Ok(())
-    }
-
-    /// WoW exited at `ended_at`. Records the end right away, so the session
-    /// stops counting; call `attribute` once WTF has settled.
-    pub fn stopped(&self, db: &Db, ended_at: &str) -> AppResult<()> {
-        let open = self.open.lock().expect("sessions lock poisoned");
-        if let Some(open) = open.as_ref() {
-            db.with_conn(|c| {
-                c.execute(
-                    "UPDATE play_sessions SET ended_at = ?2 WHERE id = ?1",
-                    params![open.id, ended_at],
-                )?;
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
-
-    /// After WoW's exit writes have settled: stores which characters changed,
-    /// and whether WoW left a new crash report.
-    pub fn attribute(&self, db: &Db, flavor_dir: &Path) -> AppResult<()> {
-        let Some(open) = self.open.lock().expect("sessions lock poisoned").take() else {
-            return Ok(());
-        };
-        let characters = changed(&open.before, &snapshot(&flavor_dir.join("WTF")));
-        let crashed = newest_mtime(&flavor_dir.join("Errors")) > open.errors_before;
-        let json = serde_json::to_string(&characters).expect("characters serialize");
+impl Open {
+    /// WoW exited at `ended_at`: records the end right away, so the session
+    /// stops counting.
+    pub fn stop(&self, db: &Db, ended_at: &str) -> AppResult<()> {
         db.with_conn(|c| {
             c.execute(
-                "UPDATE play_sessions SET characters = ?2, crashed = ?3 WHERE id = ?1",
-                params![open.id, json, crashed],
+                "UPDATE play_sessions SET ended_at = ?2 WHERE id = ?1",
+                params![self.id, ended_at],
             )?;
             Ok(())
         })
     }
+
+    /// After WoW's exit writes have settled: stores which characters changed,
+    /// and whether WoW left a new crash report.
+    pub fn attribute(self, db: &Db, flavor_dir: &Path) -> AppResult<()> {
+        let characters = changed(&self.before, &snapshot(&flavor_dir.join("WTF")));
+        let crashed = newest_mtime(&flavor_dir.join("Errors")) > self.errors_before;
+        let json = serde_json::to_string(&characters).expect("characters serialize");
+        db.with_conn(|c| {
+            c.execute(
+                "UPDATE play_sessions SET characters = ?2, crashed = ?3 WHERE id = ?1",
+                params![self.id, json, crashed],
+            )?;
+            Ok(())
+        })
+    }
+}
+
+/// What the process watcher saw, with when (RFC 3339, UTC).
+#[derive(Debug, Clone)]
+pub enum SessionEvent {
+    Started(String),
+    Stopped(String),
+}
+
+/// The active flavor and its folder, looked up when an event is handled.
+pub struct GameContext {
+    pub flavor: String,
+    pub dir: PathBuf,
+}
+
+/// Records sessions on one worker thread, strictly in event order: a stop
+/// is never handled before its start, and a quick relaunch waits until the
+/// previous session has been attributed, so two sessions can't cross.
+/// `settle` waits for WoW's exit writes to the given WTF folder;
+/// `on_change` runs after each database change. The worker ends when every
+/// sender is dropped.
+pub fn spawn_worker(
+    db: Db,
+    game: impl Fn() -> Option<GameContext> + Send + 'static,
+    settle: impl Fn(&Path) + Send + 'static,
+    on_change: impl Fn() + Send + 'static,
+) -> (Sender<SessionEvent>, JoinHandle<()>) {
+    let (tx, rx) = mpsc::channel::<SessionEvent>();
+    let handle = std::thread::Builder::new()
+        .name("sessions".into())
+        .spawn(move || {
+            let mut open: Option<Open> = None;
+            for event in rx {
+                match event {
+                    SessionEvent::Started(at) => {
+                        // No game folder: nothing to attribute or show.
+                        let Some(g) = game() else { continue };
+                        if let Ok(o) = start(&db, &g.flavor, &g.dir, &at) {
+                            open = Some(o);
+                            on_change();
+                        }
+                    }
+                    SessionEvent::Stopped(at) => {
+                        let Some(o) = open.take() else { continue };
+                        if o.stop(&db, &at).is_ok() {
+                            on_change();
+                        }
+                        if let Some(g) = game() {
+                            settle(&g.dir.join("WTF"));
+                            if o.attribute(&db, &g.dir).is_ok() {
+                                on_change();
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        .expect("spawn sessions thread");
+    (tx, handle)
 }
 
 /// Drops sessions left open by an earlier run of the app: their end (and so
@@ -297,20 +337,46 @@ mod tests {
         assert!(list[0].last_played.is_some());
     }
 
+    const SINCE: &str = "2026-10-01T00:00:00+00:00";
+
+    /// Runs `events` through the worker and waits for it to finish.
+    /// `settle` stands in for WoW's exit writes.
+    fn run_worker(
+        db: &Db,
+        game: &Path,
+        events: Vec<SessionEvent>,
+        settle: impl Fn(&Path) + Send + 'static,
+    ) {
+        let dir = game.to_path_buf();
+        let (tx, handle) = spawn_worker(
+            db.clone(),
+            move || {
+                Some(GameContext {
+                    flavor: "_classic_beta_".into(),
+                    dir: dir.clone(),
+                })
+            },
+            settle,
+            || {},
+        );
+        for e in events {
+            tx.send(e).unwrap();
+        }
+        drop(tx);
+        handle.join().unwrap();
+    }
+
     #[test]
     fn a_session_records_its_times_and_the_characters_that_changed() {
         let (_dir, root) = fixture_copy();
         let game = root.join("_classic_beta_");
         let wtf = game.join("WTF");
         let db = Db::open_in_memory().unwrap();
-        let tracker = SessionTracker::default();
 
-        tracker
-            .started(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00")
-            .unwrap();
-        let open = list(&db, "_classic_beta_", "2026-10-01T00:00:00+00:00").unwrap();
-        assert_eq!(open.len(), 1);
-        assert_eq!(open[0].ended_at, None);
+        let open = start(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00").unwrap();
+        let running = list(&db, "_classic_beta_", SINCE).unwrap();
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].ended_at, None);
 
         // An alt swap: Velyra logs out last, but the list is in WTF order.
         let now = SystemTime::now();
@@ -322,10 +388,10 @@ mod tests {
             &wtf.join("Account/ACCOUNT1/Ashenvale/Velyra/AddOns.txt"),
             now + Duration::from_secs(20),
         );
-        tracker.stopped(&db, "2026-10-04T20:54:00+00:00").unwrap();
-        tracker.attribute(&db, &game).unwrap();
+        open.stop(&db, "2026-10-04T20:54:00+00:00").unwrap();
+        open.attribute(&db, &game).unwrap();
 
-        let done = list(&db, "_classic_beta_", "2026-10-01T00:00:00+00:00").unwrap();
+        let done = list(&db, "_classic_beta_", SINCE).unwrap();
         assert_eq!(
             done[0].ended_at.as_deref(),
             Some("2026-10-04T20:54:00+00:00")
@@ -345,14 +411,62 @@ mod tests {
         let (_dir, root) = fixture_copy();
         let game = root.join("_classic_beta_");
         let db = Db::open_in_memory().unwrap();
-        let tracker = SessionTracker::default();
-        tracker
-            .started(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00")
-            .unwrap();
-        tracker.stopped(&db, "2026-10-04T19:13:00+00:00").unwrap();
-        tracker.attribute(&db, &game).unwrap();
-        let s = list(&db, "_classic_beta_", "2026-10-01T00:00:00+00:00").unwrap();
+        let open = start(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00").unwrap();
+        open.stop(&db, "2026-10-04T19:13:00+00:00").unwrap();
+        open.attribute(&db, &game).unwrap();
+        let s = list(&db, "_classic_beta_", SINCE).unwrap();
         assert!(s[0].characters.is_empty());
+    }
+
+    #[test]
+    fn a_stop_right_after_a_start_still_ends_the_session() {
+        let (_dir, root) = fixture_copy();
+        let game = root.join("_classic_beta_");
+        let db = Db::open_in_memory().unwrap();
+        // WoW closed at character select: both events arrive back to back.
+        run_worker(
+            &db,
+            &game,
+            vec![
+                SessionEvent::Started("2026-10-04T19:12:00+00:00".into()),
+                SessionEvent::Stopped("2026-10-04T19:12:30+00:00".into()),
+            ],
+            |_| {},
+        );
+        let s = list(&db, "_classic_beta_", SINCE).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].ended_at.as_deref(), Some("2026-10-04T19:12:30+00:00"));
+    }
+
+    #[test]
+    fn a_quick_relaunch_keeps_the_two_sessions_apart() {
+        let (_dir, root) = fixture_copy();
+        let game = root.join("_classic_beta_");
+        let db = Db::open_in_memory().unwrap();
+        // WoW is relaunched while the first run's exit writes are settling;
+        // those writes (Thrandor's) belong to the first run only.
+        let thrandor = game.join("WTF/Account/ACCOUNT1/Ashenvale/Thrandor/macros-cache.txt");
+        run_worker(
+            &db,
+            &game,
+            vec![
+                SessionEvent::Started("2026-10-04T19:00:00+00:00".into()),
+                SessionEvent::Stopped("2026-10-04T20:00:00+00:00".into()),
+                SessionEvent::Started("2026-10-04T20:00:30+00:00".into()),
+            ],
+            move |_| touch(&thrandor, SystemTime::now() + Duration::from_secs(30)),
+        );
+        let s = list(&db, "_classic_beta_", SINCE).unwrap();
+        assert_eq!(s.len(), 2);
+        let (second, first) = (&s[0], &s[1]);
+        assert_eq!(first.ended_at.as_deref(), Some("2026-10-04T20:00:00+00:00"));
+        assert_eq!(
+            first.characters,
+            vec![character("ACCOUNT1", "Ashenvale", "Thrandor")]
+        );
+        assert_eq!(second.started_at, "2026-10-04T20:00:30+00:00");
+        assert_eq!(second.ended_at, None);
+        assert!(second.characters.is_empty());
     }
 
     #[test]
@@ -367,14 +481,11 @@ mod tests {
             SystemTime::now() - Duration::from_secs(3600),
         );
         let db = Db::open_in_memory().unwrap();
-        let tracker = SessionTracker::default();
-        tracker
-            .started(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00")
-            .unwrap();
+        let open = start(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00").unwrap();
         std::fs::write(game.join("Errors/crash.txt"), "WowB.exe crashed").unwrap();
-        tracker.stopped(&db, "2026-10-04T19:40:00+00:00").unwrap();
-        tracker.attribute(&db, &game).unwrap();
-        let s = list(&db, "_classic_beta_", "2026-10-01T00:00:00+00:00").unwrap();
+        open.stop(&db, "2026-10-04T19:40:00+00:00").unwrap();
+        open.attribute(&db, &game).unwrap();
+        let s = list(&db, "_classic_beta_", SINCE).unwrap();
         assert!(s[0].crashed);
     }
 
@@ -383,18 +494,15 @@ mod tests {
         let (_dir, root) = fixture_copy();
         let game = root.join("_classic_beta_");
         let db = Db::open_in_memory().unwrap();
-        let first = SessionTracker::default();
-        first
-            .started(&db, "_classic_beta_", &game, "2026-10-03T19:00:00+00:00")
+        start(&db, "_classic_beta_", &game, "2026-10-03T19:00:00+00:00")
+            .unwrap()
+            .stop(&db, "2026-10-03T20:00:00+00:00")
             .unwrap();
-        first.stopped(&db, "2026-10-03T20:00:00+00:00").unwrap();
         // The app quits mid-session.
-        first
-            .started(&db, "_classic_beta_", &game, "2026-10-04T19:00:00+00:00")
-            .unwrap();
+        start(&db, "_classic_beta_", &game, "2026-10-04T19:00:00+00:00").unwrap();
 
         drop_unfinished(&db).unwrap();
-        let s = list(&db, "_classic_beta_", "2026-10-01T00:00:00+00:00").unwrap();
+        let s = list(&db, "_classic_beta_", SINCE).unwrap();
         assert_eq!(s.len(), 1);
         assert_eq!(s[0].started_at, "2026-10-03T19:00:00+00:00");
     }
@@ -404,14 +512,15 @@ mod tests {
         let (_dir, root) = fixture_copy();
         let game = root.join("_classic_beta_");
         let db = Db::open_in_memory().unwrap();
-        let t = SessionTracker::default();
         for (flavor, at) in [
             ("_classic_beta_", "2026-09-20T10:00:00+00:00"),
             ("_classic_era_", "2026-10-02T10:00:00+00:00"),
             ("_classic_beta_", "2026-10-02T10:00:00+00:00"),
         ] {
-            t.started(&db, flavor, &game, at).unwrap();
-            t.stopped(&db, at).unwrap();
+            start(&db, flavor, &game, at)
+                .unwrap()
+                .stop(&db, at)
+                .unwrap();
         }
         let s = list(&db, "_classic_beta_", "2026-09-27T00:00:00+00:00").unwrap();
         assert_eq!(s.len(), 1);
