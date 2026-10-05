@@ -168,6 +168,14 @@
 .ch-prof { list-style: none; display: grid; gap: 10px; margin: 0; padding: 0; }
 .ch-prof li > div:first-child { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; color: var(--chalk); }
 .ch-prof .muted { color: var(--ash); }
+/* F3: lockouts (sheet side panel, Dashboard) and the user's bank-alt tag */
+.ch-locks { list-style: none; display: grid; gap: 8px; margin: 0; padding: 0; }
+.ch-locks li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--chalk); }
+.ch-locks small { display: block; font-size: 11px; color: var(--soot); }
+.ch-locks .in { font-size: 11.5px; color: var(--ash); white-space: nowrap; }
+.ch-tag { font: 500 10.5px "Geist", sans-serif; color: #f1dcb4; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: 2px;
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 106, .4); letter-spacing: 0; }
+.d-record .ch-tag { color: var(--ink-2); box-shadow: inset 0 0 0 1px rgba(58, 38, 22, .35); vertical-align: 6px; }
 .ch-wallet svg { width: 100%; height: 56px; display: block; }
 .ch-up { color: var(--ok); } .ch-down { color: var(--bad); }
 

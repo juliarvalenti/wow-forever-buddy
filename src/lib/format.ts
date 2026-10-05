@@ -58,6 +58,22 @@ export function span(ms: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
+/** A lockout's countdown: "2d 4h", "5h 12m", "12m", or "now" once due. */
+export function resetsIn(iso: string, now = Date.now()): string {
+  const m = Math.floor((new Date(iso).getTime() - now) / 60000);
+  if (m <= 0) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** "Tue 4 Oct, 3:00 AM", for a lockout reset's tooltip. */
+export function resetDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}, ${clock(d)}`;
+}
+
 function clock(d: Date): string {
   // "1:45 AM", not "01:45 AM".
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });

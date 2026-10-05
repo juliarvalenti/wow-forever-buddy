@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type AddonStatus,
+  type AltLockout,
   type CharacterCard,
   commands,
   type GameStatus,
@@ -36,7 +37,7 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
-import { useCharacters } from "@/hooks/useCharacters";
+import { useCharacters, useLockouts } from "@/hooks/useCharacters";
 import { useLedger } from "@/hooks/useLedger";
 import { Coins } from "@/screens/Characters";
 import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
@@ -54,6 +55,8 @@ import {
   gold,
   longDate,
   plural,
+  resetDay,
+  resetsIn,
   sessionWhen,
   span,
 } from "@/lib/format";
@@ -156,6 +159,57 @@ function SessionWho({ s }: { s: PlaySession }) {
   );
 }
 
+/** F3: this week's saves across alts, one row per instance, soonest reset
+ *  first, with who is saved in class colour. */
+function LockoutsThisWeek({ lockouts, onOpen }: { lockouts: AltLockout[]; onOpen: () => void }) {
+  const rows: { key: string; l: AltLockout["lockout"]; who: AltLockout[] }[] = [];
+  for (const a of lockouts) {
+    const key = `${a.lockout.name}|${a.lockout.difficulty}`;
+    const row = rows.find((r) => r.key === key);
+    if (row) row.who.push(a);
+    else rows.push({ key, l: a.lockout, who: [a] });
+  }
+  return (
+    <Panel>
+      <PanelHeader title="Lockouts this week">
+        <span className="d-grow" />
+        <span className="d-dim">{lockouts.length > 0 ? plural(lockouts.length, "save", "saves") : ""}</span>
+      </PanelHeader>
+      {rows.length === 0 ? (
+        <PanelBody>
+          <p className="d-muted">No raid or dungeon saves this week.</p>
+        </PanelBody>
+      ) : (
+        <ul className="d-rows">
+          {rows.map(({ key, l, who }) => (
+            <li key={key} className="d-open" onClick={onOpen}>
+              <span className="main">
+                {l.name}
+                {l.difficulty && l.difficulty !== "Normal" && <small className="d-dim"> {l.difficulty}</small>}
+              </span>
+              <span
+                className="side d-dim"
+                style={{ fontWeight: 400 }}
+                title={l.reset_at ? `Resets ${resetDay(l.reset_at)}` : undefined}
+              >
+                {l.reset_at ? `resets in ${resetsIn(l.reset_at)}` : ""}
+              </span>
+              <span className="sub">
+                {who.map((a, i) => (
+                  <span key={a.character_id}>
+                    {i > 0 && ", "}
+                    <span style={{ color: a.class ? `var(--c-${a.class})` : undefined }}>{a.character}</span>
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 const UNLOCKS = [
   { icon: TrendingUp, title: "Gold over time", text: "Per character and account-wide." },
   { icon: ShoppingBag, title: "Satchels & gear", text: "Search every alt's bags and bank." },
@@ -208,6 +262,7 @@ export function Dashboard({
   // With the addon's data (V9, dashboard.html): account gold, the last
   // adventure and the roster with gold. Without it, the v0.1 state stays.
   const { overview } = useCharacters();
+  const lockouts = useLockouts();
   const withAddon = (overview?.characters.length ?? 0) > 0;
   const { ledger } = useLedger("week");
   const lastAdventure = useLastAdventure();
@@ -659,7 +714,7 @@ export function Dashboard({
                   >
                     <span className="d-cdot" aria-hidden />
                     <span className="cc">{c.surname ? `${c.name} ${c.surname}` : c.name}</span>
-                    <span />
+                    <span className="note">{c.bank_alt ? "bank" : ""}</span>
                     <span className="side">
                       <Coins copper={c.money} silver={false} />
                     </span>
@@ -708,6 +763,7 @@ export function Dashboard({
             )}
           </Panel>
 
+          {withAddon && lockouts && <LockoutsThisWeek lockouts={lockouts} onOpen={onOpenCharacters} />}
           {withAddon && recentSessions}
         </div>
       </section>

@@ -18,6 +18,7 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/003_play_sessions.sql")),
     M::up(include_str!("migrations/004_addon_data.sql")),
     M::up(include_str!("migrations/005_char_bags.sql")),
+    M::up(include_str!("migrations/006_bank_alt.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 /// The schema version this build migrates to (`PRAGMA user_version`, which

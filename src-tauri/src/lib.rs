@@ -71,6 +71,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::characters_overview,
             commands::characters::character_detail,
             commands::characters::characters_search,
+            commands::characters::lockouts_list,
+            commands::characters::character_set_bank_alt,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,
