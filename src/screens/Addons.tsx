@@ -1,17 +1,22 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, FileText, FolderOpen, Search } from "lucide-react";
-import { commands, type AddonInfo, type AddonsList } from "@/lib/bindings";
-import { Button, Callout, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
+import { AlertTriangle, FileText, FolderOpen, Lock, Search } from "lucide-react";
+import { commands, type AddonInfo, type AddonsList, type CharacterKey } from "@/lib/bindings";
+import { Button, Callout, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented, Switch } from "@/components/d";
 import { useAddons } from "@/hooks/useAddons";
 import { useCharacters } from "@/hooks/useCharacters";
+import { useGameStatus } from "@/hooks/useGameStatus";
 import { ago, characterName, errorText } from "@/lib/format";
 import { classStyle } from "@/screens/Characters";
 
-// design/mocks/round-3/addons-readonly.html, IMPLEMENTING.md §9: the first,
-// read-only cut of the Addons screen. Nothing here writes: no sets,
-// installs, updates, toggles, sources or sizes. TOC text is the addon
-// author's, already stripped of WoW markup by the backend, and rendered as
-// React text only.
+// design/mocks/round-3/addons-readonly.html, IMPLEMENTING.md §9. The one
+// write is F6's on/off per character in the side panel: it rewrites that
+// character's AddOns.txt through the backend's write gate (refused while
+// WoW runs, safety snapshot first) and can be undone. No sets, installs,
+// updates, sources or sizes yet. TOC text is the addon author's, already
+// stripped of WoW markup by the backend, and rendered as React text only.
+
+/** The last toggle, for "Turned Questie off for Thrandor · Undo". */
+type Outcome = { text: string; snapshotId: string | null; bad?: boolean };
 
 type Show = "all" | "old" | "off";
 
@@ -38,12 +43,43 @@ function tail(path: string, keep = 2): string {
 }
 
 export function Addons() {
-  const { list, error } = useAddons();
+  const { list, error, busy, setEnabled, undo } = useAddons();
   const { overview } = useCharacters();
+  const game = useGameStatus();
   const [filter, setFilter] = useState("");
   const [show, setShow] = useState<Show>("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // WoW rewrites AddOns.txt at logout, so a change made while it runs would
+  // be lost; the backend refuses it too. Unknown counts as running.
+  const locked = !game || game.running || game.unknown;
+
+  /** Turns `a` on or off for the characters at `cols`. */
+  const toggle = async (a: AddonInfo, at: number[], on: boolean) => {
+    if (!list) return;
+    const who: CharacterKey[] = at.map((i) => {
+      const c = list.characters[i];
+      return { account: c.account, group: c.group, folder: c.folder };
+    });
+    try {
+      const r = await setEnabled(a.name, who, on);
+      if (r.changed.length === 0) return;
+      const names = r.changed.length === 1 ? characterName(r.changed[0]) : `${r.changed.length} characters`;
+      setOutcome({ text: `Turned ${a.title} ${on ? "on" : "off"} for ${names}.`, snapshotId: r.snapshot_id });
+    } catch (e) {
+      setOutcome({ text: (e as Error).message, snapshotId: null, bad: true });
+    }
+  };
+  const undoLast = async () => {
+    if (!outcome?.snapshotId) return;
+    try {
+      await undo(outcome.snapshotId);
+      setOutcome({ text: "Undone. Each AddOns.txt is back as it was.", snapshotId: null });
+    } catch (e) {
+      setOutcome({ text: (e as Error).message, snapshotId: null, bad: true });
+    }
+  };
 
   const cols: Col[] = useMemo(() => {
     const classOf = new Map(
@@ -169,7 +205,18 @@ export function Addons() {
                 </PanelBody>
               )}
             </Panel>
-            {current && <Detail a={current} cols={cols} list={list} />}
+            {current && (
+              <Detail
+                a={current}
+                cols={cols}
+                list={list}
+                locked={locked}
+                busy={busy}
+                outcome={outcome}
+                onToggle={(at, on) => toggle(current, at, on)}
+                onUndo={undoLast}
+              />
+            )}
           </div>
         </>
       )}
@@ -233,7 +280,28 @@ function Row({
   );
 }
 
-function Detail({ a, cols, list }: { a: AddonInfo; cols: Col[]; list: AddonsList }) {
+function Detail({
+  a,
+  cols,
+  list,
+  locked,
+  busy,
+  outcome,
+  onToggle,
+  onUndo,
+}: {
+  a: AddonInfo;
+  cols: Col[];
+  list: AddonsList;
+  locked: boolean;
+  busy: boolean;
+  outcome: Outcome | null;
+  onToggle: (at: number[], on: boolean) => void;
+  onUndo: () => void;
+}) {
+  const off = a.enabled.flatMap((on, i) => (on ? [] : [i]));
+  const on = a.enabled.flatMap((on, i) => (on ? [i] : []));
+  const still = locked || busy;
   return (
     <Panel className="ad-side">
       <PanelHeader title={a.title}>{a.version && <span className="d-dim ad-meta">{a.version}</span>}</PanelHeader>
@@ -256,17 +324,51 @@ function Detail({ a, cols, list }: { a: AddonInfo; cols: Col[]; list: AddonsList
           </dl>
           {cols.length > 0 && (
             <div>
-              <div className="ad-sec">Enabled for</div>
-              <ul className="ad-who">
+              <div className="ad-sec">
+                Enabled for
+                {cols.length > 1 && (
+                  <span className="ad-all">
+                    <button disabled={still || off.length === 0} onClick={() => onToggle(off, true)}>
+                      On for all
+                    </button>
+                    <button disabled={still || on.length === 0} onClick={() => onToggle(on, false)}>
+                      Off for all
+                    </button>
+                  </span>
+                )}
+              </div>
+              <ul className={`ad-who${still ? " still" : ""}`}>
                 {cols.map((c, i) => (
                   <li key={i} className={a.enabled[i] ? undefined : "off"} style={classStyle(c)}>
                     <span className="ad-dot" />
                     <span className="ch-cc">{c.name}</span>
                     <span className="st">{a.enabled[i] ? "on" : "off"}</span>
+                    <Switch
+                      checked={a.enabled[i]}
+                      label={`${a.title} for ${c.name}`}
+                      disabled={still}
+                      onChange={(v) => onToggle([i], v)}
+                    />
                   </li>
                 ))}
               </ul>
             </div>
+          )}
+          {locked && (
+            <p className="ad-note ember">
+              <Lock size={13} aria-hidden />
+              <span>Close WoW first. Turning addons on or off writes each character's AddOns.txt.</span>
+            </p>
+          )}
+          {outcome && (
+            <p className={`ad-note${outcome.bad ? " bad" : " done"}`} role="status">
+              <span>{outcome.text}</span>
+              {outcome.snapshotId && (
+                <button className="ad-undo" disabled={still} onClick={onUndo}>
+                  Undo
+                </button>
+              )}
+            </p>
           )}
           {a.out_of_date && (
             <p className="ad-note warn">
@@ -277,8 +379,8 @@ function Detail({ a, cols, list }: { a: AddonInfo; cols: Col[]; list: AddonsList
           <p className="ad-note">
             <FileText size={13} aria-hidden />
             <span>
-              Toggling addons comes later, with a safety snapshot first. For now, change them in-game from the
-              AddOns button on the character screen.
+              Each change takes a safety snapshot first, so it can be undone. WoW picks it up at the next
+              login.
             </span>
           </p>
         </div>

@@ -126,6 +126,10 @@ export function installMockIpc(): void {
   });
   // F3: Coinpurse is the bank alt, and this week's saves (resets ahead).
   const bankAlts = new Set<number>([1]);
+  // F6: addon toggles made in this page load ("Addon/CharacterFolder" → on),
+  // and what the last one replaced, for Undo.
+  const addonToggles = new Map<string, boolean>();
+  let lastToggle = new Map<string, boolean | undefined>();
   const save = (id: number, name: string, raid: boolean, minsAhead: number, difficulty = "Normal"): AltLockout => {
     const a = alts.find((x) => x[0] === id)!;
     return {
@@ -596,6 +600,22 @@ export function installMockIpc(): void {
       };
     },
     app_open_folder: () => null,
+    // F6: a toggle remembers itself until undone (one level, like the app's
+    // last-change Undo).
+    addons_set_enabled: ({ addon, characters, enabled }) => {
+      const keys = (characters as { folder: string }[]).map((c) => `${addon}/${c.folder}`);
+      lastToggle = new Map(keys.map((k) => [k, addonToggles.get(k)]));
+      for (const k of keys) addonToggles.set(k, Boolean(enabled));
+      return { snapshot_id: "S9", changed: (characters as { folder: string }[]).map((c) => c.folder) };
+    },
+    addons_undo: () => {
+      for (const [k, v] of lastToggle) {
+        if (v === undefined) addonToggles.delete(k);
+        else addonToggles.set(k, v);
+      }
+      lastToggle = new Map();
+      return null;
+    },
     // F4: addons-readonly.html's ten addons and five characters.
     addons_list: (): AddonsList => {
       const folders = ["Thrandor", "Velyra-Duskmane", "Brannic", "Fizzwick", "Sela"];
@@ -619,7 +639,8 @@ export function installMockIpc(): void {
         out_of_date: iface < 16001,
         needs,
         path: `${dir}\\${name}`,
-        enabled: enabled.map(Boolean),
+        // F6: toggles made in this page load win over the canned states.
+        enabled: enabled.map((on, i) => addonToggles.get(`${name}/${folders[i]}`) ?? Boolean(on)),
       });
       return {
         flavor: "_classic_beta_",

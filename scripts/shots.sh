@@ -48,6 +48,9 @@ SCENARIOS=(
   "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
   "addons|characters|click:css=nav button[title=\"Addons\"];wait:css=.ad-table|addons-readonly"
   "addons-empty|addons-empty|click:css=nav button[title=\"Addons\"];wait:text=No addons in|addons-readonly"
+  # F6: after turning Questie on for Thrandor (Undo offered), and locked while WoW runs.
+  "addons-toggled|characters|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");click:css=[aria-label=\"Questie for Thrandor\"];wait:text=Turned Questie on|addons-readonly"
+  "addons-locked|dashboard|click:css=nav button[title=\"Addons\"];wait:text=Close WoW first|addons-readonly"
 )
 
 echo "== build:mock"

@@ -50,6 +50,18 @@ export const commands = {
 	read_at: string,
 } | null>("addons_list"),
 	/**
+	 *  Turns `addon` on or off for `characters` (F6) by rewriting their
+	 *  AddOns.txt through the write gate: refused while WoW runs, with a safety
+	 *  snapshot first. The addon and characters are checked against what the
+	 *  list shows; nothing else can be named. Runs as the one backup/restore job.
+	 */
+	addonsSetEnabled: (addon: string, characters: CharacterKey[], enabled: boolean) => __TAURI_INVOKE<ToggleResult>("addons_set_enabled", { addon, characters, enabled }),
+	/**
+	 *  Undoes a toggle from its safety snapshot (`ToggleResult::snapshot_id`):
+	 *  only AddOns.txt files are put back, through the write gate.
+	 */
+	addonsUndo: (snapshotId: string) => __TAURI_INVOKE<null>("addons_undo", { snapshotId }),
+	/**
 	 *  One adventure's recap, or the newest one when `id` is `None`. `None`
 	 *  back means there are no adventures yet (or none with that id).
 	 */
@@ -674,6 +686,13 @@ export type CharacterCard = {
 	bank_items: number,
 	/**  Marked by the user as a bank alt (F3): a "Bank" tag on the card. */
 	bank_alt: boolean,
+};
+
+/**  A character the Addons screen shows, as the UI names it back. */
+export type CharacterKey = {
+	account: string,
+	group: string,
+	folder: string,
 };
 
 export type CharacterNode = {
@@ -1502,6 +1521,17 @@ export type Tiles = {
 	last_30_days: number | null,
 	this_week: number | null,
 	best_earner: Earner | null,
+};
+
+/**  What a toggle changed, for "Turned Questie off for Thrandor · Undo". */
+export type ToggleResult = {
+	/**
+	 *  The safety snapshot taken first; `None` if every file already said
+	 *  so and nothing was written.
+	 */
+	snapshot_id: string | null,
+	/**  Character folders whose AddOns.txt changed. */
+	changed: string[],
 };
 
 export type Totals = {

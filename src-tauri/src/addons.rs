@@ -1,7 +1,11 @@
-//! The Addons screen, read-only (F4, IMPLEMENTING.md §9): every addon in
+//! The Addons screen (F4, IMPLEMENTING.md §9): every addon in
 //! `Interface/AddOns` with what its TOC says, and which characters have it
-//! on per their `AddOns.txt`. Nothing here writes; toggling and installing
-//! come later, through the write gate.
+//! on per their `AddOns.txt`.
+//!
+//! The one write is F6's toggle, which rewrites a character's `AddOns.txt`
+//! (never anything in `Interface/AddOns`) through the write gate, and can be
+//! undone from its safety snapshot. Installing and removing addons come
+//! later; they must refuse linked addon folders, as V4 does.
 //!
 //! TOC text is the addon author's, so it's untrusted: colour codes and
 //! texture tags are stripped, files over `TOC_MAX` are skipped, and the UI
@@ -12,7 +16,11 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::backup::manifest::{Manifest, Trigger};
+use crate::error::{AppError, AppResult};
 use crate::fsx::read::safe_read;
+use crate::fsx::relpath::RelPath;
+use crate::game::gate::{MutationTarget, WriteGate};
 use crate::install::layout::Flavor;
 use crate::sessions;
 
@@ -313,6 +321,195 @@ pub fn list(flavor: &Flavor) -> AddonsList {
     }
 }
 
+// ---- F6: turning an addon on or off per character -------------------------
+
+/// `AddOns.txt` with `name`'s line set to `on`: every matching line (any
+/// case) rewritten as `Name: enabled|disabled`, or one appended if there's
+/// none. Every other line stays byte for byte, in order, and CRLF files stay
+/// CRLF.
+fn with_state(existing: &[u8], name: &str, on: bool) -> Vec<u8> {
+    let state = if on { "enabled" } else { "disabled" };
+    let crlf = existing.windows(2).any(|w| w == b"\r\n");
+    let eol: &[u8] = if crlf { b"\r\n" } else { b"\n" };
+    let mut out = Vec::with_capacity(existing.len() + name.len() + 12);
+    let mut found = false;
+    let mut lines = existing.split(|&b| b == b'\n').peekable();
+    while let Some(raw) = lines.next() {
+        // The empty piece after a final newline isn't a line.
+        if raw.is_empty() && lines.peek().is_none() {
+            break;
+        }
+        let line = raw.strip_suffix(b"\r").unwrap_or(raw);
+        let text = String::from_utf8_lossy(line);
+        let ours = text
+            .split_once(':')
+            .is_some_and(|(n, _)| n.trim().eq_ignore_ascii_case(name));
+        if ours {
+            out.extend_from_slice(format!("{name}: {state}").as_bytes());
+            found = true;
+        } else {
+            out.extend_from_slice(line);
+        }
+        out.extend_from_slice(eol);
+    }
+    if !found {
+        out.extend_from_slice(format!("{name}: {state}").as_bytes());
+        out.extend_from_slice(eol);
+    }
+    out
+}
+
+/// A character the Addons screen shows, as the UI names it back.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, specta::Type)]
+pub struct CharacterKey {
+    pub account: String,
+    pub group: String,
+    pub folder: String,
+}
+
+/// What a toggle changed, for "Turned Questie off for Thrandor · Undo".
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct ToggleResult {
+    /// The safety snapshot taken first; `None` if every file already said
+    /// so and nothing was written.
+    pub snapshot_id: Option<String>,
+    /// Character folders whose AddOns.txt changed.
+    pub changed: Vec<String>,
+}
+
+fn addons_txt_rel(c: &CharacterKey) -> AppResult<RelPath> {
+    RelPath::new(&format!(
+        "WTF/Account/{}/{}/{}/AddOns.txt",
+        c.account, c.group, c.folder
+    ))
+}
+
+/// Turns `addon` on or off for `characters`, through the write gate:
+/// refused while WoW runs, one safety snapshot of exactly the AddOns.txt
+/// files that change, each replaced atomically.
+///
+/// Nothing from the UI is trusted: the addon must be one the list shows
+/// (a folder with a TOC, so no `:` or line break can reach the file), and
+/// each character must be on the WTF roster with older settings folders
+/// left out; the paths are built from those, never taken as given.
+pub fn set_enabled(
+    gate: &WriteGate,
+    target: &MutationTarget,
+    flavor: &Flavor,
+    addon: &str,
+    characters: &[CharacterKey],
+    on: bool,
+) -> AppResult<ToggleResult> {
+    let listed = list(flavor);
+    let Some(info) = listed.addons.iter().find(|a| a.name == addon) else {
+        return Err(AppError::NotFound(format!("addon {addon:?}")));
+    };
+    if info.name.chars().any(|c| c == ':' || c.is_control()) {
+        return Err(AppError::NotFound(format!("addon {addon:?}")));
+    }
+    let mut writes: Vec<(RelPath, Vec<u8>, String)> = Vec::new();
+    for c in characters {
+        let Some(col) = listed
+            .characters
+            .iter()
+            .position(|r| r.account == c.account && r.group == c.group && r.folder == c.folder)
+        else {
+            return Err(AppError::NotFound(format!("character {:?}", c.folder)));
+        };
+        // Already so (by its line or the TOC's default): nothing to write.
+        if info.enabled[col] == on {
+            continue;
+        }
+        let rel = addons_txt_rel(c)?;
+        let existing = match rel.resolve(&target.game) {
+            Ok(path) if path.is_file() => safe_read(&path)?,
+            Ok(_) => Vec::new(),
+            Err(e) => return Err(e),
+        };
+        writes.push((rel, with_state(&existing, &info.name, on), c.folder.clone()));
+    }
+    if writes.is_empty() {
+        return Ok(ToggleResult {
+            snapshot_id: None,
+            changed: Vec::new(),
+        });
+    }
+    let paths: Vec<RelPath> = writes.iter().map(|(p, _, _)| p.clone()).collect();
+    let who = match writes.as_slice() {
+        [(_, _, one)] => one.replace('-', " "),
+        many => format!("{} characters", many.len()),
+    };
+    let label = format!(
+        "Before turning {} {} for {who}",
+        info.title,
+        if on { "on" } else { "off" }
+    );
+    let guard = gate.begin("addons_toggle", target, &paths, &label)?;
+    for (path, bytes, _) in &writes {
+        guard.write(path, bytes)?;
+    }
+    let snapshot_id = guard.snapshot_id().to_string();
+    guard.commit()?;
+    Ok(ToggleResult {
+        snapshot_id: Some(snapshot_id),
+        changed: writes.into_iter().map(|(_, _, f)| f).collect(),
+    })
+}
+
+/// `WTF/Account/<account>/<group>/<character>/AddOns.txt`, and nothing else.
+fn is_addons_txt(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    matches!(parts.as_slice(), ["WTF", "Account", _, _, _, "AddOns.txt"])
+}
+
+/// Undoes a toggle: puts back exactly the AddOns.txt files its safety
+/// snapshot holds (and removes any it created), through the write gate with
+/// a snapshot of its own. Refused for any snapshot that isn't a toggle's:
+/// one holding anything but AddOns.txt files.
+pub fn undo(
+    gate: &WriteGate,
+    target: &MutationTarget,
+    manifest: &Manifest,
+    blob: impl Fn(&str) -> AppResult<Vec<u8>>,
+) -> AppResult<()> {
+    let holds_something = !manifest.files.is_empty() || !manifest.absent.is_empty();
+    if !holds_something
+        || manifest.trigger != Trigger::PreWrite
+        || !manifest.files.iter().all(|f| is_addons_txt(&f.path))
+        || !manifest.absent.iter().all(|p| is_addons_txt(p))
+    {
+        return Err(AppError::NotFound(format!("addon change {}", manifest.id)));
+    }
+    let restore: Vec<(RelPath, Vec<u8>)> = manifest
+        .files
+        .iter()
+        .map(|f| Ok((RelPath::new(&f.path)?, blob(&f.blake3)?)))
+        .collect::<AppResult<_>>()?;
+    let remove: Vec<RelPath> = manifest
+        .absent
+        .iter()
+        .map(|p| RelPath::new(p))
+        .collect::<AppResult<_>>()?;
+    let paths: Vec<RelPath> = restore
+        .iter()
+        .map(|(p, _)| p.clone())
+        .chain(remove.iter().cloned())
+        .collect();
+    let guard = gate.begin(
+        "addons_toggle_undo",
+        target,
+        &paths,
+        "Before undoing an addon change",
+    )?;
+    for (path, bytes) in &restore {
+        guard.write(path, bytes)?;
+    }
+    for path in &remove {
+        guard.remove(path)?;
+    }
+    guard.commit()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,5 +682,224 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let l = list(&forever(tmp.path()));
         assert!(l.addons.is_empty() && l.characters.is_empty());
+    }
+
+    // ---- F6 toggles ------------------------------------------------------
+
+    #[test]
+    fn only_the_addons_line_changes() {
+        let before = b"Details: enabled\nWeakAuras: enabled\nquestie: disabled\nX: enabled\n";
+        assert_eq!(
+            with_state(before, "Questie", true),
+            b"Details: enabled\nWeakAuras: enabled\nQuestie: enabled\nX: enabled\n",
+            "any case, in place, order kept"
+        );
+        assert_eq!(
+            with_state(b"Details: enabled\r\n", "Questie", false),
+            b"Details: enabled\r\nQuestie: disabled\r\n",
+            "appended, CRLF kept"
+        );
+        assert_eq!(with_state(b"", "Questie", false), b"Questie: disabled\n");
+        assert_eq!(
+            with_state(b"Details: enabled", "Questie", true),
+            b"Details: enabled\nQuestie: enabled\n",
+            "a last line without a newline gets one"
+        );
+        // A line that only starts with the name isn't the addon's.
+        assert_eq!(
+            with_state(b"QuestieX: enabled\n", "Questie", false),
+            b"QuestieX: enabled\nQuestie: disabled\n"
+        );
+    }
+
+    /// The real app pieces over the fixture game folder: the write gate with
+    /// the backup store's safety snapshots.
+    struct Game {
+        _dir: tempfile::TempDir,
+        root: PathBuf,
+        core: crate::state::AppCore,
+        probe: std::sync::Arc<crate::game::process::fake::FakeProbe>,
+    }
+
+    impl Game {
+        fn new() -> Game {
+            use crate::config::paths::AppPaths;
+            use crate::game::process::fake::FakeProbe;
+            use crate::secrets::MemoryStore;
+            use std::sync::Arc;
+
+            let (dir, root) = crate::test_support::fixture_copy();
+            let probe = Arc::new(FakeProbe::default());
+            let core = crate::state::AppCore::with_parts(
+                AppPaths::under(&dir.path().join("app")),
+                Arc::new(MemoryStore::default()),
+                probe.clone(),
+            )
+            .unwrap();
+            crate::install::set(&core.settings, &root, Some("_classic_beta_")).unwrap();
+            write(
+                &root.join("_classic_beta_"),
+                "Interface/AddOns/Questie/Questie.toc",
+                "## Interface: 16001\n## Title: Questie\n",
+            );
+            Game {
+                _dir: dir,
+                root,
+                core,
+                probe,
+            }
+        }
+
+        fn set(
+            &self,
+            addon: &str,
+            who: &[(&str, &str, &str)],
+            on: bool,
+        ) -> AppResult<ToggleResult> {
+            let install = crate::install::current(&self.core.settings)
+                .unwrap()
+                .unwrap();
+            let keys: Vec<CharacterKey> = who
+                .iter()
+                .map(|(a, g, f)| CharacterKey {
+                    account: a.to_string(),
+                    group: g.to_string(),
+                    folder: f.to_string(),
+                })
+                .collect();
+            set_enabled(
+                &self.core.write_gate().unwrap(),
+                &self.core.mutation_target().unwrap(),
+                install.active_flavor().unwrap(),
+                addon,
+                &keys,
+                on,
+            )
+        }
+
+        fn undo(&self, id: &str) -> AppResult<()> {
+            let store = self.core.backups().unwrap();
+            undo(
+                &self.core.write_gate().unwrap(),
+                &self.core.mutation_target().unwrap(),
+                &store.manifest(id).unwrap(),
+                |h| store.blobs().get(h),
+            )
+        }
+
+        fn txt(&self, account: &str, character: &str) -> Option<String> {
+            let p = self
+                .root
+                .join("_classic_beta_/WTF/Account")
+                .join(account)
+                .join("Ashenvale")
+                .join(character)
+                .join("AddOns.txt");
+            std::fs::read_to_string(p).ok()
+        }
+    }
+
+    const THRANDOR: (&str, &str, &str) = ("ACCOUNT1", "Ashenvale", "Thrandor");
+    const FIZZWICK: (&str, &str, &str) = ("ACCOUNT2", "Ashenvale", "Fizzwick");
+
+    #[test]
+    fn a_toggle_rewrites_one_line_and_undo_puts_it_back() {
+        let g = Game::new();
+        let before = g.txt("ACCOUNT1", "Thrandor").unwrap();
+        assert!(before.contains("Questie: disabled"));
+
+        let r = g.set("Questie", &[THRANDOR], true).unwrap();
+        assert_eq!(r.changed, ["Thrandor"]);
+        let after = g.txt("ACCOUNT1", "Thrandor").unwrap();
+        assert_eq!(
+            after,
+            before.replace("Questie: disabled", "Questie: enabled")
+        );
+
+        g.undo(r.snapshot_id.as_deref().unwrap()).unwrap();
+        assert_eq!(g.txt("ACCOUNT1", "Thrandor").unwrap(), before);
+    }
+
+    #[test]
+    fn a_new_addons_txt_is_created_and_undo_removes_it() {
+        let g = Game::new();
+        assert_eq!(g.txt("ACCOUNT2", "Fizzwick"), None);
+        // No AddOns.txt: on by default, so turning it on writes nothing.
+        let none = g.set("Questie", &[FIZZWICK], true).unwrap();
+        assert!(none.snapshot_id.is_none() && none.changed.is_empty());
+
+        let r = g.set("Questie", &[FIZZWICK, THRANDOR], false).unwrap();
+        assert_eq!(r.changed, ["Fizzwick"], "Thrandor already had it off");
+        assert_eq!(
+            g.txt("ACCOUNT2", "Fizzwick").as_deref(),
+            Some("Questie: disabled\n")
+        );
+
+        g.undo(r.snapshot_id.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            g.txt("ACCOUNT2", "Fizzwick"),
+            None,
+            "it didn't exist before"
+        );
+    }
+
+    #[test]
+    fn toggles_name_only_what_the_screen_shows() {
+        let g = Game::new();
+        let before = g.txt("ACCOUNT1", "Thrandor");
+        let refused = |r: AppResult<ToggleResult>| matches!(r, Err(AppError::NotFound(_)));
+        // An addon that isn't a listed folder, or names a line of its own.
+        assert!(refused(g.set("Nope", &[THRANDOR], true)));
+        assert!(refused(g.set("Questie: enabled\nEvil", &[THRANDOR], true)));
+        // A character that isn't on the roster, or a path dressed as one.
+        assert!(refused(g.set(
+            "Questie",
+            &[("ACCOUNT1", "Ashenvale", "Nobody")],
+            true
+        )));
+        assert!(refused(g.set(
+            "Questie",
+            &[("ACCOUNT1", "..", "Thrandor")],
+            true
+        )));
+        assert_eq!(g.txt("ACCOUNT1", "Thrandor"), before, "nothing written");
+    }
+
+    #[test]
+    fn toggles_are_refused_while_wow_runs() {
+        let g = Game::new();
+        let before = g.txt("ACCOUNT1", "Thrandor");
+        g.probe.set_running(true);
+        let err = g.set("Questie", &[THRANDOR], true).unwrap_err();
+        assert!(matches!(err, AppError::GameRunning(_)), "{err}");
+        assert_eq!(g.txt("ACCOUNT1", "Thrandor"), before);
+    }
+
+    #[test]
+    fn undo_takes_only_a_toggles_snapshot() {
+        use crate::backup::manifest::Trigger;
+        use crate::backup::{SnapshotRequest, SnapshotScope};
+        let g = Game::new();
+        let game = g.core.active_game().unwrap();
+        let full = g
+            .core
+            .backups()
+            .unwrap()
+            .create(
+                SnapshotRequest {
+                    game: &game.root,
+                    flavor: &game.flavor,
+                    trigger: Trigger::Manual,
+                    label: None,
+                    scope: SnapshotScope::Full {
+                        include_addons: false,
+                    },
+                    game_running: false,
+                },
+                &mut |_, _| {},
+            )
+            .unwrap()
+            .unwrap();
+        assert!(matches!(g.undo(&full.id), Err(AppError::NotFound(_))));
     }
 }
