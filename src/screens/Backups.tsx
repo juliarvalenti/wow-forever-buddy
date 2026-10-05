@@ -79,7 +79,7 @@ function note(s: SnapshotSummary) {
 
 function contents(s: SnapshotSummary) {
   const parts = [];
-  if (s.char_count > 0) parts.push(plural(s.char_count, "character", "characters"));
+  if (s.char_count > 0) parts.push(plural(s.char_count, "char", "chars"));
   if (s.addon_count > 0) parts.push(plural(s.addon_count, "addon", "addons"));
   if (parts.length === 0) parts.push(plural(s.file_count, "file", "files"));
   return parts.join(" · ");
@@ -119,7 +119,9 @@ function toSelection(keys: Keys): RestoreSelection {
   return { items };
 }
 
-function restoreLabel(keys: Keys): { button: string; title: string } {
+/** Button and dialog title for the current selection, and `who` when it's
+ *  exactly one character ("Thrandor's keybindings… will be replaced"). */
+function restoreLabel(keys: Keys): { button: string; title: string; who?: string } {
   if (keys.has("all")) return { button: "Restore everything…", title: "Restore everything?" };
   const chars = new Set(
     [...keys].filter((k) => k.startsWith("char|")).map((k) => k.split("|").slice(1, 4).join("|")),
@@ -130,6 +132,7 @@ function restoreLabel(keys: Keys): { button: string; title: string } {
     return {
       button: `Restore ${plural(chars.size, "character", "characters")}…`,
       title: chars.size === 1 ? `Restore ${only}?` : `Restore ${chars.size} characters?`,
+      who: chars.size === 1 ? only : undefined,
     };
   }
   if (addons.length > 0 && chars.size === 0)
@@ -387,7 +390,8 @@ function ConfirmRestore({
   const [id, setId] = useState(chosen);
   const selection = useMemo(() => toSelection(keys), [keys]);
   const again = useCallback(() => preview(id, selection, mode), [id, selection, mode, preview]);
-  const { title } = restoreLabel(keys);
+  const { title, who } = restoreLabel(keys);
+  const takenAt = snapshots.find((s) => s.id === id)?.created_at;
 
   // A plan from before WoW's exit writes is stale. When WoW closes, re-plan
   // and keep Restore locked until that fresh plan is in ("Checking what
@@ -448,7 +452,7 @@ function ConfirmRestore({
           {running ? (
             <span>
               Waiting for WoW to close…{" "}
-              <span className="d-muted">Restore enables automatically when it exits.</span>
+              <span className="d-muted">Restore unlocks once WoW closes and the list is checked again.</span>
             </span>
           ) : (
             <span>WoW closed. Checking what changed…</span>
@@ -500,7 +504,19 @@ function ConfirmRestore({
       {!plan && !planError && <p className="d-muted">Working out what changes…</p>}
       {plan && (
         <>
-          <PlanDetails plan={plan} />
+          <PlanDetails
+            plan={plan}
+            lead={
+              plan.write_count > 0 && takenAt ? (
+                <>
+                  {who ? `${who}'s ` : ""}
+                  {/* The summary's "; removes N" part is listed separately below. */}
+                  <b>{plan.summary.split(";")[0]}</b> will be replaced with the copy from{" "}
+                  <b>{whenInline(takenAt)}</b>.
+                </>
+              ) : undefined
+            }
+          />
           <p className="d-muted">
             A safety snapshot of the current files is taken before anything changes, so you can
             undo this.
@@ -706,13 +722,14 @@ export function Backups({
           )}
           {shown.length > 0 && (
             <DataTable
+              className={selected ? "with-panel" : undefined}
               head={
                 <tr>
                   <th>When</th>
                   <th>Type</th>
                   <th>Note</th>
-                  {/* No room beside the snapshot panel. */}
-                  {!selected && <th>Contents</th>}
+                  {/* Hidden beside the snapshot panel only in the narrow layout (d.css). */}
+                  <th className="col-contents">Contents</th>
                   <th className="num">Size</th>
                   <th />
                 </tr>
@@ -728,7 +745,8 @@ export function Backups({
                     <Pill kind={KIND_PILL[s.kind]}>{KIND_LABEL[s.kind]}</Pill>
                   </td>
                   <td>{note(s)}</td>
-                  {!selected && <td className="d-muted">{contents(s)}</td>}
+                  {/* Not "contents": that's Tailwind's display: contents utility. */}
+                  <td className="col-contents d-muted nowrap">{contents(s)}</td>
                   <td className="num">{bytes(s.total_bytes)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     {restoreAction("Restore", () => setSelected(s.id), "ghost")}

@@ -163,9 +163,13 @@ export function Checkbox({
   );
 }
 
-export function DataTable({ head, children }: Children & { head: ReactNode }) {
+export function DataTable({
+  head,
+  children,
+  className,
+}: Children & { head: ReactNode; className?: string }) {
   return (
-    <table className="d-table">
+    <table className={`d-table ${className ?? ""}`}>
       <thead>{head}</thead>
       <tbody>{children}</tbody>
     </table>

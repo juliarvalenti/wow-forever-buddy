@@ -23,6 +23,25 @@ const SOURCE: Record<InstallCandidate["source"], string> = {
   common_path: "found on disk",
 };
 
+/** "the Windows registry, Program Files, and \Games and \World of Warcraft on
+ *  drives C, D and E": where detection looked, in a sentence. The full list
+ *  goes in the tooltip. */
+function lookedInSummary(looked: { source: string; path: string }[]): string {
+  const parts: string[] = [];
+  if (looked.some((l) => l.source === "registry")) parts.push("the Windows registry");
+  const paths = looked.filter((l) => l.source !== "registry").map((l) => l.path);
+  if (paths.some((p) => /program files/i.test(p))) parts.push("Program Files");
+  const loose = paths.filter((p) => !/program files/i.test(p));
+  const drives = [...new Set(loose.map((p) => p.match(/^([A-Za-z]):/)?.[1]?.toUpperCase()).filter(Boolean))];
+  if (drives.length > 0) {
+    const games = loose.some((p) => /\\games\\/i.test(p)) ? "\\Games and " : "";
+    const list = drives.length > 1 ? `${drives.slice(0, -1).join(", ")} and ${drives[drives.length - 1]}` : drives[0];
+    parts.push(`${games}\\World of Warcraft on ${drives.length > 1 ? "drives" : "drive"} ${list}`);
+  }
+  if (parts.length === 0) return paths.join(", ");
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}` : parts[0];
+}
+
 /** "7 characters on Ashenvale +2 realms" (count first). */
 function roster(f: Flavor): string {
   if (f.characters === 0) return "no characters yet";
@@ -108,6 +127,17 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
     return (
       <Page>
         <div className="d-letter-wrap">
+          <ol className="d-stepper" aria-label="Setup">
+            <li className="on">
+              <span>1</span>Find the game
+            </li>
+            <li>
+              <span>2</span>First backup
+            </li>
+            <li>
+              <span>3</span>Companion addon <i>optional</i>
+            </li>
+          </ol>
           <Record>
             <div className="d-letter">
               <h1>Well met.</h1>
@@ -154,13 +184,8 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
                   <div className="d-letter-head">We couldn't find World of Warcraft</div>
                   <p className="d-muted">That's fine; point us at it and we'll take it from there.</p>
                   {looked.length > 0 && (
-                    <p className="d-dim">
-                      Looked in:{" "}
-                      {looked
-                        .slice(0, 4)
-                        .map((l) => l.path)
-                        .join(", ")}
-                      {looked.length > 4 && ` and ${looked.length - 4} more`}.
+                    <p className="d-dim" title={looked.map((l) => l.path).join("\n")}>
+                      Looked in: {lookedInSummary(looked)}.
                     </p>
                   )}
                   <div className="d-hints">
