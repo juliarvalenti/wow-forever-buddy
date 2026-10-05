@@ -44,7 +44,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::addon::addon_install,
             commands::addon::addon_remove,
             commands::addons::addons_list,
-            commands::addons::addons_set_enabled,
+            commands::addons::addons_apply,
             commands::addons::addons_undo,
             commands::adventures::adventure_get,
             commands::adventures::adventure_set_note,

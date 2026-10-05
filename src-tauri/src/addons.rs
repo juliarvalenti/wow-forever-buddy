@@ -19,7 +19,7 @@ use serde::Serialize;
 use crate::backup::manifest::{Manifest, Trigger};
 use crate::error::{AppError, AppResult};
 use crate::fsx::read::safe_read;
-use crate::fsx::relpath::RelPath;
+use crate::fsx::relpath::{GameRoot, RelPath};
 use crate::game::gate::{MutationTarget, WriteGate};
 use crate::install::layout::Flavor;
 use crate::sessions;
@@ -54,6 +54,9 @@ pub struct AddonCharacter {
     pub group: String,
     /// The character folder, e.g. `Ellygie-Vargur`.
     pub folder: String,
+    /// Its settings folder is a link to somewhere else, so the write gate
+    /// won't write its AddOns.txt: "linked folder" instead of a switch.
+    pub linked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -243,6 +246,7 @@ fn addons_txt(path: &Path) -> Vec<(String, bool)> {
 pub fn list(flavor: &Flavor) -> AddonsList {
     let addons_dir = flavor.dir.join("Interface").join("AddOns");
     let interface = flavor.version.as_deref().and_then(interface_of);
+    let root = GameRoot::new(&flavor.dir).ok();
     let suffixes = toc_suffixes(flavor);
 
     let roster: Vec<_> = sessions::wtf_characters(&flavor.dir.join("WTF"))
@@ -310,10 +314,26 @@ pub fn list(flavor: &Flavor) -> AddonsList {
         interface,
         characters: roster
             .into_iter()
-            .map(|r| AddonCharacter {
-                account: r.account,
-                group: r.realm,
-                folder: r.name,
+            .map(|r| {
+                let key = CharacterKey {
+                    account: r.account,
+                    group: r.realm,
+                    folder: r.name,
+                };
+                // The write gate's own test, asked in advance: a settings
+                // folder that resolves outside WTF is a link it refuses.
+                let linked = root.as_ref().is_some_and(|root| {
+                    matches!(
+                        addons_txt_rel(&key).and_then(|p| p.resolve(root)),
+                        Err(AppError::PathEscape(_))
+                    )
+                });
+                AddonCharacter {
+                    account: key.account,
+                    group: key.group,
+                    folder: key.folder,
+                    linked,
+                }
             })
             .collect(),
         addons,
@@ -367,14 +387,23 @@ pub struct CharacterKey {
     pub folder: String,
 }
 
-/// What a toggle changed, for "Turned Questie off for Thrandor · Undo".
+/// One staged switch: turn `addon` on or off for `character`.
+#[derive(Debug, Clone, serde::Deserialize, specta::Type)]
+pub struct AddonChange {
+    pub addon: String,
+    pub character: CharacterKey,
+    pub enabled: bool,
+}
+
+/// What Apply did, for "4 changes applied. A safety snapshot was taken
+/// first." with Undo.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct ToggleResult {
     /// The safety snapshot taken first; `None` if every file already said
     /// so and nothing was written.
     pub snapshot_id: Option<String>,
-    /// Character folders whose AddOns.txt changed.
-    pub changed: Vec<String>,
+    /// Changes that took effect (ones already so are left out).
+    pub applied: u32,
 }
 
 fn addons_txt_rel(c: &CharacterKey) -> AppResult<RelPath> {
@@ -384,31 +413,39 @@ fn addons_txt_rel(c: &CharacterKey) -> AppResult<RelPath> {
     ))
 }
 
-/// Turns `addon` on or off for `characters`, through the write gate:
+/// Applies staged switches (IMPLEMENTING.md §11) through the write gate:
 /// refused while WoW runs, one safety snapshot of exactly the AddOns.txt
-/// files that change, each replaced atomically.
+/// files that change, each replaced atomically with all of its changes.
 ///
-/// Nothing from the UI is trusted: the addon must be one the list shows
+/// Nothing from the UI is trusted: each addon must be one the list shows
 /// (a folder with a TOC, so no `:` or line break can reach the file), and
 /// each character must be on the WTF roster with older settings folders
-/// left out; the paths are built from those, never taken as given.
-pub fn set_enabled(
+/// left out; the paths are built from those, never taken as given. A
+/// character whose settings folder is a link is refused, as the list says
+/// in advance. One bad change refuses the whole set, before any write.
+pub fn apply(
     gate: &WriteGate,
     target: &MutationTarget,
     flavor: &Flavor,
-    addon: &str,
-    characters: &[CharacterKey],
-    on: bool,
+    changes: &[AddonChange],
 ) -> AppResult<ToggleResult> {
     let listed = list(flavor);
-    let Some(info) = listed.addons.iter().find(|a| a.name == addon) else {
-        return Err(AppError::NotFound(format!("addon {addon:?}")));
-    };
-    if info.name.chars().any(|c| c == ':' || c.is_control()) {
-        return Err(AppError::NotFound(format!("addon {addon:?}")));
+    // Everything is checked before anything is written: one bad change
+    // refuses the whole set.
+    struct Edit<'a> {
+        col: usize,
+        addon: &'a AddonInfo,
+        on: bool,
     }
-    let mut writes: Vec<(RelPath, Vec<u8>, String)> = Vec::new();
-    for c in characters {
+    let mut edits: Vec<Edit> = Vec::new();
+    for ch in changes {
+        let Some(addon) = listed.addons.iter().find(|a| a.name == ch.addon) else {
+            return Err(AppError::NotFound(format!("addon {:?}", ch.addon)));
+        };
+        if addon.name.chars().any(|c| c == ':' || c.is_control()) {
+            return Err(AppError::NotFound(format!("addon {:?}", ch.addon)));
+        }
+        let c = &ch.character;
         let Some(col) = listed
             .characters
             .iter()
@@ -416,43 +453,70 @@ pub fn set_enabled(
         else {
             return Err(AppError::NotFound(format!("character {:?}", c.folder)));
         };
-        // Already so (by its line or the TOC's default): nothing to write.
-        if info.enabled[col] == on {
-            continue;
+        if listed.characters[col].linked {
+            return Err(AppError::PathEscape(format!(
+                "{}'s settings folder is a link",
+                c.folder
+            )));
         }
-        let rel = addons_txt_rel(c)?;
-        let existing = match rel.resolve(&target.game) {
+        // Already so (by its line or the TOC's default): nothing to write.
+        if addon.enabled[col] != ch.enabled {
+            edits.push(Edit {
+                col,
+                addon,
+                on: ch.enabled,
+            });
+        }
+    }
+
+    // One write per character's file, with all of its changes folded in.
+    let mut cols: Vec<usize> = edits.iter().map(|e| e.col).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    let mut writes: Vec<(RelPath, Vec<u8>)> = Vec::new();
+    for col in cols {
+        let r = &listed.characters[col];
+        let rel = addons_txt_rel(&CharacterKey {
+            account: r.account.clone(),
+            group: r.group.clone(),
+            folder: r.folder.clone(),
+        })?;
+        let mut bytes = match rel.resolve(&target.game) {
             Ok(path) if path.is_file() => safe_read(&path)?,
             Ok(_) => Vec::new(),
             Err(e) => return Err(e),
         };
-        writes.push((rel, with_state(&existing, &info.name, on), c.folder.clone()));
+        for e in edits.iter().filter(|e| e.col == col) {
+            bytes = with_state(&bytes, &e.addon.name, e.on);
+        }
+        writes.push((rel, bytes));
     }
     if writes.is_empty() {
         return Ok(ToggleResult {
             snapshot_id: None,
-            changed: Vec::new(),
+            applied: 0,
         });
     }
-    let paths: Vec<RelPath> = writes.iter().map(|(p, _, _)| p.clone()).collect();
-    let who = match writes.as_slice() {
-        [(_, _, one)] => one.replace('-', " "),
-        many => format!("{} characters", many.len()),
+
+    let label = match edits.as_slice() {
+        [one] => format!(
+            "Before turning {} {} for {}",
+            one.addon.title,
+            if one.on { "on" } else { "off" },
+            listed.characters[one.col].folder.replace('-', " ")
+        ),
+        many => format!("Before {} addon changes", many.len()),
     };
-    let label = format!(
-        "Before turning {} {} for {who}",
-        info.title,
-        if on { "on" } else { "off" }
-    );
+    let paths: Vec<RelPath> = writes.iter().map(|(p, _)| p.clone()).collect();
     let guard = gate.begin("addons_toggle", target, &paths, &label)?;
-    for (path, bytes, _) in &writes {
+    for (path, bytes) in &writes {
         guard.write(path, bytes)?;
     }
     let snapshot_id = guard.snapshot_id().to_string();
     guard.commit()?;
     Ok(ToggleResult {
         snapshot_id: Some(snapshot_id),
-        changed: writes.into_iter().map(|(_, _, f)| f).collect(),
+        applied: edits.len() as u32,
     })
 }
 
@@ -750,30 +814,39 @@ mod tests {
             }
         }
 
+        /// One addon switched the same way for `who`.
         fn set(
             &self,
             addon: &str,
             who: &[(&str, &str, &str)],
             on: bool,
         ) -> AppResult<ToggleResult> {
+            let changes: Vec<(&str, (&str, &str, &str), bool)> =
+                who.iter().map(|&c| (addon, c, on)).collect();
+            self.apply(&changes)
+        }
+
+        fn apply(&self, changes: &[(&str, (&str, &str, &str), bool)]) -> AppResult<ToggleResult> {
             let install = crate::install::current(&self.core.settings)
                 .unwrap()
                 .unwrap();
-            let keys: Vec<CharacterKey> = who
+            let changes: Vec<AddonChange> = changes
                 .iter()
-                .map(|(a, g, f)| CharacterKey {
-                    account: a.to_string(),
-                    group: g.to_string(),
-                    folder: f.to_string(),
+                .map(|&(addon, (a, g, f), enabled)| AddonChange {
+                    addon: addon.to_string(),
+                    character: CharacterKey {
+                        account: a.to_string(),
+                        group: g.to_string(),
+                        folder: f.to_string(),
+                    },
+                    enabled,
                 })
                 .collect();
-            set_enabled(
+            apply(
                 &self.core.write_gate().unwrap(),
                 &self.core.mutation_target().unwrap(),
                 install.active_flavor().unwrap(),
-                addon,
-                &keys,
-                on,
+                &changes,
             )
         }
 
@@ -809,7 +882,7 @@ mod tests {
         assert!(before.contains("Questie: disabled"));
 
         let r = g.set("Questie", &[THRANDOR], true).unwrap();
-        assert_eq!(r.changed, ["Thrandor"]);
+        assert_eq!(r.applied, 1);
         let after = g.txt("ACCOUNT1", "Thrandor").unwrap();
         assert_eq!(
             after,
@@ -826,10 +899,10 @@ mod tests {
         assert_eq!(g.txt("ACCOUNT2", "Fizzwick"), None);
         // No AddOns.txt: on by default, so turning it on writes nothing.
         let none = g.set("Questie", &[FIZZWICK], true).unwrap();
-        assert!(none.snapshot_id.is_none() && none.changed.is_empty());
+        assert!(none.snapshot_id.is_none() && none.applied == 0);
 
         let r = g.set("Questie", &[FIZZWICK, THRANDOR], false).unwrap();
-        assert_eq!(r.changed, ["Fizzwick"], "Thrandor already had it off");
+        assert_eq!(r.applied, 1, "Thrandor already had it off");
         assert_eq!(
             g.txt("ACCOUNT2", "Fizzwick").as_deref(),
             Some("Questie: disabled\n")
@@ -840,6 +913,67 @@ mod tests {
             g.txt("ACCOUNT2", "Fizzwick"),
             None,
             "it didn't exist before"
+        );
+    }
+
+    /// Changes staged across addons apply together: one snapshot, one write
+    /// per character with every change folded in, and one undo for all.
+    #[test]
+    fn staged_changes_apply_together() {
+        let g = Game::new();
+        let before = g.txt("ACCOUNT1", "Thrandor").unwrap();
+        let r = g
+            .apply(&[
+                ("Questie", THRANDOR, true),
+                ("Details", THRANDOR, false),
+                ("Questie", FIZZWICK, false),
+            ])
+            .unwrap();
+        assert_eq!(r.applied, 3);
+        let after = g.txt("ACCOUNT1", "Thrandor").unwrap();
+        assert!(after.contains("Questie: enabled") && after.contains("Details: disabled"));
+        assert!(after.contains("WeakAuras: enabled"), "untouched line kept");
+        assert_eq!(
+            g.txt("ACCOUNT2", "Fizzwick").as_deref(),
+            Some("Questie: disabled\n")
+        );
+
+        g.undo(r.snapshot_id.as_deref().unwrap()).unwrap();
+        assert_eq!(g.txt("ACCOUNT1", "Thrandor").unwrap(), before);
+        assert_eq!(g.txt("ACCOUNT2", "Fizzwick"), None);
+    }
+
+    /// A character whose settings folder is a link: the list says so, and
+    /// a change for it is refused before anything is written.
+    #[test]
+    fn a_linked_character_folder_is_refused() {
+        let g = Game::new();
+        let account = g.root.join("_classic_beta_/WTF/Account/ACCOUNT1/Ashenvale");
+        let elsewhere = g._dir.path().join("elsewhere/Velyra");
+        std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+        std::fs::rename(account.join("Velyra"), &elsewhere).unwrap();
+        crate::test_support::link_dir(&elsewhere, &account.join("Velyra"));
+        let before_thrandor = g.txt("ACCOUNT1", "Thrandor");
+
+        let install = crate::install::current(&g.core.settings).unwrap().unwrap();
+        let l = list(install.active_flavor().unwrap());
+        let linked: Vec<&str> = l
+            .characters
+            .iter()
+            .filter(|c| c.linked)
+            .map(|c| c.folder.as_str())
+            .collect();
+        assert_eq!(linked, ["Velyra"]);
+
+        let velyra = ("ACCOUNT1", "Ashenvale", "Velyra");
+        let err = g
+            .apply(&[("Questie", THRANDOR, true), ("Questie", velyra, true)])
+            .unwrap_err();
+        assert!(matches!(err, AppError::PathEscape(_)), "{err}");
+        assert_eq!(
+            g.txt("ACCOUNT1", "Thrandor"),
+            before_thrandor,
+            "nothing written"
         );
     }
 

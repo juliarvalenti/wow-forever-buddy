@@ -7,6 +7,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
+  AddonChange,
   AddonInfo,
   AddonsList,
   AddonStatus,
@@ -61,6 +62,7 @@ export const SCENARIOS = [
   "settings-moving", // moving the backups, stuck part way so the progress shows
   "settings-pending", // moving is refused: an interrupted restore waits
   "addons-empty", // F4: no addons in Interface/AddOns yet (the Addons screen works in every scenario)
+  "addons-linked", // F6: Velyra's settings folder is a link, so her row can't be switched
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -602,11 +604,12 @@ export function installMockIpc(): void {
     app_open_folder: () => null,
     // F6: a toggle remembers itself until undone (one level, like the app's
     // last-change Undo).
-    addons_set_enabled: ({ addon, characters, enabled }) => {
-      const keys = (characters as { folder: string }[]).map((c) => `${addon}/${c.folder}`);
+    addons_apply: ({ changes }) => {
+      const list = changes as AddonChange[];
+      const keys = list.map((c) => `${c.addon}/${c.character.folder}`);
       lastToggle = new Map(keys.map((k) => [k, addonToggles.get(k)]));
-      for (const k of keys) addonToggles.set(k, Boolean(enabled));
-      return { snapshot_id: "S9", changed: (characters as { folder: string }[]).map((c) => c.folder) };
+      list.forEach((c, i) => addonToggles.set(keys[i], c.enabled));
+      return { snapshot_id: "S9", applied: list.length };
     },
     addons_undo: () => {
       for (const [k, v] of lastToggle) {
@@ -647,7 +650,13 @@ export function installMockIpc(): void {
         game: "WoW: Forever (Beta)",
         folder: dir,
         interface: 16001,
-        characters: folders.map((folder) => ({ account: "ACCOUNT1", group: "70", folder })),
+        // In addons-linked, Velyra's settings folder is a link the gate refuses.
+        characters: folders.map((folder) => ({
+          account: "ACCOUNT1",
+          group: "70",
+          folder,
+          linked: s === "addons-linked" && folder === "Velyra-Duskmane",
+        })),
         read_at: iso(4),
         addons: s === "addons-empty"
           ? []

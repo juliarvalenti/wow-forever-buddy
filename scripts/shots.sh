@@ -49,8 +49,11 @@ SCENARIOS=(
   "addons|characters|click:css=nav button[title=\"Addons\"];wait:css=.ad-table|addons-readonly"
   "addons-empty|addons-empty|click:css=nav button[title=\"Addons\"];wait:text=No addons in|addons-readonly"
   # F6: after turning Questie on for Thrandor (Undo offered), and locked while WoW runs.
-  "addons-toggled|characters|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");click:css=[aria-label=\"Questie for Thrandor\"];wait:text=Turned Questie on|addons-readonly"
-  "addons-locked|dashboard|click:css=nav button[title=\"Addons\"];wait:text=Close WoW first|addons-readonly"
+  "addons-staged|characters|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");click:css=[aria-label=\"Questie for Thrandor\"];wait:text=1 change|addons-staged"
+  "addons-applied|characters|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");click:css=[aria-label=\"Questie for Thrandor\"];click:Apply;wait:text=A safety snapshot was taken first|addons-applied"
+  "addons-running|dashboard|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");wait:text=addon changes are locked|addons-running"
+  # No shot of the linked state yet: it sits next to the edit state.
+  "addons-linked|addons-linked|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");wait:text=linked folder|addons-edit"
 )
 
 echo "== build:mock"

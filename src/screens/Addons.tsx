@@ -1,22 +1,42 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, FileText, FolderOpen, Lock, Search } from "lucide-react";
-import { commands, type AddonInfo, type AddonsList, type CharacterKey } from "@/lib/bindings";
-import { Button, Callout, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented, Switch } from "@/components/d";
+import { Check, Link2 } from "lucide-react";
+import { commands, type AddonChange, type AddonInfo, type AddonsList } from "@/lib/bindings";
+import {
+  Button,
+  Callout,
+  LiveDot,
+  LockedAction,
+  Page,
+  PageHeader,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  PrimaryButton,
+  Segmented,
+  Switch,
+} from "@/components/d";
 import { useAddons } from "@/hooks/useAddons";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { ago, characterName, errorText } from "@/lib/format";
 import { classStyle } from "@/screens/Characters";
 
-// design/mocks/round-3/addons-readonly.html, IMPLEMENTING.md §9. The one
-// write is F6's on/off per character in the side panel: it rewrites that
-// character's AddOns.txt through the backend's write gate (refused while
-// WoW runs, safety snapshot first) and can be undone. No sets, installs,
-// updates, sources or sizes yet. TOC text is the addon author's, already
-// stripped of WoW markup by the backend, and rendered as React text only.
+// design/mocks/round-3/addons-readonly.html, IMPLEMENTING.md §9 and §11. The
+// one write is F6's on/off per character: switches stage changes (never a
+// write on click), and Apply writes them all through the backend's write
+// gate (refused while WoW runs, one safety snapshot first), with Undo. No
+// sets, installs, updates, sources or sizes yet. TOC text is the addon
+// author's, already stripped of WoW markup by the backend, and rendered as
+// React text only.
 
-/** The last toggle, for "Turned Questie off for Thrandor · Undo". */
+/** The last Apply: "Questie is on for Thrandor. A safety snapshot was taken
+ *  first." with Undo, or the reason it failed. */
 type Outcome = { text: string; snapshotId: string | null; bad?: boolean };
+
+/** A staged switch's key: the addon (a folder name, never a line break) and
+ *  the character's column. */
+const stageKey = (addon: string, col: number) => `${addon}\n${col}`;
 
 type Show = "all" | "old" | "off";
 
@@ -43,7 +63,7 @@ function tail(path: string, keep = 2): string {
 }
 
 export function Addons() {
-  const { list, error, busy, setEnabled, undo } = useAddons();
+  const { list, error, busy, apply, undo } = useAddons();
   const { overview } = useCharacters();
   const game = useGameStatus();
   const [filter, setFilter] = useState("");
@@ -51,23 +71,47 @@ export function Addons() {
   const [selected, setSelected] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // Switches flipped but not applied, across addons: key → wanted state.
+  const [staged, setStaged] = useState<Map<string, boolean>>(new Map());
   // WoW rewrites AddOns.txt at logout, so a change made while it runs would
   // be lost; the backend refuses it too. Unknown counts as running.
   const locked = !game || game.running || game.unknown;
 
-  /** Turns `a` on or off for the characters at `cols`. */
-  const toggle = async (a: AddonInfo, at: number[], on: boolean) => {
-    if (!list) return;
-    const who: CharacterKey[] = at.map((i) => {
-      const c = list.characters[i];
-      return { account: c.account, group: c.group, folder: c.folder };
+  const wanted = (a: AddonInfo, col: number) => staged.get(stageKey(a.name, col)) ?? a.enabled[col];
+  /** Stages a switch; flipping it back to the saved state unstages it. */
+  const stage = (a: AddonInfo, cols: number[], on: boolean) => {
+    setOutcome(null);
+    setStaged((prev) => {
+      const next = new Map(prev);
+      for (const col of cols) {
+        if (list?.characters[col]?.linked) continue;
+        if (a.enabled[col] === on) next.delete(stageKey(a.name, col));
+        else next.set(stageKey(a.name, col), on);
+      }
+      return next;
+    });
+  };
+  const applyStaged = async () => {
+    if (!list || staged.size === 0) return;
+    const changes: AddonChange[] = [...staged].map(([k, enabled]) => {
+      const [addon, col] = k.split("\n");
+      const c = list.characters[Number(col)];
+      return { addon, character: { account: c.account, group: c.group, folder: c.folder }, enabled };
     });
     try {
-      const r = await setEnabled(a.name, who, on);
-      if (r.changed.length === 0) return;
-      const names = r.changed.length === 1 ? characterName(r.changed[0]) : `${r.changed.length} characters`;
-      setOutcome({ text: `Turned ${a.title} ${on ? "on" : "off"} for ${names}.`, snapshotId: r.snapshot_id });
+      const r = await apply(changes);
+      const [only] = changes;
+      const title = list.addons.find((a) => a.name === only.addon)?.title ?? only.addon;
+      setOutcome({
+        text:
+          changes.length === 1
+            ? `${title} is ${only.enabled ? "on" : "off"} for ${characterName(only.character.folder)}. A safety snapshot was taken first.`
+            : `${changes.length} changes applied. A safety snapshot was taken first.`,
+        snapshotId: r.snapshot_id,
+      });
+      setStaged(new Map());
     } catch (e) {
+      // Nothing was written: the changes stay staged.
       setOutcome({ text: (e as Error).message, snapshotId: null, bad: true });
     }
   };
@@ -152,6 +196,16 @@ export function Addons() {
       )}
       {list && addons.length > 0 && (
         <>
+          {locked && (
+            <Callout tone="ember">
+              <Lock size={14} aria-hidden />
+              <span className="grow">
+                <b>WoW is running, so addon changes are locked.</b> WoW rewrites each character's AddOns.txt when it
+                closes, so changes wait until then.
+              </span>
+              <LiveDot />
+            </Callout>
+          )}
           <div className="ad-toolbar">
             <label className="ad-filter">
               <Search size={14} aria-hidden />
@@ -213,7 +267,11 @@ export function Addons() {
                 locked={locked}
                 busy={busy}
                 outcome={outcome}
-                onToggle={(at, on) => toggle(current, at, on)}
+                wanted={(col) => wanted(current, col)}
+                pending={staged.size}
+                onStage={(at, on) => stage(current, at, on)}
+                onApply={applyStaged}
+                onDiscard={() => setStaged(new Map())}
                 onUndo={undoLast}
               />
             )}
@@ -287,7 +345,11 @@ function Detail({
   locked,
   busy,
   outcome,
-  onToggle,
+  wanted,
+  pending,
+  onStage,
+  onApply,
+  onDiscard,
   onUndo,
 }: {
   a: AddonInfo;
@@ -296,11 +358,17 @@ function Detail({
   locked: boolean;
   busy: boolean;
   outcome: Outcome | null;
-  onToggle: (at: number[], on: boolean) => void;
+  /** The switch's state: staged if it was flipped, else saved. */
+  wanted: (col: number) => boolean;
+  /** Staged changes across every addon. */
+  pending: number;
+  onStage: (at: number[], on: boolean) => void;
+  onApply: () => void;
+  onDiscard: () => void;
   onUndo: () => void;
 }) {
-  const off = a.enabled.flatMap((on, i) => (on ? [] : [i]));
-  const on = a.enabled.flatMap((on, i) => (on ? [i] : []));
+  const writable = list.characters.flatMap((c, i) => (c.linked ? [] : [i]));
+  const allOn = writable.every((i) => wanted(i));
   const still = locked || busy;
   return (
     <Panel className="ad-side">
@@ -326,47 +394,71 @@ function Detail({
             <div>
               <div className="ad-sec">
                 Enabled for
-                {cols.length > 1 && (
-                  <span className="ad-all">
-                    <button disabled={still || off.length === 0} onClick={() => onToggle(off, true)}>
-                      On for all
-                    </button>
-                    <button disabled={still || on.length === 0} onClick={() => onToggle(on, false)}>
-                      Off for all
-                    </button>
-                  </span>
+                {!locked && writable.length > 1 && !allOn && (
+                  <button className="ad-all" disabled={busy} onClick={() => onStage(writable, true)}>
+                    On for everyone
+                  </button>
                 )}
               </div>
               <ul className={`ad-who${still ? " still" : ""}`}>
-                {cols.map((c, i) => (
-                  <li key={i} className={a.enabled[i] ? undefined : "off"} style={classStyle(c)}>
-                    <span className="ad-dot" />
-                    <span className="ch-cc">{c.name}</span>
-                    <span className="st">{a.enabled[i] ? "on" : "off"}</span>
-                    <Switch
-                      checked={a.enabled[i]}
-                      label={`${a.title} for ${c.name}`}
-                      disabled={still}
-                      onChange={(v) => onToggle([i], v)}
-                    />
-                  </li>
-                ))}
+                {cols.map((c, i) => {
+                  const ch = list.characters[i];
+                  const on = wanted(i);
+                  const changed = on !== a.enabled[i];
+                  return (
+                    <li key={i} className={on ? undefined : "off"} style={classStyle(c)}>
+                      <span className="ad-dot" />
+                      <span className="ch-cc">{c.name}</span>
+                      {ch.linked ? (
+                        <span
+                          className="ad-linked"
+                          title={`${c.name}'s settings folder is a link to another place, so Forever Buddy won't write there. Change it in-game.`}
+                        >
+                          <Link2 size={12} aria-hidden />
+                          linked folder
+                        </span>
+                      ) : (
+                        <>
+                          {changed && <span className="ad-chg">changed</span>}
+                          <span className="ad-sw" title={locked ? "Close WoW first" : undefined}>
+                            <Switch
+                              checked={on}
+                              label={`${a.title} for ${c.name}`}
+                              disabled={still}
+                              onChange={(v) => onStage([i], v)}
+                            />
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
-          {locked && (
-            <p className="ad-note ember">
-              <Lock size={13} aria-hidden />
-              <span>Close WoW first. Turning addons on or off writes each character's AddOns.txt.</span>
-            </p>
+          {pending > 0 && (
+            <div className="ad-applybar">
+              <span className="n">{pending === 1 ? "1 change" : `${pending} changes`}</span>
+              <Button variant="ghost" disabled={busy} onClick={onDiscard}>
+                Discard
+              </Button>
+              {locked ? (
+                <LockedAction why="Close WoW first">Apply</LockedAction>
+              ) : (
+                <PrimaryButton disabled={busy} onClick={onApply}>
+                  Apply
+                </PrimaryButton>
+              )}
+            </div>
           )}
           {outcome && (
-            <p className={`ad-note${outcome.bad ? " bad" : " done"}`} role="status">
-              <span>{outcome.text}</span>
+            <p className={`ad-done${outcome.bad ? " bad" : ""}`} role="status">
+              {!outcome.bad && <Check size={14} aria-hidden />}
+              <span className="grow">{outcome.text}</span>
               {outcome.snapshotId && (
-                <button className="ad-undo" disabled={still} onClick={onUndo}>
+                <Button variant="ghost" disabled={still} onClick={onUndo}>
                   Undo
-                </button>
+                </Button>
               )}
             </p>
           )}
@@ -376,13 +468,15 @@ function Detail({
               <span>Built for an older interface. WoW loads it only with 'Load out of date AddOns' checked.</span>
             </p>
           )}
-          <p className="ad-note">
-            <FileText size={13} aria-hidden />
-            <span>
-              Each change takes a safety snapshot first, so it can be undone. WoW picks it up at the next
-              login.
-            </span>
-          </p>
+          {!locked && (
+            <p className="ad-note">
+              <FileText size={13} aria-hidden />
+              <span>
+                Changes are written to each character's AddOns.txt when you apply them. A safety snapshot is taken
+                first, so you can undo.
+              </span>
+            </p>
+          )}
         </div>
       </PanelBody>
     </Panel>

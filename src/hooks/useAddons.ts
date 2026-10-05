@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands, events, type AddonsList, type CharacterKey, type ToggleResult } from "@/lib/bindings";
+import { commands, events, type AddonChange, type AddonsList, type ToggleResult } from "@/lib/bindings";
 import { errorText } from "@/lib/format";
 import { useEvent } from "./useEvent";
 
@@ -7,9 +7,9 @@ import { useEvent } from "./useEvent";
  *  folder changes, and when WoW stops (it writes each character's AddOns.txt
  *  as you log out). `list` is null before a game folder is set.
  *
- *  F6: `setEnabled` turns an addon on or off for some characters (through
- *  the backend's write gate), and `undo` puts the AddOns.txt files back from
- *  that change's safety snapshot. Both re-read the list after. */
+ *  F6: `apply` writes the staged switches (through the backend's write
+ *  gate), and `undo` puts the AddOns.txt files back from that apply's safety
+ *  snapshot. Both re-read the list after. */
 export function useAddons() {
   const [list, setList] = useState<AddonsList | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +30,11 @@ export function useAddons() {
   });
 
   /** Throws the backend's error text, for the caller to show. */
-  const setEnabled = useCallback(
-    async (addon: string, characters: CharacterKey[], enabled: boolean): Promise<ToggleResult> => {
+  const apply = useCallback(
+    async (changes: AddonChange[]): Promise<ToggleResult> => {
       setBusy(true);
       try {
-        return await commands.addonsSetEnabled(addon, characters, enabled);
+        return await commands.addonsApply(changes);
       } catch (e) {
         throw new Error(errorText(e));
       } finally {
@@ -60,5 +60,5 @@ export function useAddons() {
     [refresh],
   );
 
-  return { list, error, busy, refresh, setEnabled, undo };
+  return { list, error, busy, refresh, apply, undo };
 }

@@ -50,12 +50,13 @@ export const commands = {
 	read_at: string,
 } | null>("addons_list"),
 	/**
-	 *  Turns `addon` on or off for `characters` (F6) by rewriting their
-	 *  AddOns.txt through the write gate: refused while WoW runs, with a safety
-	 *  snapshot first. The addon and characters are checked against what the
-	 *  list shows; nothing else can be named. Runs as the one backup/restore job.
+	 *  Applies the staged addon switches (F6) by rewriting the characters'
+	 *  AddOns.txt through the write gate: refused while WoW runs, with one
+	 *  safety snapshot first. Every addon and character is checked against what
+	 *  the list shows; nothing else can be named. Runs as the one backup/restore
+	 *  job.
 	 */
-	addonsSetEnabled: (addon: string, characters: CharacterKey[], enabled: boolean) => __TAURI_INVOKE<ToggleResult>("addons_set_enabled", { addon, characters, enabled }),
+	addonsApply: (changes: AddonChange[]) => __TAURI_INVOKE<ToggleResult>("addons_apply", { changes }),
 	/**
 	 *  Undoes a toggle from its safety snapshot (`ToggleResult::snapshot_id`):
 	 *  only AddOns.txt files are put back, through the write gate.
@@ -348,12 +349,24 @@ export type AccountNode = {
 	characters: CharacterNode[],
 };
 
+/**  One staged switch: turn `addon` on or off for `character`. */
+export type AddonChange = {
+	addon: string,
+	character: CharacterKey,
+	enabled: boolean,
+};
+
 export type AddonCharacter = {
 	account: string,
 	/**  The group folder (Forever's opaque id, or a realm). */
 	group: string,
 	/**  The character folder, e.g. `Ellygie-Vargur`. */
 	folder: string,
+	/**
+	 *  Its settings folder is a link to somewhere else, so the write gate
+	 *  won't write its AddOns.txt: "linked folder" instead of a switch.
+	 */
+	linked: boolean,
 };
 
 export type AddonInfo = {
@@ -1523,15 +1536,18 @@ export type Tiles = {
 	best_earner: Earner | null,
 };
 
-/**  What a toggle changed, for "Turned Questie off for Thrandor · Undo". */
+/**
+ *  What Apply did, for "4 changes applied. A safety snapshot was taken
+ *  first." with Undo.
+ */
 export type ToggleResult = {
 	/**
 	 *  The safety snapshot taken first; `None` if every file already said
 	 *  so and nothing was written.
 	 */
 	snapshot_id: string | null,
-	/**  Character folders whose AddOns.txt changed. */
-	changed: string[],
+	/**  Changes that took effect (ones already so are left out). */
+	applied: number,
 };
 
 export type Totals = {

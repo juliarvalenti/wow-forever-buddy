@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::addons::{self, AddonsList, CharacterKey, ToggleResult};
+use crate::addons::{self, AddonChange, AddonsList, ToggleResult};
 use crate::error::{AppError, AppResult};
 use crate::install;
 use crate::state::AppState;
@@ -14,31 +14,23 @@ pub fn addons_list(state: State<'_, AppState>) -> AppResult<Option<AddonsList>> 
     Ok(install::current(&state.core.settings)?.and_then(|i| i.active_flavor().map(addons::list)))
 }
 
-/// Turns `addon` on or off for `characters` (F6) by rewriting their
-/// AddOns.txt through the write gate: refused while WoW runs, with a safety
-/// snapshot first. The addon and characters are checked against what the
-/// list shows; nothing else can be named. Runs as the one backup/restore job.
+/// Applies the staged addon switches (F6) by rewriting the characters'
+/// AddOns.txt through the write gate: refused while WoW runs, with one
+/// safety snapshot first. Every addon and character is checked against what
+/// the list shows; nothing else can be named. Runs as the one backup/restore
+/// job.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn addons_set_enabled(
+pub fn addons_apply(
     state: State<'_, AppState>,
-    addon: String,
-    characters: Vec<CharacterKey>,
-    enabled: bool,
+    changes: Vec<AddonChange>,
 ) -> AppResult<ToggleResult> {
     let core = &state.core;
     let _job = core.jobs.lock().expect("job lock poisoned");
     let install = install::current(&core.settings)?.ok_or(AppError::NoInstall)?;
     let flavor = install.active_flavor().ok_or(AppError::NoInstall)?;
     let target = core.mutation_target()?;
-    addons::set_enabled(
-        &core.write_gate()?,
-        &target,
-        flavor,
-        &addon,
-        &characters,
-        enabled,
-    )
+    addons::apply(&core.write_gate()?, &target, flavor, &changes)
 }
 
 /// Undoes a toggle from its safety snapshot (`ToggleResult::snapshot_id`):
