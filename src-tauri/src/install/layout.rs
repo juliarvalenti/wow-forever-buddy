@@ -42,10 +42,11 @@ pub struct Flavor {
     pub has_wtf: bool,
     /// Account folder names under `WTF/Account`.
     pub accounts: Vec<String>,
-    /// Realm (on Forever, ruleset) folder names across all accounts, for
-    /// "7 characters on Ashenvale".
-    pub realms: Vec<String>,
-    /// Character folders under `WTF/Account/<account>/<realm>/`.
+    /// Character folders under `WTF/Account/<account>/<group>/`. Forever
+    /// writes `<group>` as an opaque id (`70`) and the character folder as
+    /// the full name, `Ellygie-Vargur` with a surname; older folders are
+    /// `<Realm>/<Name>`. Both are counted, and neither folder is a realm or
+    /// ruleset to show (probe run 1, feature-matrix fact 5).
     pub characters: u32,
     /// `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
     /// recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked

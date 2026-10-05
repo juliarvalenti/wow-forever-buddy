@@ -124,7 +124,8 @@ impl Manifest {
         self.files.iter().map(|f| f.size).sum()
     }
 
-    /// Distinct characters: `WTF/Account/<acct>/<realm>/<char>/…`.
+    /// Distinct characters: `WTF/Account/<acct>/<group>/<char>/…`, where the
+    /// group is Forever's opaque id (`70`) or, in older folders, the realm.
     pub fn char_count(&self) -> usize {
         self.files
             .iter()

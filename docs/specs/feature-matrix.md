@@ -18,7 +18,18 @@ Every feature in the round-3 mocks, with its data source on the WoW: Forever cli
 2. **Midnight's combat restrictions apply.** There are secret values (`C_Secrets`, `issecretvalue`), the combat log is restricted, and health, auras and unit identity can be secret in combat. Out of combat, inventory, money, XP, zone, mail, bank and AH data are not secret-gated. Anything that needs a combat detail (killer name, damage taken) is *partial* at best.
 3. **SavedVariables are written on logout and `/reload`.** That's the only way addon data reaches the app. The beta bug where the client **never read them back** was fixed in build 1.60.1.70009 (2026-09-24, [confirmed by players](https://eu.forums.blizzard.com/en/wow/t/solvedforever-beta-160169913-savedvariables-fail-to-load-on-client-startupreload-%E2%80%94-all-addon-settings-reset-on-restart/629888); built-in chat settings still reset). The app keeps history in its own DB regardless. The companion addon writes "what's true now", and the app accumulates over time.
 4. **Nothing reaches disk mid-session.** CVars registered by addons never reach disk, and SavedVariables are only written at logout and `/reload`. So "live" data (row 3) can't come from the addon while the game is running.
-5. **No realms: rulesets.** Forever has rulesets instead of realms, and the client reports the ruleset where a realm name normally goes. The AH is one market per ruleset and faction ([source](https://ahledger.com/wow-forever/auction-house)). The WTF layout is **not** `Account/<ACCOUNT>/<Realm>/<Char>/`. Probe run 1 found `Account/<ACCOUNT>/70/<Char>-<Ruleset>/` — an opaque group id where the realm name would be, with the ruleset as a suffix on the *character* folder (`Ellygie-Vargur`) — plus a legacy `Classic Beta PvP 2/<Char>/` folder in the older bare-name layout. The API still reports `<Char>-<Ruleset>`, so the ruleset is readable from the addon; it's the *file path* that can't be trusted to carry it.
+5. **No realms: rulesets, and characters have surnames.** Forever has rulesets instead of realms. The AH is one market per ruleset and faction ([source](https://ahledger.com/wow-forever/auction-house)).
+   - **WTF layout:** it is **not** `Account/<ACCOUNT>/<Realm>/<Char>/`. Probe run 1 found `Account/<ACCOUNT>/70/<First>-<Surname>/`.
+     - `70` is an opaque group id: never shown, and no ruleset is derived from it.
+     - `Vargur` in `Ellygie-Vargur` is the character's in-game **surname** (Forever added surnames), not a ruleset.
+     - The older bare-name layout also appears: `Classic Beta PvP 2/Ellygie/`, with the realm folder and then the name.
+   - **What the client reports** (probe run 1):
+     - `UnitName("player")` returns `"Ellygie", "Vargur"`, with the surname in the second return, where retail puts the realm. `UnitFullName` gives the same pair.
+     - `GetRealmName()` returns `"Classic Beta PvP 2"`, and `GetNormalizedRealmName()` returns `"ClassicBetaPvP2"`.
+   - **Rules:**
+     - A character folder is the full name. Never split it on `-` to find a realm or ruleset.
+     - Show it as "Ellygie Vargur". Replace only the first `-`, since first names can't contain one.
+     - A ruleset or realm label can come only from the addon (v0.2). v0.1 shows none.
 6. **Registering an unknown event throws** and aborts the file, so every `RegisterEvent` in the companion addon must be `pcall`-wrapped (the probe does this).
 
 ## Matrix
@@ -29,7 +40,7 @@ Every feature in the round-3 mocks, with its data source on the WoW: Forever cli
 | 2 | Setup | WoW running indicator | v0.1 | local process list | `sysinfo` poll, exe under root / `WowB.exe` | **yes** | Built in T6 (#11). |
 | 3 | Setup | Logged-in character name, live | v0.2 | addon API (written at logout) | `UnitName`, `GetRealmName` | **partial** | The addon knows the name instantly but can't get it to disk until logout or `/reload` (fact 4). **Fallback:** show "WoW is running · last played Thrandor" from the newest per-character SV / WTF char folder mtime. Flagged below. |
 | 4 | Backups | Snapshot / restore WTF + SV | v0.1 | WTF files | file system (T4–T9) | **yes** | |
-| 5 | Characters | Roster, no-addon state | v0.1 | WTF files | `WTF/Account/<A>/<group>/<Char>-<Ruleset>/` folders; last played = newest file mtime in it | **yes** | Confirmed by run 1, but **not** as specified: parse the ruleset off the character folder name, not the parent (fact 5). The scanner must handle both the `<Char>-<Ruleset>` and legacy bare-`<Char>` layouts, and treat the parent folder as an opaque id. |
+| 5 | Characters | Roster, no-addon state | v0.1 | WTF files | `WTF/Account/<A>/<group>/<First>[-<Surname>]/` folders; last played = newest file mtime in it | **yes** | Confirmed by run 1, with the layout corrected in fact 5. The group folder is an opaque id, and the character folder is the full name, never split. Both layouts are handled (W1). No realm or ruleset is shown in v0.1. |
 | 6 | Characters | Class, race, level, guild | v0.2 | addon API | `UnitClass`, `UnitRace`, `UnitSex`, `UnitLevel`, `UnitFactionGroup`, `GetGuildInfo` | **yes** | |
 | 7 | Characters | XP %, rested | v0.2 | addon API | `UnitXP`, `UnitXPMax`, `GetXPExhaustion`, `GetRestState` | **yes** | Rested keeps accruing after logout; the app can extrapolate from logout time + rested state if wanted. |
 | 8 | Characters | Item level | v0.2 | addon API | `GetAverageItemLevel`, `C_Item.GetCurrentItemLevel` | **yes** | |
@@ -121,7 +132,7 @@ Confirmed, with caveats:
 
 - **Fact 6 holds but cost nothing here.** `unknownEvents` is empty — no `RegisterEvent` was refused on this build. Keep the `pcall` wrapping anyway; one build is not a guarantee.
 - **Nothing was secret out of combat.** `secrets.ShouldUnitIdentityBeSecret.target` answered normally. This says nothing about rows 22 and 34 in combat, which is where the restriction actually bites — still *partial*.
-- **Fact 5 is wrong as written.** See the revised fact 5 and row 5 above. This is the one finding that changes planned v0.1 code.
+- **Fact 5 is wrong as written.** See the revised fact 5 and row 5 above. This is the one finding that changes planned v0.1 code. (Correction after run 1: the folder suffix is the character's surname, not a ruleset. `UnitName` returns it as its second value.)
 
 Still open:
 

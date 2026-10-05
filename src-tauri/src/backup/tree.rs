@@ -62,7 +62,10 @@ pub struct CategoryNode {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct CharacterNode {
+    /// The folder above the character: Forever's opaque group id (`70`) or,
+    /// in older folders, the realm. Identity only, never shown.
     pub realm: String,
+    /// The character folder as written (`Ellygie-Vargur`), never split.
     pub name: String,
     pub totals: Totals,
     pub categories: Vec<CategoryNode>,
@@ -257,5 +260,36 @@ mod tests {
             details.totals.files, 3,
             "account, .bak and character copies"
         );
+    }
+
+    /// Probe run 1: Forever's `<group id>/<First>-<Surname>` next to the
+    /// older `<Realm>/<Name>`. The folders are kept whole (the restore
+    /// selection matches on them), and the same first name stays two people.
+    #[test]
+    fn groups_both_wtf_layouts() {
+        let m = manifest(
+            "01J9ZZZZZZZZZZZZZZZZZZZZZZ",
+            &[
+                "WTF/Account/A1/70/Ellygie-Vargur/AddOns.txt",
+                "WTF/Account/A1/70/Ellygie-Vargur/SavedVariables/Details.lua",
+                "WTF/Account/A1/70/Brannic/macros-cache.txt",
+                "WTF/Account/A1/Classic Beta PvP 2/Ellygie/AddOns.txt",
+            ],
+        );
+        let d = detail(&m);
+        let chars: Vec<(&str, &str, u32)> = d.accounts[0]
+            .characters
+            .iter()
+            .map(|c| (c.realm.as_str(), c.name.as_str(), c.totals.files))
+            .collect();
+        assert_eq!(
+            chars,
+            [
+                ("70", "Brannic", 1),
+                ("70", "Ellygie-Vargur", 2),
+                ("Classic Beta PvP 2", "Ellygie", 1)
+            ]
+        );
+        assert_eq!(m.char_count(), 3);
     }
 }

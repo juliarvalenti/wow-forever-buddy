@@ -56,7 +56,6 @@ export function installMockIpc(): void {
     exe: "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\WowB.exe",
     has_wtf: true,
     accounts: ["ACCOUNT1"],
-    realms: ["Ashenvale"],
     characters: 7,
     links: [],
   };
@@ -123,8 +122,10 @@ export function installMockIpc(): void {
           { category: "BindingsMacros", totals: { files: 2, bytes: 2e4 } },
         ],
         characters: [
-          { realm: "Ashenvale", name: "Thrandor", totals: { files: 45, bytes: 2.1e6 }, categories: cats(41) },
-          { realm: "Ashenvale", name: "Velyra", totals: { files: 30, bytes: 1.4e6 }, categories: cats(26) },
+          // Forever's layout (probe run 1): an opaque group id, and the
+          // surname in the character folder.
+          { realm: "70", name: "Thrandor", totals: { files: 45, bytes: 2.1e6 }, categories: cats(41) },
+          { realm: "70", name: "Velyra-Duskmane", totals: { files: 30, bytes: 1.4e6 }, categories: cats(26) },
         ],
       },
     ],
@@ -186,7 +187,7 @@ export function installMockIpc(): void {
       "D:\\World of Warcraft",
     ].map((path, i) => ({ source: i === 0 ? "registry" : "common_path", path })),
   };
-  const who = (...names: string[]) => names.map((name) => ({ account: "ACCOUNT1", realm: "Ashenvale", name }));
+  const who = (...names: string[]) => names.map((name) => ({ account: "ACCOUNT1", realm: "70", name }));
   const session = (id: number, startMins: number, endMins: number | null, characters = who(), crashed = false) => ({
     id,
     flavor: "_classic_beta_",
@@ -321,14 +322,14 @@ export function installMockIpc(): void {
       (
         [
           ["Thrandor", 20],
-          ["Velyra", 60 * 22],
+          ["Velyra-Duskmane", 60 * 22],
           ["Coinpurse", 60 * 46],
           ["Brannic", 60 * 50],
           ["Fizzwick", 60 * 140],
           ["Sela", 60 * 200],
           ["Kaelor", 60 * 300],
         ] as const
-      ).map(([name, mins]) => ({ account: "ACCOUNT1", realm: "Ashenvale", name, last_played: iso(mins) })),
+      ).map(([name, mins]) => ({ account: "ACCOUNT1", realm: "70", name, last_played: iso(mins) })),
     sessions_list: () =>
       s === "no-sessions"
         ? []
@@ -336,7 +337,7 @@ export function installMockIpc(): void {
             ...(running ? [session(9, 102, null)] : []),
             session(8, 60 * 24 + 100, 60 * 24 - 92, who("Thrandor")),
             session(7, 60 * 29, 60 * 29 - 22, who("Coinpurse")),
-            session(6, 60 * 47, 60 * 47 - 125, who("Velyra")),
+            session(6, 60 * 47, 60 * 47 - 125, who("Velyra-Duskmane")),
           ],
   };
 

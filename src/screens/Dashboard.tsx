@@ -25,7 +25,17 @@ import {
 import { useBackups } from "@/hooks/useBackups";
 import type { useInstall } from "@/hooks/useInstall";
 import { thisWeek, useSessions } from "@/hooks/useSessions";
-import { ago, bytes, duration, errorText, longDate, plural, sessionWhen, span } from "@/lib/format";
+import {
+  ago,
+  bytes,
+  characterName,
+  duration,
+  errorText,
+  longDate,
+  plural,
+  sessionWhen,
+  span,
+} from "@/lib/format";
 
 // Copy from design/mocks/round-3/dashboard-noaddon.html (v0.1, no addon).
 
@@ -64,7 +74,7 @@ function sessionMs(s: PlaySession, now = Date.now()): number {
 function SessionWho({ s }: { s: PlaySession }) {
   const ended = s.crashed ? " · ended unexpectedly" : "";
   if (!s.ended_at) return <span className="sub">Character known after you log out</span>;
-  const names = s.characters.map((c) => c.name);
+  const names = s.characters.map((c) => characterName(c.name));
   if (names.length === 0) return <span className="sub">No character settings changed{ended}</span>;
   const who =
     names.length <= 2 ? names.join(", ") : `${names[0]} and ${names.length - 1} others`;
@@ -111,8 +121,7 @@ export function Dashboard({
   const flavor = active?.flavors.find((f) => f.id === active.active);
   const running = game?.running ?? false;
   const last = list?.[0];
-  const realms = [...new Set((characters ?? []).map((c) => c.realm))];
-  const names = [...new Set((characters ?? []).map((c) => c.name))];
+  const names = [...new Set((characters ?? []).map((c) => characterName(c.name)))];
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -215,14 +224,7 @@ export function Dashboard({
         />
         <Tile
           label="Characters found"
-          value={
-            <>
-              {characters?.length ?? "…"}{" "}
-              {realms.length > 0 && (
-                <small>· {realms.length === 1 ? realms[0] : plural(realms.length, "realm", "realms")}</small>
-              )}
-            </>
-          }
+          value={characters?.length ?? "…"}
           sub="From your WTF folder"
         />
         <Tile
@@ -346,7 +348,6 @@ export function Dashboard({
                   <span className="sub">
                     {plural(flavor.accounts.length, "account", "accounts")} ·{" "}
                     {plural(flavor.characters, "character", "characters")}
-                    {flavor.realms.length === 1 && ` on ${flavor.realms[0]}`}
                   </span>
                 </li>
               )}
@@ -429,9 +430,7 @@ export function Dashboard({
               <ul className="d-rows">
                 {(characters ?? []).slice(0, 5).map((c) => (
                   <li key={`${c.account}|${c.realm}|${c.name}`}>
-                    <span className="main">
-                      {c.name} <small className="d-dim">{c.realm}</small>
-                    </span>
+                    <span className="main">{characterName(c.name)}</span>
                     <span className="side d-dim">
                       {c.last_played ? `last played ${ago(c.last_played)}` : ""}
                     </span>
