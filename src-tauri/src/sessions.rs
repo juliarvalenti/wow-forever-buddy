@@ -22,7 +22,13 @@ use crate::error::AppResult;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub struct CharacterRef {
     pub account: String,
+    /// The folder between account and character. On Forever it's an opaque
+    /// group id (`70`); in the older layout it's the realm. Part of the
+    /// identity only, never shown. (Kept as `realm` so stored sessions
+    /// still read.)
     pub realm: String,
+    /// The character folder as written: the full name, with a surname as
+    /// `Ellygie-Vargur`. Never split; the UI shows it as "Ellygie Vargur".
     pub name: String,
 }
 
@@ -335,6 +341,37 @@ mod tests {
         // Account-wide SavedVariables is not a realm.
         assert!(list.iter().all(|c| c.character.realm != "SavedVariables"));
         assert!(list[0].last_played.is_some());
+    }
+
+    /// Probe run 1: Forever's `<group id>/<First>-<Surname>` and the older
+    /// `<Realm>/<Name>` side by side. Folder names are kept whole, never split
+    /// on '-', and the same first name under both stays two characters.
+    #[test]
+    fn lists_characters_in_both_wtf_layouts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wtf = tmp.path().join("WTF");
+        for dir in [
+            "70/Ellygie-Vargur",
+            "70/Brannic",
+            "Classic Beta PvP 2/Ellygie",
+        ] {
+            let dir = wtf.join("Account/ACCOUNT1").join(dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("AddOns.txt"), b"").unwrap();
+        }
+        let mut found: Vec<CharacterRef> = wtf_characters(&wtf)
+            .into_iter()
+            .map(|c| c.character)
+            .collect();
+        found.sort_by(|a, b| (&a.realm, &a.name).cmp(&(&b.realm, &b.name)));
+        assert_eq!(
+            found,
+            [
+                character("ACCOUNT1", "70", "Brannic"),
+                character("ACCOUNT1", "70", "Ellygie-Vargur"),
+                character("ACCOUNT1", "Classic Beta PvP 2", "Ellygie"),
+            ]
+        );
     }
 
     const SINCE: &str = "2026-10-01T00:00:00+00:00";

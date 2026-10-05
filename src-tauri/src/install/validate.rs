@@ -101,8 +101,8 @@ fn find_exe(dir: &Path, preferred: &[&str]) -> Option<PathBuf> {
     found.into_iter().next()
 }
 
-/// Sorted subfolder names, minus `SavedVariables` (which sits next to realm
-/// and character folders in the WTF tree).
+/// Sorted subfolder names, minus `SavedVariables` (which sits next to the
+/// group and character folders in the WTF tree).
 fn subdirs(dir: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -117,24 +117,19 @@ fn subdirs(dir: &Path) -> Vec<String> {
     names
 }
 
-/// The WTF roster: accounts, realms across all accounts, and how many
-/// character folders there are (`Account/<account>/<realm>/<character>`).
-fn roster(wtf: &Path) -> (Vec<String>, Vec<String>, u32) {
+/// The WTF roster: accounts, and how many character folders there are
+/// (`Account/<account>/<group>/<character>`, see `layout::Flavor::characters`).
+fn roster(wtf: &Path) -> (Vec<String>, u32) {
     let accounts_dir = wtf.join("Account");
     let accounts = subdirs(&accounts_dir);
-    let mut realms: Vec<String> = Vec::new();
     let mut characters = 0;
     for account in &accounts {
         let account_dir = accounts_dir.join(account);
-        for realm in subdirs(&account_dir) {
-            characters += subdirs(&account_dir.join(&realm)).len() as u32;
-            if !realms.contains(&realm) {
-                realms.push(realm);
-            }
+        for group in subdirs(&account_dir) {
+            characters += subdirs(&account_dir.join(&group)).len() as u32;
         }
     }
-    realms.sort();
-    (accounts, realms, characters)
+    (accounts, characters)
 }
 
 /// Scans a root and validates it. Fails unless at least one flavor folder has
@@ -176,14 +171,13 @@ pub fn scan(root: &Path) -> AppResult<Install> {
             continue;
         }
 
-        let (accounts, realms, characters) = roster(&wtf);
+        let (accounts, characters) = roster(&wtf);
         flavors.push(Flavor {
             label: known.map_or_else(|| label_from_folder(&id), |k| k.label.to_string()),
             is_forever: known.is_some_and(|k| k.is_forever),
             product: product.map(str::to_string),
             version: version.map(str::to_string),
             accounts,
-            realms,
             characters,
             // The same record T4's resolver checks paths against.
             links: GameRoot::new(&dir).map(|r| r.links).unwrap_or_default(),
@@ -252,10 +246,6 @@ mod tests {
         assert_eq!(forever.accounts, ["ACCOUNT1", "ACCOUNT2"]);
         // ACCOUNT1: Thrandor + Velyra on Ashenvale, Brannic on Old Blanchy,
         // Lúthien on Pyrewood Village. ACCOUNT2: Fizzwick on Ashenvale.
-        assert_eq!(
-            forever.realms,
-            ["Ashenvale", "Old Blanchy", "Pyrewood Village"]
-        );
         assert_eq!(forever.characters, 5);
 
         let era = &install.flavors[1];
@@ -264,7 +254,6 @@ mod tests {
         assert!(era.exe.is_none());
         assert!(era.has_wtf);
         assert_eq!(era.accounts, ["ERA1"]);
-        assert_eq!(era.realms, ["Whitemane"]);
         assert_eq!(era.characters, 1);
     }
 
@@ -311,6 +300,26 @@ mod tests {
         assert_eq!(install.flavors[0].label, "Classic Beta");
         assert!(!install.flavors[0].is_forever);
         assert_eq!(install.flavors[0].version, None);
+    }
+
+    /// Probe run 1: Forever's `Account/<A>/<group id>/<First>-<Surname>`
+    /// next to the older `Account/<A>/<Realm>/<Name>`, both counted.
+    #[test]
+    fn counts_characters_in_both_wtf_layouts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let account = tmp.path().join("_classic_beta_/WTF/Account/ACCOUNT1");
+        for dir in [
+            "70/Ellygie-Vargur",
+            "70/Ellyanna-Vargur",
+            "70/Brannic",
+            "Classic Beta PvP 2/Ellygie",
+            "SavedVariables",
+        ] {
+            std::fs::create_dir_all(account.join(dir)).unwrap();
+        }
+        let install = scan(tmp.path()).unwrap();
+        assert_eq!(install.flavors[0].accounts, ["ACCOUNT1"]);
+        assert_eq!(install.flavors[0].characters, 4);
     }
 
     #[test]

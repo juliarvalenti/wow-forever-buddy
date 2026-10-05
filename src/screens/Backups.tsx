@@ -34,7 +34,7 @@ import { useBackups, useSnapshot } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
 import { PlanDetails, planBlocked } from "@/screens/PlanDetails";
-import { ago, bytes, plural, when, whenInline } from "@/lib/format";
+import { ago, bytes, characterName, plural, when, whenInline } from "@/lib/format";
 
 // Copy from design/mocks/round-3/IMPLEMENTING.md §4.
 
@@ -86,7 +86,8 @@ function contents(s: SnapshotSummary) {
 }
 
 // Selection keys: "all", "addon|<name>", "acct|<account>|<category>",
-// "char|<account>|<realm>|<character>|<category>".
+// "char|<account>|<group>|<character>|<category>", with the folder names as
+// written (the group is Forever's opaque id or an older realm folder).
 type Keys = Set<string>;
 
 function toSelection(keys: Keys): RestoreSelection {
@@ -128,7 +129,7 @@ function restoreLabel(keys: Keys): { button: string; title: string; who?: string
   );
   const addons = [...keys].filter((k) => k.startsWith("addon|"));
   if (chars.size > 0 && addons.length === 0 && ![...keys].some((k) => k.startsWith("acct|"))) {
-    const only = [...chars][0].split("|")[2];
+    const only = characterName([...chars][0].split("|")[2]);
     return {
       button: `Restore ${plural(chars.size, "character", "characters")}…`,
       title: chars.size === 1 ? `Restore ${only}?` : `Restore ${chars.size} characters?`,
@@ -197,7 +198,7 @@ function SnapshotTree({
             return (
               <div key={base}>
                 <Checkbox checked={all} onChange={(on) => toggle(ks, on)}>
-                  <b>{ch.name}</b> <span className="d-dim">{ch.realm}</span> {size(ch.totals.bytes)}
+                  <b>{characterName(ch.name)}</b> {size(ch.totals.bytes)}
                 </Checkbox>
                 <div className="indent">
                   {ch.categories.map((c) => {
