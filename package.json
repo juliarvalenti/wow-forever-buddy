@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:mock": "tsc && vite build --mode mock --outDir dist-mock",
+    "shots": "bash scripts/shots.sh",
     "preview": "vite preview",
     "tauri": "tauri"
   },
