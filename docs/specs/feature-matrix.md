@@ -1,6 +1,6 @@
 # Feature matrix: where each mocked feature's data comes from
 
-Status: **research complete; probe run 1 done (AH rows still pending)** · Author: @coder2 · 2026-10-05
+Status: **research complete; probe runs 1-3 done (AH rows still pending)** · Author: @coder2 · 2026-10-05
 
 Every feature in the round-3 mocks, with its data source on the WoW: Forever client, the API or file, a verdict, and a fallback where the answer isn't a clean yes. Rows and targets come from `specs/feature-matrix` v1; the original "data needed" and "freshness" columns are in that memory.
 
@@ -137,7 +137,39 @@ Confirmed, with caveats:
 Still open:
 
 - **Rows 39–44 (AH) are untested.** The auction house was down on Blizzard's side during the run, so the probe has no `ah` section at all. That's a service outage, **not** an API failure — do not read it as a *no*. Needs an AH-only pass: log in, open an AH, `/fbprobe search`, wait, `/fbprobe scan`, keep it open a minute, `/reload`.
-- **Fact 3 (read-back) is untested.** `loads[1].fromDisk = false`, which is expected on a first launch. It takes a full logout, relaunch and second login to tell whether the client reads the file back.
 - Rows needing combat or a death (22, 34) weren't exercised.
 
-Both remaining passes append to the same file, so nothing here is lost by re-running.
+Fact 3 (read-back) was still untested after run 1; runs 2 and 3 settled it — see below.
+
+### Runs 2 and 3 (2026-10-05): read-back confirmed, and the probe does not accumulate
+
+Raw file: [`tools/probe-addon/results/ForeverBuddyProbe.run3.lua`](../../tools/probe-addon/results/ForeverBuddyProbe.run3.lua). Two further login/logout cycles, both real logouts. Run 3 is a superset of run 2 (the `loads` list accumulates), so only it is kept.
+
+**Fact 3 is confirmed. The client reads SavedVariables back.**
+
+```lua
+["loads"] = {
+  { ["t"] = 1791185455, ["fromDisk"] = false },  -- first launch, nothing to read
+  { ["t"] = 1791185697, ["fromDisk"] = true  },  -- read back
+  { ["t"] = 1791187062, ["fromDisk"] = true  },  -- read back again
+}
+["logouts"] = 3,
+```
+
+`char.firstLogin` also survived across all three sessions. The addon→app data path is sound on this build.
+
+**But the probe replaces per-character data instead of merging.** `ForeverBuddyProbe.lua:405` runs `char.checks, char.events = {}, {}` on every login, so runs 2 and 3 — quick relogs with no bank, mailbox, vendor or quest — erased run 1's richest data. Checks fell 124 → 115, and `bank`, `mail`, `merchant` and `quests` disappeared along with `BANKFRAME_OPENED`, `MAIL_SHOW`, `MAIL_INBOX_UPDATE`, `MERCHANT_SHOW`, `QUEST_TURNED_IN`, `PLAYER_MONEY`, `PLAYER_XP_UPDATE` and `ZONE_CHANGED_NEW_AREA`. Run 1 survives only because it was already committed. Two consequences:
+
+1. **Copy the file off after every session.** A later AH pass will not add to run 1; it will overwrite it.
+2. **This is live evidence for flagged point 8.** The companion addon must merge into the existing per-character table, not reset it, or a single quick relog wipes a bank or mailbox snapshot that can only be retaken by travelling back. Only the top-level `db` keys (`loads`, `logouts`) accumulate today, and `loads` is capped.
+
+**Raw values behind fact 5**, recorded so nobody has to re-derive them from the dump:
+
+| Source | Value |
+|---|---|
+| `UnitName("player")` | `"Ellygie"`, `"Vargur"` |
+| `GetRealmName()` | `"Classic Beta PvP 2"` |
+| `GetNormalizedRealmName()` | `"ClassicBetaPvP2"` |
+| WTF folders | `70/Ellygie-Vargur/`, `Classic Beta PvP 2/Ellygie/` |
+
+One detail that supports fact 5's surname reading over a ruleset reading: all three characters in the `70/` folder share the suffix (`Ellyanna-Vargur`, `Ellygie-Vargur`, `Ellyvation-Vargur`), so the surname looks account-wide rather than per-character. Either way fact 5's rule — treat the character folder as a full name and never split it — is what the v0.1 scanner should follow, since the ruleset is not recoverable from the path.
