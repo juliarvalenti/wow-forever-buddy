@@ -105,8 +105,9 @@ scenario("first_login", function()
     eq(#s.events, 0, "events")
     eq(db.snapshot.at, s.logout, "snapshot.at")
     eq(db.character.name, "Thrandor", "name")
-    eq(db.character.realm, "Forever", "realm")
-    eq(db.character.guid, "Player-6112-0A1B2C3D", "guid")
+    eq(db.character.surname, "Vargur", "surname")
+    eq(db.character.realm, "Classic Beta PvP 2", "realm")
+    eq(db.character.guid, "Player-4613-0A1B2C3D", "guid")
     eq(db._meta.build, "1.60.1.70009", "build")
     eq(db._meta.written, s.logout, "written")
     eq(db._meta.loaded_prior, false, "loaded_prior")
@@ -217,6 +218,7 @@ scenario("secret_values", function()
     local text = play(c, nil, 60)
     local db = file(text)
     eq(db.character.name, nil, "name")
+    eq(db.character.surname, nil, "surname")
     eq(db.character.realm, nil, "realm")
     eq(db.character.guid, nil, "guid")
     eq(db._meta.build, nil, "build")
@@ -225,6 +227,15 @@ scenario("secret_values", function()
         fail("secret_hits: expected at least 7, got " .. show(db._meta.secret_hits))
     end
     return text
+end)
+
+-- A character without a surname (older characters, or a client that
+-- returns none) just has no surname field.
+scenario("no_surname", function()
+    local c = client({ character = { name = "Brannic", realm = "Classic Beta PvP 2" } })
+    local db = file(play(c, nil, 60))
+    eq(db.character.name, "Brannic", "name")
+    eq(db.character.surname, nil, "surname")
 end)
 
 -- APIs that throw or don't exist give nil, not errors.

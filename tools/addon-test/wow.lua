@@ -67,7 +67,8 @@ end
 
 -- opts:
 --   addon      path to ForeverBuddy.lua
---   character  { name, realm, guid }
+--   character  { name, surname, realm, guid }; the default has a surname,
+--              as Forever characters do (probe run 1)
 --   api        { Name = function or false } overrides; false removes it
 --   secret, throw, missing   "all" (all but the clock) or a set of API names
 --   unknown_events           events RegisterEvent refuses, as on Forever
@@ -80,7 +81,8 @@ function M.new(opts)
     for _, e in ipairs(opts.unknown_events or {}) do
         client.unknown[e] = true
     end
-    local char = opts.character or { name = "Thrandor", realm = "Forever", guid = "Player-6112-0A1B2C3D" }
+    local char = opts.character
+        or { name = "Thrandor", surname = "Vargur", realm = "Classic Beta PvP 2", guid = "Player-4613-0A1B2C3D" }
     local secrets = setmetatable({}, { __mode = "k" })
     local state -- the running addon's environment, frames and timers
 
@@ -99,8 +101,9 @@ function M.new(opts)
             return client.now
         end,
         UnitName = function(unit)
+            -- Forever returns the surname second, where retail puts the realm.
             if unit == "player" then
-                return char.name, nil
+                return char.name, char.surname
             end
         end,
         UnitGUID = function(unit)

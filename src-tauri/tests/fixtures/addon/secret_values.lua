@@ -12,7 +12,7 @@ ForeverBuddyDB = {
 		["missing_events"] = {
 		},
 		["schema"] = 1,
-		["secret_hits"] = 10,
+		["secret_hits"] = 12,
 		["truncated"] = false,
 		["written"] = 1790967600,
 	},
