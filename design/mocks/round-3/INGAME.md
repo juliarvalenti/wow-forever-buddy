@@ -54,18 +54,38 @@ The route follows probe run 4, in the order of the Bridge spec (`docs/specs/brid
 - Class-coloured names, plain everything else. Never name a loot source (IMPLEMENTING §7).
 - Empty: "Nothing to do this week." Never seen: "Open Forever Buddy on your PC to fill this in."
 
-## 7. Later: the quest planner tracker
-A compact list in the objective tracker's own style (`ObjectiveTrackerFrame` fonts: gold heads, white lines, grey done lines). It sits in its own small movable frame, never injected into Blizzard's tracker, and is registered with Edit Mode if the API allows. The mock in `ingame.html?state=tracker` is a placeholder until the quest-data spike answers what we can know.
+## 7. The quest plan: tracker and waypoints (D2, `ingame-d2.html`)
+The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
+- **Tracker:**
+  - A compact list in the objective tracker's own style: gold stop titles, white detail lines, grey done stops.
+  - It sits in its own small movable frame, headed "Tonight's plan" with the zone in the meta. It's never injected into Blizzard's tracker, and is registered with Edit Mode if the API allows.
+  - Stops are numbered in plan order, and the current one gets a gold left edge.
+  - Footer: "From Forever Buddy · 21:04 · 2 of 5 done".
+  - Shown with `/fb plan` or from the compartment menu. Like the checklist, it never opens by itself.
+- **Waypoints:**
+  - Each stop has a small "→". A click sets the game's own waypoint (`C_Map.SetUserWaypoint`, one at a time), and the game draws the arrow and distance.
+  - If TomTom is installed, we hand the waypoint to TomTom instead.
+  - We never super-track for the player: that call is protected on Forever. The tooltip says "Click the map pin to track it."
+  - Stops outside the current zone keep their place, with "→" off and the tooltip "Go to Eastern Plaguelands first."
+- **World map:**
+  - Numbered gold pins for the plan, through a map data provider, as Questie does. The current stop glows, and done stops turn grey.
+  - Pin tooltip: "3 · Stratholme: Ysida Harmon", then "Tonight's plan · Forever Buddy", then "Click to set a waypoint".
+- **With Questie:** Questie keeps its own givers and objectives. We add only a small number beside its icon, never a second icon.
+- **When a plan arrives:** one chat line at login: "Forever Buddy: tonight's plan is ready, 5 stops in Eastern Plaguelands. /fb plan to show it."
 
 ## 8. v0.4 proposals (mocked in `ingame.html`, not yet specced)
-- **Alt-aware tooltip:**
-  - Appended to the game's own item tooltip with `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, …)`. Use no tooltip of our own.
-  - After a gap, a gold "Forever Buddy" head, then one row per alt holding the item, with the name in class colour and the right side reading "340 · bank".
-  - After those rows: "All alts" when there are two or more, "Last scan ≈ 1g 12s each" once F5 has a price, and "Your plan needs 20 more" when a plan or list exists.
-  - Finish with a small grey footer: "As of each alt's last logout · scan 3 days ago".
-  - Show at most 6 alt rows, then "+2 more". The current character's bags come live from the game, and other alts come from a data slot (an inventory and price index the app writes).
-  - Shift shows the fuller version (bank and mail split, per-alt dates).
-  - Never in combat-only tooltips, never on unit tooltips.
+- **Alt-aware tooltip (D2, `ingame-d2.html`):**
+  - Appended to the game's own item tooltip with `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, …)`, read-only and `pcall`-guarded. Use no tooltip of our own.
+  - **Compact, the default:** two lines after a gap.
+    - First: "Your alts: Coinpurse 340 bank · Velyra 60 bank", with the line in gold and names in class colour. Show at most three names, then "+3 more".
+    - Second: "≈ 1g 12s each at your last scan · plan needs 20". Each part only when known.
+    - Then a small blue-grey "Shift for details".
+  - **Shift:** a gold "Forever Buddy" head, then one row per character ("Coinpurse · 340 · bank, 2 Oct"), "All characters 440", "Last scan ≈ 1g 12s each · 3 days ago", and "Blacksmithing plan needs 20 more". Show at most eight rows, then "+2 more".
+  - **Equippable items:** the compact line can instead say "Upgrade for Kaelor (+9 item level, once level 58)". This uses item level only, never stats we can't read.
+  - **Add nothing** when only the current character has the item, or nobody does. Never show an empty head.
+  - **Stale data:** a count older than 7 days turns grey, with "(as of 21 Sep)". A price older than 7 days adds "· scan 12 days ago".
+  - The current character's bags come live from the game. Other alts come from the Bridge's item-index slot, which holds ids and counts only. Names come from the game's cache.
+  - Never on unit tooltips, and nothing extra in combat.
 - **Session coach:**
   - A small movable strip headed "This session", with the session length in the meta.
   - Rows: Gold (+312g · 184g/hr), Experience (87,000/hr), "Level 60 in ≈ 41 min" (only while levelling), and Loot (47 items · ≈ 96g, the worth only with prices).
