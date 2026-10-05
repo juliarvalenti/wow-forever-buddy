@@ -7,6 +7,7 @@ mod db;
 mod error;
 mod fsx;
 mod game;
+mod ingest;
 mod install;
 mod ledger;
 mod secrets;
@@ -61,6 +62,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::game::game_status,
             commands::sessions::sessions_list,
             commands::sessions::characters_list,
+            commands::ingest::ingest_problems,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,
@@ -82,7 +84,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::restore::RestoreProgress,
             commands::restore::RestoreCompleted,
             commands::game::GameStatusChanged,
-            sessions::SessionsChanged
+            sessions::SessionsChanged,
+            ingest::IngestCompleted
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -134,7 +137,10 @@ pub fn run() {
             // shows right away and hears about the result via the event.
             // Automatic backups start after it, since they need the install.
             let handle = app.handle().clone();
+            // v0.2 ingest: reads each character's ForeverBuddy.lua.
+            let ingest = spawn_ingest(&handle);
             let install_handle = handle.clone();
+            let ingest_start = ingest.clone();
             std::thread::spawn(move || {
                 let state = install_handle.state::<AppState>();
                 if let Some(install) = state.core.resolve_install_on_startup() {
@@ -143,7 +149,19 @@ pub fn run() {
                     }
                     .emit(&install_handle);
                 }
+                // Replay backups, then scan, once the game folder is known.
+                let _ = ingest_start.send(ingest::Job::Start);
                 spawn_auto_backups(&install_handle);
+            });
+            // A /reload writes the file mid-session: scan every 10 minutes
+            // while WoW runs.
+            let tick_handle = handle.clone();
+            let ingest_tick = ingest.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(600));
+                if tick_handle.state::<AppState>().core.game.status().running {
+                    let _ = ingest_tick.send(ingest::Job::Scan);
+                }
             });
 
             // Spec §2: poll for WoW every 2 s and tell the UI on each change.
@@ -164,6 +182,7 @@ pub fn run() {
                         game::process::Transition::Stopped => {
                             let _ = sessions.send(sessions::SessionEvent::Stopped(now()));
                             spawn_game_exit_backup(&handle);
+                            let _ = ingest.send(ingest::Job::AfterExit);
                         }
                         // Listing blipped and came back with the game's state
                         // unchanged: the session carries on.
@@ -175,6 +194,24 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// The ingest worker: jobs run in order on one thread, and the UI hears
+/// `ingest-completed` when characters' data changed.
+fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Job> {
+    let h = handle.clone();
+    ingest::spawn_worker(move |job| {
+        let core = &h.state::<AppState>().core;
+        let changed = ingest::run_job(core, &job, |wtf| {
+            triggers::wait_until_settled(wtf, triggers::EXIT_SETTLE, triggers::EXIT_SETTLE_TIMEOUT);
+        });
+        if !changed.is_empty() {
+            let _ = ingest::IngestCompleted {
+                characters: changed.into_iter().map(|id| id as u32).collect(),
+            }
+            .emit(&h);
+        }
+    })
 }
 
 /// Emits `backup-created` for an automatic snapshot.
