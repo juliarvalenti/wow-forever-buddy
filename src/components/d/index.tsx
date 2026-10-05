@@ -2,9 +2,10 @@
 // after the D materials. Screens use only these, so the styling pass
 // restyles them (src/styles/d.css) without touching the screens.
 
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 type Children = { children?: ReactNode };
 
@@ -58,6 +59,28 @@ export function PanelHeader({ title, children }: Children & { title: ReactNode }
 
 export function PanelBody({ children }: Children) {
   return <div className="d-panel-body">{children}</div>;
+}
+
+/** `icon://` for an icon's FileDataID (`http://icon.localhost/…` on
+ *  Windows), or null outside the app (the mocks). */
+function iconUrl(id: number): string | null {
+  try {
+    return convertFileSrc(String(id), "icon");
+  } catch {
+    return null;
+  }
+}
+
+/** An item's real icon, read from the game (F8). Goes inside its letter
+ *  tile, which keeps the quality border: it covers the letter once it
+ *  loads, and removes itself if the icon can't be read. */
+export function ItemIcon({ id }: { id: number | null | undefined }) {
+  const [failed, setFailed] = useState<number | null>(null);
+  const src = id != null && id !== failed ? iconUrl(id) : null;
+  if (id == null || src == null) return null;
+  return (
+    <img className="d-icon" src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(id)} />
+  );
 }
 
 export function Tile({

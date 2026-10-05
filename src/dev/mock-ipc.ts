@@ -87,6 +87,8 @@ export function installMockIpc(): void {
   const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
   // No Auctionator prices on this machine: no AH screen, no worth (F5d).
   const noPrices = s === "ah-empty" || s === "ah-unreadable";
+  // F8: the game data cache in Settings ("settings-nocache": nothing cached).
+  let iconFiles = s === "settings-nocache" ? 0 : 412;
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -184,6 +186,7 @@ export function installMockIpc(): void {
       item_id: id,
       name: it.name,
       quality: it.q,
+      icon: null,
       price: Math.round(it.p * 10_000),
       last_seen: dayAgo(it.ago),
       sightings: it.n,
@@ -606,6 +609,17 @@ export function installMockIpc(): void {
       return detectReport;
     },
     install_set: () => install,
+    // F8: icons don't load outside the app (no icon://), so screens show
+    // their letter tiles; Settings shows a cache as if they had.
+    icons_cache_status: () => ({ files: iconFiles, bytes: iconFiles * 9_800, build: "1.60.1.70205" }),
+    icons_cache_rebuild: () => {
+      iconFiles = 412;
+      return { read: 410, failed: 2 };
+    },
+    icons_cache_clear: () => {
+      iconFiles = 0;
+      return null;
+    },
     settings_get: () => structuredClone(settings),
     settings_update: ({ patch }) => {
       // null leaves a field as is, except location, where it means the default.
@@ -898,6 +912,7 @@ export function installMockIpc(): void {
         name,
         quality,
         ilvl,
+        icon: null,
         count,
         // The journal saw the shoulders and the potions drop.
         looted_at: name === "Truestrike Shoulders" || name === "Major Healing Potion" ? iso(60 * 26) : null,
@@ -971,6 +986,7 @@ export function installMockIpc(): void {
           name,
           quality,
           ilvl: 50,
+          icon: null,
           count,
           // Velyra's bank visit is 12 days old, so its Where shows ember.
           as_of: location === "bag" ? null : iso(60 * 24 * (character_id === 3 ? 12 : 2)),
@@ -1089,6 +1105,7 @@ export function installMockIpc(): void {
                 item_id,
                 name,
                 quality,
+                icon: null,
                 price: value / count,
                 last_seen: iso(60 * 24 * 3).slice(0, 10),
                 sightings: 12,

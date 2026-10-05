@@ -265,6 +265,15 @@ export const commands = {
 	 */
 	gameStatus: () => __TAURI_INVOKE<GameStatus>("game_status"),
 	/**
+	 *  Settings > Game data cache: how many icons are cached, their size, and
+	 *  the build they came from.
+	 */
+	iconsCacheStatus: () => __TAURI_INVOKE<IconCacheStatus>("icons_cache_status"),
+	/**  "Rebuild": empties the cache and reads every known item's icon again. */
+	iconsCacheRebuild: () => __TAURI_INVOKE<IconFill>("icons_cache_rebuild"),
+	/**  "Clear": empties the cache. Icons are read again as they're shown. */
+	iconsCacheClear: () => __TAURI_INVOKE<null>("icons_cache_clear"),
+	/**
 	 *  Play sessions of the active flavor from the last `days` days, newest
 	 *  first. The one with no `ended_at` is in progress. Follow
 	 *  `sessions-changed` for updates.
@@ -563,6 +572,8 @@ export type AhItem = {
 	 */
 	name: string | null,
 	quality: number | null,
+	/**  Its icon's FileDataID, for `icon://`. */
+	icon: number | null,
 	/**  The last lowest buyout (copper). */
 	price: number | null,
 	/**  The day it was last seen (YYYY-MM-DD). */
@@ -1041,6 +1052,23 @@ export type Holdings = {
 	value: number | null,
 };
 
+/**  Settings > Game data cache. */
+export type IconCacheStatus = {
+	files: number,
+	bytes: number | null,
+	/**
+	 *  The game build icons come from ("1.60.1.70205"); `None` when the
+	 *  game's data can't be read (no install, or not a CASC install).
+	 */
+	build: string | null,
+};
+
+/**  What a rebuild read. */
+export type IconFill = {
+	read: number,
+	failed: number,
+};
+
 /**  Emitted after a scan or replay that changed characters' data. */
 export type IngestCompleted = {
 	/**  `characters.id` (u32: row ids, and specta refuses i64 in TypeScript). */
@@ -1126,6 +1154,8 @@ export type ItemLine = {
 	item_id: number,
 	name: string,
 	quality: number | null,
+	/**  Its icon's FileDataID, for `icon://`. */
+	icon?: number | null,
 	count: number,
 	/**
 	 *  sold | used | mailed for what was spent; bought | mail for a gain
@@ -1145,6 +1175,8 @@ export type ItemRow = {
 	/**  0 poor … 5 legendary, when known. */
 	quality: number | null,
 	ilvl: number | null,
+	/**  Its icon's FileDataID, for `icon://` (see `icons`). */
+	icon: number | null,
 	count: number,
 	/**
 	 *  When this character last looted one (RFC 3339), if the journal has
@@ -1343,6 +1375,8 @@ export type OfNote = {
 	text: string,
 	/**  For an item: its quality, for the letter tile's colour. */
 	quality: number | null,
+	/**  For an item: its icon's FileDataID, for `icon://`. */
+	icon?: number | null,
 };
 
 /**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
@@ -1529,6 +1563,7 @@ export type SearchHit = {
 	name: string,
 	quality: number | null,
 	ilvl: number | null,
+	icon: number | null,
 	/**  Summed over every stack of it in that place. */
 	count: number,
 	/**

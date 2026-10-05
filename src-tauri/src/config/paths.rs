@@ -34,6 +34,11 @@ impl AppPaths {
         self.local_data_dir.join("buddy.db")
     }
 
+    /// Item icons read from the game (F8): ours to empty at any time.
+    pub fn icon_cache_dir(&self) -> PathBuf {
+        self.local_data_dir.join("cache").join("icons")
+    }
+
     /// All three dirs under one root. For tests.
     #[cfg(test)]
     pub fn under(root: &std::path::Path) -> Self {

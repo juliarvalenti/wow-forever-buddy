@@ -10,6 +10,7 @@ import {
   PanelBody,
   PanelHeader,
   Record,
+  ItemIcon,
 } from "@/components/d";
 import { useGoodsWorth, usePrices } from "@/hooks/useWorth";
 import { ago, errorText, gold, span } from "@/lib/format";
@@ -200,6 +201,7 @@ export function ItemName({ i }: { i: ItemLine }) {
     <span className="d-loot">
       <span className={`d-ico${q != null ? ` d-q${q}` : ""}`}>
         <b>{i.name.charAt(0)}</b>
+        <ItemIcon id={i.icon} />
       </span>
       <span className={q != null ? `d-q${q}` : undefined}>{i.name}</span>
     </span>

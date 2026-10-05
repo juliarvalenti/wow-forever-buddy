@@ -184,4 +184,4 @@ fn read_text(path: &Path) -> CascResult<String> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -13,6 +13,7 @@ mod db;
 mod error;
 mod fsx;
 mod game;
+mod icons;
 mod ingest;
 mod install;
 mod ledger;
@@ -82,6 +83,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::restore::restore_journal_preview,
             commands::restore::restore_journal_resolve,
             commands::game::game_status,
+            commands::icons::icons_cache_status,
+            commands::icons::icons_cache_rebuild,
+            commands::icons::icons_cache_clear,
             commands::sessions::sessions_list,
             commands::sessions::characters_list,
             commands::ingest::ingest_problems,
@@ -144,6 +148,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_asynchronous_uri_scheme_protocol("icon", icon_protocol)
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
@@ -249,6 +254,51 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// `icon://localhost/<fileDataId>` (`http://icon.localhost/…` on Windows):
+/// an item icon as PNG, or 404 for "no icon", and the UI keeps its letter
+/// tile. The path must be a number; nothing from it reaches the file system
+/// except as that number.
+fn icon_protocol(
+    ctx: tauri::UriSchemeContext<'_, tauri::Wry>,
+    request: tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    use tauri::http::{header, Response, StatusCode};
+    let not_found = || {
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Vec::new())
+            .unwrap_or_default()
+    };
+    let id = request
+        .uri()
+        .path()
+        .trim_start_matches('/')
+        .parse::<u32>()
+        .ok()
+        .filter(|&id| id > 0);
+    let Some(state) = ctx.app_handle().try_state::<AppState>() else {
+        return responder.respond(not_found());
+    };
+    let (Some(id), Some(flavor)) = (id, state.core.flavor_dir()) else {
+        return responder.respond(not_found());
+    };
+    state.core.icons.get(
+        flavor,
+        id,
+        Box::new(move |png| {
+            responder.respond(match png {
+                Some(png) => Response::builder()
+                    .header(header::CONTENT_TYPE, "image/png")
+                    .header(header::CACHE_CONTROL, "max-age=3600")
+                    .body(png)
+                    .unwrap_or_else(|_| not_found()),
+                None => not_found(),
+            })
+        }),
+    );
+}
+
 /// The ingest worker: jobs run in order on one thread, and the UI hears
 /// `ingest-completed` when characters' data changed.
 fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Job> {
@@ -263,6 +313,11 @@ fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Jo
                 characters: changed.into_iter().map(|id| id as u32).collect(),
             }
             .emit(&h);
+        }
+        // Item icons (F8): read any new item's icon now, in the background,
+        // so screens find them cached.
+        if let (Some(flavor), Ok(ids)) = (core.flavor_dir(), icons::known_ids(&core.db)) {
+            core.icons.prefetch(flavor, ids);
         }
         // Auctionator's prices (F5), on the same triggers.
         if let Ok(game) = core.active_game() {

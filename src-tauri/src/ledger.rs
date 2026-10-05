@@ -122,6 +122,9 @@ pub struct OfNote {
     pub text: String,
     /// For an item: its quality, for the letter tile's colour.
     pub quality: Option<u32>,
+    /// For an item: its icon's FileDataID, for `icon://`.
+    #[serde(default)]
+    pub icon: Option<u32>,
 }
 
 /// One character's points, oldest first.
@@ -345,6 +348,7 @@ fn of_note(
         return Ok(Some(OfNote {
             text: format!("Reached level {level}"),
             quality: None,
+            icon: None,
         }));
     }
 
@@ -370,6 +374,7 @@ fn of_note(
         return Ok(Some(OfNote {
             text,
             quality: None,
+            icon: None,
         }));
     }
 
@@ -379,15 +384,16 @@ fn of_note(
         .filter_map(|e| Some((int(&e.data, "item")?, int(&e.data, "count").unwrap_or(1))))
         .max_by_key(|(_, n)| *n);
     if let Some((item, count)) = gain {
-        let info: Option<(Option<String>, Option<i64>)> = db.with_conn(|c| {
+        type Info = (Option<String>, Option<i64>, Option<i64>);
+        let info: Option<Info> = db.with_conn(|c| {
             Ok(c.query_row(
-                "SELECT name, quality FROM items WHERE item_id = ?1",
+                "SELECT name, quality, icon_file_id FROM items WHERE item_id = ?1",
                 [item],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?)
         })?;
-        let (name, quality) = info.unwrap_or((None, None));
+        let (name, quality, icon) = info.unwrap_or((None, None, None));
         let name = name.unwrap_or_else(|| format!("Item {item}"));
         return Ok(Some(OfNote {
             text: if count > 1 {
@@ -396,6 +402,7 @@ fn of_note(
                 name
             },
             quality: quality.map(|q| q as u32),
+            icon: icon.and_then(|i| u32::try_from(i).ok()),
         }));
     }
     Ok(None)

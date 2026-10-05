@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Clock, RefreshCw, Search, Star } from "lucide-react";
 import type { AhStatus } from "@/lib/bindings";
-import { Callout, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
+import { Callout, ItemIcon, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
 import {
   type History,
   type Item,
@@ -26,10 +26,11 @@ const MIN_VALUE = 50 * 10_000;
 const nameOf = (i: Item) => i.name ?? `Item ${i.item_id}`;
 const quality = (i: Item) => (i.quality != null ? `ch-q${i.quality}` : "");
 
-function ItemIcon({ item, lg }: { item: Item; lg?: boolean }) {
+function ItemTile({ item, lg }: { item: Item; lg?: boolean }) {
   return (
     <span className={`ah-ico${lg ? " lg" : ""} ${quality(item)}`} aria-hidden>
       <b>{nameOf(item).slice(0, 1)}</b>
+      <ItemIcon id={item.icon} />
     </span>
   );
 }
@@ -204,7 +205,7 @@ function PriceHistory({
               found.map((f) => (
                 <li key={f.item_id}>
                   <button role="option" aria-selected={f.item_id === itemId} onClick={() => pick(f.item_id)}>
-                    <ItemIcon item={f} />
+                    <ItemTile item={f} />
                     <span className={quality(f)}>{nameOf(f)}</span>
                     <span className="p">{gold(f.price)}</span>
                   </button>
@@ -263,7 +264,7 @@ function ItemHistory({
     <>
       <div className="ah-head">
         <div className="nm">
-          <ItemIcon item={item} lg />
+          <ItemTile item={item} lg />
           {/* The mock's class line ("Trade goods") waits for item classes. */}
           <div className={quality(item)}>{nameOf(item)}</div>
           <button
@@ -469,7 +470,7 @@ function Watchlist({
             const old = daysAgo(i.last_seen) > 7;
             return (
               <li key={i.item_id} className={i.item_id === shown ? "on" : undefined} onClick={() => onPick(i.item_id)}>
-                <ItemIcon item={i} />
+                <ItemTile item={i} />
                 <div className="wn">
                   <div className={quality(i)}>{nameOf(i)}</div>
                   <small className={old ? "old" : undefined}>
@@ -528,7 +529,7 @@ function WorthSelling({ rows, onPick }: { rows: Sell[] | null; onPick: (id: numb
             const rough = s.confidence === "rough";
             return (
               <li key={s.item.item_id} className={rough ? "hedge" : undefined} onClick={() => onPick(s.item.item_id)}>
-                <ItemIcon item={s.item} />
+                <ItemTile item={s.item} />
                 <div className="sn">
                   <div className={rough ? undefined : quality(s.item)}>
                     {nameOf(s.item)} ×{s.count.toLocaleString()}

@@ -345,6 +345,8 @@ pub struct AhItem {
     /// has carried (the UI says "Item 12345").
     pub name: Option<String>,
     pub quality: Option<u8>,
+    /// Its icon's FileDataID, for `icon://`.
+    pub icon: Option<u32>,
     /// The last lowest buyout (copper).
     pub price: f64,
     /// The day it was last seen (YYYY-MM-DD).
@@ -391,16 +393,17 @@ fn item_row(
     item_id: u32,
     today: NaiveDate,
 ) -> AppResult<Option<AhItem>> {
-    let row: Option<(i64, String, Option<String>, Option<i64>)> = c
+    type Row = (i64, String, Option<String>, Option<i64>, Option<i64>);
+    let row: Option<Row> = c
         .query_row(
-            "SELECT l.price, l.day, i.name, i.quality FROM ah_latest l
+            "SELECT l.price, l.day, i.name, i.quality, i.icon_file_id FROM ah_latest l
              LEFT JOIN items i ON i.item_id = l.item_id
              WHERE l.flavor = ?1 AND l.realm = ?2 AND l.item_key = ?3",
             params![flavor, realm, plain(item_id)],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )
         .optional()?;
-    let Some((price, last_seen, name, quality)) = row else {
+    let Some((price, last_seen, name, quality, icon)) = row else {
         return Ok(None);
     };
     let mut stmt = c.prepare(
@@ -418,6 +421,7 @@ fn item_row(
         item_id,
         name,
         quality: quality.and_then(|q| u8::try_from(q).ok()),
+        icon: icon.and_then(|i| u32::try_from(i).ok()),
         price: price as f64,
         last_seen,
         sightings: lows.len() as u32,

@@ -438,6 +438,10 @@
 .d-ico { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 9.5px "Marcellus", Georgia, serif;
   background: rgba(255,255,255,.25); border: 1.5px solid currentColor; box-shadow: inset 0 0 6px rgba(90,55,20,.25); }
 .d-ico b { color: var(--ink); }
+/* a real item icon over its letter tile (ItemIcon, F8). Scaled up a touch to
+   crop the dark edge the game bakes in, so the quality border shows. */
+.d-ico, .ch-ico, .ah-ico { position: relative; overflow: hidden; }
+.d-icon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); }
 /* a row that opens something (a journal entry, a session's adventure) */
 .d-open { cursor: pointer; }
 .d-record .d-table tbody tr.d-open { cursor: pointer; }
