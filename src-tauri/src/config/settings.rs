@@ -326,6 +326,16 @@ impl SettingsStore {
             .clone()
     }
 
+    /// Whether a change would be valid, without saving it: for a change
+    /// that has work to do first (moving the backup store) and shouldn't
+    /// start that work for a value `update` would then refuse.
+    pub fn check(&self, change: impl FnOnce(&mut Settings)) -> AppResult<Settings> {
+        let mut next = self.get();
+        change(&mut next);
+        next.validate()?;
+        Ok(next)
+    }
+
     /// Applies a patch from the UI. Validated as a whole: if the result is
     /// invalid, nothing changes.
     pub fn apply_patch(&self, patch: SettingsPatch) -> AppResult<Settings> {

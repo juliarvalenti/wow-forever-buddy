@@ -28,9 +28,10 @@ import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { Ledger } from "@/screens/Ledger";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
+import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "characters" | "ledger" | "adventures" | "backups" | "game";
+type Screen = "dashboard" | "characters" | "ledger" | "adventures" | "backups" | "game" | "settings";
 
 type NavRow =
   | { group: string }
@@ -116,7 +117,8 @@ function Shell() {
   // stay viewable, which is when you'd want them, with writes locked.
   const folderMissing = install.state.kind === "invalid" ? install.state.error : null;
   // Until a game folder has been set at all, that's the screen.
-  const current: Screen = folderOk || folderMissing != null ? screen : "game";
+  // (Settings stays reachable: keys and backup options don't need one.)
+  const current: Screen = folderOk || folderMissing != null || screen === "settings" ? screen : "game";
 
   return (
     <div className="d-app">
@@ -191,7 +193,14 @@ function Shell() {
           </div>
         </div>
         <div className="d-side-foot d-nav">
-          <SoonNav label="Settings" icon={Settings} />
+          <button
+            title="Settings"
+            aria-current={current === "settings" ? "page" : undefined}
+            onClick={() => setScreen("settings")}
+          >
+            <Settings size={16} aria-hidden />
+            <span className="lbl">Settings</span>
+          </button>
         </div>
       </aside>
 
@@ -235,6 +244,9 @@ function Shell() {
           />
         )}
         {current === "game" && <GameFolder install={install} />}
+        {current === "settings" && (
+          <SettingsScreen install={install} onOpenGameFolder={() => setScreen("game")} />
+        )}
       </main>
 
       {recovery.pending && !deferred && (

@@ -1,0 +1,77 @@
+/* Settings (design/mocks/round-3/settings.html). The switch and the field
+   are shared vocabulary; the rest is this screen's. */
+
+.d-switch { width: 32px; height: 18px; border-radius: 9px; position: relative; flex-shrink: 0; border: 0; padding: 0; cursor: pointer;
+  background: rgba(0, 0, 0, .5); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .7); }
+.d-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #6a6358; box-shadow: 0 1px 2px rgba(0, 0, 0, .6); transition: left .12s; }
+.d-switch.on { background: linear-gradient(180deg, #5e4a2c, #3e301c); }
+.d-switch.on::after { left: 17px; background: var(--ember-2); box-shadow: 0 0 6px var(--ember); }
+.d-switch.locked, .d-switch[aria-disabled="true"] { cursor: default; opacity: .9; }
+.d-switch:focus-visible { outline: 1px solid rgba(255, 177, 92, .6); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .d-switch::after { transition: none; } }
+
+.d-field { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: var(--r); min-width: 0; color: var(--chalk-hi); font-size: 12.5px;
+  background: rgba(0, 0, 0, .4); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .7), 0 1px 0 rgba(255, 255, 255, .05); }
+.d-field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-field input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: inherit; font: inherit; }
+.d-field input::placeholder { color: var(--soot); letter-spacing: 0; }
+.d-field:focus-within { box-shadow: inset 0 2px 4px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 177, 92, .5), 0 0 10px rgba(255, 122, 46, .15); }
+.d-btn.sm { height: 26px; padding: 0 9px; font-size: 11.5px; }
+
+.st-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr); gap: 14px; align-items: start; }
+.st-set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 14px; }
+.st-set + .st-set { border-top: 1px solid rgba(0, 0, 0, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+.st-set .t { font-size: 12.5px; color: var(--chalk-hi); }
+.st-set .d { grid-column: 1; font-size: 11.5px; color: var(--soot); }
+.st-set .ctl { grid-row: 1 / span 2; grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.st-set.full { grid-template-columns: minmax(0, 1fr); }
+.st-set.full .ctl { grid-row: auto; grid-column: 1; margin-top: 4px; }
+.st-set.full .ctl .d-field { flex: 1; }
+.st-set .ok { color: var(--ok); }
+.st-set .err { color: var(--bad); }
+/* a path cut at the start: rtl for the overflow side, the path itself kept
+   left-to-right in <bdi> */
+.st-path { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.st-confirm { margin-top: 8px; padding: 9px 11px; border-radius: var(--r); font-size: 12px; color: #cdbfa9;
+  background: rgba(0, 0, 0, .28); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .55), 0 1px 0 rgba(255, 255, 255, .04); }
+.st-confirm p { margin: 0 0 8px; line-height: 1.45; }
+.st-confirm b { color: var(--chalk-hi); font-weight: 500; word-break: break-all; }
+.st-confirm .row { display: flex; gap: 8px; }
+.st-moving { display: grid; grid-template-columns: minmax(60px, 1fr) auto; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; color: var(--ash); }
+.st-locked { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--warn); }
+
+.st-keep { list-style: none; display: grid; gap: 4px; margin: 6px 0 10px; padding: 0; font-size: 12px; }
+.st-keep li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; }
+.st-keep span { color: var(--soot); }
+.st-keep b { font-weight: 500; color: var(--chalk); }
+.st-budget { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto auto; align-items: center; gap: 10px; font-size: 12px; color: var(--soot); }
+.st-budget .d-meter { width: auto; }
+.st-budget b { color: var(--chalk-hi); font-weight: 600; }
+
+.st-note { display: flex; gap: 10px; align-items: flex-start; margin: 12px 14px 4px; padding: 9px 11px; border-radius: var(--r); font-size: 12px; color: #cdbfa9;
+  background: rgba(0, 0, 0, .28); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .55), 0 1px 0 rgba(255, 255, 255, .04); }
+.st-note svg { color: #b79c6c; margin-top: 1px; flex-shrink: 0; }
+.st-note b { color: var(--chalk-hi); font-weight: 500; }
+
+.st-svc { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 3px 12px; padding: 10px 14px; }
+.st-svc + .st-svc { border-top: 1px solid rgba(0, 0, 0, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+.st-svc .lm { grid-row: 1 / span 3; width: 34px; height: 34px; border-radius: 5px; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; color: var(--chalk-hi);
+  background: linear-gradient(160deg, #4a4540, #23211e); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, .12), 0 2px 5px rgba(0, 0, 0, .5); }
+.st-svc .nm { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--chalk-hi); min-width: 0; }
+.st-svc .opt { font-size: 11.5px; color: var(--soot); font-weight: 500; }
+.st-svc .st { grid-column: 3; grid-row: 1; justify-self: end; }
+.st-svc .what { grid-column: 2 / span 2; font-size: 11.5px; color: var(--ash); }
+.st-svc .keys { grid-column: 2 / span 2; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.st-svc .keys .d-field { flex: 1; min-width: 150px; height: 28px; }
+.st-svc .keys .masked { letter-spacing: .1em; color: var(--ash); }
+.st-svc .err { grid-column: 2 / span 2; font-size: 11px; color: var(--bad); }
+.st-svc .caveat { grid-column: 2 / span 2; font-size: 11px; color: var(--soot); font-style: italic; }
+.d-pill .dt { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.d-pill.none { color: var(--soot); }
+
+@media (max-width: 1100px) {
+  .st-cols { grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr); gap: 12px; }
+  .st-svc { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .st-svc .lm { width: 30px; height: 30px; }
+  .st-svc .keys .d-field { min-width: 120px; }
+}

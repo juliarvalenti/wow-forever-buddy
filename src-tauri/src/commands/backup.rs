@@ -5,6 +5,7 @@ use tauri_specta::Event;
 use crate::backup::export::{export_zip, ExportReport};
 use crate::backup::journal;
 use crate::backup::manifest::{SnapshotSummary, Trigger};
+use crate::backup::relocate::MoveReport;
 use crate::backup::retention::POLICY;
 use crate::backup::tree::SnapshotDetail;
 use crate::backup::{clean_label, PruneReport, SnapshotRequest, SnapshotScope, StorageInfo};
@@ -192,4 +193,38 @@ pub fn backup_prune_now(state: State<'_, AppState>) -> AppResult<PruneReport> {
     let held = journal::held_snapshots(&core.paths.local_data_dir)?;
     core.backups()?
         .prune(chrono::Utc::now(), &POLICY, crate::backup::Gc::Now, &held)
+}
+
+/// Settings' "Store backups in": moves the store to a picked folder (into
+/// its own subfolder there), or back to the default with `None`, and points
+/// the setting at it. Waits for any running backup or restore. Emits
+/// `MoveProgress` while it copies.
+#[tauri::command]
+#[specta::specta]
+pub async fn backup_move_location(
+    app: AppHandle,
+    location: Option<String>,
+) -> AppResult<MoveReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let core = &app.state::<AppState>().core;
+        let mut last_sent = 0;
+        core.move_backups(
+            location.map(std::path::PathBuf::from),
+            &mut |done, total| {
+                if done == total || done >= last_sent + (total / 50).max(1) {
+                    last_sent = done;
+                    let _ = MoveProgress { done, total }.emit(&app);
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|e| AppError::Io(format!("move task failed: {e}")))?
+}
+
+/// Emitted while the backups are copied to a new folder.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+pub struct MoveProgress {
+    pub done: u32,
+    pub total: u32,
 }

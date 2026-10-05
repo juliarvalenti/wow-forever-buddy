@@ -4,6 +4,7 @@
 pub mod export;
 pub mod journal;
 pub mod manifest;
+pub mod relocate;
 pub mod restore;
 pub mod retention;
 pub mod store;

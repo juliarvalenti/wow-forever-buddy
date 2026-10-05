@@ -4,6 +4,7 @@
 // contains it (see main.tsx). Names and numbers follow the round-3 mocks so
 // app and mock screenshots line up.
 
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   AddonStatus,
@@ -11,12 +12,14 @@ import type {
   CategoryNode,
   CharacterCard,
   CharacterSheet,
+  IntegrationId,
   ItemRow,
   JournalEntry,
   Ledger,
   LedgerRange,
   PlaySession,
   RestorePlan,
+  SecretStatus,
   SnapshotDetail,
   SnapshotKind,
   SnapshotSummary,
@@ -50,6 +53,9 @@ export const SCENARIOS = [
   "characters-empty", // no addon notes yet
   "ledger-empty", // the Ledger before the addon has written anything
   "adventure-empty", // Adventures before the addon has written anything
+  "settings", // F1: a 24 h schedule and two keys saved (CurseForge, GitHub); Change… then confirms a move
+  "settings-moving", // moving the backups, stuck part way so the progress shows
+  "settings-pending", // moving is refused: an interrupted restore waits
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -306,6 +312,20 @@ export function installMockIpc(): void {
 
   // Scenario state that changes as you click through.
   let unlocked = false; // backups-locked: the lock is gone by the first "Try again"
+  // Settings (F1): toggles and keys stick for the page's life.
+  const settings = {
+    backup: {
+      location: null as string | null,
+      include_addons: false,
+      on_app_start: true,
+      on_game_exit: true,
+      schedule_hours: s.startsWith("settings") ? 24 : 0,
+    },
+  };
+  const secrets = new Map<IntegrationId, boolean>([
+    ["curseforge", s.startsWith("settings")],
+    ["github", s.startsWith("settings")],
+  ]);
   let refused = false;
   let recoveryRefused = false;
   let resolved = false;
@@ -496,7 +516,62 @@ export function installMockIpc(): void {
       return detectReport;
     },
     install_set: () => install,
-    settings_get: () => ({ backup: { on_game_exit: true, on_app_start: true, schedule_hours: 0 } }),
+    settings_get: () => structuredClone(settings),
+    settings_update: ({ patch }) => {
+      // null leaves a field as is, except location, where it means the default.
+      const b = (patch as { backup?: Record<string, unknown> }).backup ?? {};
+      for (const [k, v] of Object.entries(b))
+        if (v !== null || k === "location") Object.assign(settings.backup, { [k]: v });
+      // A copy, as the real backend sends: React skips a re-render for the
+      // same object.
+      return structuredClone(settings);
+    },
+    secrets_status: (): SecretStatus[] =>
+      (["curseforge", "wago", "github", "battlenet_client_id", "battlenet_client_secret"] as const).map((id) => ({
+        id,
+        is_set: secrets.get(id) ?? false,
+        error: null,
+      })),
+    secrets_set: ({ id }) => {
+      secrets.set(id as IntegrationId, true);
+      return null;
+    },
+    secrets_delete: ({ id }) => {
+      secrets.delete(id as IntegrationId);
+      return null;
+    },
+    app_info: () => ({
+      version: "0.2.0",
+      paths: {
+        config_dir: "C:\\Users\\Julia\\AppData\\Roaming\\com.juliarvalenti.wowforeverbuddy",
+        local_data_dir: "C:\\Users\\Julia\\AppData\\Local\\com.juliarvalenti.wowforeverbuddy",
+        log_dir: "C:\\Users\\Julia\\AppData\\Local\\com.juliarvalenti.wowforeverbuddy\\logs",
+      },
+    }),
+    backup_prune_now: () => ({
+      pruned: [],
+      blobs_removed: 0,
+      freed_bytes: 0,
+      used_bytes: 1.16e9,
+      budget_bytes: 5.37e9,
+      over_budget: false,
+    }),
+    "plugin:dialog|open": () => "D:\\Backups",
+    backup_move_location: ({ location }) => {
+      if (s === "settings-pending") throw { kind: "RestorePending" };
+      if (s === "settings-moving") {
+        // Part way through the copy, and it stays there.
+        setTimeout(() => emit("move-progress", { done: 412, total: 1843 }), 50);
+        return new Promise(() => {});
+      }
+      settings.backup.location = (location as string | null) ?? null;
+      return {
+        dir: location ? `${location}\\WoW Forever Buddy backups` : "C:\\…\\backups",
+        files: 1843,
+        bytes: 1.16e9,
+        left_behind: null,
+      };
+    },
     app_open_folder: () => null,
     startup_open_data_folder: () => null,
     backup_list: () => list,
@@ -505,8 +580,9 @@ export function installMockIpc(): void {
       budget_bytes: 5.37e9,
       over_budget: false,
       cleanup_blocked: null,
+      // retention.rs Policy::summary with the default POLICY.
       retention_summary:
-        "Keeps everything from the last 48 hours, one a day for 2 weeks and one a week for 8 weeks. Manual and pinned backups are kept until you delete them.",
+        "Automatic: everything from the last 48 h, then one a day for 14 days and one a week for 8 weeks. Safety: 30 days (at least the last 20). Manual and pinned: kept until you delete them.",
     }),
     backup_auto_status: () =>
       s === "backup-failed"

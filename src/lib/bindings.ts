@@ -125,6 +125,13 @@ export const commands = {
 	 *  restore still needs, and refuses while its journal is unreadable.
 	 */
 	backupPruneNow: () => __TAURI_INVOKE<PruneReport>("backup_prune_now"),
+	/**
+	 *  Settings' "Store backups in": moves the store to a picked folder (into
+	 *  its own subfolder there), or back to the default with `None`, and points
+	 *  the setting at it. Waits for any running backup or restore. Emits
+	 *  `MoveProgress` while it copies.
+	 */
+	backupMoveLocation: (location: string | null) => __TAURI_INVOKE<MoveReport>("backup_move_location", { location }),
 	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
 	backupSetPinned: (id: string, pinned: boolean) => __TAURI_INVOKE<SnapshotSummary>("backup_set_pinned", { id, pinned }),
 	/**  The storage meter and the retention sentence for the Backups header. */
@@ -203,7 +210,8 @@ export const commands = {
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
 	 *  The game folder isn't part of it: that goes through the install
-	 *  commands, which validate it.
+	 *  commands, which validate it. Nor is the backup location, which moves the
+	 *  backups (`backup_move_location`).
 	 *  Runs off the main thread: validation resolves the backup location, which
 	 *  can stall on an offline network share.
 	 */
@@ -270,6 +278,7 @@ export const events = {
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	ingestCompleted: makeEvent<IngestCompleted>("ingest-completed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
+	moveProgress: makeEvent<MoveProgress>("move-progress"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
 	sessionsChanged: makeEvent<SessionsChanged>("sessions-changed"),
@@ -945,6 +954,25 @@ export type Marker = {
 export type MoneyPoint = {
 	at: string,
 	money: number | null,
+};
+
+/**  Emitted while the backups are copied to a new folder. */
+export type MoveProgress = {
+	done: number,
+	total: number,
+};
+
+/**  What a move did, for the Settings screen. */
+export type MoveReport = {
+	/**  The store's folder now. */
+	dir: string,
+	files: number,
+	bytes: number | null,
+	/**
+	 *  The old folder, if removing it failed after the move. The backups
+	 *  are safe in the new one; this is a leftover copy to delete by hand.
+	 */
+	left_behind: string | null,
 };
 
 /**
