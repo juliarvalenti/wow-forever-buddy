@@ -18,9 +18,10 @@ ForeverBuddyDB = {
 		["written"] = 1790967600,
 	},
 	["character"] = {
-		["guid"] = "Player-6112-0A1B2C3D",
+		["guid"] = "Player-4613-0A1B2C3D",
 		["name"] = "Thrandor",
-		["realm"] = "Forever",
+		["realm"] = "Classic Beta PvP 2",
+		["surname"] = "Vargur",
 	},
 	["items"] = {
 	},

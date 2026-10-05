@@ -151,9 +151,14 @@ local function validate(db)
     return db
 end
 
+-- On Forever, UnitName's second return is the surname (probe run 1:
+-- "Ellygie", "Vargur"), and the WTF folder is "Ellygie-Vargur"; on retail it's
+-- the realm of a player from another realm, and nil for yourself.
 local function identity()
+    local name, surname = read(UnitName, "player")
     return {
-        name = read(UnitName, "player"),
+        name = name,
+        surname = surname ~= "" and surname or nil,
         realm = read(GetRealmName),
         guid = read(UnitGUID, "player"),
     }
