@@ -34,6 +34,7 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
+import { useGoodsWorth } from "@/hooks/useWorth";
 import {
   ago,
   characterName,
@@ -46,9 +47,9 @@ import {
   when,
 } from "@/lib/format";
 
-// design/mocks/round-3/characters.html and character.html, with
-// IMPLEMENTING.md §7: no net worth, "worth carried" or search values (AH
-// numbers stay hidden). Search shows once the addon has filled in a
+// design/mocks/round-3/characters.html and character.html. Net worth and
+// "Worth carried" show only once AH prices exist (F5c), from priced items
+// only (IMPLEMENTING.md §7: never zeros). Search shows once the addon has filled in a
 // character, since that's what indexes satchels. Every name, zone, item and
 // mail line is game text, rendered as React text and never as HTML.
 
@@ -177,6 +178,7 @@ const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivi
  *  (characters-noaddon.html) and fill in as each one is seen. */
 export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void }) {
   const { overview, error, refresh } = useCharacters();
+  const worth = useGoodsWorth();
   const roster = useRoster();
   const addon = useAddon();
   const [sort, setSort] = useState<Sort>("gold");
@@ -249,6 +251,11 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
               <span>
                 Items <b>{overview.items.toLocaleString()}</b>
               </span>
+              {worth && (
+                <span title={`Gold plus ${worth.priced.toLocaleString()} of ${worth.items.toLocaleString()} items at your last AH scan`}>
+                  Net worth <b><Coins copper={(overview.gold ?? 0) + worth.value} silver={false} /></b>
+                </span>
+              )}
             </span>
           ) : unseen.length > 0 ? (
             <span className="ch-totals">
@@ -733,6 +740,8 @@ function Sheet({
   onTagged: () => void;
 }) {
   const { sheet, error, reload } = useCharacterSheet(id);
+  // F5c: what this character's goods fetch at scan prices, when any are priced.
+  const carried = useGoodsWorth()?.byCharacter.get(id) || null;
   const [tagError, setTagError] = useState<string | null>(null);
   const setBankAlt = (on: boolean) => {
     setTagError(null);
@@ -806,11 +815,17 @@ function Sheet({
                 </div>
               </div>
             </div>
-            <div className="ch-stats">
+            <div className={`ch-stats${carried ? " five" : ""}`}>
               <div>
                 <div className="k">Gold</div>
                 <div className="v"><Coins copper={c.money} /></div>
               </div>
+              {carried != null && (
+                <div title="Bags, bank and mail at your last AH scan; items without a price aren't counted">
+                  <div className="k">Worth carried</div>
+                  <div className="v"><Coins copper={carried} silver={false} /></div>
+                </div>
+              )}
               <div>
                 <div className="k">Item level</div>
                 <div className="v">{c.ilvl != null ? c.ilvl.toFixed(1) : "Not seen"}</div>

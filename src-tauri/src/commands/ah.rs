@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::ah::{self, AhHistory, AhItem, AhStatus, Sellable};
+use crate::ah::{self, AhHistory, AhItem, AhStatus, GoodsWorth, Sellable};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -82,6 +82,34 @@ pub fn ah_set_watched(state: State<'_, AppState>, item_id: u32, watched: bool) -
 pub fn ah_worth_selling(state: State<'_, AppState>, min_value: f64) -> AppResult<Vec<Sellable>> {
     match flavor(&state)? {
         Some(f) => ah::worth_selling(&state.core.db, &f, min_value, today()),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// Net worth's goods (F5c): what the alts carry, valued at the last scan,
+/// priced items only.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ah_goods_worth(state: State<'_, AppState>) -> AppResult<GoodsWorth> {
+    match flavor(&state)? {
+        Some(f) => ah::goods_worth(&state.core.db, &f, today()),
+        None => Ok(GoodsWorth {
+            value: 0.0,
+            items: 0,
+            priced: 0,
+            by_character: Vec::new(),
+            top: Vec::new(),
+            as_of: None,
+        }),
+    }
+}
+
+/// The last lowest buyout of each item that has one, as `(id, copper)`.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ah_prices(state: State<'_, AppState>, item_ids: Vec<u32>) -> AppResult<Vec<(u32, f64)>> {
+    match flavor(&state)? {
+        Some(f) => ah::prices(&state.core.db, &f, &item_ids),
         None => Ok(Vec::new()),
     }
 }

@@ -58,6 +58,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::ah::ah_watchlist,
             commands::ah::ah_set_watched,
             commands::ah::ah_worth_selling,
+            commands::ah::ah_goods_worth,
+            commands::ah::ah_prices,
             commands::backup::backup_auto_status,
             commands::backup::backup_create,
             commands::backup::backup_delete,

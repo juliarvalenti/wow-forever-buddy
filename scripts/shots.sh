@@ -37,6 +37,8 @@ SCENARIOS=(
   "onboarding-notfound|nogame|wait:text=couldn't find World of Warcraft|onboarding-notfound"
   "startup-error|startup-error||startup-error"
   "characters|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card|characters"
+  "ledger|dashboard|click:css=nav button[title=\"Ledger\"];wait:css=.d-worth|gold"
+  "session|dashboard|click:css=nav button[title=\"Adventures\"];wait:css=.d-loot-t|session"
   "character|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
   "character-bank-alt|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Coinpurse;wait:css=.ch-sheet|character"
