@@ -1,6 +1,6 @@
 # ICON-SPIKE: item icons from the local CASC archive
 
-Status: findings, 2026-10-05 (@coder). The format layers are checked against real Forever data; the local-index layer waits on Julia's `icon_probe` run on a real install.
+Status: proven, 2026-10-05 (@coder). The format layers were checked against real Forever data, and Julia's `icon_probe` run proved the local-index layer on a real install (see "Real-install result"). Shipped as F8 (#102).
 
 ## Question
 
@@ -46,11 +46,27 @@ There's no WoW install on my machine, so the format layers were checked against 
 
 ## Julia's run
 
-1. Download `icon_probe.exe` from the `icon-probe` workflow run on this PR (Checks tab, then the run's Artifacts).
+1. Download `icon_probe.exe` from the release it's attached to (built from main by the `icon-probe` workflow, never from a PR's artifact). Source: `src-tauri/examples/icon_probe.rs`.
 2. Double-click it. It finds `_classic_beta_` in the usual places or asks for the folder (drag it into the window). The game can stay open.
 3. Send back `icon-probe/timings.txt` (next to the exe) and a glance at whether the 20 PNGs in `icon-probe/` look like icons.
 
 If it fails, the line it prints names the layer (`malformed idx layout`, `malformed archive header`, ...), which is enough to fix it without another round of questions.
+
+## Real-install result
+
+Julia's run on Windows, 2026-10-05:
+
+| Step | Time |
+|---|---|
+| Open: build config, index list, encoding, root | 234.8 ms |
+| 20 icons, cold | 19 of 20 in 222.3 ms |
+| Cached | 19 in 0.3 ms |
+
+The 19 PNGs look right. That proves the local layer the tests had only modelled: `.idx` v7 layout and bucket choice, the 5-byte archive/offset packing, the `.idx` size including the 30-byte `data.NNN` header, and the header check.
+
+**The one miss: 132000, "not found: file in local index".** (Reported as "13200"; that isn't one of the 20, and 132000 is.) Root and encoding resolved it, so the file is in the build, but its encoded key isn't in the local index: the client hasn't downloaded it. That fits a partial install. The Battle.net client installs the files the game needs and streams the rest on demand, and 132000 is the one oddity in the list, a 1024x1024 texture rather than a 64x64 icon, so the game never needed it. It's not a reader bug: a parser problem would fail as `malformed …`, and it would hit the other 19 too.
+
+In the app this is the designed path: the item keeps its letter tile, and Settings doesn't show "couldn't read the game's art files" (that needs the storage not to open, or nothing at all read). One gap: the icon service remembers the failure for the rest of the session, so if the client downloads the file later, the icon appears only after Rebuild, Clear or an app restart. Real item icons are 64x64 files the game itself shows, so they should be local. If letters turn up for items players have seen in game, retry "not in local index" misses when the `.idx` files change, instead of keeping them for the session.
 
 ## For the real feature (not in this spike)
 
