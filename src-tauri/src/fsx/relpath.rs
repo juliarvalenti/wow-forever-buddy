@@ -69,6 +69,11 @@ impl RelPath {
         self.0.last().expect("RelPath is never empty")
     }
 
+    /// The folder this path is in, or `None` at the top level.
+    pub fn parent(&self) -> Option<RelPath> {
+        (self.0.len() > 1).then(|| Self(self.0[..self.0.len() - 1].to_vec()))
+    }
+
     /// Builds the relative form of `path` under `base`, for paths found by
     /// walking a folder. Fails if `path` isn't under `base`.
     pub fn from_under(base: &Path, path: &Path) -> AppResult<Self> {
