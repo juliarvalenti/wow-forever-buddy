@@ -47,6 +47,21 @@ local function readFile(path)
 end
 M.readFile = readFile
 
+M.ITEMS = {
+    [25] = "Worn Shortsword",
+    [117] = "Tough Jerky",
+    [2488] = "Gladius",
+    [2589] = "Linen Cloth",
+    [6948] = "Hearthstone",
+    [14047] = "Runecloth",
+}
+
+M.QUESTS = { [176] = "Wanted: Hogger" }
+
+function M.link(id)
+    return "|cffffffff|Hitem:" .. id .. "::::::::12:::::|h[" .. (M.ITEMS[id] or "?") .. "]|h|r"
+end
+
 -- The global `name` set by a SavedVariables file's text.
 function M.parse(text, name)
     local env = {}
@@ -67,10 +82,12 @@ end
 
 -- opts:
 --   addon      path to ForeverBuddy.lua
---   character  { name, realm, guid }
+--   character  { name, surname, realm, guid }; the default has a surname,
+--              as Forever characters do (probe run 1)
 --   api        { Name = function or false } overrides; false removes it
 --   secret, throw, missing   "all" (all but the clock) or a set of API names
 --   unknown_events           events RegisterEvent refuses, as on Forever
+--   secret_args              a set of events whose arguments arrive secret
 function M.new(opts)
     local client = {
         now = M.EPOCH,
@@ -80,9 +97,25 @@ function M.new(opts)
     for _, e in ipairs(opts.unknown_events or {}) do
         client.unknown[e] = true
     end
-    local char = opts.character or { name = "Thrandor", realm = "Forever", guid = "Player-6112-0A1B2C3D" }
+    local char = opts.character
+        or { name = "Thrandor", surname = "Vargur", realm = "Classic Beta PvP 2", guid = "Player-4613-0A1B2C3D" }
     local secrets = setmetatable({}, { __mode = "k" })
     local state -- the running addon's environment, frames and timers
+
+    -- The character's game state, which the APIs report. Scenarios change it
+    -- through the helpers below, which fire the events the client would.
+    local world = {
+        money = 25000,
+        xp = 1200,
+        level = 12,
+        zone = "Elwynn Forest",
+        instance = false,
+        repair = 0,
+        -- bag -> { size, slots[slot] = { id, count } }; 0 is the backpack.
+        bags = { [0] = { size = 16, slots = { [1] = { id = 6948, count = 1 }, [2] = { id = 2589, count = 4 } } } },
+        equipped = { [16] = 25 },
+    }
+    client.world = world
 
     -- An opaque value the addon may hold but must never save.
     function client.secret()
@@ -99,8 +132,9 @@ function M.new(opts)
             return client.now
         end,
         UnitName = function(unit)
+            -- Forever returns the surname second, where retail puts the realm.
             if unit == "player" then
-                return char.name, nil
+                return char.name, char.surname
             end
         end,
         UnitGUID = function(unit)
@@ -113,6 +147,42 @@ function M.new(opts)
         end,
         GetBuildInfo = function()
             return "1.60.1", "70009", "Sep 30 2026", 16001
+        end,
+        GetMoney = function()
+            return world.money
+        end,
+        UnitXP = function()
+            return world.xp
+        end,
+        UnitLevel = function(unit)
+            if unit == "player" then
+                return world.level
+            end
+        end,
+        GetRealZoneText = function()
+            return world.zone
+        end,
+        IsInInstance = function()
+            return world.instance, world.instance and "party" or "none"
+        end,
+        GetInventoryItemID = function(_, slot)
+            return world.equipped[slot]
+        end,
+        GetRepairAllCost = function()
+            return world.repair, world.repair > 0
+        end,
+        ["C_Container.GetContainerNumSlots"] = function(bag)
+            local b = world.bags[bag]
+            return b and b.size or 0
+        end,
+        ["C_Container.GetContainerItemInfo"] = function(bag, slot)
+            local item = world.bags[bag] and world.bags[bag].slots[slot]
+            if item then
+                return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id) }
+            end
+        end,
+        ["C_QuestLog.GetTitleForQuestID"] = function(id)
+            return M.QUESTS[id]
         end,
     }
     for name, f in pairs(opts.api or {}) do
@@ -183,16 +253,30 @@ function M.new(opts)
         }
         for name, f in pairs(api) do
             if not applies(opts.missing, name) then
-                env[name] = wrap(name, f)
+                -- "C_Container.GetContainerNumSlots" goes in env.C_Container.
+                local t, key = env, name
+                for part, rest in name:gmatch("([^%.]+)%.(.*)") do
+                    t[part] = t[part] or {}
+                    t, key = t[part], rest
+                end
+                t[key] = wrap(name, f)
             end
         end
         return env
     end
 
     function client.fire(event, ...)
+        local args = pack(...)
+        if opts.secret_args and opts.secret_args[event] then
+            for i = 1, args.n do
+                if args[i] ~= nil then
+                    args[i] = client.secret()
+                end
+            end
+        end
         for _, f in ipairs(state.frames) do
             if f.events[event] and f.scripts.OnEvent then
-                local ok, err = pcall(f.scripts.OnEvent, f, event, ...)
+                local ok, err = pcall(f.scripts.OnEvent, f, event, unpack(args, 1, args.n))
                 if not ok then
                     table.insert(client.errors, event .. ": " .. tostring(err))
                 end
@@ -256,6 +340,155 @@ function M.new(opts)
         end
         noSecrets(db, "ForeverBuddyDB")
         return serialize("ForeverBuddyDB", db)
+    end
+
+    -- Things that happen in the game ------------------------------------------
+
+    local function bagsChanged()
+        client.fire("BAG_UPDATE_DELAYED")
+    end
+
+    -- Adds items to the backpack, stacking onto a slot with the same item.
+    local function put(id, count)
+        local slots = world.bags[0].slots
+        for slot = 1, world.bags[0].size do
+            if slots[slot] and slots[slot].id == id then
+                slots[slot].count = slots[slot].count + count
+                return
+            end
+        end
+        for slot = 1, world.bags[0].size do
+            if not slots[slot] then
+                slots[slot] = { id = id, count = count }
+                return
+            end
+        end
+        error("backpack full")
+    end
+
+    local function remove(id, count)
+        for _, bag in pairs(world.bags) do
+            for slot, item in pairs(bag.slots) do
+                if item.id == id then
+                    local n = math.min(count, item.count)
+                    item.count, count = item.count - n, count - n
+                    if item.count == 0 then
+                        bag.slots[slot] = nil
+                    end
+                    if count == 0 then
+                        return
+                    end
+                end
+            end
+        end
+        error("not carrying " .. id)
+    end
+
+    function client.setMoney(money)
+        world.money = money
+        client.fire("PLAYER_MONEY")
+    end
+
+    function client.loot(id, count)
+        put(id, count)
+        bagsChanged()
+    end
+
+    function client.use(id, count)
+        remove(id, count or 1)
+        bagsChanged()
+    end
+
+    -- Equips `id` from the bags into `slot`; what was there goes to the bags.
+    function client.equip(slot, id)
+        remove(id, 1)
+        if world.equipped[slot] then
+            put(world.equipped[slot], 1)
+        end
+        world.equipped[slot] = id
+        client.fire("PLAYER_EQUIPMENT_CHANGED", slot, false)
+        bagsChanged()
+    end
+
+    function client.enterZone(zone, instance)
+        world.zone, world.instance = zone, instance == true
+        client.fire("ZONE_CHANGED_NEW_AREA")
+    end
+
+    function client.levelUp()
+        world.level, world.xp = world.level + 1, 0
+        client.fire("PLAYER_LEVEL_UP", world.level, 10, 0, 0, 0, 0, 0, 0, 0)
+    end
+
+    function client.die(durabilityCost)
+        world.repair = world.repair + (durabilityCost or 0)
+        client.fire("PLAYER_DEAD")
+    end
+
+    function client.turnIn(id, xp, money)
+        world.xp = world.xp + xp
+        client.fire("QUEST_TURNED_IN", id, xp, money)
+        client.setMoney(world.money + money)
+    end
+
+    function client.encounter(id, name, success)
+        client.fire("ENCOUNTER_END", id, name, 1, 5, success and 1 or 0)
+    end
+
+    function client.openMerchant()
+        client.fire("MERCHANT_SHOW")
+    end
+
+    function client.sell(id, count, price)
+        remove(id, count)
+        bagsChanged()
+        client.setMoney(world.money + price)
+    end
+
+    function client.buy(id, count, price)
+        put(id, count)
+        bagsChanged()
+        client.setMoney(world.money - price)
+    end
+
+    function client.repairAll()
+        local cost = world.repair
+        world.repair = 0
+        client.fire("UPDATE_INVENTORY_DURABILITY")
+        client.setMoney(world.money - cost)
+    end
+
+    function client.closeMerchant()
+        -- The client fires it twice.
+        client.fire("MERCHANT_CLOSED")
+        client.fire("MERCHANT_CLOSED")
+    end
+
+    -- Moves items between the bags and the bank while it's open.
+    function client.bank(deposit, withdraw)
+        client.fire("BANKFRAME_OPENED")
+        for id, count in pairs(deposit or {}) do
+            remove(id, count)
+        end
+        bagsChanged()
+        for id, count in pairs(withdraw or {}) do
+            put(id, count)
+        end
+        bagsChanged()
+        client.fire("BANKFRAME_CLOSED")
+    end
+
+    function client.mail(send, take)
+        client.fire("MAIL_SHOW")
+        for id, count in pairs(send or {}) do
+            remove(id, count)
+        end
+        bagsChanged()
+        for id, count in pairs(take or {}) do
+            put(id, count)
+        end
+        bagsChanged()
+        client.fire("MAIL_CLOSED")
     end
 
     -- /reload: the file is written, then everything loads again from it.

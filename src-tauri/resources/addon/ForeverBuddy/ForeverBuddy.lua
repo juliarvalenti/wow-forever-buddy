@@ -151,9 +151,14 @@ local function validate(db)
     return db
 end
 
+-- On Forever, UnitName's second return is the surname (probe run 1:
+-- "Ellygie", "Vargur"), and the WTF folder is "Ellygie-Vargur"; on retail it's
+-- the realm of a player from another realm, and nil for yourself.
 local function identity()
+    local name, surname = read(UnitName, "player")
     return {
-        name = read(UnitName, "player"),
+        name = name,
+        surname = surname ~= "" and surname or nil,
         realm = read(GetRealmName),
         guid = read(UnitGUID, "player"),
     }
@@ -169,10 +174,139 @@ handlers.ADDON_LOADED = function(name)
     end
 end
 
+-- Session events (spec §2, "What it captures") ------------------------------
+
+local MONEY_WINDOW = 60
+local lastMoney -- the newest money event, which later changes within a minute update
+local lastZone
+local merchantOpen, bankOpen, mailOpen
+local repairCost -- at the open merchant, last we looked
+local inventory -- item counts carried, from the last bag scan
+
+-- An event argument, or nil if it's secret.
+local function arg(v)
+    if isSecret(v) then
+        secretHits = secretHits + 1
+        return nil
+    end
+    return v
+end
+
+-- Appends to this session's log. Past the cap the oldest go, and the file
+-- says so.
+local function addEvent(kind, fields)
+    if not session then
+        return nil
+    end
+    fields.kind = kind
+    fields.t = now()
+    local events = session.events
+    events[#events + 1] = fields
+    if #events > MAX_EVENTS then
+        table.remove(events, 1)
+        truncated = true
+    end
+    return fields
+end
+
+local function zoneNow()
+    local zone = read(GetRealZoneText)
+    if zone ~= "" then
+        return zone
+    end
+    return nil
+end
+
+-- Item counts by id across the bags and everything worn, or nil if any of it
+-- couldn't be read (a secret anywhere would make items seem to vanish).
+local function carried()
+    local before = secretHits
+    local counts = {}
+    for bag = 0, 5 do
+        local size = read("C_Container.GetContainerNumSlots", bag)
+        for slot = 1, type(size) == "number" and size or 0 do
+            local info = read("C_Container.GetContainerItemInfo", bag, slot)
+            if type(info) == "table" then
+                local id, n = arg(info.itemID), arg(info.stackCount)
+                if type(id) ~= "number" or type(n) ~= "number" then
+                    return nil
+                end
+                counts[id] = (counts[id] or 0) + n
+            end
+        end
+    end
+    -- 1-19 is gear, 20-23 the bags themselves: equipping isn't losing.
+    for slot = 1, 23 do
+        local id = read(GetInventoryItemID, "player", slot)
+        if type(id) == "number" then
+            counts[id] = (counts[id] or 0) + 1
+        end
+    end
+    if secretHits > before then
+        return nil
+    end
+    return counts
+end
+
+local function sortedKeys(t)
+    local keys = {}
+    for k in pairs(t) do
+        keys[#keys + 1] = k
+    end
+    table.sort(keys)
+    return keys
+end
+
+-- Compares what's carried now with the last scan and logs the difference:
+-- `gain` and `lose`, with how when it's known. Items moved to or from the
+-- bank aren't gained or lost, so a bank visit only takes a new baseline.
+local function scanBags()
+    local now_ = carried()
+    if not now_ then
+        return
+    end
+    if inventory and not bankOpen then
+        local gainHow = (merchantOpen and "bought") or (mailOpen and "mail") or nil
+        local loseHow = (merchantOpen and "sold") or (mailOpen and "mailed") or "used"
+        for _, id in ipairs(sortedKeys(now_)) do
+            local d = now_[id] - (inventory[id] or 0)
+            if d > 0 then
+                addEvent("gain", { item = id, count = d, how = gainHow })
+            end
+        end
+        for _, id in ipairs(sortedKeys(inventory)) do
+            local d = inventory[id] - (now_[id] or 0)
+            if d > 0 then
+                addEvent("lose", { item = id, count = d, how = loseHow })
+            end
+        end
+    end
+    inventory = now_
+end
+
+local function repairCostNow()
+    local cost = read(GetRepairAllCost)
+    if type(cost) == "number" then
+        return cost
+    end
+    return nil
+end
+
 handlers.PLAYER_LOGIN = function()
     local t = now()
     character = identity()
-    session = { id = t, login = t, events = {} }
+    session = {
+        id = t,
+        login = t,
+        start = {
+            money = read(GetMoney),
+            xp = read(UnitXP, "player"),
+            level = read(UnitLevel, "player"),
+            zone = zoneNow(),
+        },
+        events = {},
+    }
+    lastZone = session.start.zone
 end
 
 -- After /reload the client has just written the file and read it back, and
@@ -180,19 +314,115 @@ end
 -- instead of starting another. If the file didn't load, the reload starts a
 -- new session; the two just aren't joined.
 handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
+    if not inventory then
+        scanBags()
+    end
     if entered then
         return
     end
     entered = true
-    if not (isReloadingUi and loaded and session) or #session.events > 0 then
+    if not (isReloadingUi and loaded and session) then
         return
     end
     local last = loaded.sessions[#loaded.sessions]
     if type(last) == "table" and type(last.events) == "table" then
         loaded.sessions[#loaded.sessions] = nil
+        for _, e in ipairs(session.events) do
+            last.events[#last.events + 1] = e
+        end
         last.logout = nil
         session = last
     end
+end
+
+handlers.ZONE_CHANGED_NEW_AREA = function()
+    local zone = zoneNow()
+    if not zone or zone == lastZone then
+        return
+    end
+    lastZone = zone
+    addEvent("zone", { zone = zone, instance = read(IsInInstance) == true or nil })
+end
+
+handlers.PLAYER_LEVEL_UP = function(level)
+    addEvent("level", { level = arg(level) })
+end
+
+-- Coalesced: changes within a minute of the last point update that point.
+handlers.PLAYER_MONEY = function()
+    local money = read(GetMoney)
+    if not money then
+        return
+    end
+    local t = now()
+    if lastMoney and t and lastMoney.t and t - lastMoney.t < MONEY_WINDOW then
+        lastMoney.money = money
+    else
+        lastMoney = addEvent("money", { money = money })
+    end
+end
+
+handlers.QUEST_TURNED_IN = function(questID, xp, money)
+    local id = arg(questID)
+    addEvent("quest", {
+        id = id,
+        title = id and read("C_QuestLog.GetTitleForQuestID", id) or nil,
+        xp = arg(xp),
+        money = arg(money),
+    })
+end
+
+-- No killer: that's restricted, and the recap says so instead.
+handlers.PLAYER_DEAD = function()
+    addEvent("death", { zone = zoneNow() })
+end
+
+handlers.ENCOUNTER_END = function(id, name, _, _, success)
+    if arg(success) == 1 then
+        addEvent("encounter", { id = arg(id), name = arg(name) })
+    end
+end
+
+-- Repairs: while a merchant is open, a drop in the repair cost is what was
+-- paid. (Read on durability changes, not at MERCHANT_CLOSED, when the cost
+-- may no longer be readable.)
+handlers.MERCHANT_SHOW = function()
+    merchantOpen = true
+    repairCost = repairCostNow()
+end
+
+handlers.UPDATE_INVENTORY_DURABILITY = function()
+    if not merchantOpen then
+        return
+    end
+    local cost = repairCostNow()
+    if repairCost and cost and cost < repairCost then
+        addEvent("repair", { cost = repairCost - cost })
+    end
+    repairCost = cost
+end
+
+handlers.MERCHANT_CLOSED = function()
+    merchantOpen, repairCost = false, nil
+end
+
+handlers.BAG_UPDATE_DELAYED = scanBags
+
+handlers.BANKFRAME_OPENED = function()
+    bankOpen = true
+end
+
+handlers.BANKFRAME_CLOSED = function()
+    bankOpen = false
+    inventory = carried() or inventory
+end
+
+handlers.MAIL_SHOW = function()
+    mailOpen = true
+end
+
+handlers.MAIL_CLOSED = function()
+    mailOpen = false
 end
 
 -- Builds the whole file from this session plus the sessions carried forward.

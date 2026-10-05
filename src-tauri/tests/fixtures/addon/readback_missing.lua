@@ -18,9 +18,10 @@ ForeverBuddyDB = {
 		["written"] = 1791061200,
 	},
 	["character"] = {
-		["guid"] = "Player-6112-0A1B2C3D",
+		["guid"] = "Player-4613-0A1B2C3D",
 		["name"] = "Thrandor",
-		["realm"] = "Forever",
+		["realm"] = "Classic Beta PvP 2",
+		["surname"] = "Vargur",
 	},
 	["items"] = {
 	},
@@ -31,6 +32,12 @@ ForeverBuddyDB = {
 			["id"] = 1791057600,
 			["login"] = 1791057600,
 			["logout"] = 1791061200,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [1]
 	},
 	["snapshot"] = {

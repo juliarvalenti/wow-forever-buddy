@@ -12,7 +12,7 @@ ForeverBuddyDB = {
 		["missing_events"] = {
 		},
 		["schema"] = 1,
-		["secret_hits"] = 10,
+		["secret_hits"] = 23,
 		["truncated"] = false,
 		["written"] = 1790967600,
 	},
@@ -27,6 +27,8 @@ ForeverBuddyDB = {
 			["id"] = 1790964000,
 			["login"] = 1790964000,
 			["logout"] = 1790967600,
+			["start"] = {
+			},
 		}, -- [1]
 	},
 	["snapshot"] = {
