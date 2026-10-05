@@ -152,7 +152,7 @@ Generated whenever its inputs change (after each ingest, at the weekly reset, on
 | Cooldowns | **new in addon 0.4.0** | see below |
 
 - The in-game frame shows times relative to now (`GetServerTime()`), so "resets Tue" stays right however old the file is. Past `resetsAt` rows show as clear, and past `readyAt` as ready.
-- **Cooldowns are not in the db yet.** Addon 0.4.0 records profession cooldowns at logout (`C_TradeSkillUI.GetRecipeCooldown` for known cooldown recipes, `C_Spell.GetSpellCooldown` for transmutes), stored as `char_cooldowns (character_id, spell_id, name, ready_at, as_of)` in migration 008. Cooldowns are secret in combat under Midnight's rules, but logout is never in combat. Probe run 4 records both calls; if neither returns real data, the checklist ships with Raids and Mail and the Cooldowns section is left out (never shown empty).
+- **Cooldowns are not in the db yet.** Addon 0.4.0 records profession cooldowns at logout (`C_TradeSkillUI.GetRecipeCooldown` for known cooldown recipes, `C_Spell.GetSpellCooldown` for transmutes), stored as `char_cooldowns (character_id, spell_id, name, ready_at, as_of)` in migration 008. Cooldowns are secret in combat under Midnight's rules, but logout is never in combat. Probe run 4 doesn't cover these calls, so addon 0.4.0 checks them itself: each is `pcall`-wrapped, and a missing, secret or nil result records nothing. Julia's first logout with 0.4.0 settles it. If neither returns real data, the checklist ships with Raids and Mail and the Cooldowns section is left out (never shown empty).
 - **The frame:** `/fb` toggles it, small and in the game's own dialog look (mock right side). It **never opens by itself** (INGAME.md §3, #86). At login, and only when the app delivered a stamp this character hasn't seen, the addon prints one chat line: "Forever Buddy: this week's checklist is ready. /fb to open." The addon compartment tooltip shows "This week: 4 to do". An opt-in popup can come later if players ask.
 - **If `/reload` doesn't re-read a changed slot** (probe run 4), the frame says "Updates arrive at your next login" and the app says "Your characters will see it at their next login." (INGAME.md §5).
 
@@ -167,7 +167,7 @@ The planner the PM described (plan levels in the app, an in-game step list) need
    - **License is unclear.** Neither repo has a LICENSE file. CurseForge says GPLv3, and third-party projects treat it that way.
 2. **Wowhead Forever** is the most complete (about 5,400 quests) but proprietary. Don't scrape it.
 3. **wago.tools DB2** (QuestV2, about 6,600 rows) has IDs only, no text. It's useful as the list of valid IDs, to measure what QuestieDB misses.
-4. **Our addon can record quests** with retail APIs not tied to combat (`C_QuestLog.GetInfo`, `GetQuestObjectives`, `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, `C_Map.GetPlayerMapPosition`), as QuestieTrace does. Not yet tested on 16001; probe run 5 would check.
+4. **Our addon can record quests** with retail APIs not tied to combat (`C_QuestLog.GetInfo`, `GetQuestObjectives`, `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, `C_Map.GetPlayerMapPosition`), as QuestieTrace does. The probe already registers `QUEST_ACCEPTED` and `QUEST_TURNED_IN` and calls `C_QuestLog.GetTitleForQuestID` on turn-in; the rest is untested on 16001.
 
 **Recommendation: no-go for a v0.4 planner, go for groundwork.**
 
@@ -222,7 +222,7 @@ Only the `Slot` kind is built in v0.4. The other two are listed here so the queu
 | Gate | Needs | Blocks |
 |---|---|---|
 | G1 | Probe run 4: the reload route, and whether `/reload` re-reads a changed slot | §4's button; §3 (needed only if the re-read works) |
-| G2 | Probe run 4: cooldown APIs return data | Cooldowns in the checklist |
+| G2 | First logout with addon 0.4.0: cooldown APIs return data (not in probe run 4) | Cooldowns in the checklist |
 | G3 | Questie license answer + coverage sample | Any quest planner |
 
 **Build order:**
