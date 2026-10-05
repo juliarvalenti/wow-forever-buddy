@@ -19,7 +19,9 @@ import {
   Segmented,
   Tile,
 } from "@/components/d";
+import { useCharacters } from "@/hooks/useCharacters";
 import { useLedger } from "@/hooks/useLedger";
+import { classStyle } from "@/screens/Characters";
 import { coins, errorText, gold, plural, sessionWhen, span } from "@/lib/format";
 
 // Copy and layout from design/mocks/round-3/gold.html, with the v0.2 rules in
@@ -34,6 +36,8 @@ const RANGES: { value: LedgerRange; label: string; days: string }[] = [
 
 /** The mock's validated paper palette: top four, then "others" dashed. */
 const COLORS = ["#8a4e0e", "#b0306e", "#e09a2a", "#5f8f1a"];
+/** End-label text: the line colour, darkened where it's too light to read on parchment. */
+const LABELS = ["#8a4e0e", "#b0306e", "#b8761a", "#5f8f1a"];
 const OTHERS = "#8a7a62";
 const TOTAL = "#3a2616";
 
@@ -102,6 +106,7 @@ function GoldChart({ chart }: { chart: Chart }) {
   const lines = chart.series.map((s, k) => ({
     name: s.name,
     color: s.character_id == null ? OTHERS : COLORS[k % COLORS.length],
+    text: s.character_id == null ? OTHERS : LABELS[k % LABELS.length],
     dash: s.character_id == null,
     values: s.values,
   }));
@@ -110,7 +115,7 @@ function GoldChart({ chart }: { chart: Chart }) {
   // Direct labels at the line ends, nudged apart.
   const ends = [
     { name: "Total", color: TOTAL, v: chart.account[n - 1] ?? 0 },
-    ...lines.map((l) => ({ name: l.name, color: l.color, v: l.values[n - 1] ?? 0 })),
+    ...lines.map((l) => ({ name: l.name, color: l.text, v: l.values[n - 1] ?? 0 })),
   ]
     .map((e) => ({ ...e, ty: y(toGold(e.v)) }))
     .sort((a, b) => a.ty - b.ty);
@@ -241,7 +246,15 @@ function GoldTable({ chart }: { chart: Chart }) {
   );
 }
 
-function JournalRow({ e, onOpen }: { e: JournalEntry; onOpen: (id: number) => void }) {
+function JournalRow({
+  e,
+  cls,
+  onOpen,
+}: {
+  e: JournalEntry;
+  cls: string | null;
+  onOpen: (id: number) => void;
+}) {
   const when = sessionWhen(e.login, e.logout);
   const cut = when.indexOf(", ");
   const note = e.of_note;
@@ -253,7 +266,9 @@ function JournalRow({ e, onOpen }: { e: JournalEntry; onOpen: (id: number) => vo
       </td>
       <td>
         <span className="who">
-          {e.name}
+          <span className="ch-cc" style={classStyle({ class: cls })}>
+            {e.name}
+          </span>
           {e.level != null && (
             <span className="d-wax" title={`Reached level ${e.level}`}>
               {e.level}
@@ -291,6 +306,10 @@ export function Ledger({
   const [range, setRange] = useState<LedgerRange>("month");
   const [view, setView] = useState<"chart" | "table">("chart");
   const { ledger, error } = useLedger(range);
+  // The ledger rows carry ids, not classes; the overview has each character's class.
+  const { overview } = useCharacters();
+  const classOf = (id: number | null | undefined) =>
+    overview?.characters.find((c) => c.id === id)?.class ?? null;
   const [saved, setSaved] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -359,12 +378,22 @@ export function Ledger({
             />
             <Tile
               label="Last 30 days"
-              value={tiles ? <Delta copper={tiles.last_30_days ?? 0} /> : "…"}
+              value={tiles ? gold(tiles.last_30_days ?? 0, true) : "…"}
               sub={tiles && <>{gold(tiles.this_week ?? 0, true)} this week</>}
             />
             <Tile
               label="Best earner"
-              value={tiles?.best_earner?.name ?? (tiles ? "None yet" : "…")}
+              value={
+                tiles?.best_earner ? (
+                  <span className="ch-cc" style={classStyle({ class: classOf(tiles.best_earner.character_id) })}>
+                    {tiles.best_earner.name}
+                  </span>
+                ) : tiles ? (
+                  "None yet"
+                ) : (
+                  "…"
+                )
+              }
               sub={
                 tiles?.best_earner &&
                 `${gold(tiles.best_earner.gained ?? 0, true)} in 30 days · ${plural(tiles.best_earner.sessions, "session", "sessions")}`
@@ -425,7 +454,7 @@ export function Ledger({
                 }
               >
                 {ledger.journal.map((e) => (
-                  <JournalRow key={e.adventure_id} e={e} onOpen={onOpenAdventure} />
+                  <JournalRow key={e.adventure_id} e={e} cls={classOf(e.character_id)} onOpen={onOpenAdventure} />
                 ))}
               </DataTable>
             ) : (

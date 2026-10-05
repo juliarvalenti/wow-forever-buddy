@@ -12,6 +12,7 @@ import {
   Record,
 } from "@/components/d";
 import { errorText, gold, span } from "@/lib/format";
+import { Crest, classStyle } from "@/screens/Characters";
 
 // Copy and layout from design/mocks/round-3/session.html, with the v0.2
 // rules in IMPLEMENTING.md §7 (no "≈ worth" cells).
@@ -64,10 +65,26 @@ function useAdventure(id: number | null) {
 const PRIORITY: Record<string, number> = { level: 4, death: 3, encounter: 2, quest: 1 };
 
 /** The chart markers' short labels, as in the mock: "died", the boss's first
- *  word ("Baron"), "ding", "quest". Labels closer than 34px are merged:
- *  quests into "quests", anything else keeps the more important one. */
-function markerLabels(a: AdventureData, x: (t: number) => number): { x: number; text: string }[] {
-  const out: { x: number; text: string; kind: string }[] = [];
+ *  word ("Baron"), "ding", "quest". A label sits centred on its line, or
+ *  starts just right of it, or pushes the label before it to end just left
+ *  of its own line, whichever fits first. When none fit they merge: quests
+ *  into "quests", anything else keeps the more important one. */
+type Anchor = "start" | "middle" | "end";
+type MarkerLabel = { x: number; text: string; kind: string; anchor: Anchor };
+const NUDGE = 3;
+const GAP = 6;
+/** 10px italic Georgia, near enough. */
+const textWidth = (s: string) => s.length * 5.6;
+function edges(l: MarkerLabel): [number, number] {
+  const w = textWidth(l.text);
+  if (l.anchor === "start") return [l.x + NUDGE, l.x + NUDGE + w];
+  if (l.anchor === "end") return [l.x - NUDGE - w, l.x - NUDGE];
+  return [l.x - w / 2, l.x + w / 2];
+}
+function markerLabels(a: AdventureData, x: (t: number) => number): MarkerLabel[] {
+  const out: MarkerLabel[] = [];
+  const clear = (l: MarkerLabel, before: MarkerLabel | undefined) =>
+    !before || edges(l)[0] >= edges(before)[1] + GAP;
   for (const m of a.markers) {
     const mx = x(new Date(m.at).getTime());
     const text =
@@ -79,12 +96,28 @@ function markerLabels(a: AdventureData, x: (t: number) => number): { x: number; 
             ? "quest"
             : (m.label.replace(/^Defeated /, "").split(" ")[0] ?? "boss");
     const last = out[out.length - 1];
-    if (last && mx - last.x < 34) {
-      if (last.kind === "quest" && m.kind === "quest") last.text = "quests";
-      else if ((PRIORITY[m.kind] ?? 0) > (PRIORITY[last.kind] ?? 0)) Object.assign(last, { x: mx, text, kind: m.kind });
+    const placed = (["middle", "start"] as const)
+      .map((anchor) => ({ x: mx, text, kind: m.kind, anchor }))
+      .find((l) => clear(l, last));
+    if (placed) {
+      out.push(placed);
       continue;
     }
-    out.push({ x: mx, text, kind: m.kind });
+    // Make room by ending the previous label at its line.
+    if (last && last.anchor !== "end") {
+      const moved = { ...last, anchor: "end" as const };
+      const next = (["middle", "start"] as const)
+        .map((anchor) => ({ x: mx, text, kind: m.kind, anchor }))
+        .find((l) => clear(l, moved));
+      if (next && clear(moved, out[out.length - 2])) {
+        out[out.length - 1] = moved;
+        out.push(next);
+        continue;
+      }
+    }
+    if (last.kind === "quest" && m.kind === "quest") last.text = "quests";
+    else if ((PRIORITY[m.kind] ?? 0) > (PRIORITY[last.kind] ?? 0))
+      Object.assign(last, { x: mx, text, kind: m.kind, anchor: "middle" });
   }
   return out;
 }
@@ -145,7 +178,12 @@ function MoneyChart({ a }: { a: AdventureData }) {
       })}
       <g className="ev">
         {markerLabels(a, x).map((l) => (
-          <text key={l.x} x={l.x} y={T - 5} textAnchor="middle">
+          <text
+            key={l.x}
+            x={l.x + (l.anchor === "end" ? -NUDGE : l.anchor === "start" ? NUDGE : 0)}
+            y={T - 5}
+            textAnchor={l.anchor}
+          >
             {l.text}
           </text>
         ))}
@@ -261,6 +299,8 @@ export function Adventure({
   const levelled = a.level_start != null && a.level_end != null && a.level_end > a.level_start;
   const withheld = a.timeline.some((l) => l.withheld);
   const repairs = a.tally.repairs ?? 0;
+  // Adventures carry file tokens ("PALADIN", "NightElf"); the crest wants the card's form.
+  const kin = { class: a.class?.toLowerCase() ?? null, race: label(a.race) || null };
 
   return (
     <Page>
@@ -291,9 +331,10 @@ export function Adventure({
       <Record>
         <div className="d-adv">
           <div className="col">
-            <div className="d-adv-head">
+            <div className="d-adv-head" style={classStyle(kin)}>
+              <Crest c={kin} size={58} />
               <div>
-                <div className="nm">{a.name}</div>
+                <div className="nm ch-cc">{a.name}</div>
                 <div className="sub">
                   {[label(a.race), label(a.class)].filter(Boolean).join(" ")}
                   {a.level_start != null &&

@@ -46,7 +46,11 @@ const CLASS: Record<string, string> = {
 };
 
 const fullName = (c: CharacterCard) => (c.surname ? `${c.name} ${c.surname}` : c.name);
-const classStyle = (c: CharacterCard) =>
+/** Who a crest or a class-coloured name is for: lower-case class token, race label. */
+type Kin = { class: string | null; race?: string | null };
+
+/** `--cc`, the class colour, for `.ch-cc` names and the crest. */
+export const classStyle = (c: Kin) =>
   ({ "--cc": c.class ? `var(--c-${c.class})` : undefined }) as React.CSSProperties;
 
 /** "Level 30 Gnome Mage", from what's known. */
@@ -108,7 +112,7 @@ function raceBadge(race: string): string {
   return words.length > 1 ? words.map((w) => w[0].toUpperCase()).join("") : race.slice(0, 2);
 }
 
-function Crest({ c, size = 64 }: { c: CharacterCard; size?: number }) {
+export function Crest({ c, size = 64 }: { c: Kin; size?: number }) {
   return (
     <span
       className={`ch-pslot${c.class ? "" : " plain"}`}
