@@ -88,6 +88,15 @@
   text-shadow: 0 1px 1px rgba(0, 0, 0, .5);
 }
 .d-nav button[aria-current="page"] svg { color: #fbe9c6; }
+/* section labels, counts and not-yet-built rows (v0.2+ screens) */
+.d-nav-group { padding: 12px 10px 5px; font-size: 11.5px; font-weight: 500; color: var(--hide-dim); }
+.d-nav .n { margin-left: auto; font-size: 11px; color: var(--hide-dim); }
+.d-nav button.soon { color: var(--hide-dim); cursor: default; }
+.d-nav button.soon:hover { background: none; }
+.d-nav button.soon .n { font-style: italic; }
+.d-nav button[aria-current="page"] .n { display: none; }
+.d-side-foot { padding: 0 10px; }
+.d-side-foot.d-nav { flex: none; }
 .d-status {
   display: flex; flex-direction: column; gap: 6px; margin: 8px 10px; padding: 9px 11px; border-radius: 4px; font-size: 11.5px;
   color: #a8977f; background: rgba(0, 0, 0, .3); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6);
@@ -369,7 +378,8 @@
 @media (max-width: 1100px) {
   :root { --side-w: 60px; }
   .d-brand { justify-content: center; padding: 14px 0 12px; }
-  .d-brand .bt, .d-nav button .lbl, .d-status-row > span:not(.d-live):not(.d-okdot) { display: none; }
+  .d-brand .bt, .d-nav button .lbl, .d-nav .n, .d-status-row > span:not(.d-live):not(.d-okdot) { display: none; }
+  .d-nav-group { height: 10px; padding: 0; font-size: 0; }
   .d-nav { padding: 4px 8px; }
   .d-nav button { justify-content: center; padding: 0; }
   .d-nav button[aria-current="page"] { margin-left: -8px; padding-left: 8px; }
