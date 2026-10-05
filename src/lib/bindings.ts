@@ -23,6 +23,17 @@ export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
+	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
+	 *  journal, over `range`, in the user's time zone.
+	 */
+	ledgerGet: (range: LedgerRange) => __TAURI_INVOKE<Ledger>("ledger_get", { range }),
+	/**
+	 *  "Export CSV": the gold table or the journal, to `dest` from the save
+	 *  dialog (never inside the game or backup folders). Returns the path
+	 *  written, with `.csv` added if it was missing.
+	 */
+	ledgerExportCsv: (range: LedgerRange, kind: LedgerExport, dest: string) => __TAURI_INVOKE<string>("ledger_export_csv", { range, kind, dest }),
+	/**
 	 *  The latest automatic backup failure, if no automatic backup has
 	 *  succeeded since. The UI asks on start, since a failure can happen before
 	 *  it's listening.
@@ -439,6 +450,15 @@ export type CharacterRef = {
 	name: string,
 };
 
+export type Chart = {
+	/**  One per calendar day, oldest first, "2026-10-04". */
+	days: string[],
+	/**  The top characters by gold now, then "N others" summed, if any. */
+	series: Series[],
+	/**  Every character added up, per day. */
+	account: (number | null)[],
+};
+
 /**
  *  What `install_detect` returns: every install found, plus every place we
  *  looked, so onboarding's "not found" state can say where.
@@ -446,6 +466,14 @@ export type CharacterRef = {
 export type DetectReport = {
 	candidates: InstallCandidate[],
 	looked_in: LookedIn[],
+};
+
+export type Earner = {
+	character_id: number,
+	name: string,
+	gained: number | null,
+	/**  Adventures in the same 30 days. */
+	sessions: number,
 };
 
 /**  Emitted while an export runs. */
@@ -632,6 +660,42 @@ export type JournalAction =
  */
 "discard";
 
+export type JournalEntry = {
+	adventure_id: number,
+	character_id: number,
+	name: string,
+	login: string,
+	logout: string | null,
+	played_secs: number | null,
+	gold_delta: number | null,
+	/**  The level reached, if the character levelled. */
+	level: number | null,
+	of_note: OfNote | null,
+};
+
+/**
+ *  Money is copper, as `f64` so TypeScript can hold it safely (specta sends
+ *  no `i64`). Times are RFC 3339, UTC.
+ */
+export type Ledger = {
+	/**
+	 *  The earliest gold point ("from every logout since 2 Sep"); `None`
+	 *  until the addon has written anything.
+	 */
+	since: string | null,
+	tiles: Tiles,
+	chart: Chart,
+	journal: JournalEntry[],
+};
+
+export type LedgerExport = 
+/**  The chart as a table: a row per day, a column per character. */
+"gold" | 
+/**  The journal: a row per adventure. */
+"journal";
+
+export type LedgerRange = "week" | "month" | "quarter" | "all";
+
 export type LinkedFolder = {
 	/**  `/`-separated path relative to the game root, e.g. "WTF". */
 	folder: string,
@@ -645,6 +709,16 @@ export type LinkedFolder = {
 export type LookedIn = {
 	source: CandidateSource,
 	path: string,
+};
+
+/**
+ *  The journal's "Of note" (spec §5): a level-up, else the zone with the most
+ *  time and the quest count, else the biggest gain.
+ */
+export type OfNote = {
+	text: string,
+	/**  For an item: its quality, for the letter tile's colour. */
+	quality: number | null,
 };
 
 /**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
@@ -805,6 +879,16 @@ export type SecretStatus = {
 	error: string | null,
 };
 
+export type Series = {
+	/**  `None` for the "others" line. */
+	character_id: number | null,
+	name: string,
+	/**  How many characters the "others" line adds up; 1 for a character. */
+	count: number,
+	/**  Per day; `None` before the character's first point. */
+	values: (number | null)[],
+};
+
 /**  Emitted when a session starts, ends, or learns its characters. */
 export type SessionsChanged = null;
 
@@ -939,6 +1023,20 @@ export type StorageInfo = {
 	 *  one, and why), so the budget isn't being enforced. Shown as a warning.
 	 */
 	cleanup_blocked: string | null,
+};
+
+export type Tiles = {
+	/**  Every character's latest money, added up. */
+	account_gold: number | null,
+	characters: number,
+	/**
+	 *  What the account gained (or lost) over 30 and 7 days. A character
+	 *  first seen inside the window counts from its first point, so a new
+	 *  character's starting gold isn't "earned".
+	 */
+	last_30_days: number | null,
+	this_week: number | null,
+	best_earner: Earner | null,
 };
 
 export type Totals = {
