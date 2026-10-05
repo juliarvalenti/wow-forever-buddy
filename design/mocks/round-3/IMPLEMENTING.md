@@ -173,3 +173,29 @@ This is the first cut of `addons.html` (the v0.5 sketch). **Nothing on this scre
   - Read `WTF/Account/*/<group>/<Character>/AddOns.txt`. A missing line means the TOC's `## DefaultState` (enabled if unset). Characters without an AddOns.txt use the defaults.
   - Show the same characters as Characters, older folders excluded (W1b).
 - **Empty:** if no AddOns folder or no addons exist, show one stone panel reading "No addons in _classic_beta_\Interface\AddOns yet.", with Open AddOns folder.
+
+## 10. F5: auction prices from Auctionator (lifts §7's hiding)
+Prices come from Auctionator's own scan database, never a live feed. So every number they produce is an estimate with an age, and it says so. Use the round-3 mocks (`ah.html`, `gold.html`, `characters.html`, `character.html`, `session.html`) with these changes.
+- **Only with data:** while there's no Auctionator price database, everything in §7 stays hidden, exactly as now. Unhiding starts at the first ingested scan, never with zeros or dashes.
+- **Which price:** an item's worth is its **lowest buyout from the latest scan that saw it**. Use the median only in Price history. Keep the realm and faction that match each character; if a character's realm has no scan, its items are unpriced.
+- **Wording for any AH number:**
+  - Mark worth with "≈", as the mocks do: "≈ 506g".
+  - Every surface with AH numbers carries one freshness line: "Prices from your AH scan 3 days ago" (`gold.html`). Past 7 days it turns ember and adds "Scan the AH in-game to refresh."
+  - The AH screen's scan bar reads "Last scan: 3 days ago · 1 Oct, 21:04 · 4,812 prices". Drop the mock's "by Coinpurse", since Auctionator doesn't record who scanned.
+  - Item tooltips add "Last scanned: 36g 40s each · seen 12 times" under the sell price, never a source.
+- **Unpriced items:**
+  - Count them, don't zero them: "673 items have no price yet" in the freshness line.
+  - Totals built from partial prices still show "≈". An item with no price shows nothing in its worth cell, never "0".
+- **What's never priced:**
+  - Equipped gear: the recap's Worth cell reads "equipped".
+  - Soulbound items, if the item info says so: skip them, as the Worth selling footer says.
+  - Coins.
+  - Worth carried and Net worth are gold plus priced bag, bank and mail items.
+- **Where it returns:**
+  - **Ledger:** the Net worth tile (a fourth tile) and the Net worth panel per `gold.html`. The chart goes back to its mock width.
+  - **Characters:** "Net worth" in the header, and the Value column and "≈ at last scan" in search.
+  - **Sheet:** the fifth stat, "Worth carried".
+  - **Recap:** the Worth cells.
+  - **Dashboard:** the Game folder panel's "Auction prices are 3 days old" row, shown only once prices exist, in warn colour past 7 days.
+- **No Auctionator:** the Auction House nav entry stays live, and the screen shows one stone panel: "Prices come from the Auctionator addon's scans. Install Auctionator, scan once at the auction house, and prices appear here." Add a link to the Addons screen if Auctionator is installed but disabled.
+- **The Sales ledger** in `ah.html` stays out until mail invoices are read (matrix row 43). Leave it out and let the layout close up.
