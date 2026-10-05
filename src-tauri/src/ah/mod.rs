@@ -291,6 +291,10 @@ pub struct AhItem {
     pub sightings: u32,
     /// The median of the daily lows over the last 30 days.
     pub median: Option<f64>,
+    /// Those daily lows, oldest first, for a sparkline.
+    pub recent: Vec<f64>,
+    /// The median of how many were listed on those days ("typical listing").
+    pub listed: Option<f64>,
 }
 
 fn window_start(today: NaiveDate) -> String {
@@ -338,14 +342,16 @@ fn item_row(
         return Ok(None);
     };
     let mut stmt = c.prepare(
-        "SELECT low FROM ah_prices WHERE flavor = ?1 AND realm = ?2 AND item_key = ?3 AND day >= ?4",
+        "SELECT low, available FROM ah_prices
+         WHERE flavor = ?1 AND realm = ?2 AND item_key = ?3 AND day >= ?4 ORDER BY day",
     )?;
-    let lows = stmt
+    let days = stmt
         .query_map(
             params![flavor, realm, plain(item_id), window_start(today)],
-            |r| r.get::<_, i64>(0),
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
         )?
         .collect::<Result<Vec<_>, _>>()?;
+    let lows: Vec<i64> = days.iter().map(|(l, _)| *l).collect();
     Ok(Some(AhItem {
         item_id,
         name,
@@ -353,7 +359,9 @@ fn item_row(
         price: price as f64,
         last_seen,
         sightings: lows.len() as u32,
+        recent: lows.iter().map(|l| *l as f64).collect(),
         median: median(lows),
+        listed: median(days.iter().filter_map(|(_, a)| *a).collect()),
     }))
 }
 
@@ -649,6 +657,9 @@ mod tests {
         assert_eq!(h.item.price, 364_000.0, "the last minimum, not a day's");
         assert_eq!(h.item.sightings, 9);
         assert_eq!(h.item.median, Some(384_000.0));
+        assert_eq!(h.item.recent.len(), 9);
+        assert_eq!(h.item.recent.last(), Some(&380_000.0), "oldest first");
+        assert_eq!(h.item.listed, Some(80.0));
         assert_eq!(h.points.last().unwrap().low, 380_000.0);
         assert!(matches!(
             history(&db, FLAVOR, 1, None, today()),

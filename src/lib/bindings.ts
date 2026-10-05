@@ -423,6 +423,10 @@ export type AhItem = {
 	sightings: number,
 	/**  The median of the daily lows over the last 30 days. */
 	median: number | null,
+	/**  Those daily lows, oldest first, for a sparkline. */
+	recent: (number | null)[],
+	/**  The median of how many were listed on those days ("typical listing"). */
+	listed: number | null,
 };
 
 /**  One day on the price chart. */
