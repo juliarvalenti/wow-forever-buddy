@@ -317,7 +317,8 @@ function NetWorth({ worth, gold: onHand, characters }: { worth: Worth; gold: num
             ))}
           </div>
         )}
-        <div className="fresh">
+        {/* Muted while the scan is recent; ember past a week (IMPLEMENTING.md §10). */}
+        <div className={`fresh${!worth.as_of || Date.now() - new Date(worth.as_of).getTime() > 7 * 86_400_000 ? " old" : ""}`}>
           <Clock size={13} aria-hidden />
           <span>
             Prices from your AH scan{worth.as_of ? ` ${ago(worth.as_of)}` : ""}. Scan again in-game to refresh

@@ -117,6 +117,9 @@ pub struct ItemLine {
     /// sold | used | mailed for what was spent; bought | mail for a gain
     /// that didn't drop; `None` for loot.
     pub how: Option<String>,
+    /// The character wears one now (the recap's Worth reads "equipped").
+    #[serde(default)]
+    pub equipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -364,6 +367,16 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
             .unwrap_or_else(|| format!("Item {id}"))
     };
     let item_quality = |id: i64| items.get(&id).and_then(|i| i.1);
+    // What the character wears now, for "equipped" in place of a worth (F5c).
+    let worn: std::collections::HashSet<i64> = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT item_id FROM char_items WHERE character_id = ?1 AND location = 'equipped'",
+        )?;
+        let ids = stmt
+            .query_map([row.character_id], |r| r.get::<_, i64>(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(ids)
+    })?;
 
     // Timeline, money and markers ---------------------------------------------------
     let mut timeline = vec![Line {
@@ -563,6 +576,7 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
                 quality: item_quality(item).map(|q| q as u32),
                 count,
                 how,
+                equipped: worn.contains(&item),
             })
             .collect();
         // Best first, then the biggest stacks.
@@ -760,6 +774,16 @@ pub(crate) mod tests {
                 events: &events,
             },
         );
+        // He wears the shoulders now.
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
+                 VALUES (?1, 'equipped', 0, 3, 16000, '', 1, 0)",
+                [t],
+            )?;
+            Ok(())
+        })
+        .unwrap();
         let a = adventure(&db, FLAVOR, id as u32).unwrap().unwrap();
 
         assert_eq!(
@@ -822,6 +846,8 @@ pub(crate) mod tests {
                 ("Item 117", 5, Some("bought"))
             ]
         );
+        let worn: Vec<bool> = a.gained.iter().map(|i| i.equipped).collect();
+        assert_eq!(worn, [true, false, false], "the shoulders are equipped");
         let spent: Vec<(&str, u32, Option<&str>)> = a
             .spent
             .iter()

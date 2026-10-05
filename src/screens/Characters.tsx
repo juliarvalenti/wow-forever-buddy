@@ -741,7 +741,10 @@ function Sheet({
 }) {
   const { sheet, error, reload } = useCharacterSheet(id);
   // F5c: what this character's goods fetch at scan prices, when any are priced.
-  const carried = useGoodsWorth()?.byCharacter.get(id) || null;
+  const goods = useGoodsWorth();
+  const carried = goods?.byCharacter.get(id) || null;
+  const scanAt = goods?.as_of ?? null;
+  const unpriced = goods ? goods.items - goods.priced : 0;
   const [tagError, setTagError] = useState<string | null>(null);
   const setBankAlt = (on: boolean) => {
     setTagError(null);
@@ -821,9 +824,15 @@ function Sheet({
                 <div className="v"><Coins copper={c.money} /></div>
               </div>
               {carried != null && (
-                <div title="Bags, bank and mail at your last AH scan; items without a price aren't counted">
+                <div
+                  title={`Bags, bank and mail at your AH scan${scanAt ? ` ${ago(scanAt)}` : ""}. ${
+                    unpriced > 0 ? `${plural(unpriced, "item", "items")} across your alts have no price yet and aren't counted.` : ""
+                  }`}
+                >
                   <div className="k">Worth carried</div>
-                  <div className="v"><Coins copper={carried} silver={false} /></div>
+                  <div className="v">
+                    ≈ <Coins copper={carried} silver={false} />
+                  </div>
                 </div>
               )}
               <div>

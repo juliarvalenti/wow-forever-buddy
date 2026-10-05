@@ -551,14 +551,15 @@ export function installMockIpc(): void {
         line(192, "logout", "Logged out in Eastern Plaguelands", { detail: "2,140g" }),
       ],
       gained: [
-        { item_id: 16_000, name: "Truestrike Shoulders", quality: 3, count: 1, how: null },
-        { item_id: 14_047, name: "Runecloth", quality: 1, count: 40, how: null },
-        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 6, how: null },
+        // Thrandor wears the shoulders now (the recap's Worth: "equipped").
+        { item_id: 16_000, name: "Truestrike Shoulders", quality: 3, count: 1, how: null, equipped: true },
+        { item_id: 14_047, name: "Runecloth", quality: 1, count: 40, how: null, equipped: false },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 6, how: null, equipped: false },
       ],
       spent: [
-        { item_id: 13_510, name: "Flask of the Titans", quality: 1, count: 1, how: "used" },
-        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 4, how: "used" },
-        { item_id: 999, name: "Vendor junk", quality: 0, count: 22, how: "sold" },
+        { item_id: 13_510, name: "Flask of the Titans", quality: 1, count: 1, how: "used", equipped: false },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 4, how: "used", equipped: false },
+        { item_id: 999, name: "Vendor junk", quality: 0, count: 22, how: "sold", equipped: false },
       ],
       quests: [
         { title: "The Archivist", zone: "Eastern Plaguelands" },

@@ -1079,6 +1079,8 @@ export type ItemLine = {
 	 *  that didn't drop; `None` for loot.
 	 */
 	how: string | null,
+	/**  The character wears one now (the recap's Worth reads "equipped"). */
+	equipped?: boolean,
 };
 
 /**  One item in a slot, ready to show. */

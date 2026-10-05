@@ -11,8 +11,8 @@ import {
   PanelHeader,
   Record,
 } from "@/components/d";
-import { usePrices } from "@/hooks/useWorth";
-import { errorText, gold, span } from "@/lib/format";
+import { useGoodsWorth, usePrices } from "@/hooks/useWorth";
+import { ago, errorText, gold, span } from "@/lib/format";
 import { Crest, classStyle } from "@/screens/Characters";
 
 // Copy and layout from design/mocks/round-3/session.html. The Gained table's
@@ -269,6 +269,7 @@ export function Adventure({
   const { adventure: a, error, reload } = useAdventure(id);
   // F5c: what the gains fetch at the last AH scan (before any early return).
   const prices = usePrices(a ? a.gained.map((i) => i.item_id) : []);
+  const scanAt = useGoodsWorth()?.as_of ?? null;
 
   if (error) {
     return (
@@ -477,8 +478,11 @@ export function Adventure({
                       <td className="r">{i.count}</td>
                       <td className="x">{i.how ? HOW[i.how] ?? i.how : ""}</td>
                       {prices.size > 0 && (
-                        <td className="r" title={each != null ? `${gold(each)} each at your last scan` : undefined}>
-                          {each != null ? `≈ ${gold(each * i.count)}` : ""}
+                        <td
+                          className="r"
+                          title={!i.equipped && each != null ? `${gold(each)} each at your last scan` : undefined}
+                        >
+                          {i.equipped ? "equipped" : each != null ? `≈ ${gold(each * i.count)}` : ""}
                         </td>
                       )}
                     </tr>
@@ -487,6 +491,11 @@ export function Adventure({
               </DataTable>
             ) : (
               <p className="d-dim">Nothing new in the bags.</p>
+            )}
+            {prices.size > 0 && scanAt && (
+              <p className="d-dim" style={{ marginTop: 6, fontSize: 11.5 }}>
+                Worth from your AH scan {ago(scanAt)}.
+              </p>
             )}
 
             <div className="d-sechead">Spent &amp; lost</div>
