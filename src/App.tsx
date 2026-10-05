@@ -21,12 +21,13 @@ import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
 import { Backups } from "@/screens/Backups";
+import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "backups" | "game";
+type Screen = "dashboard" | "characters" | "backups" | "game";
 
 type NavRow =
   | { group: string }
@@ -85,7 +86,7 @@ function Shell() {
   const nav: NavRow[] = [
     { group: "Overview" },
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { soon: "Characters", icon: Users },
+    { id: "characters", label: "Characters", icon: Users },
     { soon: "Ledger", icon: Coins },
     { soon: "Adventures", icon: ScrollText },
     { soon: "Auction House", icon: Scale },
@@ -189,6 +190,7 @@ function Shell() {
             onCheckFolder={() => setScreen("game")}
           />
         )}
+        {current === "characters" && <Characters />}
         {current === "backups" && (
           <Backups
             game={game}
