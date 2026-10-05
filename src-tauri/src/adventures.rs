@@ -504,10 +504,12 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
                 if how.is_none() {
                     loot += count;
                     if item_quality(item).is_some_and(|q| q >= NOTABLE_QUALITY) {
-                        // The source (which mob) is withheld from addons.
+                        // The source (which mob) is withheld from addons, and
+                        // a gain can't be told from a quest reward or a trade:
+                        // "Gained", never "Looted" (IMPLEMENTING.md §7).
                         line(
                             "loot",
-                            format!("Looted {}", item_name(item)),
+                            format!("Gained {}", item_name(item)),
                             None,
                             item_quality(item).map(|q| q as u32),
                             true,
@@ -791,7 +793,7 @@ pub(crate) mod tests {
                 ("death", "Died in Stratholme", true),
                 ("repair", "Repaired for 6g", false),
                 ("encounter", "Defeated Baron Rivendare", false),
-                ("loot", "Looted Truestrike Shoulders", true),
+                ("loot", "Gained Truestrike Shoulders", true),
                 ("level", "Reached level 60", false),
                 ("quest", "Turned in The Archivist", false),
                 ("logout", "Logged out in Stratholme", false),

@@ -577,15 +577,17 @@ function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mail
 }
 
 /** The tooltip glass, with only what the addon captured: name in its
- *  quality colour, slot, item level, stack, and "Looted 2 Oct · Westfall"
- *  when the journal has it. Never a source (IMPLEMENTING.md §7). Rendered
- *  into <body> so the parchment's tilt doesn't move it. */
+ *  quality colour, slot, item level, stack, and "Gained 2 Oct · Westfall"
+ *  when the journal has it. "Gained", never "Looted": the addon can't tell
+ *  loot from a quest reward, crafting or a trade, and never a source
+ *  (IMPLEMENTING.md §7). Rendered into <body> so the parchment's tilt
+ *  doesn't move it. */
 function Tooltip({ item, slot, at }: { item: ItemRow; slot?: string; at: DOMRect }) {
   const width = 256;
   const left = at.right + 10 + width > window.innerWidth ? at.left - 10 - width : at.right + 10;
   const top = Math.max(8, Math.min(at.top, window.innerHeight - 160));
   const looted = item.looted_at
-    ? `Looted ${new Date(item.looted_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}${
+    ? `Gained ${new Date(item.looted_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}${
         item.looted_in ? ` · ${item.looted_in}` : ""
       }`
     : null;

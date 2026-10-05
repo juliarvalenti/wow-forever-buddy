@@ -484,7 +484,7 @@ export function installMockIpc(): void {
         line(58, "death", "Died in Stratholme", { withheld: true }),
         line(60, "repair", "Repaired for 6g"),
         line(126, "encounter", "Defeated Baron Rivendare"),
-        line(127, "loot", "Looted Truestrike Shoulders", { quality: 3, withheld: true }),
+        line(127, "loot", "Gained Truestrike Shoulders", { quality: 3, withheld: true }),
         line(135, "level", "Reached level 60"),
         line(140, "zone", "Travelled to Eastern Plaguelands"),
         line(150, "quest", "Turned in The Archivist", { detail: "+62g · +38400 XP" }),

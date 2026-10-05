@@ -85,17 +85,21 @@ export function Addons() {
 
   // "_classic_beta_\Interface\AddOns", with the platform's separator.
   const where = list ? [list.flavor, "Interface", "AddOns"].join(list.folder.includes("\\") ? "\\" : "/") : "";
+  // "51 installed in …", then what the client reads. With nothing installed
+  // the panel below says where; the lede keeps only the interface.
+  const lede = list
+    ? [
+        addons.length > 0 ? `${addons.length} installed in ${where}` : null,
+        list.interface != null ? `${list.game} reads Interface ${list.interface}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "Set the game folder first.";
   return (
     <Page>
       <PageHeader
         title="Addons"
-        lede={
-          list
-            ? `${addons.length} installed in ${where}${
-                list.interface != null ? ` · ${list.game} reads Interface ${list.interface}` : ""
-              }`
-            : "Set the game folder first."
-        }
+        lede={lede || undefined}
         actions={list && addons.length > 0 ? openButton : undefined}
       />
       {error && <Callout tone="bad">{error}</Callout>}
