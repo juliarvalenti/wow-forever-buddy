@@ -5,10 +5,13 @@
 //!   install's game. Exe paths are canonicalized before comparing with the
 //!   install root, so a game launched through a junction, `subst` drive or
 //!   other alias still matches.
-//! - **Write gate** (`is_running_now`): fails closed. Anything the display
-//!   rule matches, plus any process with a known WoW exe name wherever it
-//!   lives. A second WoW install blocks our writes while it runs, which is
-//!   the safe direction.
+//! - **Write gate** (`blocking_now`): fails closed. Anything the display
+//!   rule matches, plus any process with a WoW client name (the flavor
+//!   table, Blizzard's naming pattern, or a name from settings) wherever it
+//!   lives.
+//!   A second WoW install blocks our writes while it runs, which is the safe
+//!   direction. A process list that doesn't even include this app means
+//!   enumeration failed: that's "unknown", and it blocks writes too.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -16,21 +19,10 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Game executables we treat as WoW. Forever's beta ships `WowB.exe` /
-/// `WowB-arm64.exe`. Users can add more in settings (`process_names_extra`).
-pub const KNOWN_EXES: &[&str] = &[
-    "Wow.exe",
-    "Wow-64.exe",
-    "Wow-arm64.exe",
-    "WowT.exe",
-    "WowB.exe",
-    "WowB-arm64.exe",
-    "WowClassic.exe",
-    "WowClassic-arm64.exe",
-    "WowClassicT.exe",
-    "WowClassicB.exe",
-    "World of Warcraft",
-];
+use crate::install::layout::known_exe_names;
+
+/// The macOS client's process name (no `.exe`).
+const MAC_APP_NAME: &str = "World of Warcraft";
 
 pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -39,8 +31,71 @@ pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 pub struct ProbeTarget {
     /// The WoW root. A process whose exe lives anywhere under it counts.
     pub root: Option<PathBuf>,
-    /// Extra names from settings, on top of `KNOWN_EXES`.
+    /// Extra names from settings, on top of the built-in ones.
     pub extra_names: Vec<String>,
+}
+
+/// Whether `name` is a known WoW game exe: every name in the flavor table
+/// (`KNOWN_FLAVORS`, arm64 builds included) and the macOS app. This is what
+/// the displayed "WoW is running" goes by.
+pub fn is_wow_exe(name: &str) -> bool {
+    known_exe_names()
+        .iter()
+        .any(|n| n.eq_ignore_ascii_case(name))
+        || name.eq_ignore_ascii_case(MAC_APP_NAME)
+}
+
+/// Blizzard's client naming pattern, `^wow(classic)?[a-z]?(-64|-arm64)?\.exe$`
+/// (case-insensitive): `Wow.exe`, `WowB-arm64.exe`, `WowClassicT.exe`, …,
+/// so a flavor the table doesn't know yet still counts. Tools that merely
+/// start with "wow" (WowUp, WowUp-CF, this app's `wow-forever-buddy.exe`)
+/// don't fit it, so no denylist is needed; a renamed build goes in settings
+/// (`process_names_extra`). Only the write gate uses this, so an unknown
+/// name blocks writes (safe) without being shown as "WoW is running" or
+/// starting a game-exit backup when it closes.
+fn looks_like_wow(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let Some(rest) = lower
+        .strip_suffix(".exe")
+        .and_then(|s| s.strip_prefix("wow"))
+    else {
+        return false;
+    };
+    let rest = rest.strip_prefix("classic").unwrap_or(rest);
+    let rest = rest
+        .strip_suffix("-arm64")
+        .or_else(|| rest.strip_suffix("-64"))
+        .unwrap_or(rest);
+    rest.is_empty() || (rest.len() == 1 && rest.as_bytes()[0].is_ascii_lowercase())
+}
+
+/// The write gate's answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameCheck {
+    NotRunning,
+    Running,
+    /// The process list can't be trusted (it doesn't include this app), so
+    /// nobody knows. Writes are blocked; automatic backups still run, flagged
+    /// as taken while the game may be running.
+    Unknown,
+}
+
+/// Why writes are blocked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Blocker {
+    /// This process (exe name) counts as WoW.
+    Process(String),
+    /// The process list couldn't be read.
+    Unknown,
+}
+
+impl std::fmt::Display for Blocker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Blocker::Process(name) => write!(f, "{name} is running"),
+            Blocker::Unknown => f.write_str("can't tell which programs are running"),
+        }
+    }
 }
 
 /// One running process, as the OS reports it.
@@ -113,7 +168,7 @@ impl<'a> Matcher<'a> {
     }
 
     fn known_name(&self, name: &str) -> bool {
-        KNOWN_EXES.iter().any(|n| n.eq_ignore_ascii_case(name))
+        is_wow_exe(name)
             || self
                 .extra_names
                 .iter()
@@ -123,6 +178,10 @@ impl<'a> Matcher<'a> {
     /// Our install's game: exe under the root (canonicalized, so aliases
     /// match). With no readable path or no install set, go by name.
     fn is_ours(&self, p: &ProcInfo) -> bool {
+        // Never this app, even if it's installed under the WoW folder.
+        if p.pid == std::process::id() {
+            return false;
+        }
         let Some(root) = &self.root else {
             return self.known_name(&p.name);
         };
@@ -137,9 +196,10 @@ impl<'a> Matcher<'a> {
         }
     }
 
-    /// The write gate's rule: ours, or any known WoW exe anywhere.
+    /// The write gate's rule: ours, or any known or WoW-looking exe anywhere.
     fn blocks_writes(&self, p: &ProcInfo) -> bool {
-        self.is_ours(p) || self.known_name(&p.name)
+        p.pid != std::process::id()
+            && (self.is_ours(p) || self.known_name(&p.name) || looks_like_wow(&p.name))
     }
 }
 
@@ -159,6 +219,15 @@ pub struct GameStatus {
     pub pids: Vec<u32>,
     /// When the game was first seen running (RFC 3339, UTC), for "session 1h 42m".
     pub since: Option<String>,
+    /// The last poll couldn't list processes, so `running` is stale. The UI
+    /// says it can't tell; restores stay locked.
+    pub unknown: bool,
+}
+
+/// A process list is trustworthy only if it includes this app.
+fn includes_self(list: &[ProcInfo]) -> bool {
+    let me = std::process::id();
+    list.iter().any(|p| p.pid == me)
 }
 
 /// Polls the probe, keeps the latest status, and reports transitions.
@@ -172,6 +241,10 @@ pub struct GameWatcher {
 pub enum Transition {
     Started,
     Stopped,
+    /// Process listing stopped working (status is now `unknown`).
+    Unknown,
+    /// It works again, and the game's state is as before.
+    Known,
 }
 
 impl GameWatcher {
@@ -186,30 +259,56 @@ impl GameWatcher {
         self.status.read().expect("status lock poisoned").clone()
     }
 
-    /// For the write gate: asks the OS right now (never the cached status)
-    /// and fails closed, counting any known WoW exe wherever it runs from.
-    pub fn is_running_now(&self, target: &ProbeTarget) -> bool {
+    /// Asks the OS right now (never the cached status), counting any WoW
+    /// exe wherever it runs from.
+    pub fn check_now(&self, target: &ProbeTarget) -> GameCheck {
+        match self.blocking_now(target) {
+            None => GameCheck::NotRunning,
+            Some(Blocker::Process(_)) => GameCheck::Running,
+            Some(Blocker::Unknown) => GameCheck::Unknown,
+        }
+    }
+
+    /// What blocks writes right now, if anything, so the error can name it
+    /// ("WowB.exe is running") and a false positive is diagnosable.
+    pub fn blocking_now(&self, target: &ProbeTarget) -> Option<Blocker> {
+        let list = self.probe.processes();
+        if !includes_self(&list) {
+            return Some(Blocker::Unknown);
+        }
         let matcher = Matcher::new(target);
-        self.probe
-            .processes()
-            .iter()
-            .any(|p| matcher.blocks_writes(p))
+        list.iter()
+            .find(|p| matcher.blocks_writes(p))
+            .map(|p| Blocker::Process(p.name.clone()))
+    }
+
+    /// Fails closed, so "unknown" counts as running. (The gate itself uses
+    /// `blocking_now`, to name the blocker.)
+    #[cfg(test)]
+    pub fn is_running_now(&self, target: &ProbeTarget) -> bool {
+        self.blocking_now(target).is_some()
     }
 
     /// One poll for the displayed status: updates it and returns a
-    /// transition, if any.
+    /// transition, if any. A failed enumeration marks the status unknown
+    /// and changes nothing else, so it can't fake a "WoW closed" (which
+    /// would start a game-exit backup).
     pub fn poll(&self, target: &ProbeTarget) -> Option<Transition> {
+        let list = self.probe.processes();
+        let mut status = self.status.write().expect("status lock poisoned");
+        if !includes_self(&list) {
+            let was_unknown = std::mem::replace(&mut status.unknown, true);
+            return (!was_unknown).then_some(Transition::Unknown);
+        }
+        let was_unknown = std::mem::replace(&mut status.unknown, false);
         let matcher = Matcher::new(target);
-        let mut pids: Vec<u32> = self
-            .probe
-            .processes()
+        let mut pids: Vec<u32> = list
             .iter()
             .filter(|p| matcher.is_ours(p))
             .map(|p| p.pid)
             .collect();
         pids.sort_unstable();
 
-        let mut status = self.status.write().expect("status lock poisoned");
         let was_running = status.running;
         let running = !pids.is_empty();
         status.since = match (was_running, running) {
@@ -222,7 +321,7 @@ impl GameWatcher {
         match (was_running, running) {
             (false, true) => Some(Transition::Started),
             (true, false) => Some(Transition::Stopped),
-            _ => None,
+            _ => was_unknown.then_some(Transition::Known),
         }
     }
 
@@ -251,13 +350,20 @@ impl GameWatcher {
 pub mod fake {
     use super::*;
 
-    /// Test probe: reports whatever processes the test set.
+    /// Test probe: reports whatever processes the test set, plus this app
+    /// itself (as a real listing would), unless enumeration is set to fail.
     #[derive(Default)]
     pub struct FakeProbe {
         processes: Mutex<Vec<ProcInfo>>,
+        blind: std::sync::atomic::AtomicBool,
     }
 
     impl FakeProbe {
+        /// Simulates a failed enumeration: an empty list, without this app.
+        pub fn set_blind(&self, blind: bool) {
+            self.blind.store(blind, std::sync::atomic::Ordering::SeqCst);
+        }
+
         /// Shorthand: a WoW process with an unreadable path (matches by name).
         pub fn set_running(&self, running: bool) {
             let list = if running {
@@ -279,7 +385,18 @@ pub mod fake {
 
     impl ProcessProbe for FakeProbe {
         fn processes(&self) -> Vec<ProcInfo> {
-            self.processes.lock().unwrap().clone()
+            if self.blind.load(std::sync::atomic::Ordering::SeqCst) {
+                return Vec::new();
+            }
+            let mut list = self.processes.lock().unwrap().clone();
+            // Named like the real app on Windows: a wow*.exe that must not
+            // count as the game.
+            list.push(ProcInfo {
+                pid: std::process::id(),
+                name: "wow-forever-buddy.exe".into(),
+                exe: None,
+            });
+            list
         }
     }
 }
@@ -418,8 +535,123 @@ mod tests {
         // Smoke test against this machine; WoW isn't running in CI.
         let probe = SysinfoProbe::new();
         let list = probe.processes();
-        assert!(!list.is_empty(), "at least this test process");
+        assert!(includes_self(&list), "a real listing includes this process");
         let w = GameWatcher::new(Arc::new(probe));
-        assert!(!w.is_running_now(&target(Path::new("/definitely/not/a/wow/root"))));
+        let t = target(Path::new("/definitely/not/a/wow/root"));
+        assert_eq!(w.check_now(&t), GameCheck::NotRunning);
+    }
+
+    /// R2: one exe list (the flavor table, arm64 included) for the display;
+    /// the client naming pattern blocks writes only; addon managers and this
+    /// app's own `wow-forever-buddy.exe` are never the game.
+    #[test]
+    fn wow_exe_names_come_from_the_flavor_table() {
+        for name in known_exe_names() {
+            assert!(is_wow_exe(name) && looks_like_wow(name), "{name}");
+        }
+        for name in [
+            "WowT-arm64.exe",
+            "WowClassicT-arm64.exe",
+            "World of Warcraft",
+        ] {
+            assert!(is_wow_exe(name), "{name}");
+        }
+        // Flavors the table doesn't know yet still fit the pattern.
+        for name in ["wowclassicb.EXE", "WowX-64.exe", "WowClassicZ-arm64.exe"] {
+            assert!(
+                !is_wow_exe(name) && looks_like_wow(name),
+                "{name}: gate only"
+            );
+        }
+        for name in [
+            "wow-forever-buddy.exe",
+            "WoW-Forever-Buddy.EXE",
+            "wow-forever-buddy",
+            "WowUp.exe",
+            "WowUp-CF.exe",
+            "WowMatrix.exe",
+            "WowForever.exe", // a renamed build goes in process_names_extra
+            "WowAB.exe",
+            "Wow-32.exe",
+            "Battle.net.exe",
+            "explorer.exe",
+            "wow.txt",
+        ] {
+            assert!(!is_wow_exe(name) && !looks_like_wow(name), "{name}");
+        }
+    }
+
+    /// #27 review: a pattern name the table doesn't know blocks writes but
+    /// isn't shown as "WoW is running" (so its exit doesn't start a
+    /// game-exit backup); WowUp blocks nothing; any exe under the install
+    /// root blocks; and the blocker is named.
+    #[test]
+    fn pattern_names_only_affect_the_gate() {
+        let t = target(Path::new("/Games/World of Warcraft"));
+        let w = watcher_with(vec![proc(5, "WowX.exe", None)]);
+        assert_eq!(w.poll(&t), None, "not displayed as running");
+        let blocker = w.blocking_now(&t).expect("writes are blocked");
+        assert_eq!(blocker, Blocker::Process("WowX.exe".into()));
+        assert_eq!(blocker.to_string(), "WowX.exe is running");
+
+        let w = watcher_with(vec![
+            proc(
+                6,
+                "WowUp-CF.exe",
+                Some(PathBuf::from("/Apps/WowUp/WowUp-CF.exe")),
+            ),
+            proc(7, "WowUp.exe", None),
+        ]);
+        assert_eq!(w.poll(&t), None);
+        assert!(!w.is_running_now(&t), "addon managers never block");
+
+        let tool = PathBuf::from("/Games/World of Warcraft/Tools/Anything.exe");
+        let w = watcher_with(vec![proc(8, "Anything.exe", Some(tool))]);
+        assert!(
+            w.is_running_now(&t),
+            "anything under the install root blocks"
+        );
+    }
+
+    /// R2: this app never blocks its own writes, even installed under the
+    /// WoW folder.
+    #[test]
+    fn this_app_is_never_the_game() {
+        let root = PathBuf::from("/Games/World of Warcraft");
+        let me = proc(
+            std::process::id(),
+            "wow-forever-buddy.exe",
+            Some(root.join("Tools/wow-forever-buddy.exe")),
+        );
+        let t = target(&root);
+        let m = Matcher::new(&t);
+        assert!(!m.is_ours(&me) && !m.blocks_writes(&me));
+    }
+
+    /// R2: a listing without this app (empty or failed enumeration) is
+    /// "unknown": writes are blocked, the displayed status says so, and it
+    /// never fakes a "WoW closed".
+    #[test]
+    fn failed_enumeration_is_unknown_and_blocks_writes() {
+        let probe = Arc::new(FakeProbe::default());
+        let w = GameWatcher::new(probe.clone());
+        let t = ProbeTarget::default();
+        probe.set_running(true);
+        assert_eq!(w.poll(&t), Some(Transition::Started));
+
+        probe.set_blind(true);
+        assert_eq!(w.check_now(&t), GameCheck::Unknown);
+        assert!(w.is_running_now(&t), "the gate fails closed");
+        assert_eq!(w.poll(&t), Some(Transition::Unknown));
+        assert_eq!(w.poll(&t), None, "reported once");
+        let status = w.status();
+        assert!(status.unknown && status.running, "no fake 'stopped'");
+
+        probe.set_blind(false);
+        assert_eq!(w.poll(&t), Some(Transition::Known));
+        assert!(!w.status().unknown);
+        probe.set_running(false);
+        assert_eq!(w.poll(&t), Some(Transition::Stopped));
+        assert_eq!(w.check_now(&t), GameCheck::NotRunning);
     }
 }

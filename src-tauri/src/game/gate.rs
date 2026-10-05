@@ -65,8 +65,8 @@ impl WriteGate {
         paths: &[RelPath],
         label: &str,
     ) -> AppResult<MutationGuard<'_>> {
-        if self.watcher.is_running_now(&target.probe) {
-            return Err(AppError::GameRunning);
+        if let Some(blocker) = self.watcher.blocking_now(&target.probe) {
+            return Err(AppError::GameRunning(blocker.to_string()));
         }
         let allowed = paths
             .iter()
@@ -159,8 +159,8 @@ impl MutationGuard<'_> {
                 "{path} is not part of this change"
             )));
         }
-        if self.gate.watcher.is_running_now(&self.target.probe) {
-            return Err(AppError::GameRunning);
+        if let Some(blocker) = self.gate.watcher.blocking_now(&self.target.probe) {
+            return Err(AppError::GameRunning(blocker.to_string()));
         }
         path.resolve(&self.target.game)
     }
@@ -272,7 +272,7 @@ mod tests {
         let result = s
             .gate
             .begin("macro_edit", &s.target, &[rel(MACROS)], "Before macro edit");
-        assert!(matches!(result, Err(AppError::GameRunning)));
+        assert!(matches!(result, Err(AppError::GameRunning(_))));
         assert!(
             s.snapshots.taken.lock().unwrap().is_empty(),
             "no snapshot taken"
@@ -387,11 +387,11 @@ mod tests {
         s.probe.set_running(true);
         assert!(matches!(
             guard.write(&rel(config), b"second"),
-            Err(AppError::GameRunning)
+            Err(AppError::GameRunning(_))
         ));
         assert!(matches!(
             guard.remove(&rel(config)),
-            Err(AppError::GameRunning)
+            Err(AppError::GameRunning(_))
         ));
         drop(guard);
 

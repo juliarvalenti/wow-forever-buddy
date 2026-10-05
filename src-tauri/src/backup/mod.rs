@@ -16,8 +16,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::OptionalExtension;
 
 use crate::backup::manifest::{
-    Manifest, ManifestDir, ManifestFile, Scope, SnapshotKind, SnapshotSummary, Trigger,
-    MANIFEST_VERSION,
+    Manifest, ManifestDir, ManifestFile, Scope, SkippedFile, SnapshotKind, SnapshotSummary,
+    Trigger, MANIFEST_VERSION,
 };
 use crate::backup::retention::Policy;
 use crate::backup::store::BlobStore;
@@ -145,17 +145,43 @@ impl BackupService {
     ) -> AppResult<Option<SnapshotSummary>> {
         let started = SystemTime::now();
 
-        let (targets, absent) = collect_targets(req.game, &req.scope)?;
+        // A full snapshot leaves out a file it can't read (vanished mid-walk,
+        // locked, odd name) and records it, rather than losing the whole
+        // backup to one file. A partial one is a safety copy of exactly what
+        // is about to change, so it stays strict: missing one could mean
+        // overwriting a file with no copy of it.
+        let lenient = matches!(req.scope, SnapshotScope::Full { .. });
+        let (targets, absent, mut skipped) = collect_targets(req.game, &req.scope, lenient)?;
         let total = targets.len() as u32;
         let mut files = Vec::with_capacity(targets.len());
         let mut new_bytes = 0;
         for (i, (rel, abs)) in targets.iter().enumerate() {
-            let (file, written) = self.capture(req.flavor, rel, abs, started)?;
-            files.push(file);
-            new_bytes += written;
+            // The outer `?` is the backup store failing: always fatal.
+            match self.capture(req.flavor, rel, abs, started)? {
+                Ok((file, written)) => {
+                    files.push(file);
+                    new_bytes += written;
+                }
+                Err(e) if lenient => skipped.push(SkippedFile {
+                    path: rel.as_string(),
+                    reason: e.to_string(),
+                }),
+                Err(e) => return Err(e),
+            }
             progress(i as u32 + 1, total);
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
+        // Skipping everything isn't a backup, it's a failure.
+        if files.is_empty() {
+            if let Some(first) = skipped.first() {
+                return Err(AppError::Io(format!(
+                    "none of the game files could be read ({} skipped; first: {}: {})",
+                    skipped.len(),
+                    first.path,
+                    first.reason
+                )));
+            }
+        }
 
         let scope = match req.scope {
             SnapshotScope::Full { .. } => Scope::Full,
@@ -187,6 +213,7 @@ impl BackupService {
             files,
             absent: absent.iter().map(RelPath::as_string).collect(),
             new_bytes,
+            skipped,
         };
         // Manifest first, then index: a crash in between leaves a manifest
         // the next startup re-indexes, never an index entry without data.
@@ -197,16 +224,20 @@ impl BackupService {
 
     /// Hashes and stores one file, using the hash cache when it's safe to.
     /// Returns its manifest entry and how many new bytes the store gained.
+    /// The inner `Err` is the game file failing to read (the caller may skip
+    /// it); the outer one is the backup store failing.
     fn capture(
         &self,
         flavor: &str,
         rel: &RelPath,
         abs: &Path,
         started: SystemTime,
-    ) -> AppResult<(ManifestFile, u64)> {
+    ) -> AppResult<AppResult<(ManifestFile, u64)>> {
         let path = rel.as_string();
-        let meta = std::fs::metadata(abs)?;
-        let mtime = meta.modified()?;
+        let (meta, mtime) = match std::fs::metadata(abs).and_then(|m| Ok((m.modified()?, m))) {
+            Ok((mtime, meta)) => (meta, mtime),
+            Err(e) => return Ok(Err(e.into())),
+        };
         let mtime_ns = mtime
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as i64)
@@ -222,7 +253,10 @@ impl BackupService {
         let (hash, size, written) = match cached {
             Some(hash) => (hash, meta.len(), 0),
             None => {
-                let bytes = safe_read(abs)?;
+                let bytes = match safe_read(abs) {
+                    Ok(bytes) => bytes,
+                    Err(e) => return Ok(Err(e)),
+                };
                 let hash = BlobStore::hash(&bytes);
                 let written = self.blobs.put(&hash, &bytes)?;
                 if settled {
@@ -237,7 +271,7 @@ impl BackupService {
             mtime: chrono::DateTime::<chrono::Utc>::from(mtime).to_rfc3339(),
             blake3: hash,
         };
-        Ok((file, written))
+        Ok(Ok((file, written)))
     }
 
     fn cached_hash(
@@ -428,7 +462,10 @@ impl BackupService {
         }
         // GC reads every manifest and walks the whole blob store, so it runs
         // at most hourly (spec §5) unless asked for ("Prune now").
-        if gc == Gc::Now || self.gc_due(now)? {
+        // Over budget by the raw size, some of it may be garbage the throttle
+        // hasn't collected yet: collect first and re-measure, or snapshots
+        // would be deleted to free space that GC alone frees.
+        if gc == Gc::Now || self.gc_due(now)? || self.blobs.size_on_disk() > policy.budget_bytes {
             self.collect_garbage(&mut report, now)?;
         }
 
@@ -552,13 +589,19 @@ type Targets = Vec<(RelPath, PathBuf)>;
 /// Files a snapshot will capture (`RelPath` + resolved path), and declared
 /// paths that don't exist. Symlinks inside the tree are skipped, never
 /// followed; a linked `WTF` itself is fine (see `GameRoot`).
+/// Files to capture, paths recorded as absent, and (when `lenient`) entries
+/// left out because they couldn't be listed or named. The top folders
+/// themselves (`WTF`, a requested path) must still resolve: if the whole
+/// game folder is gone, that's a failed backup, not a skipped file.
 fn collect_targets(
     game: &GameRoot,
     scope: &SnapshotScope<'_>,
-) -> AppResult<(Targets, Vec<RelPath>)> {
+    lenient: bool,
+) -> AppResult<(Targets, Vec<RelPath>, Vec<SkippedFile>)> {
     let mut targets = Vec::new();
     let mut absent = Vec::new();
-    let walk = |rel: RelPath, targets: &mut Targets| -> AppResult<bool> {
+    let mut skipped = Vec::new();
+    let mut walk = |rel: RelPath, targets: &mut Targets| -> AppResult<bool> {
         let abs = rel.resolve(game)?;
         if abs.is_file() {
             targets.push((rel, abs));
@@ -568,14 +611,41 @@ fn collect_targets(
             return Ok(false);
         }
         for entry in walkdir::WalkDir::new(&abs).follow_links(false) {
-            let entry = entry.map_err(|e| AppError::Io(e.to_string()))?;
-            let name = entry.file_name().to_string_lossy();
-            if !entry.file_type().is_file() || name.contains(".wfb-tmp-") {
-                continue;
+            let found = entry
+                .map_err(|e| {
+                    let path = e.path().map(Path::to_path_buf);
+                    (path, AppError::Io(e.to_string()))
+                })
+                .and_then(|entry| {
+                    let name = entry.file_name().to_string_lossy();
+                    if !entry.file_type().is_file() || name.contains(".wfb-tmp-") {
+                        return Ok(None);
+                    }
+                    let failed = |e| (Some(entry.path().to_path_buf()), e);
+                    let rel = RelPath::from_under(&game.base, entry.path()).map_err(failed)?;
+                    let abs = rel.resolve(game).map_err(failed)?;
+                    Ok(Some((rel, abs)))
+                });
+            match found {
+                Ok(Some(target)) => targets.push(target),
+                Ok(None) => {}
+                Err((path, e)) if lenient => skipped.push(SkippedFile {
+                    path: path
+                        .map(|p| {
+                            RelPath::from_under(&game.base, &p)
+                                .map(|r| r.as_string())
+                                .unwrap_or_else(|_| p.to_string_lossy().into_owned())
+                        })
+                        .unwrap_or_default(),
+                    reason: match e {
+                        AppError::PathEscape(_) => {
+                            "a link to outside the game folder (not followed)".into()
+                        }
+                        e => e.to_string(),
+                    },
+                }),
+                Err((_, e)) => return Err(e),
             }
-            let rel = RelPath::from_under(&game.base, entry.path())?;
-            let abs = rel.resolve(game)?;
-            targets.push((rel, abs));
         }
         Ok(true)
     };
@@ -597,7 +667,7 @@ fn collect_targets(
     }
     targets.sort_by(|a, b| a.0.cmp(&b.0));
     targets.dedup_by(|a, b| a.0 == b.0);
-    Ok((targets, absent))
+    Ok((targets, absent, skipped))
 }
 
 /// The write gate's safety snapshot (spec §4): a partial snapshot of exactly
@@ -1120,6 +1190,158 @@ mod tests {
         for f in s.service.manifest(&safety[0].id).unwrap().files {
             assert!(s.service.blobs().contains(&f.blake3), "and its blobs");
         }
+    }
+
+    /// R1: over budget only because of garbage the hourly throttle hasn't
+    /// collected yet: GC runs first, and no snapshot is deleted.
+    #[test]
+    fn over_budget_collects_garbage_before_pruning() {
+        let s = setup();
+        let autos: Vec<_> = (0..5).map(|n| changed_auto(&s, n)).collect();
+        let now = chrono::Utc::now();
+        s.service
+            .prune(now, &retention::POLICY, Gc::Now, &HashSet::new())
+            .unwrap();
+        let budget = s.service.blobs().size_on_disk() + 1024;
+
+        // Garbage pushes the store over budget; GC was just done (throttled).
+        for n in 0..8u8 {
+            // Incompressible, so it really takes space after zstd.
+            let mut junk = vec![0; 16 * 1024];
+            blake3::Hasher::new()
+                .update(&[n])
+                .finalize_xof()
+                .fill(&mut junk);
+            s.service
+                .blobs()
+                .put(&BlobStore::hash(&junk), &junk)
+                .unwrap();
+        }
+        assert!(s.service.blobs().size_on_disk() > budget);
+        let policy = Policy {
+            budget_bytes: budget,
+            ..retention::POLICY
+        };
+        let soon = now + chrono::Duration::minutes(5);
+        let report = s
+            .service
+            .prune(soon, &policy, Gc::Throttled, &HashSet::new())
+            .unwrap();
+        assert!(report.pruned.is_empty(), "GC alone was enough");
+        assert_eq!(report.blobs_removed, 8);
+        assert!(!report.over_budget);
+        assert_eq!(s.service.list().unwrap().len(), autos.len());
+    }
+
+    /// R1: a file that can't be read is left out of a full snapshot and
+    /// recorded, instead of failing the whole backup; a safety snapshot of
+    /// that same path still fails.
+    #[cfg(windows)]
+    #[test]
+    fn full_snapshot_skips_a_locked_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let s = setup();
+        let locked = s.flavor_dir.join("WTF/Config.wtf");
+        let _hold = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&locked)
+            .unwrap();
+        assert_skipped_but_strict_for_safety(&s, "WTF/Config.wtf");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn full_snapshot_skips_unreadable_and_oddly_named_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let s = setup();
+        let config = s.flavor_dir.join("WTF/Config.wtf");
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&config).is_ok() {
+            return; // running as root: permissions don't apply
+        }
+        // A name `RelPath` refuses (a DOS device name) can't be captured either.
+        std::fs::write(s.flavor_dir.join("WTF/CON.lua"), b"x").unwrap();
+
+        let id = full(&s, Trigger::Manual).unwrap().id;
+        let m = s.service.manifest(&id).unwrap();
+        assert!(
+            m.skipped.iter().any(|f| f.path.ends_with("CON.lua")),
+            "{m:?}"
+        );
+        assert_skipped_but_strict_for_safety(&s, "WTF/Config.wtf");
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    /// #27 review: a snapshot that captured nothing is a failure, not a
+    /// success with every file skipped.
+    #[cfg(unix)]
+    #[test]
+    fn skipping_every_file_is_a_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let s = setup();
+        let files: Vec<_> = walkdir::WalkDir::new(s.flavor_dir.join("WTF"))
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .map(|e| e.into_path())
+            .collect();
+        let mode = |m| {
+            for f in &files {
+                std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).unwrap();
+            }
+        };
+        mode(0o000);
+        if std::fs::read(&files[0]).is_ok() {
+            mode(0o644);
+            return; // running as root: permissions don't apply
+        }
+        let err = s.service.create(
+            SnapshotRequest {
+                game: &s.game,
+                flavor: "_classic_beta_",
+                trigger: Trigger::GameExit,
+                label: None,
+                scope: SnapshotScope::Full {
+                    include_addons: false,
+                },
+                game_running: false,
+            },
+            &mut |_, _| {},
+        );
+        mode(0o644);
+        assert!(matches!(err, Err(AppError::Io(m)) if m.contains("none of the game files")));
+        assert!(s.service.list().unwrap().is_empty());
+    }
+
+    #[cfg(any(windows, unix))]
+    fn assert_skipped_but_strict_for_safety(s: &Setup, path: &str) {
+        // Manual, so it's never skipped as identical to an earlier one.
+        let summary = full(s, Trigger::Manual).expect("backed up anyway");
+        let m = s.service.manifest(&summary.id).unwrap();
+        assert!(m.files.iter().all(|f| f.path != path), "left out");
+        assert!(m.files.len() > 1, "everything else captured");
+        let skipped = m.skipped.iter().find(|f| f.path == path).expect("recorded");
+        assert!(!skipped.reason.is_empty());
+        let detail = s.service.detail(&summary.id).unwrap();
+        assert!(detail.skipped.iter().any(|f| f.path == path));
+
+        let rel = [RelPath::new(path).unwrap()];
+        let strict = s.service.create(
+            SnapshotRequest {
+                game: &s.game,
+                flavor: "_classic_beta_",
+                trigger: Trigger::PreRestore,
+                label: None,
+                scope: SnapshotScope::Paths(&rel),
+                game_running: false,
+            },
+            &mut |_, _| {},
+        );
+        assert!(strict.is_err(), "a safety snapshot never skips");
     }
 
     /// Review item 2: GC runs at most hourly unless forced.

@@ -60,7 +60,8 @@ export function errorText(e: unknown): string {
   if (!isAppError(e)) return String(e);
   switch (e.kind) {
     case "GameRunning":
-      return "WoW is running. Close the game first.";
+      // The detail names what's blocking ("WowB.exe is running").
+      return `WoW is running (${e.detail}). Close the game first.`;
     case "NoInstall":
       return "The game folder isn't set yet.";
     case "RestorePending":

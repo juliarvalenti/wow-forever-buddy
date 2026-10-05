@@ -154,9 +154,8 @@ pub const KNOWN_FLAVORS: &[KnownFlavor] = &[
     },
 ];
 
-/// Every known game exe name, for the game-running check's fallback when an
-/// exe path can't be read (T6).
-#[allow(dead_code)] // first caller: the process poller (T6)
+/// Every known game exe name: the one list the game-running check uses
+/// (`game::process::is_wow_exe`).
 pub fn known_exe_names() -> Vec<&'static str> {
     let mut names: Vec<&str> = Vec::new();
     for exe in KNOWN_FLAVORS.iter().flat_map(|k| k.exes) {

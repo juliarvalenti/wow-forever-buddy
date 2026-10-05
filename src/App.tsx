@@ -74,7 +74,12 @@ function Shell() {
           ))}
         </nav>
         <div className="d-status">
-          {game?.running ? (
+          {game?.unknown ? (
+            <div className="d-status-row">
+              <LiveDot />
+              <span>Can't tell if WoW is running</span>
+            </div>
+          ) : game?.running ? (
             <div className="d-status-row">
               <LiveDot />
               <span>

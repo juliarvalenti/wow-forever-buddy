@@ -104,6 +104,19 @@ pub struct Manifest {
     pub absent: Vec<String>,
     /// Bytes this snapshot added to the blob store.
     pub new_bytes: u64,
+    /// Files a full snapshot couldn't capture (vanished mid-walk, unreadable,
+    /// odd names) and left out instead of failing the whole backup.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<SkippedFile>,
+}
+
+/// A file a full snapshot left out, and why.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SkippedFile {
+    /// Relative to the flavor folder when it could be expressed that way;
+    /// otherwise the path as the OS reported it.
+    pub path: String,
+    pub reason: String,
 }
 
 impl Manifest {
@@ -318,6 +331,7 @@ pub mod tests {
             files: files.iter().map(|p| file(p)).collect(),
             absent: Vec::new(),
             new_bytes: 0,
+            skipped: Vec::new(),
         }
     }
 

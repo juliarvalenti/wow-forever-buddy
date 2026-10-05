@@ -1,3 +1,4 @@
+mod applog;
 mod backup;
 mod commands;
 mod config;
@@ -31,6 +32,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::app::app_info,
+            commands::backup::backup_auto_status,
             commands::backup::backup_create,
             commands::backup::backup_delete,
             commands::backup::backup_export_zip,
@@ -62,6 +64,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(tauri_specta::collect_events![
             InstallChanged,
             commands::backup::BackupCreated,
+            commands::backup::BackupFailed,
             commands::backup::BackupProgress,
             commands::backup::ExportProgress,
             commands::restore::RestoreProgress,
@@ -152,9 +155,21 @@ fn announce(handle: &tauri::AppHandle) -> impl Fn(&backup::manifest::SnapshotSum
     }
 }
 
+/// Tells the UI an automatic backup failed (R1). `run_auto` has already
+/// logged it and kept it for `backup_auto_status`; "no game folder yet" isn't
+/// a failure.
+fn report_failure<T>(handle: &tauri::AppHandle, result: error::AppResult<T>) {
+    if result.is_err_and(|e| !matches!(e, error::AppError::NoInstall)) {
+        let core = &handle.state::<AppState>().core;
+        if let Ok(Some(failure)) = triggers::last_failure(core) {
+            let _ = commands::backup::BackupFailed(failure).emit(handle);
+        }
+    }
+}
+
 /// App-start and scheduled backups (spec §5), each on its own thread so
-/// startup and the UI never wait for them. Failures (no game folder yet,
-/// backup drive missing) just mean no automatic backup this time.
+/// startup and the UI never wait for them. A failure (backup drive missing,
+/// game folder gone) is logged and shown on the Backups screen.
 fn spawn_auto_backups(handle: &tauri::AppHandle) {
     use backup::manifest::Trigger;
 
@@ -162,7 +177,10 @@ fn spawn_auto_backups(handle: &tauri::AppHandle) {
     std::thread::spawn(move || {
         let core = &h.state::<AppState>().core;
         if triggers::app_start_due(core, chrono::Utc::now()).unwrap_or(false) {
-            let _ = triggers::run_auto(core, Trigger::AppStart, &announce(&h));
+            report_failure(
+                &h,
+                triggers::run_auto(core, Trigger::AppStart, &announce(&h)),
+            );
         }
     });
 
@@ -171,7 +189,10 @@ fn spawn_auto_backups(handle: &tauri::AppHandle) {
         std::thread::sleep(triggers::SCHEDULE_TICK);
         let core = &h.state::<AppState>().core;
         if triggers::schedule_due(core, chrono::Utc::now()).unwrap_or(false) {
-            let _ = triggers::run_auto(core, Trigger::Scheduled, &announce(&h));
+            report_failure(
+                &h,
+                triggers::run_auto(core, Trigger::Scheduled, &announce(&h)),
+            );
         }
     });
 }
@@ -184,12 +205,13 @@ fn spawn_game_exit_backup(handle: &tauri::AppHandle) {
         if !core.settings.get().backup.on_game_exit {
             return;
         }
-        let _ = triggers::game_exit_backup(
+        let result = triggers::game_exit_backup(
             core,
             triggers::EXIT_SETTLE,
             triggers::EXIT_SETTLE_TIMEOUT,
             &announce(&h),
         );
+        report_failure(&h, result);
     });
 }
 
