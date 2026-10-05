@@ -40,8 +40,12 @@ Sizes: a small window, about 300 px wide, 6 to 12 rows. It never covers the cent
 - **Text safety:** everything shown comes from our Data slots, which are data-only Lua. Escape `|` as `||` before setting text, so no string can inject colour codes, textures or hyperlinks. Show strings with `SetText`, never as code. Cap rows (12) and line length (truncate with `…`).
 
 ## 5. Sync
-- **One-click (only if probe run 4 passes):** the button is `SecureActionButtonTemplate` + `UIPanelButtonTemplate`, with `type = "macro"` and `macrotext = "/reload"`. Its label is "Sync", with the tooltip: "Reloads your UI so Forever Buddy and the game swap the latest notes. Not in combat." It's disabled in combat.
-- **Typed (fallback):** there's no button. The footer says "Type /reload to sync". `/fb sync` prints the same line to chat.
+The route follows probe run 4, in the order of the Bridge spec (`docs/specs/bridge-v0.4.md` §4). The look is the same for both button routes.
+- **(A) A plain button calling `ReloadUI()`,** if the probe shows it reloads. This is preferred, since there's no macro text at all.
+- **(B) A secure button:** `SecureActionButtonTemplate` + `UIPanelButtonTemplate`, with `type = "macro"` and a constant `macrotext = "/reload"`.
+- **On both routes:** the label is "Sync", with the tooltip "Reloads your UI so Forever Buddy and the game swap the latest notes. Not in combat." It's disabled in combat.
+- **(C) Typed:** there's no button. The footer says "Type /reload to sync". `/fb sync` prints the same line to chat, and so does route B, since a secure button can't be clicked from Lua.
+- **If `/reload` doesn't re-read a changed slot** (probe run 4 checks this), Sync can't deliver mid-session. The footer then reads "Updates arrive at your next login", and the app's how-to line says "Your characters will see it at their next login."
 - **Either way,** the app's copy follows the same choice (bridge.html: "press Sync…" or "type /reload…"). A new data slot needs an addon update **and a WoW restart once**. The app says so, and the frame says nothing (it can't know).
 
 ## 6. Copy rules (same voice as the app)
