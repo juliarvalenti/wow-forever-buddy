@@ -1,0 +1,52 @@
+name: icon-probe
+
+# ICON-SPIKE: builds the icon_probe example for Windows, for a one-off run on
+# a real install. The exe is the run's artifact: on a PR that touches the
+# reader, or run by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - src-tauri/src/casc/**
+      - src-tauri/examples/icon_probe.rs
+      - .github/workflows/icon-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # Actions are pinned to full commit SHAs, as in ci.yml.
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+        with:
+          toolchain: stable
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "./src-tauri -> target"
+          save-if: false
+
+      - run: npm ci
+
+      # tauri::generate_context! in the lib needs the frontend dist folder.
+      - run: npm run build
+
+      - name: Build icon_probe
+        working-directory: src-tauri
+        run: cargo build --locked --release --example icon_probe
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: icon_probe
+          path: src-tauri/target/release/examples/icon_probe.exe
