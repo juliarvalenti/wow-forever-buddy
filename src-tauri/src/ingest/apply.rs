@@ -63,6 +63,16 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     for session in &file.sessions {
         apply_session(tx, id, &target.flavor, session)?;
     }
+    for r in &file.receipts {
+        tx.execute(
+            "INSERT INTO bridge_receipts (character_id, slot, stamp, schema, seen_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (character_id, slot) DO UPDATE SET
+               stamp = excluded.stamp, schema = excluded.schema, seen_at = excluded.seen_at
+             WHERE excluded.seen_at >= bridge_receipts.seen_at",
+            params![id, r.slot.name(), r.stamp, r.schema, r.seen],
+        )?;
+    }
     Ok(id)
 }
 

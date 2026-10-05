@@ -81,7 +81,8 @@ local function applies(mode, name)
 end
 
 -- opts:
---   addon      path to ForeverBuddy.lua
+--   addon      path to ForeverBuddy.lua (its TOC is read from the same folder)
+--   slots      { ["Data/Tooltip1.lua"] = source } in place of the bundled stubs
 --   character  { name, surname, realm, guid }; the default has a surname,
 --              as Forever characters do (probe run 1)
 --   api        { Name = function or false } overrides; false removes it
@@ -487,7 +488,16 @@ function M.new(opts)
         o = o or {}
         state = { frames = {}, timers = {} }
         state.env = environment()
-        loadIn(readFile(opts.addon), "@ForeverBuddy.lua", state.env)("ForeverBuddy", {})
+        -- Every file in the TOC, in its order, as the client does: the bridge
+        -- slots (opts.slots["Data/Tooltip1.lua"] = source, else the bundled
+        -- stub), then the addon.
+        local folder = opts.addon:match("^(.*[/\\])") or ""
+        for line in readFile(folder .. "ForeverBuddy.toc"):gmatch("[^\r\n]+") do
+            if not line:match("^#") then
+                local src = (opts.slots or {})[line] or readFile(folder .. line)
+                loadIn(src, "@" .. line, state.env)("ForeverBuddy", {})
+            end
+        end
         if text and o.readback ~= false then
             state.env.ForeverBuddyDB = M.parse(text, "ForeverBuddyDB")
         end

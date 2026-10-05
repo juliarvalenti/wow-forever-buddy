@@ -65,6 +65,10 @@ pub enum AppError {
     /// or the folder doesn't exist).
     #[error("can't save the export there: {0}")]
     BadDestination(String),
+    /// A data slot for our addon failed the data-only check or the size cap
+    /// (bridge spec §2). Nothing in the batch was written.
+    #[error("not sent to the game: {0}")]
+    SlotRefused(String),
 }
 
 impl AppError {

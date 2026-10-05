@@ -1,21 +1,33 @@
--- Written by tools/addon-test/run.lua (scenario reload). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario bridge). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.4.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
-			["bag_items"] = 3,
-			["events"] = 2,
-			["items"] = 4,
+			["bag_items"] = 2,
+			["events"] = 0,
+			["items"] = 3,
 			["sessions"] = 1,
 		},
-		["loaded_prior"] = true,
+		["loaded_prior"] = false,
 		["missing_events"] = {
 		},
 		["schema"] = 1,
 		["secret_hits"] = 0,
 		["truncated"] = false,
-		["written"] = 1790967600,
+		["written"] = 1790965800,
+	},
+	["bridge"] = {
+		["Tooltip1"] = {
+			["schema"] = 1,
+			["seen"] = 1790964000,
+			["stamp"] = 1790960000,
+		},
+		["Tooltip2"] = {
+			["schema"] = 2,
+			["seen"] = 1790964000,
+			["stamp"] = 1790960000,
+		},
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -60,35 +72,14 @@ ForeverBuddyDB = {
 			["sell"] = 13,
 			["subclass"] = 5,
 		},
-		[14047] = {
-			["class"] = 7,
-			["icon"] = 132889,
-			["ilvl"] = 10,
-			["name"] = "Runecloth",
-			["quality"] = 1,
-			["sell"] = 13,
-			["subclass"] = 5,
-		},
 	},
 	["sessions"] = {
 		{
 			["events"] = {
-				{
-					["count"] = 2,
-					["item"] = 2589,
-					["kind"] = "gain",
-					["t"] = 1790965800,
-				}, -- [1]
-				{
-					["count"] = 1,
-					["item"] = 14047,
-					["kind"] = "gain",
-					["t"] = 1790967600,
-				}, -- [2]
 			},
 			["id"] = 1790964000,
 			["login"] = 1790964000,
-			["logout"] = 1790967600,
+			["logout"] = 1790965800,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -98,23 +89,19 @@ ForeverBuddyDB = {
 		}, -- [1]
 	},
 	["snapshot"] = {
-		["at"] = 1790967600,
+		["at"] = 1790965800,
 		["bags"] = {
 			[0] = {
-				["free"] = 13,
+				["free"] = 14,
 				["items"] = {
 					{
 						["count"] = 1,
 						["link"] = "|cffffffff|Hitem:6948::::::::12:::::|h[Hearthstone]|h|r",
 					}, -- [1]
 					{
-						["count"] = 6,
+						["count"] = 4,
 						["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
 					}, -- [2]
-					{
-						["count"] = 1,
-						["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
-					}, -- [3]
 				},
 				["name"] = "Backpack",
 				["size"] = 16,
@@ -131,8 +118,8 @@ ForeverBuddyDB = {
 		},
 		["money"] = 25000,
 		["played"] = {
-			["level"] = 4074,
-			["total"] = 23151,
+			["level"] = 2274,
+			["total"] = 21351,
 		},
 		["professions"] = {
 			{

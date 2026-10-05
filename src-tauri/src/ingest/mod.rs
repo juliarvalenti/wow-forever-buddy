@@ -527,6 +527,19 @@ mod tests {
         assert_eq!(count(&db, "SELECT count(*) FROM professions"), 3);
     }
 
+    /// Bridge receipts land per character and slot; a file without them
+    /// (an older one, replayed) leaves them as they were.
+    #[test]
+    fn bridge_receipts_are_kept() {
+        let db = Db::open_in_memory().unwrap();
+        let t = target("Thrandor-Vargur");
+        ingest_bytes(&db, &t, &fixture("bridge.lua")).unwrap();
+        let q = "SELECT count(*) FROM bridge_receipts WHERE stamp = 1790960000";
+        assert_eq!(count(&db, q), 2);
+        ingest_bytes(&db, &t, &fixture("first_login.lua")).unwrap();
+        assert_eq!(count(&db, q), 2);
+    }
+
     #[test]
     fn applying_twice_changes_nothing() {
         let db = Db::open_in_memory().unwrap();

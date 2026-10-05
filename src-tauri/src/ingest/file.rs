@@ -200,6 +200,17 @@ pub struct AddonFile {
     pub snapshot: Option<Snapshot>,
     pub items: Vec<ItemInfo>,
     pub sessions: Vec<Session>,
+    /// Bridge receipts (`bridge`): what each data slot carried when this
+    /// character's addon loaded it. Only the known slots are kept.
+    pub receipts: Vec<Receipt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Receipt {
+    pub slot: crate::bridge::Slot,
+    pub stamp: Option<i64>,
+    pub schema: Option<i64>,
+    pub seen: i64,
 }
 
 impl AddonFile {
@@ -383,13 +394,32 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
     });
     let items = tbl(db, "items").map(items).unwrap_or_default();
     let sessions = tbl(db, "sessions").map(sessions).unwrap_or_default();
+    let receipts = tbl(db, "bridge").map(receipts).unwrap_or_default();
     Ok(AddonFile {
         written: int(meta, "written"),
         character,
         snapshot,
         items,
         sessions,
+        receipts,
     })
+}
+
+/// `bridge = { Tooltip1 = { stamp, schema, seen }, … }`; unknown slots and
+/// receipts without a time are skipped.
+fn receipts(t: &LuaTable) -> Vec<Receipt> {
+    crate::bridge::SLOTS
+        .iter()
+        .filter_map(|&slot| {
+            let r = tbl(t, slot.name())?;
+            Some(Receipt {
+                slot,
+                stamp: int(r, "stamp"),
+                schema: int(r, "schema"),
+                seen: int(r, "seen")?,
+            })
+        })
+        .collect()
 }
 
 /// `_meta.counts` against a recount of the tables they describe (spec §2).
@@ -637,6 +667,34 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{name}: {e:?}"));
             assert!(file.at().is_some(), "{name}: has a time");
         }
+    }
+
+    #[test]
+    fn bridge_receipts_are_read() {
+        use crate::bridge::Slot;
+        let file = decode(&fixture("bridge.lua")).unwrap();
+        assert_eq!(
+            file.receipts,
+            [
+                Receipt {
+                    slot: Slot::Tooltip1,
+                    stamp: Some(1790960000),
+                    schema: Some(1),
+                    seen: 1790964000
+                },
+                Receipt {
+                    slot: Slot::Tooltip2,
+                    stamp: Some(1790960000),
+                    schema: Some(2),
+                    seen: 1790964000
+                },
+            ]
+        );
+        // Files from before 0.4.0 (and the stubs) have none.
+        assert!(decode(&fixture("first_login.lua"))
+            .unwrap()
+            .receipts
+            .is_empty());
     }
 
     #[test]
