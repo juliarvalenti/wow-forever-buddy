@@ -72,6 +72,23 @@ The app knows WowB.exe is running, but not who is logged in.
 
 Never write "Online" or name a live character.
 
+## 5b. Recent sessions (T14, `dashboard-noaddon.html`)
+Each session comes from the process watcher (start and end), and the character comes from per-character WTF folder mtimes before and after the session.
+
+| Case | Show |
+|---|---|
+| Running now | Ember live dot, "Today, since 19:12", the duration counting up in minutes, and "Character known after you log out". |
+| One character changed | Its name. |
+| Several changed (alt swap) | "Thrandor, Coinpurse". Above 2, "Thrandor and 2 others", with the full list in the tooltip. |
+| None changed | "Character unknown", muted italic. Never guess from last played. |
+| Under 2 minutes | Hidden from the list, but counted in the weekly total. |
+| Crash or kill (no clean exit) | End time = when the process vanished, and the who line gets " · ended unexpectedly". No red. |
+| Crosses midnight | Listed under the start day: "Yesterday, 23:40 – 01:12". |
+| Weekly total | From Monday 00:00 local time: "This week: 7h 21m across 3 characters", or "This week: none yet". |
+| Empty (fresh install) | "Sessions appear here after you play. Forever Buddy notes when WoW starts and stops." |
+
+Durations read "1h 42m" or "22m". No gold, XP or loot until the addon exists.
+
 ## 6. Startup error (T11 scope)
 When `AppCore::new` fails, open the window anyway and show `startup-error.html`: no sidebar, one stone panel.
 - **Title:** says what happened in plain words.
