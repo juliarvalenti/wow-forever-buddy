@@ -186,11 +186,26 @@ pub enum Change {
     /// A data slot: the app's own generated data. Allowed while WoW runs (§3).
     Slot { slot: Slot, body: LuaValue },
     /// An edit inside a SavedVariables file (an addon's settings): gated, snapshot first.
-    SvEdit { file: SvFile, path: Vec<Key>, value: LuaValue },
+    /// `expected` is the value the producer saw; apply refuses if it changed since.
+    SvEdit { file: SvFile, path: Vec<Key>, expected: Option<LuaValue>, value: LuaValue },
     /// An addon profile, e.g. ElvUI, via its codec: gated, snapshot first.
-    Profile { addon: AddonId, profile: String, body: LuaValue },
+    Profile { addon: AddonId, profile: String, expected: Option<LuaValue>, body: LuaValue },
+}
+
+/// A target is a key from the read tools, never a path. Apply resolves it
+/// against the WTF roster (older folders excluded) and the installed addons,
+/// then builds the RelPath in Rust.
+pub enum SvFile {
+    Account { account: String, addon: AddonId },
+    Character { character: CharacterKey, addon: AddonId },
 }
 ```
+
+Apply rules (@coder's notes on #87):
+
+- **All or nothing.** Every change in an Apply is checked before any write: target resolution, the runtime data-only check (§2, also for `SvEdit.value` and `Profile.body`), the cap, and the `expected` conflict check. Gated kinds share one gate op and one snapshot, with several edits to one file folded into one atomic write, as F6 does. While WoW runs, a set with any gated change is refused whole; a slots-only set follows §3.
+- **Undo.** Gated kinds undo from the Apply's snapshot (F6's `undo`). `Slot` has no undo: the generator rewrites it from the db.
+- **Queue storage.** Staged changes persist in migration 009 (@coder): id, kind, JSON body, producer (`app` or `agent:<name>`), created_at, status (`staged`, `applied`, `discarded`, `conflict`).
 
 - **Two producers.** The app's own generators (the checklist) apply `Slot` changes directly. Agents (MCP tools) only **stage** changes into @coder's queue, and the player approves them in the F6 stage/apply bar. An agent never writes a file.
 - **Ownership.** @coder owns the queue, approval and apply side. I own the slot writer (§2), the SavedVariables edit-in-place writer, the ElvUI codec, and the read-only MCP tools (characters, lockouts, prices, the checklist).
@@ -211,8 +226,8 @@ Only the `Slot` kind is built in v0.4. The other two are listed here so the queu
 
 **Build order:**
 
-1. **B1:** migration 008, `bridge::SLOTS`, `write_slot` with the runtime check, cap, link refusal and tests. Slot writes only while WoW is closed.
-2. **B2:** addon 0.4.0: the slot stub, the `/fb` frame, receipts, cooldowns, quest IDs. Sync follows G1.
+1. **B1:** migration 008, `bridge::SLOTS`, `write_slots` with the runtime check, cap, link refusal and tests. Slot writes only while WoW is closed, and a test pins that (a write while running is refused), so the while-running path can't land before G1.
+2. **B2:** addon 0.4.0: the slot stub, the `/fb` frame, receipts, cooldowns, quest IDs. Sync follows G1. Receipts add `bridge` to `ForeverBuddyDB`, so the TOC Version and `VERSION` bump together, the harness fixtures are regenerated, and V6's decoder gets a fixture test for the new key. If `_meta.schema` changes, `SCHEMAS` in `ingest/file.rs` changes in the same PR.
 3. **B3:** the Dashboard "Sent to the game" panel and its four states.
 4. **B4:** the while-running exception (§3), after G1 shows that `/reload` re-reads slots.
 
