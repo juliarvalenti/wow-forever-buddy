@@ -108,6 +108,7 @@ ForeverBuddyDB = {
 				["max"] = 75,
 				["name"] = "Tailoring",
 				["skill"] = 34,
+				["spec"] = 2,
 			}, -- [2]
 			{
 				["line"] = 185,
