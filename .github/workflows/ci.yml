@@ -34,6 +34,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only token: CI only builds and tests. (The repo is public, so a PR
+# from a fork must never get a token that can push.)
+permissions:
+  contents: read
+
 env:
   # No debug info in test builds: much faster Windows compiles, smaller cache.
   CARGO_PROFILE_DEV_DEBUG: 0
@@ -46,21 +51,26 @@ jobs:
       matrix:
         os: ${{ github.event_name == 'push' && fromJSON('["windows-latest","macos-latest"]') || fromJSON('["windows-latest"]') }}
     runs-on: ${{ matrix.os }}
+    # Actions are pinned to full commit SHAs (a tag can be moved to other
+    # code); the comment says which release it is. Bump them deliberately.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: lts/*
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
       # Only main writes the cache, so PRs always restore a warm one instead of
       # each branch saving its own copy.
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "./src-tauri -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}

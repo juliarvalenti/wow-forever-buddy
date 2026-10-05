@@ -1,0 +1,16 @@
+# `cargo audit` triage. Re-check each entry when bumping its parent crate.
+# Last run: 2026-10-05, cargo-audit 0.22.2: no vulnerabilities, these
+# three informational warnings only.
+
+[advisories]
+ignore = [
+    # paste is unmaintained. Compile-time only (a proc-macro inside specta's
+    # derive, exact-pinned RC per spec §8); nothing of it ships in the app.
+    "RUSTSEC-2024-0436",
+    # proc-macro-error is unmaintained, and glib 0.18 has an unsound
+    # iterator. Both come only from Tauri's Linux GTK stack (gtk -> muda),
+    # which isn't in the Windows or macOS builds (`cargo tree -i glib
+    # --target x86_64-pc-windows-msvc` prints nothing).
+    "RUSTSEC-2024-0370",
+    "RUSTSEC-2024-0429",
+]
