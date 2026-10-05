@@ -27,7 +27,7 @@ import { ago, coins, plural, played, when } from "@/lib/format";
 
 /** Money: gold only for coins. */
 export function Coins({ copper, silver = true }: { copper: number | null; silver?: boolean }) {
-  const { g, s, c } = coins(copper ?? 0);
+  const [g, s, c] = coins(copper ?? 0);
   return (
     <span className="ch-coins">
       <span className="g">{g.toLocaleString()}</span>
@@ -438,10 +438,7 @@ function Sheet({
                 sheet.professions.map((p) => (
                   <div key={p.name} className="ch-slot" style={{ gridTemplateColumns: "1fr auto" }}>
                     <div className="t">
-                      <div>
-                        {p.name}
-                        {p.spec ? ` · ${p.spec}` : ""}
-                      </div>
+                      <div>{p.name}</div>
                     </div>
                     <span className="il">
                       {p.skill ?? "?"} / {p.max ?? "?"}

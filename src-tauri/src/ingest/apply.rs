@@ -126,9 +126,10 @@ fn upsert_character(tx: &Transaction<'_>, t: &Target, file: &AddonFile, at: i64)
 
 fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> {
     tx.execute(
-        "INSERT OR IGNORE INTO char_snapshots (character_id, at, money, xp, xp_max, rested, level,
-            ilvl_avg, ilvl_equipped, played_total, played_level, zone, subzone)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT OR IGNORE INTO char_snapshots (character_id, at, money, xp, xp_max, rested,
+            rest_state, level, ilvl_avg, ilvl_equipped, played_total, played_level, zone,
+            subzone, map)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             id,
             s.at,
@@ -136,13 +137,15 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             s.xp,
             s.xp_max,
             s.rested,
+            s.rest_state,
             s.level,
             s.ilvl_avg,
             s.ilvl_equipped,
             s.played_total,
             s.played_level,
             s.zone,
-            s.subzone
+            s.subzone,
+            s.map
         ],
     )?;
     if let Some(money) = s.money {
@@ -193,9 +196,10 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             tx.execute("DELETE FROM professions WHERE character_id = ?1", [id])?;
             for p in professions {
                 tx.execute(
-                    "INSERT OR REPLACE INTO professions (character_id, name, skill, max, spec, as_of)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![id, p.name, p.skill, p.max, p.spec, s.at],
+                    "INSERT OR REPLACE INTO professions (character_id, name, skill, max, line,
+                                                         spec, as_of)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id, p.name, p.skill, p.max, p.line, p.spec, s.at],
                 )?;
             }
         }
@@ -205,9 +209,10 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             tx.execute("DELETE FROM lockouts WHERE character_id = ?1", [id])?;
             for l in lockouts {
                 tx.execute(
-                    "INSERT OR REPLACE INTO lockouts (character_id, name, difficulty, reset_at, as_of)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![id, l.name, l.difficulty, l.reset_at, s.at],
+                    "INSERT OR REPLACE INTO lockouts (character_id, name, difficulty, reset_at,
+                                                      raid, as_of)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![id, l.name, l.difficulty, l.reset_at, l.raid, s.at],
                 )?;
             }
         }

@@ -11,8 +11,7 @@
 //! Gap-fill: the file keeps only the last 10 sessions, but every game-exit
 //! backup holds that logout's copy. At start, every full backup snapshot
 //! newer than that flavor's `meta.last_replayed_snapshot:<flavor>` is
-//! replayed, oldest first,
-//! through the same idempotent apply. That's also how a db restored from a
+//! replayed, oldest first, through the same idempotent apply. That's also how a db restored from a
 //! daily copy (V5) catches up: the copy carries its own marker.
 //!
 //! Ingest only ever reads the game folder.
@@ -519,43 +518,77 @@ mod tests {
         assert_eq!(note, "my note");
     }
 
-    /// A newer file without bank or mail (not visited this session) keeps
-    /// the stored bank and mail rather than emptying them.
+    /// Every section of the real addon's snapshot lands in its table, read
+    /// from the harness-generated fixture (tools/addon-test), so a change in
+    /// what the addon writes breaks this test.
+    #[test]
+    fn the_snapshot_fixture_lands_in_every_table() {
+        let db = Db::open_in_memory().unwrap();
+        ingest_bytes(&db, &target("Thrandor-Vargur"), &fixture("snapshot.lua")).unwrap();
+        let rows = |location: &str| {
+            count(
+                &db,
+                &format!("SELECT count(*) FROM char_items WHERE location = '{location}'"),
+            )
+        };
+        assert_eq!(
+            (rows("equipped"), rows("bag"), rows("bank"), rows("mail")),
+            (1, 2, 1, 1)
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT item_id FROM char_items WHERE location = 'bank'"
+            ),
+            14047
+        );
+        assert_eq!(count(&db, "SELECT money FROM char_mail"), 500);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT map FROM char_snapshots WHERE rest_state = 'Rested'"
+            ),
+            1429
+        );
+        assert_eq!(count(&db, "SELECT level FROM char_snapshots"), 12);
+        assert_eq!(
+            count(&db, "SELECT line FROM professions WHERE name = 'Herbalism'"),
+            182
+        );
+        assert_eq!(count(&db, "SELECT raid FROM lockouts"), 0);
+        assert_eq!(count(&db, "SELECT count(*) FROM items"), 4);
+    }
+
+    /// A later file with no bank or mail (no visit since) keeps the stored
+    /// bank and mail rather than emptying them; a carried-forward copy of
+    /// the same visit changes nothing. All three files are the addon's own.
     #[test]
     fn an_absent_bank_keeps_the_stored_bank() {
         let db = Db::open_in_memory().unwrap();
-        let t = target("Ellygie-Vargur");
-        let file = |at: i64, extra: &str| {
-            format!(
-                r#"ForeverBuddyDB = {{
-  _meta = {{ schema = 1, written = {at}, counts = {{ sessions = 0, events = 0, items = 0, bag_items = 0 }} }},
-  character = {{ name = "Ellygie", surname = "Vargur", level = 20 }},
-  snapshot = {{ at = {at}, money = 5, {extra} }},
-}}
-"#
+        let t = target("Thrandor-Vargur");
+        let kept = |db: &Db| {
+            (
+                count(
+                    db,
+                    "SELECT count(*) FROM char_items WHERE location = 'bank'",
+                ),
+                count(
+                    db,
+                    "SELECT count(*) FROM char_items WHERE location = 'mail'",
+                ),
+                count(db, "SELECT count(*) FROM char_mail"),
             )
         };
-        let visited = r#"
-    bank = { at = 1000, tabs = { [-1] = { items = { [1] = { link = "|Hitem:2589:|h[Linen Cloth]|h", count = 20 } } } } },
-    mail = { at = 1000, items = { [1] = { sender = "Thrandor", subject = "cloth", money = 0, cod = 0, items = { [1] = { link = "|Hitem:2589:|h[Linen Cloth]|h", count = 5 } } } } },"#;
-        ingest_bytes(&db, &t, file(1000, visited).as_bytes()).unwrap();
-        ingest_bytes(&db, &t, file(2000, "").as_bytes()).unwrap();
-
+        ingest_bytes(&db, &t, &fixture("snapshot.lua")).unwrap();
+        assert_eq!(kept(&db), (1, 1, 1));
+        ingest_bytes(&db, &t, &fixture("second_login.lua")).unwrap();
         assert_eq!(
-            count(
-                &db,
-                "SELECT count(*) FROM char_items WHERE location = 'bank'"
-            ),
-            1
+            kept(&db),
+            (1, 1, 1),
+            "no bank in the file: stored bank kept"
         );
-        assert_eq!(
-            count(
-                &db,
-                "SELECT count(*) FROM char_items WHERE location = 'mail'"
-            ),
-            1
-        );
-        assert_eq!(count(&db, "SELECT count(*) FROM char_mail"), 1);
+        ingest_bytes(&db, &t, &fixture("carry_forward.lua")).unwrap();
+        assert_eq!(kept(&db), (1, 1, 1), "carried-forward visit");
     }
 
     fn write(dir: &Path, rel: &str, bytes: &[u8]) {

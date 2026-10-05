@@ -11,6 +11,9 @@ import type {
   CharacterCard,
   CharacterSheet,
   ItemRow,
+  JournalEntry,
+  Ledger,
+  LedgerRange,
   RestorePlan,
   SnapshotDetail,
   SnapshotKind,
@@ -42,6 +45,7 @@ export const SCENARIOS = [
   "startup-error",
   "characters", // V7: the alts' cards (open one for the sheet)
   "characters-empty", // no addon notes yet
+  "ledger-empty", // the Ledger before the addon has written anything
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -302,7 +306,76 @@ export function installMockIpc(): void {
     disabled_on: ["Velyra-Duskmane"],
   };
 
+  // V8: the Ledger, from gold.html's numbers. `ledger-empty` has no data yet.
+  const ledgerFor = (range: LedgerRange): Ledger => {
+    const n = range === "week" ? 7 : range === "month" ? 30 : range === "quarter" ? 90 : 31;
+    const day = (i: number) => new Date(now - (n - 1 - i) * 86_400_000).toISOString().slice(0, 10);
+    const walk = (a: number, b: number, seed: number) =>
+      Array.from({ length: n }, (_, i) =>
+        Math.round((a + ((b - a) * i) / Math.max(1, n - 1) + Math.sin(i * seed) * 30) * 10_000),
+      );
+    const series = [
+      { character_id: 1, name: "Coinpurse", count: 1, values: walk(2140, 2779, 1.3) },
+      { character_id: 2, name: "Thrandor Vargur", count: 1, values: walk(1650, 2140, 0.7) },
+      { character_id: 3, name: "Velyra Duskmane", count: 1, values: walk(1080, 1066, 2.1) },
+      { character_id: 4, name: "Brannic", count: 1, values: walk(300, 488, 0.4) },
+      { character_id: null, name: "3 others", count: 3, values: walk(280, 339, 1.1) },
+    ];
+    const at = (minsAgo: number) => iso(minsAgo);
+    const entry = (
+      id: number,
+      name: string,
+      startMinsAgo: number,
+      mins: number,
+      delta: number,
+      note: { text: string; quality: number | null } | null,
+      level: number | null = null,
+    ): JournalEntry => ({
+      adventure_id: id,
+      character_id: id,
+      name,
+      login: at(startMinsAgo),
+      logout: at(startMinsAgo - mins),
+      played_secs: mins * 60,
+      gold_delta: delta * 10_000,
+      level,
+      of_note: note,
+    });
+    return {
+      since: iso(60 * 24 * 33),
+      tiles: {
+        account_gold: 68_124_709,
+        characters: 7,
+        last_30_days: 12_020_000,
+        this_week: 4_120_000,
+        best_earner: { character_id: 2, name: "Thrandor Vargur", gained: 4_900_000, sessions: 9 },
+      },
+      chart: {
+        days: Array.from({ length: n }, (_, i) => day(i)),
+        series,
+        account: series[0].values.map((_, i) => series.reduce((a, s) => a + s.values[i], 0)),
+      },
+      journal: [
+        entry(1, "Thrandor Vargur", 60 * 22, 192, 312, { text: "Reached level 60", quality: null }, 60),
+        entry(2, "Coinpurse", 60 * 27, 22, 640, { text: "Arcanite Bar ×12", quality: 2 }),
+        entry(3, "Velyra Duskmane", 60 * 48, 125, -86, { text: "Stormwind City", quality: null }),
+        entry(4, "Thrandor Vargur", 60 * 51, 160, 178, { text: "Runecloth ×60", quality: 1 }),
+        entry(5, "Brannic", 60 * 74, 115, 41, { text: "Feralas · 14 quests", quality: null }, 52),
+      ],
+    };
+  };
+
   const handlers: Record<string, Handler> = {
+    ledger_get: ({ range }) =>
+      s === "ledger-empty"
+        ? {
+            since: null,
+            tiles: { account_gold: 0, characters: 0, last_30_days: 0, this_week: 0, best_earner: null },
+            chart: { days: [], series: [], account: [] },
+            journal: [],
+          }
+        : ledgerFor(range as LedgerRange),
+    ledger_export_csv: () => "C:\\Users\\Julia\\Documents\\forever-buddy-gold.csv",
     addon_status: () => addon,
     addon_install: () => {
       addon.installed_version = addon.bundled_version;
@@ -458,8 +531,8 @@ export function installMockIpc(): void {
           messages: [{ sender: "Coinpurse", subject: "Runecloth", money: 0, cod: 0, days_left: 27.5, items: [item(1, "Runecloth", 1, 50, 1, 20)] }],
         },
         professions: [
-          { name: "Blacksmithing", skill: 300, max: 300, spec: "Armorsmith" },
-          { name: "Mining", skill: 285, max: 300, spec: null },
+          { name: "Blacksmithing", skill: 300, max: 300 },
+          { name: "Mining", skill: 285, max: 300 },
         ],
         gold_30d: [46, 44, 45, 38, 40, 34, 36, 28, 31, 24, 26, 18, 20, 8].map((y, i) => ({
           at: iso(60 * 24 * (28 - i * 2)),

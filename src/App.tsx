@@ -24,10 +24,11 @@ import { Backups } from "@/screens/Backups";
 import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
+import { Ledger } from "@/screens/Ledger";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "characters" | "backups" | "game";
+type Screen = "dashboard" | "characters" | "ledger" | "backups" | "game";
 
 type NavRow =
   | { group: string }
@@ -87,7 +88,7 @@ function Shell() {
     { group: "Overview" },
     { id: "dashboard", label: "Dashboard", icon: Home },
     { id: "characters", label: "Characters", icon: Users },
-    { soon: "Ledger", icon: Coins },
+    { id: "ledger", label: "Ledger", icon: Coins },
     { soon: "Adventures", icon: ScrollText },
     { soon: "Auction House", icon: Scale },
     { group: "Game files" },
@@ -201,6 +202,7 @@ function Shell() {
             show={backupsFilter}
           />
         )}
+        {current === "ledger" && <Ledger onOpenDashboard={() => setScreen("dashboard")} />}
         {current === "game" && <GameFolder install={install} />}
       </main>
 

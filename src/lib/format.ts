@@ -90,12 +90,6 @@ export function played(seconds: number): string {
   return `${m}m`;
 }
 
-/** Copper split into gold, silver and copper. */
-export function coins(copper: number): { g: number; s: number; c: number } {
-  const n = Math.max(0, Math.round(copper));
-  return { g: Math.floor(n / 10000), s: Math.floor(n / 100) % 100, c: n % 100 };
-}
-
 /** "Sunday, 4 October". */
 export function longDate(d = new Date()): string {
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
@@ -114,6 +108,26 @@ export function characterName(folder: string): string {
 export const OLDER_FOLDERS = "Older settings folders";
 export const OLDER_FOLDERS_WHY =
   "Character folders from before surnames were added. Backed up and restorable; not counted as characters.";
+
+/** Copper as gold for a sentence or a cell: "1,202g", "47s" under a gold,
+ *  "9c" under a silver. `signed` adds "+" to a gain; a loss gets "−". */
+export function gold(copper: number, signed = false): string {
+  const sign = copper < 0 ? "−" : signed && copper > 0 ? "+" : "";
+  const c = Math.abs(Math.round(copper));
+  const text =
+    c >= 10_000
+      ? `${Math.round(c / 10_000).toLocaleString()}g`
+      : c >= 100
+        ? `${Math.floor(c / 100)}s`
+        : `${c}c`;
+  return sign + text;
+}
+
+/** Copper split into coins: [gold, silver, copper]. */
+export function coins(copper: number): [number, number, number] {
+  const c = Math.max(0, Math.round(copper));
+  return [Math.floor(c / 10_000), Math.floor(c / 100) % 100, c % 100];
+}
 
 export function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
