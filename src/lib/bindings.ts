@@ -79,6 +79,17 @@ export const commands = {
 	 *  on mount, then follows `game-status-changed`.
 	 */
 	gameStatus: () => __TAURI_INVOKE<GameStatus>("game_status"),
+	/**
+	 *  Play sessions of the active flavor from the last `days` days, newest
+	 *  first. The one with no `ended_at` is in progress. Follow
+	 *  `sessions-changed` for updates.
+	 */
+	sessionsList: (days: number) => __TAURI_INVOKE<PlaySession[]>("sessions_list", { days }),
+	/**
+	 *  The characters in the active flavor's WTF folder, most recently played
+	 *  first. Names only: class, level and gold need the addon (v0.2).
+	 */
+	charactersList: () => __TAURI_INVOKE<WtfCharacter[]>("characters_list"),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -149,6 +160,7 @@ export const events = {
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
+	sessionsChanged: makeEvent<SessionsChanged>("sessions-changed"),
 };
 
 /* Types */
@@ -291,6 +303,13 @@ export type CharacterNode = {
 	name: string,
 	totals: Totals,
 	categories: CategoryNode[],
+};
+
+/**  One character folder: `WTF/Account/<account>/<realm>/<name>`. */
+export type CharacterRef = {
+	account: string,
+	realm: string,
+	name: string,
 };
 
 /**
@@ -483,6 +502,25 @@ export type PlanFolder = {
 	bytes: number | null,
 };
 
+export type PlaySession = {
+	/**
+	 *  A row id; `u32` because specta won't send an `i64` to TypeScript, and
+	 *  four billion sessions is plenty.
+	 */
+	id: number,
+	flavor: string,
+	/**  RFC 3339, UTC. */
+	started_at: string,
+	/**  `None` while WoW is still running. */
+	ended_at: string | null,
+	/**
+	 *  Characters whose settings changed during the session, last written
+	 *  (usually the last one logged out) first. Empty while running, or if
+	 *  nothing changed.
+	 */
+	characters: CharacterRef[],
+};
+
 /**  What a prune did. */
 export type PruneReport = {
 	pruned: string[],
@@ -603,6 +641,9 @@ export type SecretStatus = {
 	/**  Why the store couldn't be read for this id. Never contains the value. */
 	error: string | null,
 };
+
+/**  Emitted when a session starts, ends, or learns its characters. */
+export type SessionsChanged = null;
 
 /**
  *  settings.json (spec §6). Every field has a default, so a missing key never
@@ -734,6 +775,15 @@ export type VerifyReport = {
 	/**  Files whose stored copy is missing or fails its checksum. */
 	corrupt: string[],
 };
+
+/**  A character found in the WTF folder. */
+export type WtfCharacter = {
+	/**
+	 *  When any file in its folder last changed (RFC 3339, UTC): close to
+	 *  when it was last logged out.
+	 */
+	last_played: string | null,
+} & CharacterRef;
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
