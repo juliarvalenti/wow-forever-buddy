@@ -32,6 +32,7 @@ pub fn ah_status(state: State<'_, AppState>) -> AppResult<AhStatus> {
             items: 0,
             last_scan_at: None,
             newest_day: None,
+            file: ah::AhFile::None,
         }),
     }
 }

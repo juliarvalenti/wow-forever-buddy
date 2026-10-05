@@ -262,10 +262,45 @@ pub struct AhStatus {
     pub last_scan_at: Option<String>,
     /// The newest day any price was seen (YYYY-MM-DD).
     pub newest_day: Option<String>,
+    /// What happened to the Auctionator files, for Settings' note while
+    /// there are no prices (the AH screen and worth stay hidden until then).
+    pub file: AhFile,
+}
+
+/// The Auctionator files seen for this flavor, by their last read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AhFile {
+    /// No `Auctionator.lua` read yet.
+    None,
+    /// At least one decoded (it may have held no prices).
+    Read,
+    /// Only files this version can't read: another format, damaged or too large.
+    Unreadable,
+}
+
+fn file_state(c: &rusqlite::Connection, flavor: &str) -> AppResult<AhFile> {
+    let prefix = state_key(flavor, "");
+    let mut stmt =
+        c.prepare("SELECT status FROM ingest_state WHERE substr(path, 1, length(?1)) = ?1")?;
+    let statuses = stmt
+        .query_map([&prefix], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(if statuses.is_empty() {
+        AhFile::None
+    } else if statuses
+        .iter()
+        .any(|s| s == "ok" || s == "skipped (no prices)")
+    {
+        AhFile::Read
+    } else {
+        AhFile::Unreadable
+    })
 }
 
 pub fn status(db: &Db, flavor: &str) -> AppResult<AhStatus> {
     db.with_conn(|c| {
+        let file = file_state(c, flavor)?;
         let Some(m) = market(c, flavor)? else {
             return Ok(AhStatus {
                 has_prices: false,
@@ -273,6 +308,7 @@ pub fn status(db: &Db, flavor: &str) -> AppResult<AhStatus> {
                 items: 0,
                 last_scan_at: None,
                 newest_day: None,
+                file,
             });
         };
         let (items, newest): (i64, Option<String>) = c.query_row(
@@ -296,6 +332,7 @@ pub fn status(db: &Db, flavor: &str) -> AppResult<AhStatus> {
                 .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
                 .map(|d| d.to_rfc3339()),
             newest_day: newest,
+            file,
         })
     })
 }
@@ -882,9 +919,13 @@ mod tests {
         // Still being written: left for the next scan.
         let db = Db::open_in_memory().unwrap();
         assert_eq!(scan(&db, FLAVOR, tmp.path()).unwrap(), None);
+        let s = status(&db, FLAVOR).unwrap();
+        assert!(!s.has_prices);
+        assert_eq!(s.file, AhFile::None);
 
         age(&path);
         assert_eq!(scan(&db, FLAVOR, tmp.path()).unwrap(), Some(3));
+        assert_eq!(status(&db, FLAVOR).unwrap().file, AhFile::Read);
         assert_eq!(scan(&db, FLAVOR, tmp.path()).unwrap(), None, "unchanged");
 
         // A torn file is recorded and retried when it changes, quietly.
@@ -906,7 +947,9 @@ mod tests {
             .with_conn(|c| Ok(c.query_row("SELECT status FROM ingest_state", [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(state, "skipped (too large)");
-        assert!(!status(&fresh, FLAVOR).unwrap().has_prices);
+        let s = status(&fresh, FLAVOR).unwrap();
+        assert!(!s.has_prices, "the AH screen and worth stay hidden");
+        assert_eq!(s.file, AhFile::Unreadable);
     }
 
     #[test]

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { type CharacterCard, commands, type StartupFailure } from "@/lib/bindings";
 import { LiveDot, StatusDot } from "@/components/d";
+import { useAhStatus } from "@/hooks/useAh";
 import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
@@ -76,6 +77,7 @@ function Shell() {
   const install = useInstall();
   const recovery = useRecovery();
   const snapshots = useSnapshotCount();
+  const hasPrices = useAhStatus()?.has_prices ?? false;
   // With the addon's data: who logged out last (RFC 3339 UTC sorts as time).
   const { overview } = useCharacters();
   const lastPlayed = overview?.characters.reduce<CharacterCard | null>(
@@ -116,7 +118,8 @@ function Shell() {
     { id: "characters", label: "Characters", icon: Users, n: overview?.characters.length || null },
     { id: "ledger", label: "Ledger", icon: Coins },
     { id: "adventures", label: "Adventures", icon: ScrollText },
-    { id: "ah", label: "Auction House", icon: Scale },
+    // F5d: only once an Auctionator file has given prices on this machine.
+    ...(hasPrices ? [{ id: "ah", label: "Auction House", icon: Scale } as const] : []),
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
@@ -129,7 +132,8 @@ function Shell() {
   const folderMissing = install.state.kind === "invalid" ? install.state.error : null;
   // Until a game folder has been set at all, that's the screen.
   // (Settings stays reachable: keys and backup options don't need one.)
-  const current: Screen = folderOk || folderMissing != null || screen === "settings" ? screen : "game";
+  const shown: Screen = screen === "ah" && !hasPrices ? "dashboard" : screen;
+  const current: Screen = folderOk || folderMissing != null || shown === "settings" ? shown : "game";
 
   return (
     <div className="d-app">

@@ -515,6 +515,15 @@ export type AdventureLink = {
 	login: string,
 };
 
+/**  The Auctionator files seen for this flavor, by their last read. */
+export type AhFile = 
+/**  No `Auctionator.lua` read yet. */
+"none" | 
+/**  At least one decoded (it may have held no prices). */
+"read" | 
+/**  Only files this version can't read: another format, damaged or too large. */
+"unreadable";
+
 export type AhHistory = {
 	item: AhItem,
 	/**  Oldest first; only days a scan saw it. */
@@ -564,6 +573,11 @@ export type AhStatus = {
 	last_scan_at: string | null,
 	/**  The newest day any price was seen (YYYY-MM-DD). */
 	newest_day: string | null,
+	/**
+	 *  What happened to the Auctionator files, for Settings' note while
+	 *  there are no prices (the AH screen and worth stay hidden until then).
+	 */
+	file: AhFile,
 };
 
 /**  A save on any character, for the Dashboard's "Lockouts this week". */
