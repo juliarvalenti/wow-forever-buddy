@@ -97,11 +97,27 @@ export function useRestore() {
   return { plan, planError, loading, changed, run, preview, start };
 }
 
-/** Interrupted-restore state. While anything but `none`, restores stay locked. */
+/** Roll back or finish: the recovery actions that change files. */
+export type RecoveryAction = Exclude<JournalAction, "discard">;
+
+/** What the recovery dialog is confirming: the action and its plan. */
+export type RecoveryPreview = {
+  action: RecoveryAction;
+  plan: RestorePlan | null;
+  error: string | null;
+  /** The backend refused because the plan grew; this is the new one. */
+  changed: boolean;
+};
+
+/** Interrupted-restore state. While anything but `none`, restores stay locked.
+ *  Roll back and finish are previewed and confirmed like a normal restore:
+ *  `preview(action)`, then `resolve(action, plan)` sends that plan's
+ *  deletions, and the backend refuses if it would remove anything else. */
 export function useRecovery() {
   const [status, setStatus] = useState<RecoveryStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<RecoveryPreview | null>(null);
 
   const refresh = useCallback(() => {
     commands.restoreJournalStatus().then(setStatus, () => setStatus(null));
@@ -113,22 +129,43 @@ export function useRecovery() {
     return () => window.removeEventListener(RESTORE_FAILED, refresh);
   }, [refresh]);
 
+  const preview = useCallback(async (action: RecoveryAction, changed = false) => {
+    setError(null);
+    setConfirming({ action, plan: null, error: null, changed });
+    try {
+      const plan = await commands.restoreJournalPreview(action);
+      setConfirming({ action, plan, error: null, changed });
+    } catch (e) {
+      setConfirming({ action, plan: null, error: errorText(e), changed });
+    }
+  }, []);
+
+  /** Back from the confirm step to the choice. */
+  const cancel = useCallback(() => setConfirming(null), []);
+
+  /** Discard needs no plan; roll back and finish need the one confirmed. */
   const resolve = useCallback(
-    async (action: JournalAction) => {
+    async (action: JournalAction, confirmed?: RestorePlan) => {
       setBusy(true);
       setError(null);
       try {
-        await commands.restoreJournalResolve(action);
+        await commands.restoreJournalResolve(action, confirmed?.delete ?? []);
+        setConfirming(null);
       } catch (e) {
-        setError(errorText(e));
+        if (action !== "discard" && isAppError(e) && e.kind === "DeletionsChanged") {
+          // Nothing changed; show the new list to confirm again.
+          await preview(action, true);
+        } else {
+          setError(errorText(e));
+        }
       } finally {
         setBusy(false);
         refresh();
       }
     },
-    [refresh],
+    [refresh, preview],
   );
 
   const pending = status != null && status.kind !== "none";
-  return { status, pending, busy, error, resolve, refresh };
+  return { status, pending, busy, error, confirming, preview, cancel, resolve, refresh };
 }
