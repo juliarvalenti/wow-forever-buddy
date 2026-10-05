@@ -206,9 +206,8 @@ fn spawn_session_start(
             return;
         };
         let started = since.unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-        let wtf = game.root.base.join("WTF");
         if tracker
-            .started(&core.db, &game.flavor, &wtf, &started)
+            .started(&core.db, &game.flavor, &game.root.base, &started)
             .is_ok()
         {
             let _ = sessions::SessionsChanged.emit(&h);
@@ -226,13 +225,12 @@ fn spawn_session_end(handle: &tauri::AppHandle, tracker: &Arc<sessions::SessionT
         let _ = tracker.stopped(&core.db, &ended);
         let _ = sessions::SessionsChanged.emit(&h);
         if let Ok(game) = core.active_game() {
-            let wtf = game.root.base.join("WTF");
             triggers::wait_until_settled(
-                &wtf,
+                &game.root.base.join("WTF"),
                 triggers::EXIT_SETTLE,
                 triggers::EXIT_SETTLE_TIMEOUT,
             );
-            if tracker.attribute(&core.db, &wtf).is_ok() {
+            if tracker.attribute(&core.db, &game.root.base).is_ok() {
                 let _ = sessions::SessionsChanged.emit(&h);
             }
         }

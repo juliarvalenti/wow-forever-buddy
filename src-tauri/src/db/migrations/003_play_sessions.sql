@@ -7,7 +7,8 @@ CREATE TABLE play_sessions (
     flavor     TEXT NOT NULL,
     started_at TEXT NOT NULL,           -- RFC 3339, UTC
     ended_at   TEXT,                    -- RFC 3339, UTC; NULL while running
-    characters TEXT NOT NULL DEFAULT '[]'  -- JSON [{account, realm, name}], last written first
+    characters TEXT NOT NULL DEFAULT '[]',  -- JSON [{account, realm, name}], last written first
+    crashed    INTEGER NOT NULL DEFAULT 0   -- WoW wrote a crash report during the run
 ) STRICT;
 
 CREATE INDEX play_sessions_started ON play_sessions (started_at);

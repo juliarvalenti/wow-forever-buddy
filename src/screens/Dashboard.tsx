@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Check, Clock, FolderOpen, RefreshCw, Scale, ScrollText, Shield, ShoppingBag, TrendingUp } from "lucide-react";
-import { commands, type GameStatus, type Settings, type SnapshotSummary } from "@/lib/bindings";
+import {
+  commands,
+  type GameStatus,
+  type PlaySession,
+  type Settings,
+  type SnapshotSummary,
+} from "@/lib/bindings";
 import {
   Button,
   Callout,
@@ -44,6 +50,37 @@ function shortPath(p: string): string {
   return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : p;
 }
 
+/** Shorter sessions are hidden from the list (still counted in the week). */
+const SHORT_MS = 2 * 60_000;
+
+function sessionMs(s: PlaySession, now = Date.now()): number {
+  const end = s.ended_at ? new Date(s.ended_at).getTime() : now;
+  return end - new Date(s.started_at).getTime();
+}
+
+/** Who played: "Thrandor, Coinpurse", or "Thrandor and 2 others" with the
+ *  full list on hover. Never guessed: no changed folder means unknown. */
+function SessionWho({ s }: { s: PlaySession }) {
+  const ended = s.crashed ? " · ended unexpectedly" : "";
+  if (!s.ended_at) return <span className="sub">Character known after you log out</span>;
+  const names = s.characters.map((c) => c.name);
+  if (names.length === 0)
+    return (
+      <span className="sub">
+        <i>Character unknown</i>
+        {ended}
+      </span>
+    );
+  const who =
+    names.length <= 2 ? names.join(", ") : `${names[0]} and ${names.length - 1} others`;
+  return (
+    <span className="sub" title={names.length > 2 ? names.join(", ") : undefined}>
+      {who}
+      {ended}
+    </span>
+  );
+}
+
 const UNLOCKS = [
   { icon: TrendingUp, title: "Gold over time", text: "Per character and account-wide." },
   { icon: ShoppingBag, title: "Satchels & gear", text: "Search every alt's bags and bank." },
@@ -82,6 +119,8 @@ export function Dashboard({
   const realms = [...new Set((characters ?? []).map((c) => c.realm))];
   const names = [...new Set((characters ?? []).map((c) => c.name))];
   const week = thisWeek(sessions ?? []);
+  // Launcher tests and crashes at login: counted in the week, not listed.
+  const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
   const lastEnded = sessions?.find((s) => s.ended_at);
 
   const rescan = () => {
@@ -342,41 +381,34 @@ export function Dashboard({
               <span className="d-grow" />
               <span className="d-dim">from the game process</span>
             </PanelHeader>
-            {sessions && sessions.length === 0 ? (
+            {sessions && shownSessions.length === 0 ? (
               <PanelBody>
-                <p className="d-muted">No sessions yet. They're noted from the next time WoW runs.</p>
+                <p className="d-muted">
+                  Sessions appear here after you play. Forever Buddy notes when WoW starts and
+                  stops.
+                </p>
               </PanelBody>
             ) : (
               <ul className="d-rows">
-                {(sessions ?? []).slice(0, 5).map((s) => {
-                  const end = s.ended_at ? new Date(s.ended_at).getTime() : Date.now();
-                  const [first, ...more] = s.characters;
-                  return (
-                    <li key={s.id}>
-                      <span className="main">
-                        {!s.ended_at && <LiveDot />}
-                        {sessionWhen(s.started_at, s.ended_at)}
-                      </span>
-                      <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
-                        {span(end - new Date(s.started_at).getTime())}
-                      </span>
-                      <span className="sub">
-                        {!s.ended_at
-                          ? "Character known after you log out"
-                          : first
-                            ? `${first.name}${more.length > 0 ? ` +${more.length}` : ""}`
-                            : "No character settings changed"}
-                      </span>
-                    </li>
-                  );
-                })}
+                {shownSessions.slice(0, 5).map((s) => (
+                  <li key={s.id}>
+                    <span className="main">
+                      {!s.ended_at && <LiveDot />}
+                      {sessionWhen(s.started_at, s.ended_at)}
+                    </span>
+                    <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
+                      {span(sessionMs(s))}
+                    </span>
+                    <SessionWho s={s} />
+                  </li>
+                ))}
               </ul>
             )}
             {sessions && sessions.length > 0 && (
               <div className="d-panel-foot">
                 {week.ms > 0
                   ? `This week: ${span(week.ms)}${week.characters > 0 ? ` across ${plural(week.characters, "character", "characters")}` : ""}. `
-                  : "Nothing played this week yet. "}
+                  : "This week: none yet. "}
                 The character is the one whose settings changed during the session.
               </div>
             )}

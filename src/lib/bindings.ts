@@ -514,11 +514,16 @@ export type PlaySession = {
 	/**  `None` while WoW is still running. */
 	ended_at: string | null,
 	/**
-	 *  Characters whose settings changed during the session, last written
-	 *  (usually the last one logged out) first. Empty while running, or if
-	 *  nothing changed.
+	 *  Characters whose settings changed during the session, in WTF folder
+	 *  order. Empty while running, or if nothing changed (e.g. WoW was
+	 *  closed at character select).
 	 */
 	characters: CharacterRef[],
+	/**
+	 *  WoW wrote a crash report (`<flavor>/Errors`) during the run. A process
+	 *  killed without one can't be told apart from a clean exit.
+	 */
+	crashed: boolean,
 };
 
 /**  What a prune did. */
