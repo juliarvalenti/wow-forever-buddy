@@ -479,11 +479,18 @@ local function showReloadButtons()
     secure:SetSize(220, 26)
     secure:SetPoint("TOP", plain, "BOTTOM", 0, -8)
     secure:SetText("B: secure /reload")
+    -- Both edges are registered because the macro runs only on the edge the
+    -- ActionButtonUseKeyDown setting picks, and registering the other one
+    -- alone would never fire. PreClick sees both, so record only that edge:
+    -- one click, one attempt.
     secure:RegisterForClicks("AnyUp", "AnyDown")
     secure:SetAttribute("type", "macro")
     secure:SetAttribute("macrotext", "/reload")
-    secure:SetScript("PreClick", function()
-        attempt("secure")
+    secure:SetScript("PreClick", function(_, _, down)
+        local onDown = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")
+        if (down and true or false) == (onDown and true or false) then
+            attempt("secure")
+        end
     end)
 end
 
