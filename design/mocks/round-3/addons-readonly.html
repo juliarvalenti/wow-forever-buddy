@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Addons · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* F4: the read-only first cut of addons.html (the v0.5 sketch). Nothing here writes:
+     no sets, installs, updates, toggles or sources. See IMPLEMENTING.md §9. */
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+  .toolbar .field { width: 240px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; align-items: start; }
+  .tablewrap { overflow: auto; max-height: 560px; }
+  table.grid td, table.grid th { padding: 0 10px; }
+  table.grid th { padding: 8px 10px; }
+  table.grid tbody tr { cursor: pointer; }
+  td .an { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  td .an b { font-weight: 600; color: var(--chalk-hi); }
+  td .an small { display: block; font-size: 11px; color: var(--soot); }
+  td .ico { width: 22px; height: 22px; font-size: 10px; }
+  .toc { font-size: 12px; white-space: nowrap; }
+  .toc.old { color: var(--warn); }
+  .chars { display: inline-flex; gap: 3px; align-items: center; }
+  .chars .cdot { width: 7px; height: 7px; }
+  .chars .cdot.off { background: transparent; box-shadow: inset 0 0 0 1px var(--soot); }
+  .chars small { margin-left: 6px; font-size: 11px; color: var(--soot); }
+
+  .side-pan .pb { display: grid; gap: 12px; }
+  .side-pan .what { font-size: 12.5px; color: var(--chalk); line-height: 1.5; }
+  .kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 5px 10px; font-size: 12px; }
+  .kv span { color: var(--soot); }
+  .kv code { font: 11.5px ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--chalk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who { display: grid; gap: 0; }
+  .who li { display: flex; align-items: center; gap: 8px; height: 26px; font-size: 12.5px; border-top: 1px solid rgba(255,255,255,.05); }
+  .who li .st { margin-left: auto; font-size: 11.5px; color: var(--ash); }
+  .who li.off .cc { opacity: .55; }
+  .who li.off .st { color: var(--soot); }
+  .note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; line-height: 1.45; }
+  .note svg { flex-shrink: 0; margin-top: 1px; }
+  .note.warn { color: var(--warn); }
+  @media (max-width: 1100px) {
+    .split { grid-template-columns: minmax(0, 1fr) 250px; }
+    th.auth, td.auth { display: none; }
+  }
+</style>
+</head>
+<body data-page="addons" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Addons</h1><div class="lede">51 installed in _classic_beta_\Interface\AddOns · WoW: Forever reads Interface 16001</div></div>
+    <div class="actions">
+      <button class="btn"><i data-i="folder"></i>Open AddOns folder</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <label class="field"><i data-i="search" class="sm" style="color:var(--soot)"></i><input placeholder="Filter addons…"></label>
+    <div class="seg"><button class="on">All 51</button><button>Out of date 2</button><button>Off everywhere 3</button></div>
+    <div class="meta">Read from each character's AddOns.txt · 4 min ago</div>
+  </div>
+
+  <div class="split">
+    <div class="panel tablewrap">
+      <table class="grid">
+        <thead><tr><th>Addon</th><th class="auth">Author</th><th>Interface</th><th>Enabled for</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <!-- The selected row. Opens on the first addon; clicking a row swaps it. -->
+    <div class="panel side-pan">
+      <div class="ph"><h2>Questie</h2><span class="meta">10.3.0</span></div>
+      <div class="pb">
+        <div class="what">Shows quests on the map and minimap, with objectives and turn-ins.</div>
+        <div class="kv">
+          <span>Author</span><div>Aero, Logon</div>
+          <span>Interface</span><div>16001</div>
+          <span>Needs</span><div>nothing else</div>
+          <span>Folder</span><code title="C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\Questie">…\AddOns\Questie</code>
+        </div>
+        <div>
+          <div class="sec">Enabled for</div>
+          <ul class="who">
+            <li class="off c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span><span class="st">off</span></li>
+            <li class="off c-druid"><span class="cdot"></span><span class="cc">Velyra</span><span class="st">off</span></li>
+            <li class="c-hunter"><span class="cdot"></span><span class="cc">Brannic</span><span class="st">on</span></li>
+            <li class="c-mage"><span class="cdot"></span><span class="cc">Fizzwick</span><span class="st">on</span></li>
+            <li class="c-priest"><span class="cdot"></span><span class="cc">Sela</span><span class="st">on</span></li>
+          </ul>
+        </div>
+        <div class="note"><i data-i="file" class="sm"></i><span>Toggling addons comes later, with a safety snapshot first. For now, change them in-game from the AddOns button on the character screen.</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  // name, version, author, interface, enabledFor (paladin, druid, hunter, mage, priest)
+  const A = [
+    ['Details! Damage Meter', 'v16001.27', 'Tercio', 16001, [1,1,1,1,1]],
+    ['Questie', '10.3.0', 'Aero, Logon', 16001, [0,0,1,1,1]],
+    ['Auctionator', '11.1.4', 'plusmouse', 16001, [1,0,0,0,0]],
+    ['Bagnon', '10.2.5', 'Jaliborc', 16001, [1,1,1,1,1]],
+    ['ForeverBuddy', '0.2.0', 'Forever Buddy', 16001, [1,1,1,1,1]],
+    ['HealBot Continued', '10.2.0', 'Strife', 16001, [0,1,0,0,1]],
+    ['ClassicCastbars', '1.7.9', 'wardz', 11504, [1,1,1,1,1]],
+    ['AtlasLoot Classic', 'v2.4.6', 'Hoizame', 11502, [1,0,1,0,0]],
+    ['OmniCC', '10.2.3', 'Tuller', 16001, [1,1,1,1,1]],
+    ['MoveAnything', '2.1.0', 'Vika', 16001, [0,0,0,0,0]],
+  ];
+  const CLS = ['paladin', 'druid', 'hunter', 'mage', 'priest'];
+  const NAMES = ['Thrandor', 'Velyra', 'Brannic', 'Fizzwick', 'Sela'];
+  document.getElementById('rows').innerHTML = A.map((a, i) => {
+    const on = a[4].reduce((n, x) => n + x, 0);
+    const label = on === a[4].length ? 'all' : on === 0 ? 'none' : `${on} of ${a[4].length}`;
+    const tip = a[4].map((x, k) => `${NAMES[k]}: ${x ? 'on' : 'off'}`).join('\n');
+    return `<tr${i === 1 ? ' class="sel"' : ''}>
+    <td><div class="an"><span class="ico q-common"><b>${a[0][0]}</b></span><div><b>${a[0]}</b><small>${a[1]}</small></div></div></td>
+    <td class="auth muted">${a[2]}</td>
+    <td><span class="toc ${a[3] !== 16001 ? 'old' : 'muted'}">${a[3]}${a[3] !== 16001 ? ' · out of date' : ''}</span></td>
+    <td><span class="chars" title="${tip}">${a[4].map((x, k) => `<span class="cdot c-${CLS[k]} ${x ? '' : 'off'}"></span>`).join('')}<small>${label}</small></span></td></tr>`;
+  }).join('');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>
