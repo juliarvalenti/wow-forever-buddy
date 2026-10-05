@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::backup::relocate::{self, MoveReport};
 use crate::backup::BackupService;
 use crate::config::paths::AppPaths;
-use crate::config::settings::SettingsStore;
+use crate::config::settings::{Settings, SettingsPatch, SettingsStore};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
@@ -97,6 +97,19 @@ impl AppCore {
             Some(picked) => picked.join(STORE_FOLDER),
             None => self.paths.local_data_dir.join("backups"),
         }
+    }
+
+    /// The UI's settings patch. The backup location isn't part of it: that
+    /// moves the backups, so it goes through `move_backups`, which runs as a
+    /// job and waits out an interrupted restore. Re-pointing the setting
+    /// alone would strand the existing backups and a restore's snapshots.
+    pub fn update_settings(&self, patch: SettingsPatch) -> AppResult<Settings> {
+        if patch.backup.as_ref().is_some_and(|b| b.location.is_some()) {
+            return Err(AppError::InvalidSettings(
+                "the backup location changes by moving the backups (backup_move_location)".into(),
+            ));
+        }
+        self.settings.apply_patch(patch)
     }
 
     /// Moves the backup store to `location` (None = the default) and points
@@ -413,6 +426,32 @@ mod tests {
         assert!(!elsewhere.join(STORE_FOLDER).exists());
         assert!(elsewhere.is_dir(), "the picked folder itself stays");
         assert_whole(&core, &id);
+    }
+
+    /// The UI's patch can't re-point the backups without moving them.
+    #[test]
+    fn a_settings_patch_cannot_change_the_backup_location() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = AppCore::new(AppPaths::under(&tmp.path().join("app"))).unwrap();
+        let patch = |v: serde_json::Value| serde_json::from_value::<SettingsPatch>(v).unwrap();
+
+        let elsewhere = tmp.path().join("Elsewhere");
+        for location in [serde_json::json!(elsewhere), serde_json::Value::Null] {
+            let err = core
+                .update_settings(patch(
+                    serde_json::json!({ "backup": { "location": location } }),
+                ))
+                .unwrap_err();
+            assert!(matches!(err, AppError::InvalidSettings(_)), "{err:?}");
+        }
+        assert_eq!(core.settings.get().backup.location, None);
+
+        let s = core
+            .update_settings(patch(
+                serde_json::json!({ "backup": { "on_app_start": false } }),
+            ))
+            .unwrap();
+        assert!(!s.backup.on_app_start, "everything else still goes through");
     }
 
     /// Refusals change nothing: a folder with someone's files in it, one

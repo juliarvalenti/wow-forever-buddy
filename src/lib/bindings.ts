@@ -209,7 +209,8 @@ export const commands = {
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
 	 *  The game folder isn't part of it: that goes through the install
-	 *  commands, which validate it.
+	 *  commands, which validate it. Nor is the backup location, which moves the
+	 *  backups (`backup_move_location`).
 	 *  Runs off the main thread: validation resolves the backup location, which
 	 *  can stall on an offline network share.
 	 */
