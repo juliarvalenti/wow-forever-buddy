@@ -84,3 +84,14 @@ When `AppCore::new` fails, open the window anyway and show `startup-error.html`:
 - **Error details:** collapsed under "Error details".
 
 Cases: `?case=newer` (default: the database is from a newer version) and `?case=settings` (unreadable settings).
+
+## 7. v0.2 (companion addon) notes
+These follow `specs/v0.2-addon` §8.
+- **Item tooltips** cite date and zone, never a source: "Looted 12 Sep · Molten Core". Boss *encounters* are shared in full, so a timeline line like "Defeated Baron Rivendare" is fine, but a tooltip never says "Looted from <boss>".
+- **Bank and mail freshness:** the addon only sees the bank or mailbox when you open it. On those tabs, put a muted line under the tab header: "As of your last bank visit, 2 Oct" or "As of your last mailbox visit, 2 Oct". Older than 7 days, use the ember colour with "Visit the bank in-game to refresh". If it has never been seen: "Not seen yet. Open your bank once in-game and it appears here."
+- **AH-derived numbers stay hidden until v0.4.** Remove them and let the layout close up; never show zeros or dashes. That means:
+  - **Characters header:** drop "Net worth", leaving "Gold" and "Items".
+  - **Character sheet:** drop the "Worth carried" stat, leaving four stats.
+  - **Ledger:** use three tiles (Account gold, Last 30 days, Best earner). Drop the Net worth panel, and let the gold chart take the full width with the Journal below.
+  - **Session recap:** drop "≈ 45g" worth cells, keeping quantities only.
+  - **Search:** hidden until satchels are indexed.
