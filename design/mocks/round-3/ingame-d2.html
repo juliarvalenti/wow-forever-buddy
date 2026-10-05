@@ -89,19 +89,19 @@
   const TIPS = [
     ['Compact (default)', 'Two lines after a gap: who has it, then the price and any plan. Names come from the game\'s cache; the slot only carries ids and counts.',
       `${RUNE}<div class="gap"></div><div class="fb">Your alts: <span class="war">Coinpurse</span> 340 bank · <span class="dru">Velyra</span> 60 bank</div>
-       <div>≈ ${C(1, 12)} each at your last scan · <span class="y">plan needs 20</span></div><div class="shift">Shift for details</div>`],
+       <div>~${C(1, 12)} each at your last scan · <span class="y">plan needs 20</span></div><div class="shift">Shift for details</div>`],
     ['Holding Shift', 'One row per alt with where and as of when, then the totals. Still the game\'s own tooltip, only longer.',
       `${RUNE}<div class="gap"></div><div class="fb">Forever Buddy</div>
+       <div class="kv"><span class="pal">Thrandor</span><span>40 · on you</span></div>
        <div class="kv"><span class="war">Coinpurse</span><span>340 · bank, 2 Oct</span></div>
        <div class="kv"><span class="dru">Velyra</span><span>60 · bank, 3 Oct</span></div>
-       <div class="kv"><span class="pal">Thrandor</span><span>40 · bags, now</span></div>
        <div class="kv"><span style="color:var(--dim)">All characters</span><span>440</span></div>
-       <div class="kv"><span>Last scan</span><span>≈ ${C(1, 12)} each · 3 days ago</span></div>
+       <div class="kv"><span>Last scan</span><span>~${C(1, 12)} each · 3 days ago</span></div>
        <div class="kv"><span>Blacksmithing plan</span><span class="y">needs 20 more</span></div>`],
     ['Many alts', 'At most three names in the compact line, then a count; Shift shows up to eight rows and "+2 more".',
       `${base('Thorium Bar', 1, ['Max Stack: 20'], C(0, 6))}<div class="gap"></div>
-       <div class="fb">Your alts: <span class="pal">Thrandor</span> 64 · <span class="war">Coinpurse</span> 40 bank · <span class="hun">Brannic</span> 12 <span style="color:var(--dim)">+3 more</span></div>
-       <div>≈ ${C(2, 15)} each at your last scan</div><div class="shift">Shift for details</div>`],
+       <div class="fb">Your alts: <span class="war">Coinpurse</span> 40 bank · <span class="hun">Brannic</span> 12 bags · <span class="mag">Fizzwick</span> 8 mail <span style="color:var(--dim)">+3 more</span></div>
+       <div>~${C(2, 15)} each at your last scan</div><div class="shift">Shift for details</div>`],
     ['Gear: who could use it', 'For an equippable item, the compact line can say which of your characters it\'s an upgrade for (by item level only; never stats we can\'t read).',
       `${base('Truestrike Shoulders', 3, ['Binds when picked up', '<span style="display:flex;justify-content:space-between"><span>Shoulder</span><span>Leather</span></span>', '129 Armor', '+24 Agility', '+11 Stamina', '<span class="g">Equip: Improves your chance to hit by 2%.</span>', 'Requires Level 58'], C(2, 31, 40))}
        <div class="gap"></div><div class="fb">Upgrade for <span class="rog">Kaelor</span> <span style="color:var(--dim)">(+9 item level, once level 58)</span></div>`],
@@ -109,7 +109,7 @@
       `${base('Major Healing Potion', 1, ['Max Stack: 5', '<span class="g">Use: Restores 1050 to 1750 health.</span>'], C(0, 10))}`],
     ['Out of date', 'Past 7 days since an alt\'s data, its count turns grey with the date; the price line says how old the scan is.',
       `${RUNE}<div class="gap"></div><div class="fb">Your alts: <span class="war">Coinpurse</span> 340 bank · <span style="color:var(--dim)">Velyra 60 (as of 21 Sep)</span></div>
-       <div>≈ ${C(1, 12)} each <span style="color:var(--dim)">· scan 12 days ago</span></div><div class="shift">Shift for details</div>`],
+       <div>~${C(1, 12)} each <span style="color:var(--dim)">· scan 12 days ago</span></div><div class="shift">Shift for details</div>`],
   ];
   document.getElementById('tips').innerHTML = TIPS.map(([t, d, html]) =>
     `<div class="tile"><p><b>${t}.</b> ${d}</p><div class="world"><div class="tt">${html}</div></div></div>`).join('');
