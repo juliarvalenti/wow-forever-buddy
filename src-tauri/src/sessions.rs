@@ -57,10 +57,15 @@ pub struct PlaySession {
     pub started_at: String,
     /// `None` while WoW is still running.
     pub ended_at: Option<String>,
-    /// Characters whose settings changed during the session, in WTF folder
-    /// order. Empty while running, or if nothing changed (e.g. WoW was
-    /// closed at character select).
+    /// Who played. With the addon (V9): the characters whose adventures
+    /// started during the session, in login order, for certain. Without it:
+    /// the characters whose settings changed, in WTF folder order. Empty
+    /// while running, or if nothing changed (e.g. WoW was closed at
+    /// character select).
     pub characters: Vec<CharacterRef>,
+    /// The addon's adventures in this session, in login order, so the
+    /// Recent sessions row can open their recaps. Empty without the addon.
+    pub adventures: Vec<u32>,
     /// WoW wrote a crash report (`<flavor>/Errors`) during the run. A process
     /// killed without one can't be told apart from a clean exit.
     pub crashed: bool,
@@ -301,11 +306,57 @@ pub fn list(db: &Db, flavor: &str, since: &str) -> AppResult<Vec<PlaySession>> {
                 ended_at: r.get(3)?,
                 // A row we can't read just shows no character.
                 characters: serde_json::from_str(&characters).unwrap_or_default(),
+                adventures: Vec::new(),
                 crashed: r.get(5)?,
             })
         })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        let mut sessions = rows.collect::<Result<Vec<_>, _>>()?;
+
+        // With the addon, the characters are known, not guessed: whoever
+        // logged in while WoW was running.
+        let mut adventures = c.prepare(
+            "SELECT a.id, c.account, c.group_dir, c.char_dir FROM adventures a
+             JOIN characters c ON c.id = a.character_id
+             WHERE c.flavor = ?1 COLLATE NOCASE AND a.login >= ?2 AND a.login <= ?3
+             ORDER BY a.login, a.id",
+        )?;
+        for s in &mut sessions {
+            let (Some(start), Some(end)) =
+                (unix(&s.started_at), s.ended_at.as_deref().and_then(unix))
+            else {
+                continue;
+            };
+            let found: Vec<(i64, CharacterRef)> = adventures
+                .query_map(params![flavor, start, end], |r| {
+                    Ok((
+                        r.get(0)?,
+                        CharacterRef {
+                            account: r.get(1)?,
+                            realm: r.get(2)?,
+                            name: r.get(3)?,
+                        },
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            if found.is_empty() {
+                continue;
+            }
+            s.adventures = found.iter().map(|(id, _)| *id as u32).collect();
+            s.characters = Vec::new();
+            for (_, ch) in found {
+                if !s.characters.contains(&ch) {
+                    s.characters.push(ch);
+                }
+            }
+        }
+        Ok(sessions)
     })
+}
+
+fn unix(rfc3339: &str) -> Option<i64> {
+    DateTime::parse_from_rfc3339(rfc3339)
+        .ok()
+        .map(|d| d.timestamp())
 }
 
 #[cfg(test)]
@@ -490,6 +541,73 @@ mod tests {
             ]
         );
         assert!(!done[0].crashed);
+    }
+
+    /// V9: with the addon, the characters are the ones that logged in
+    /// during the session (in login order), and their adventures are linked.
+    #[test]
+    fn addon_adventures_name_the_characters_for_certain() {
+        use crate::adventures::tests::{adventure_row, character as addon_character, Adv, FLAVOR};
+        let db = Db::open_in_memory().unwrap();
+        let guessed = serde_json::to_string(&[character("ACCOUNT1", "70", "Brannic")]).unwrap();
+        db.with_conn(|c| {
+            for (start, end) in [
+                ("2026-10-03T19:00:00+00:00", "2026-10-03T23:00:00+00:00"),
+                ("2026-10-04T19:00:00+00:00", "2026-10-04T20:00:00+00:00"),
+            ] {
+                c.execute(
+                    "INSERT INTO play_sessions (flavor, started_at, ended_at, characters) VALUES (?1, ?2, ?3, ?4)",
+                    params![FLAVOR, start, end, guessed],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        // 3 Oct 19:40 and 21:10 UTC, inside the first session only.
+        let velyra = addon_character(&db, FLAVOR, "Velyra-Duskmane", "Velyra");
+        let thrandor = addon_character(&db, FLAVOR, "Thrandor", "Thrandor");
+        let adv = |c, login| {
+            adventure_row(
+                &db,
+                c,
+                &Adv {
+                    login,
+                    logout: login + 600,
+                    money: (1, 1),
+                    level: (1, 1),
+                    xp: 0,
+                    events: &[],
+                },
+            )
+        };
+        let first = adv(thrandor, 1_791_056_400); // 19:40
+        let second = adv(velyra, 1_791_061_800); // 21:10
+        let third = adv(thrandor, 1_791_062_600); // 21:23
+
+        let sessions = list(&db, FLAVOR, SINCE).unwrap();
+        let evening = sessions
+            .iter()
+            .find(|s| s.started_at.starts_with("2026-10-03"))
+            .unwrap();
+        assert_eq!(
+            evening.characters,
+            [
+                character("ACCOUNT1", "70", "Thrandor"),
+                character("ACCOUNT1", "70", "Velyra-Duskmane")
+            ],
+            "login order, each once"
+        );
+        assert_eq!(evening.adventures, [first, second, third].map(|i| i as u32));
+        let other = sessions
+            .iter()
+            .find(|s| s.started_at.starts_with("2026-10-04"))
+            .unwrap();
+        assert_eq!(
+            other.characters,
+            [character("ACCOUNT1", "70", "Brannic")],
+            "no adventures: the guess stays"
+        );
+        assert!(other.adventures.is_empty());
     }
 
     #[test]

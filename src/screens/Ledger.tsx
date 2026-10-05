@@ -240,12 +240,12 @@ function GoldTable({ chart }: { chart: Chart }) {
   );
 }
 
-function JournalRow({ e }: { e: JournalEntry }) {
+function JournalRow({ e, onOpen }: { e: JournalEntry; onOpen: (id: number) => void }) {
   const when = sessionWhen(e.login, e.logout);
   const cut = when.indexOf(", ");
   const note = e.of_note;
   return (
-    <tr>
+    <tr className="d-open" title="Open this adventure" onClick={() => onOpen(e.adventure_id)}>
       <td className="when">
         <b>{cut > 0 ? when.slice(0, cut) : when}</b>
         <small>{cut > 0 ? when.slice(cut + 2) : ""}</small>
@@ -280,7 +280,13 @@ function JournalRow({ e }: { e: JournalEntry }) {
 }
 
 /** Gold and history across characters (V8). */
-export function Ledger({ onOpenDashboard }: { onOpenDashboard: () => void }) {
+export function Ledger({
+  onOpenDashboard,
+  onOpenAdventure,
+}: {
+  onOpenDashboard: () => void;
+  onOpenAdventure: (id: number) => void;
+}) {
   const [range, setRange] = useState<LedgerRange>("month");
   const [view, setView] = useState<"chart" | "table">("chart");
   const { ledger, error } = useLedger(range);
@@ -418,7 +424,7 @@ export function Ledger({ onOpenDashboard }: { onOpenDashboard: () => void }) {
                 }
               >
                 {ledger.journal.map((e) => (
-                  <JournalRow key={e.adventure_id} e={e} />
+                  <JournalRow key={e.adventure_id} e={e} onOpen={onOpenAdventure} />
                 ))}
               </DataTable>
             ) : (

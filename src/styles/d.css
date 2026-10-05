@@ -438,8 +438,62 @@
 .d-ico { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 9.5px "Marcellus", Georgia, serif;
   background: rgba(255,255,255,.25); border: 1.5px solid currentColor; box-shadow: inset 0 0 6px rgba(90,55,20,.25); }
 .d-ico b { color: var(--ink); }
+/* a row that opens something (a journal entry, a session's adventure) */
+.d-open { cursor: pointer; }
+.d-record .d-table tbody tr.d-open { cursor: pointer; }
+.d-rows li.d-open:hover { background: rgba(255,255,255,.03); }
 /* item quality, re-inked for paper */
 .d-q0 { color: #6f6a62; } .d-q1 { color: var(--ink); } .d-q2 { color: #23710f; } .d-q3 { color: #1a4f9c; } .d-q4 { color: #6b2a9a; } .d-q5 { color: #a85400; }
+
+/* ---------- Adventure recap (session.html, V9) ---------- */
+.d-adv { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); color: var(--ink); }
+.d-adv > .col { padding: 14px 18px 18px; min-width: 0; }
+.d-adv > .col + .col { border-left: 1.5px solid var(--ink-rule); box-shadow: inset 3px 0 0 -1.5px rgba(58,38,22,.18); }
+.d-adv-head { display: flex; gap: 14px; align-items: center; }
+.d-adv-head .nm { font: 700 21px/1.15 Georgia, serif; }
+.d-adv-head .sub { font-size: 12.5px; color: var(--ink-2); }
+.d-adv-head .when { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.d-adv-head .seal { margin-left: auto; display: grid; place-items: center; width: 58px; height: 58px; transform: rotate(-8deg); text-align: center;
+  border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; font: 400 11px/1.1 "Marcellus", Georgia, serif; color: #f3b8a6;
+  background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 45%, #5a0c09 80%); box-shadow: 0 2px 0 #3a0705, 0 4px 8px rgba(60,10,5,.5), inset 0 2px 3px rgba(255,160,140,.35); }
+.d-adv-head .seal b { display: block; font-size: 19px; }
+.d-zones { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.d-tally { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; border-top: 1.5px solid var(--ink-rule); border-bottom: 1.5px solid var(--ink-rule); }
+.d-tally > div { padding: 8px 12px; min-width: 0; }
+.d-tally > div + div { border-left: 1px solid rgba(58,38,22,.22); }
+.d-tally .k { font-size: 12px; font-weight: 500; color: var(--ink-3); white-space: nowrap; }
+.d-tally .v { font-size: 16px; font-weight: 600; white-space: nowrap; }
+.d-tally .v small { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.d-sechead { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 6px; font: 700 14px Georgia, serif; }
+.d-sechead span { margin-left: auto; font: italic 11.5px Georgia, serif; color: var(--ink-3); }
+.d-sg { display: block; width: 100%; height: 104px; overflow: visible; }
+.d-sg .ev text { font: italic 10px Georgia, serif; fill: var(--ink-2); }
+.d-crumb { margin: 0 0 -6px; font-size: 12px; color: var(--soot); }
+.d-crumb button { padding: 0; border: 0; background: none; color: var(--ash); cursor: pointer; }
+.d-crumb button:hover { text-decoration: underline; }
+.d-sg .axis text { font: 10px "Geist", sans-serif; fill: var(--ink-3); }
+.d-sg .grid line { stroke: rgba(58,38,22,.13); }
+.d-tl { position: relative; margin: 0 0 0 4px; padding: 0; list-style: none; }
+/* the time column fits "11:09 PM" as well as "23:09" */
+.d-tl::before { content: ""; position: absolute; left: 70px; top: 6px; bottom: 6px; width: 0; border-left: 1.5px solid var(--ink-rule); }
+.d-tl li { position: relative; display: grid; grid-template-columns: 60px 1fr; gap: 22px; align-items: baseline; padding: 4px 0; font-size: 12.5px; }
+.d-tl li .t { font-size: 11.5px; color: var(--ink-3); text-align: right; white-space: nowrap; }
+.d-tl li::after { content: ""; position: absolute; left: 66.5px; top: 10px; width: 9px; height: 9px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--ink-2); }
+.d-tl li.bad::after { background: #b5412e; border-color: #6e1c10; }
+.d-tl li.loot::after { background: #1a4f9c; border-color: #0f2f5e; }
+.d-tl li.ding::after { width: 13px; height: 13px; left: 64.5px; top: 8px; border: 0; border-radius: 47% 53% 50% 46% / 52% 45% 55% 48%; background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 50%, #5a0c09 85%); }
+.d-tl li .d small { display: block; font-size: 11px; color: var(--ink-3); }
+.d-veil { font-style: normal; font-size: 12px; color: var(--ink-2); margin-left: 6px; cursor: help; }
+.d-veil-foot { display: flex; gap: 2px; align-items: baseline; margin: 8px 0 0 78px; font: italic 11.5px/1.45 Georgia, serif; color: var(--ink-3); }
+.d-note { margin-top: 14px; padding: 10px 12px; border: 1px dashed rgba(58,38,22,.4); border-radius: 3px; background: rgba(255,255,255,.14); font: italic 13px/1.5 Georgia, serif; color: #4a3220; }
+.d-note .who { display: flex; align-items: center; gap: 6px; font: 500 12px "Geist", sans-serif; color: var(--ink-3); margin-bottom: 3px; font-style: normal; }
+.d-note .who button { margin-left: auto; font-size: 11.5px; color: #7a1a12; }
+.d-note textarea { width: 100%; min-height: 70px; resize: vertical; font: italic 13px/1.5 Georgia, serif; color: var(--ink); background: rgba(255,255,255,.3); border: 1px solid var(--ink-hair); border-radius: 3px; padding: 6px 8px; }
+.d-loot-t td { height: 32px; }
+.d-loot-t td.x { color: var(--ink-2); }
+.d-quests { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.d-quests li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--ink-hair); }
+.d-quests li .r { margin-left: auto; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
 
 /* ---------- icon rail below 1100px; strip stays one row of four ---------- */
 @media (max-width: 1100px) {
