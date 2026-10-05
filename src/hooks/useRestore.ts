@@ -94,7 +94,17 @@ export function useRestore() {
     [],
   );
 
-  return { plan, planError, loading, changed, run, preview, start };
+  /** Back to a fresh preview, e.g. to restore from another snapshot after
+   *  this one turned out damaged. Nothing the user saw carries over. */
+  const reset = useCallback(() => {
+    shown.current = null;
+    setPlan(null);
+    setPlanError(null);
+    setChanged(false);
+    setRun({ kind: "idle" });
+  }, []);
+
+  return { plan, planError, loading, changed, run, preview, start, reset };
 }
 
 /** Roll back or finish: the recovery actions that change files. */

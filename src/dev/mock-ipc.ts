@@ -234,6 +234,15 @@ export function installMockIpc(): void {
           }
         : null,
     backup_create: () => sum("S0", "manual", "Manual", 0),
+    // In backups-corrupt only the newest snapshot (S1) is damaged.
+    backup_verify: ({ id }) => ({
+      snapshot_id: id,
+      files: 1912,
+      corrupt:
+        s === "backups-corrupt" && id === "S1"
+          ? ["WTF/Account/ACCOUNT1/Ashenvale/Thrandor/SavedVariables/Details.lua"]
+          : [],
+    }),
     backup_get: () => {
       if (s === "snapshot-unreadable") throw { kind: "Io", detail: "manifest for S1 is unreadable" };
       return detail;
