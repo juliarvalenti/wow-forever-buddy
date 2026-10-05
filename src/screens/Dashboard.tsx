@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type AddonStatus,
+  type AltLockout,
   type CharacterCard,
   commands,
   type GameStatus,
@@ -36,7 +37,7 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
-import { useCharacters } from "@/hooks/useCharacters";
+import { useCharacters, useLockouts } from "@/hooks/useCharacters";
 import { useLedger } from "@/hooks/useLedger";
 import { Coins } from "@/screens/Characters";
 import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
@@ -54,6 +55,8 @@ import {
   gold,
   longDate,
   plural,
+  resetDay,
+  resetsIn,
   sessionWhen,
   span,
 } from "@/lib/format";
@@ -156,6 +159,49 @@ function SessionWho({ s }: { s: PlaySession }) {
   );
 }
 
+/** F3 (IMPLEMENTING.md §8): this week's saves across alts, one row per
+ *  instance, soonest reset first, with who is saved in class colour. At
+ *  most five rows. The caller leaves it out when nobody is saved. */
+function LockoutsThisWeek({ lockouts, onOpen }: { lockouts: AltLockout[]; onOpen: () => void }) {
+  const rows: { key: string; l: AltLockout["lockout"]; who: AltLockout[] }[] = [];
+  for (const a of lockouts) {
+    const key = `${a.lockout.name}|${a.lockout.difficulty}`;
+    const row = rows.find((r) => r.key === key);
+    if (row) row.who.push(a);
+    else rows.push({ key, l: a.lockout, who: [a] });
+  }
+  const saved = new Set(lockouts.map((a) => a.character_id)).size;
+  return (
+    <Panel>
+      <PanelHeader title="Lockouts this week">
+        <span className="d-grow" />
+        <span className="d-dim">{plural(saved, "character saved", "characters saved")}</span>
+      </PanelHeader>
+      <ul className="d-rows">
+        {rows.slice(0, 5).map(({ key, l, who }) => (
+          <li key={key} className="d-open" onClick={onOpen} title={l.reset_at ? resetDay(l.reset_at) : undefined}>
+            <span className="main">
+              {l.name}
+              {l.difficulty && l.difficulty !== "Normal" && <small className="d-dim"> {l.difficulty}</small>}
+            </span>
+            <span className="side d-dim" style={{ fontWeight: 400 }}>
+              {l.reset_at ? resetsIn(l.reset_at) : ""}
+            </span>
+            <span className="sub">
+              {who.map((a, i) => (
+                <span key={a.character_id}>
+                  {i > 0 && ", "}
+                  <span style={{ color: a.class ? `var(--c-${a.class})` : undefined }}>{a.character}</span>
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
 const UNLOCKS = [
   { icon: TrendingUp, title: "Gold over time", text: "Per character and account-wide." },
   { icon: ShoppingBag, title: "Satchels & gear", text: "Search every alt's bags and bank." },
@@ -208,6 +254,7 @@ export function Dashboard({
   // With the addon's data (V9, dashboard.html): account gold, the last
   // adventure and the roster with gold. Without it, the v0.1 state stays.
   const { overview } = useCharacters();
+  const lockouts = useLockouts();
   const withAddon = (overview?.characters.length ?? 0) > 0;
   const { ledger } = useLedger("week");
   const lastAdventure = useLastAdventure();
@@ -659,7 +706,7 @@ export function Dashboard({
                   >
                     <span className="d-cdot" aria-hidden />
                     <span className="cc">{c.surname ? `${c.name} ${c.surname}` : c.name}</span>
-                    <span />
+                    <span className="note">{c.bank_alt ? "bank" : ""}</span>
                     <span className="side">
                       <Coins copper={c.money} silver={false} />
                     </span>
@@ -708,6 +755,9 @@ export function Dashboard({
             )}
           </Panel>
 
+          {withAddon && lockouts && lockouts.length > 0 && (
+            <LockoutsThisWeek lockouts={lockouts} onOpen={onOpenCharacters} />
+          )}
           {withAddon && recentSessions}
         </div>
       </section>

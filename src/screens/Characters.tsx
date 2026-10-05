@@ -10,13 +10,15 @@ import {
   Puzzle,
   Search,
 } from "lucide-react";
-import type {
-  BagView,
-  CharacterCard,
-  CharacterSheet,
-  ItemRow,
-  SearchResults,
-  WtfCharacter,
+import {
+  type BagView,
+  type CharacterCard,
+  type CharacterSheet,
+  commands,
+  type ItemRow,
+  type Lockout,
+  type SearchResults,
+  type WtfCharacter,
 } from "@/lib/bindings";
 import {
   Button,
@@ -28,10 +30,21 @@ import {
   PanelHeader,
   Record as Parchment,
   Segmented,
+  Switch,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
-import { ago, characterName, coins, plural, played, when } from "@/lib/format";
+import {
+  ago,
+  characterName,
+  coins,
+  errorText,
+  plural,
+  played,
+  resetDay,
+  resetsIn,
+  when,
+} from "@/lib/format";
 
 // design/mocks/round-3/characters.html and character.html, with
 // IMPLEMENTING.md §7: no net worth, "worth carried" or search values (AH
@@ -163,7 +176,7 @@ const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivi
  *  the WTF folder the addon hasn't seen yet get a neutral card
  *  (characters-noaddon.html) and fill in as each one is seen. */
 export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void }) {
-  const { overview, error } = useCharacters();
+  const { overview, error, refresh } = useCharacters();
   const roster = useRoster();
   const addon = useAddon();
   const [sort, setSort] = useState<Sort>("gold");
@@ -209,7 +222,9 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   }, [overview, sort]);
 
   if (open != null) {
-    return <Sheet id={open} cards={cards} onOpen={setOpen} onBack={() => setOpen(null)} />;
+    return (
+      <Sheet id={open} cards={cards} onOpen={setOpen} onBack={() => setOpen(null)} onTagged={refresh} />
+    );
   }
 
   const anySeen = cards.length > 0;
@@ -504,7 +519,10 @@ function Card({
       <div className="ch-id">
         <Crest c={c} />
         <div>
-          <div className="ch-nm ch-cc">{fullName(c)}</div>
+          <div className="ch-nm ch-cc">
+            {fullName(c)}
+            {c.bank_alt && <span className="ch-tag">Bank</span>}
+          </div>
           <div className="ch-cl">{classLine(c)}</div>
           <div className="ch-loc">
             {where ? `${where} · ` : ""}
@@ -676,18 +694,54 @@ function GoldSpark({ sheet }: { sheet: CharacterSheet }) {
   );
 }
 
+/** Raid and dungeon saves that haven't reset, with the countdown (F3). */
+/** IMPLEMENTING.md §8: one row per save, soonest reset first; the full
+ *  reset date in the row's tooltip. `asOf` null: never read yet. */
+function LockoutList({ lockouts, asOf }: { lockouts: Lockout[]; asOf: string | null }) {
+  if (asOf == null) return <p className="d-dim">Lockouts appear after your next login.</p>;
+  if (lockouts.length === 0) return <p className="d-dim">Not saved anywhere this week.</p>;
+  return (
+    <ul className="ch-locks">
+      {lockouts.map((l) => (
+        <li key={`${l.name}|${l.difficulty}`} title={l.reset_at ? resetDay(l.reset_at) : undefined}>
+          <span>
+            {l.name}
+            {/* Only when it tells something: the game's default reads "Normal". */}
+            {l.difficulty && l.difficulty !== "Normal" && <span className="dif"> {l.difficulty}</span>}
+          </span>
+          <span className="in">{l.reset_at ? resetsIn(l.reset_at) : ""}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Sheet({
   id,
   cards,
   onOpen,
   onBack,
+  onTagged,
 }: {
   id: number;
   cards: CharacterCard[];
   onOpen: (id: number) => void;
   onBack: () => void;
+  /** The bank-alt tag changed: the cards reload. */
+  onTagged: () => void;
 }) {
-  const { sheet, error } = useCharacterSheet(id);
+  const { sheet, error, reload } = useCharacterSheet(id);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const setBankAlt = (on: boolean) => {
+    setTagError(null);
+    commands.characterSetBankAlt(id, on).then(
+      () => {
+        reload();
+        onTagged();
+      },
+      (e) => setTagError(errorText(e)),
+    );
+  };
   const [tab, setTab] = useState<Tab>("gear");
   const at = cards.findIndex((c) => c.id === id);
   const prev = at > 0 ? cards[at - 1] : null;
@@ -711,6 +765,12 @@ function Sheet({
           <span>{c ? fullName(c) : "…"}</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
+          {c && (
+            <label className="ch-bankalt" title="Shows a Bank tag on this character's card">
+              Bank alt
+              <Switch checked={c.bank_alt} onChange={setBankAlt} label="Bank alt" />
+            </label>
+          )}
           <Button variant="icon" title="Previous alt" disabled={!prev} onClick={() => prev && onOpen(prev.id)}>
             <ChevronLeft size={14} />
           </Button>
@@ -720,6 +780,7 @@ function Sheet({
         </div>
       </div>
       {error && <Callout tone="bad">{error}</Callout>}
+      {tagError && <Callout tone="bad">{tagError}</Callout>}
       {!sheet && !error && <p className="d-muted">Loading…</p>}
       {sheet && c && (
         <div className="ch-body">
@@ -728,7 +789,10 @@ function Sheet({
             <div className="ch-ident" style={classStyle(c)}>
               <Crest c={c} size={92} />
               <div>
-                <h1 className="ch-cc">{fullName(c)}</h1>
+                <h1 className="ch-cc">
+                  {fullName(c)}
+                  {c.bank_alt && <span className="ch-tag">Bank</span>}
+                </h1>
                 <div className="ch-sub">
                   <span>
                     {classLine(c)}
@@ -884,6 +948,19 @@ function Sheet({
                     ))}
                   </ul>
                 )}
+              </PanelBody>
+            </Panel>
+            <Panel>
+              <PanelHeader title="Lockouts">
+                {sheet.lockouts_as_of && (
+                  <span className="d-dim">
+                    as of login,{" "}
+                    {new Date(sheet.lockouts_as_of).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                  </span>
+                )}
+              </PanelHeader>
+              <PanelBody>
+                <LockoutList lockouts={sheet.lockouts} asOf={sheet.lockouts_as_of} />
               </PanelBody>
             </Panel>
           </div>
