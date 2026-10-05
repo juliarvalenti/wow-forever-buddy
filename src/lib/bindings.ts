@@ -369,6 +369,11 @@ export type CharacterNode = {
 	realm: string,
 	/**  The character folder as written (`Ellygie-Vargur`), never split. */
 	name: string,
+	/**
+	 *  An older pre-surname folder of a character that now has a surname
+	 *  (`install::wtf::older_folders`): shown muted, still restorable.
+	 */
+	older: boolean,
 	totals: Totals,
 	categories: CategoryNode[],
 };
@@ -435,8 +440,9 @@ export type Flavor = {
 	 *  Character folders under `WTF/Account/<account>/<group>/`. Forever
 	 *  writes `<group>` as an opaque id (`70`) and the character folder as
 	 *  the full name, `Ellygie-Vargur` with a surname; older folders are
-	 *  `<Realm>/<Name>`. Both are counted, and neither folder is a realm or
-	 *  ruleset to show (probe run 1, feature-matrix fact 5).
+	 *  `<Realm>/<Name>`. Both are counted, except an older folder of a
+	 *  character that now has a surname (`wtf::older_folders`). Neither
+	 *  folder is a realm or ruleset to show (probe run 1, matrix fact 5).
 	 */
 	characters: number,
 	/**
@@ -898,6 +904,11 @@ export type WtfCharacter = {
 	 *  when it was last logged out.
 	 */
 	last_played: string | null,
+	/**
+	 *  An older pre-surname folder of a character that now has a surname
+	 *  (`install::wtf::older_folders`): listed muted, not counted.
+	 */
+	older: boolean,
 } & CharacterRef;
 
 /* Tauri Specta runtime */

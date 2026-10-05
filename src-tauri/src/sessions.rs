@@ -4,7 +4,7 @@
 //! character folder's newest mtime is noted at start and compared once WoW's
 //! exit writes have settled.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::thread::JoinHandle;
@@ -17,6 +17,7 @@ use tauri_specta::Event;
 
 use crate::db::Db;
 use crate::error::AppResult;
+use crate::install::wtf::older_folders;
 
 /// One character folder: `WTF/Account/<account>/<realm>/<name>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
@@ -40,6 +41,9 @@ pub struct WtfCharacter {
     /// When any file in its folder last changed (RFC 3339, UTC): close to
     /// when it was last logged out.
     pub last_played: Option<String>,
+    /// An older pre-surname folder of a character that now has a surname
+    /// (`install::wtf::older_folders`): listed muted, not counted.
+    pub older: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -119,8 +123,20 @@ fn rfc3339(t: SystemTime) -> String {
 pub fn wtf_characters(wtf: &Path) -> Vec<WtfCharacter> {
     let mut list: Vec<(CharacterRef, Option<SystemTime>)> = character_mtimes(wtf);
     list.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.name.cmp(&b.0.name)));
+    let mut older: HashSet<(String, String)> = HashSet::new();
+    let accounts: HashSet<&str> = list.iter().map(|(c, _)| c.account.as_str()).collect();
+    for account in accounts {
+        let names = list
+            .iter()
+            .filter(|(c, _)| c.account == account)
+            .map(|(c, _)| c.name.as_str());
+        for name in older_folders(names) {
+            older.insert((account.to_string(), name.to_string()));
+        }
+    }
     list.into_iter()
         .map(|(character, mtime)| WtfCharacter {
+            older: older.contains(&(character.account.clone(), character.name.clone())),
             character,
             last_played: mtime.map(rfc3339),
         })
@@ -345,31 +361,39 @@ mod tests {
 
     /// Probe run 1: Forever's `<group id>/<First>-<Surname>` and the older
     /// `<Realm>/<Name>` side by side. Folder names are kept whole, never split
-    /// on '-', and the same first name under both stays two characters.
+    /// on '-', and the same first name under both stays two folders. The
+    /// older one is marked (W1b), only on the account that has both.
     #[test]
     fn lists_characters_in_both_wtf_layouts() {
         let tmp = tempfile::tempdir().unwrap();
         let wtf = tmp.path().join("WTF");
         for dir in [
-            "70/Ellygie-Vargur",
-            "70/Brannic",
-            "Classic Beta PvP 2/Ellygie",
+            "ACCOUNT1/70/Ellygie-Vargur",
+            "ACCOUNT1/70/Brannic",
+            "ACCOUNT1/Classic Beta PvP 2/Ellygie",
+            "ACCOUNT2/Classic Beta PvP 2/Ellygie",
         ] {
-            let dir = wtf.join("Account/ACCOUNT1").join(dir);
+            let dir = wtf.join("Account").join(dir);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("AddOns.txt"), b"").unwrap();
         }
-        let mut found: Vec<CharacterRef> = wtf_characters(&wtf)
+        let mut found: Vec<(CharacterRef, bool)> = wtf_characters(&wtf)
             .into_iter()
-            .map(|c| c.character)
+            .map(|c| (c.character, c.older))
             .collect();
-        found.sort_by(|a, b| (&a.realm, &a.name).cmp(&(&b.realm, &b.name)));
+        found.sort_by(|a, b| {
+            (&a.0.account, &a.0.realm, &a.0.name).cmp(&(&b.0.account, &b.0.realm, &b.0.name))
+        });
         assert_eq!(
             found,
             [
-                character("ACCOUNT1", "70", "Brannic"),
-                character("ACCOUNT1", "70", "Ellygie-Vargur"),
-                character("ACCOUNT1", "Classic Beta PvP 2", "Ellygie"),
+                (character("ACCOUNT1", "70", "Brannic"), false),
+                (character("ACCOUNT1", "70", "Ellygie-Vargur"), false),
+                (character("ACCOUNT1", "Classic Beta PvP 2", "Ellygie"), true),
+                (
+                    character("ACCOUNT2", "Classic Beta PvP 2", "Ellygie"),
+                    false
+                ),
             ]
         );
     }

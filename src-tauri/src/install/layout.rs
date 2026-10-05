@@ -45,8 +45,9 @@ pub struct Flavor {
     /// Character folders under `WTF/Account/<account>/<group>/`. Forever
     /// writes `<group>` as an opaque id (`70`) and the character folder as
     /// the full name, `Ellygie-Vargur` with a surname; older folders are
-    /// `<Realm>/<Name>`. Both are counted, and neither folder is a realm or
-    /// ruleset to show (probe run 1, feature-matrix fact 5).
+    /// `<Realm>/<Name>`. Both are counted, except an older folder of a
+    /// character that now has a surname (`wtf::older_folders`). Neither
+    /// folder is a realm or ruleset to show (probe run 1, matrix fact 5).
     pub characters: u32,
     /// `WTF` or `Interface/AddOns` when they're symlinks or junctions, as
     /// recorded by `GameRoot`. Allowed, and shown as info ("WTF is linked

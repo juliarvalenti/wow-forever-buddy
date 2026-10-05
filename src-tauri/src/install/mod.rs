@@ -3,10 +3,12 @@
 //! - `layout`: the `Install`/`Flavor` model and the data-driven flavor table.
 //! - `validate`: folder → validated `Install`, and choosing the active flavor.
 //! - `detect`: the saved path, registry and common-path sources.
+//! - `wtf`: character folder names (older pre-surname folders).
 
 pub mod detect;
 pub mod layout;
 pub mod validate;
+pub mod wtf;
 
 use std::path::Path;
 

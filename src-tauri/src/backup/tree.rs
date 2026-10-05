@@ -2,11 +2,12 @@
 //! account → character → category, each with size and file count, plus a
 //! per-addon view for the "Addons" tab.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::backup::manifest::{Manifest, SkippedFile, SnapshotSummary};
+use crate::install::wtf::older_folders;
 
 /// What a file in a character (or account) folder is for. The restore panel
 /// lets you pick these per character.
@@ -67,6 +68,9 @@ pub struct CharacterNode {
     pub realm: String,
     /// The character folder as written (`Ellygie-Vargur`), never split.
     pub name: String,
+    /// An older pre-surname folder of a character that now has a surname
+    /// (`install::wtf::older_folders`): shown muted, still restorable.
+    pub older: bool,
     pub totals: Totals,
     pub categories: Vec<CategoryNode>,
 }
@@ -169,20 +173,28 @@ pub fn detail(manifest: &Manifest) -> SnapshotDetail {
         skipped: manifest.skipped.clone(),
         accounts: accounts
             .into_iter()
-            .map(|(name, a)| AccountNode {
-                name,
-                totals: a.totals,
-                categories: categories(a.categories),
-                characters: a
-                    .characters
-                    .into_iter()
-                    .map(|((realm, name), (totals, cats))| CharacterNode {
-                        realm,
-                        name,
-                        totals,
-                        categories: categories(cats),
-                    })
-                    .collect(),
+            .map(|(name, a)| {
+                let older: HashSet<String> =
+                    older_folders(a.characters.keys().map(|(_, n)| n.as_str()))
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect();
+                AccountNode {
+                    name,
+                    totals: a.totals,
+                    categories: categories(a.categories),
+                    characters: a
+                        .characters
+                        .into_iter()
+                        .map(|((realm, name), (totals, cats))| CharacterNode {
+                            older: older.contains(&name),
+                            realm,
+                            name,
+                            totals,
+                            categories: categories(cats),
+                        })
+                        .collect(),
+                }
             })
             .collect(),
         addons: addons
@@ -264,7 +276,8 @@ mod tests {
 
     /// Probe run 1: Forever's `<group id>/<First>-<Surname>` next to the
     /// older `<Realm>/<Name>`. The folders are kept whole (the restore
-    /// selection matches on them), and the same first name stays two people.
+    /// selection matches on them), and the same first name stays two folders:
+    /// the older one is marked and still restorable, but not counted (W1b).
     #[test]
     fn groups_both_wtf_layouts() {
         let m = manifest(
@@ -274,22 +287,24 @@ mod tests {
                 "WTF/Account/A1/70/Ellygie-Vargur/SavedVariables/Details.lua",
                 "WTF/Account/A1/70/Brannic/macros-cache.txt",
                 "WTF/Account/A1/Classic Beta PvP 2/Ellygie/AddOns.txt",
+                "WTF/Account/A1/Classic Beta PvP 2/Sela/AddOns.txt",
             ],
         );
         let d = detail(&m);
-        let chars: Vec<(&str, &str, u32)> = d.accounts[0]
+        let chars: Vec<(&str, &str, u32, bool)> = d.accounts[0]
             .characters
             .iter()
-            .map(|c| (c.realm.as_str(), c.name.as_str(), c.totals.files))
+            .map(|c| (c.realm.as_str(), c.name.as_str(), c.totals.files, c.older))
             .collect();
         assert_eq!(
             chars,
             [
-                ("70", "Brannic", 1),
-                ("70", "Ellygie-Vargur", 2),
-                ("Classic Beta PvP 2", "Ellygie", 1)
+                ("70", "Brannic", 1, false),
+                ("70", "Ellygie-Vargur", 2, false),
+                ("Classic Beta PvP 2", "Ellygie", 1, true),
+                ("Classic Beta PvP 2", "Sela", 1, false),
             ]
         );
-        assert_eq!(m.char_count(), 3);
+        assert_eq!(m.char_count(), 3, "not the older Ellygie");
     }
 }

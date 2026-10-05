@@ -34,7 +34,16 @@ import { useBackups, useSnapshot } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
 import { PlanDetails, planBlocked } from "@/screens/PlanDetails";
-import { ago, bytes, characterName, plural, when, whenInline } from "@/lib/format";
+import {
+  ago,
+  bytes,
+  characterName,
+  OLDER_FOLDER_NOTE,
+  olderAfter,
+  plural,
+  when,
+  whenInline,
+} from "@/lib/format";
 
 // Copy from design/mocks/round-3/IMPLEMENTING.md §4.
 
@@ -191,14 +200,15 @@ function SnapshotTree({
     <div className="d-tree">
       {detail.accounts.map((acct) => (
         <div key={acct.name}>
-          {acct.characters.map((ch) => {
+          {olderAfter(acct.characters).map((ch) => {
             const base = `char|${acct.name}|${ch.realm}|${ch.name}`;
             const ks = ch.categories.map((c) => `${base}|${c.category}`);
             const all = ks.every((k) => keys.has(k));
             return (
-              <div key={base}>
+              <div key={base} className={ch.older ? "d-dim" : undefined}>
                 <Checkbox checked={all} onChange={(on) => toggle(ks, on)}>
-                  <b>{characterName(ch.name)}</b> {size(ch.totals.bytes)}
+                  <b>{characterName(ch.name)}</b>
+                  {ch.older && <small> · {OLDER_FOLDER_NOTE}</small>} {size(ch.totals.bytes)}
                 </Checkbox>
                 <div className="indent">
                   {ch.categories.map((c) => {

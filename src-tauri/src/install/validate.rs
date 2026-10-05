@@ -9,6 +9,7 @@ use crate::install::layout::{
     label_from_folder, lookup, parse_build_info, product_matches_folder, BuildRow, Flavor, Install,
     KNOWN_FLAVORS,
 };
+use crate::install::wtf::older_folders;
 
 /// How far up from a picked folder we look for the root. Covers picking
 /// `<root>/_flavor_/WTF/Account/<ACCOUNT>/<Realm>`.
@@ -117,17 +118,21 @@ fn subdirs(dir: &Path) -> Vec<String> {
     names
 }
 
-/// The WTF roster: accounts, and how many character folders there are
+/// The WTF roster: accounts, and how many characters there are
 /// (`Account/<account>/<group>/<character>`, see `layout::Flavor::characters`).
+/// Older pre-surname folders aren't counted (`wtf::older_folders`).
 fn roster(wtf: &Path) -> (Vec<String>, u32) {
     let accounts_dir = wtf.join("Account");
     let accounts = subdirs(&accounts_dir);
     let mut characters = 0;
     for account in &accounts {
         let account_dir = accounts_dir.join(account);
-        for group in subdirs(&account_dir) {
-            characters += subdirs(&account_dir.join(&group)).len() as u32;
-        }
+        let names: Vec<String> = subdirs(&account_dir)
+            .into_iter()
+            .flat_map(|group| subdirs(&account_dir.join(group)))
+            .collect();
+        let older = older_folders(names.iter().map(String::as_str));
+        characters += names.iter().filter(|n| !older.contains(n.as_str())).count() as u32;
     }
     (accounts, characters)
 }
@@ -303,7 +308,8 @@ mod tests {
     }
 
     /// Probe run 1: Forever's `Account/<A>/<group id>/<First>-<Surname>`
-    /// next to the older `Account/<A>/<Realm>/<Name>`, both counted.
+    /// next to the older `Account/<A>/<Realm>/<Name>`. Both layouts count,
+    /// except an older folder of a character that now has a surname (W1b).
     #[test]
     fn counts_characters_in_both_wtf_layouts() {
         let tmp = tempfile::tempdir().unwrap();
@@ -312,14 +318,18 @@ mod tests {
             "70/Ellygie-Vargur",
             "70/Ellyanna-Vargur",
             "70/Brannic",
-            "Classic Beta PvP 2/Ellygie",
+            "Classic Beta PvP 2/Ellygie", // Ellygie-Vargur's older folder
+            "Classic Beta PvP 2/Sela",
             "SavedVariables",
         ] {
             std::fs::create_dir_all(account.join(dir)).unwrap();
         }
         let install = scan(tmp.path()).unwrap();
         assert_eq!(install.flavors[0].accounts, ["ACCOUNT1"]);
-        assert_eq!(install.flavors[0].characters, 4);
+        assert_eq!(
+            install.flavors[0].characters, 4,
+            "all but the older Ellygie"
+        );
     }
 
     #[test]

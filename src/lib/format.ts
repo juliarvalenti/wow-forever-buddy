@@ -92,6 +92,29 @@ export function characterName(folder: string): string {
   return folder.replace("-", " ");
 }
 
+/** Shown after an older pre-surname folder's name (W1b). */
+export const OLDER_FOLDER_NOTE = "older settings folder (before surnames)";
+
+/** Characters in order, with each older pre-surname folder (`older`, from
+ *  the backend) moved to right after the surname folder it goes with, so it
+ *  reads as that character's muted second row. One whose surname folder isn't
+ *  in `list` (a shortened list) is left out; the backend only marks folders
+ *  that have one, so a full list keeps them all. */
+export function olderAfter<T extends { name: string; older: boolean; account?: string }>(list: T[]): T[] {
+  const older = list.filter((c) => c.older);
+  const out: T[] = [];
+  for (const c of list.filter((c) => !c.older)) {
+    out.push(c);
+    const dash = c.name.indexOf("-");
+    if (dash <= 0) continue;
+    const first = c.name.slice(0, dash).toLowerCase();
+    out.push(
+      ...older.filter((o) => o.account === c.account && o.name.toLowerCase() === first && !out.includes(o)),
+    );
+  }
+  return out;
+}
+
 export function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

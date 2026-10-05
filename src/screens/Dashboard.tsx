@@ -29,6 +29,8 @@ import {
   ago,
   bytes,
   characterName,
+  OLDER_FOLDER_NOTE,
+  olderAfter,
   duration,
   errorText,
   longDate,
@@ -121,7 +123,9 @@ export function Dashboard({
   const flavor = active?.flavors.find((f) => f.id === active.active);
   const running = game?.running ?? false;
   const last = list?.[0];
-  const names = [...new Set((characters ?? []).map((c) => characterName(c.name)))];
+  // Older pre-surname folders are listed, muted, but aren't characters (W1b).
+  const counted = characters?.filter((c) => !c.older);
+  const names = [...new Set((counted ?? []).map((c) => characterName(c.name)))];
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -144,7 +148,7 @@ export function Dashboard({
         lede={[
           longDate(),
           flavor?.label,
-          characters && plural(characters.length, "character found", "characters found"),
+          counted && plural(counted.length, "character found", "characters found"),
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -224,7 +228,7 @@ export function Dashboard({
         />
         <Tile
           label="Characters found"
-          value={characters?.length ?? "…"}
+          value={counted?.length ?? "…"}
           sub="From your WTF folder"
         />
         <Tile
@@ -428,14 +432,18 @@ export function Dashboard({
               </PanelBody>
             ) : (
               <ul className="d-rows">
-                {(characters ?? []).slice(0, 5).map((c) => (
-                  <li key={`${c.account}|${c.realm}|${c.name}`}>
-                    <span className="main">{characterName(c.name)}</span>
-                    <span className="side d-dim">
-                      {c.last_played ? `last played ${ago(c.last_played)}` : ""}
-                    </span>
-                  </li>
-                ))}
+                {olderAfter([...(counted ?? []).slice(0, 5), ...(characters ?? []).filter((c) => c.older)])
+                  .map((c) => (
+                    <li key={`${c.account}|${c.realm}|${c.name}`} className={c.older ? "d-dim" : undefined}>
+                      <span className="main">
+                        {characterName(c.name)}
+                        {c.older && <small> · {OLDER_FOLDER_NOTE}</small>}
+                      </span>
+                      <span className="side d-dim">
+                        {c.last_played ? `last played ${ago(c.last_played)}` : ""}
+                      </span>
+                    </li>
+                  ))}
               </ul>
             )}
           </Panel>
