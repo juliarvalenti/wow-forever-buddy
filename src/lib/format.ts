@@ -92,6 +92,13 @@ export function characterName(folder: string): string {
   return folder.replace("-", " ");
 }
 
+/** W1b: character folders in the layout from before surnames, listed apart
+ *  from characters (the backend marks them `older`). Never "legacy", "old
+ *  character" or "duplicate". */
+export const OLDER_FOLDERS = "Older settings folders";
+export const OLDER_FOLDERS_WHY =
+  "Character folders from before surnames were added. Backed up and restorable; not counted as characters.";
+
 export function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

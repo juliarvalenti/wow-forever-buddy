@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::atomic_replace;
+use crate::install::wtf::older_groups;
 
 pub const MANIFEST_VERSION: u32 = 1;
 
@@ -126,8 +127,12 @@ impl Manifest {
 
     /// Distinct characters: `WTF/Account/<acct>/<group>/<char>/…`, where the
     /// group is Forever's opaque id (`70`) or, in older folders, the realm.
+    /// Older settings folders aren't counted, matching "Characters found"
+    /// (`install::wtf::older_groups`); their files are still in the snapshot.
     pub fn char_count(&self) -> usize {
-        self.files
+        // (account, group, character), lowercased.
+        let folders: BTreeSet<(String, String, String)> = self
+            .files
             .iter()
             .filter_map(|f| {
                 let parts: Vec<&str> = f.path.split('/').collect();
@@ -135,10 +140,27 @@ impl Manifest {
                     && parts[0].eq_ignore_ascii_case("WTF")
                     && parts[1].eq_ignore_ascii_case("Account")
                     && !parts[3].eq_ignore_ascii_case("SavedVariables"))
-                .then(|| parts[2..5].join("/").to_lowercase())
+                .then(|| {
+                    (
+                        parts[2].to_lowercase(),
+                        parts[3].to_lowercase(),
+                        parts[4].to_lowercase(),
+                    )
+                })
             })
-            .collect::<BTreeSet<_>>()
-            .len()
+            .collect();
+        let accounts: BTreeSet<&str> = folders.iter().map(|(a, _, _)| a.as_str()).collect();
+        accounts
+            .into_iter()
+            .map(|account| {
+                let mine: Vec<&(String, String, String)> =
+                    folders.iter().filter(|(a, _, _)| a == account).collect();
+                let older = older_groups(mine.iter().map(|(_, g, _)| g.as_str()));
+                mine.iter()
+                    .filter(|(_, g, _)| !older.contains(g.as_str()))
+                    .count()
+            })
+            .sum()
     }
 
     /// Distinct addons: SavedVariables file names (account or character), plus

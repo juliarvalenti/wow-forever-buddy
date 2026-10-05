@@ -14,6 +14,7 @@ import type {
   StorageInfo,
   Trigger,
   VerifyReport,
+  WtfCharacter,
 } from "@/lib/bindings";
 
 /** The scenarios, for `scripts/shots.sh` and anyone poking around. */
@@ -123,9 +124,23 @@ export function installMockIpc(): void {
         ],
         characters: [
           // Forever's layout (probe run 1): an opaque group id, and the
-          // surname in the character folder.
-          { realm: "70", name: "Thrandor", totals: { files: 45, bytes: 2.1e6 }, categories: cats(41) },
-          { realm: "70", name: "Velyra-Duskmane", totals: { files: 30, bytes: 1.4e6 }, categories: cats(26) },
+          // surname in the character folder, plus Velyra's older folder from
+          // before surnames (W1b).
+          { realm: "70", name: "Thrandor", older: false, totals: { files: 45, bytes: 2.1e6 }, categories: cats(41) },
+          {
+            realm: "70",
+            name: "Velyra-Duskmane",
+            older: false,
+            totals: { files: 30, bytes: 1.4e6 },
+            categories: cats(26),
+          },
+          {
+            realm: "Classic Beta PvP 2",
+            name: "Velyra",
+            older: true,
+            totals: { files: 12, bytes: 3.1e5 },
+            categories: cats(8),
+          },
         ],
       },
     ],
@@ -329,7 +344,18 @@ export function installMockIpc(): void {
           ["Sela", 60 * 200],
           ["Kaelor", 60 * 300],
         ] as const
-      ).map(([name, mins]) => ({ account: "ACCOUNT1", realm: "70", name, last_played: iso(mins) })),
+      )
+        .map(
+          ([name, mins]): WtfCharacter => ({ account: "ACCOUNT1", realm: "70", name, last_played: iso(mins), older: false }),
+        )
+        // Velyra's folder from before surnames (W1b): listed, not counted.
+        .concat({
+          account: "ACCOUNT1",
+          realm: "Classic Beta PvP 2",
+          name: "Velyra",
+          last_played: iso(60 * 24 * 12),
+          older: true,
+        }),
     sessions_list: () =>
       s === "no-sessions"
         ? []

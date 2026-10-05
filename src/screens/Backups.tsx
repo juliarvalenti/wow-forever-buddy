@@ -4,6 +4,7 @@ import {
   commands,
   events,
   type Category,
+  type CharacterNode,
   type GameStatus,
   type RestoreMode,
   type RestoreSelection,
@@ -34,7 +35,16 @@ import { useBackups, useSnapshot } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
 import { PlanDetails, planBlocked } from "@/screens/PlanDetails";
-import { ago, bytes, characterName, plural, when, whenInline } from "@/lib/format";
+import {
+  ago,
+  bytes,
+  characterName,
+  OLDER_FOLDERS,
+  OLDER_FOLDERS_WHY,
+  plural,
+  when,
+  whenInline,
+} from "@/lib/format";
 
 // Copy from design/mocks/round-3/IMPLEMENTING.md §4.
 
@@ -187,35 +197,53 @@ function SnapshotTree({
       </div>
     );
 
+  const characterRow = (account: string, ch: CharacterNode) => {
+    const base = `char|${account}|${ch.realm}|${ch.name}`;
+    const ks = ch.categories.map((c) => `${base}|${c.category}`);
+    const all = ks.every((k) => keys.has(k));
+    return (
+      <div key={base}>
+        <Checkbox checked={all} onChange={(on) => toggle(ks, on)}>
+          {ch.older ? (
+            // The folder names as they are: no claim about whose they were.
+            <>
+              <b>{ch.name}</b> <span className="d-dim">{ch.realm}</span>
+            </>
+          ) : (
+            <b>{characterName(ch.name)}</b>
+          )}{" "}
+          {size(ch.totals.bytes)}
+        </Checkbox>
+        <div className="indent">
+          {ch.categories.map((c) => {
+            const k = `${base}|${c.category}`;
+            const count =
+              c.category === "AddonSettings" ? ` (${c.totals.files.toLocaleString()})` : "";
+            return (
+              <Checkbox key={k} checked={keys.has(k)} onChange={(on) => toggle([k], on)}>
+                {CATEGORY_LABEL[c.category]}
+                {count} {size(c.totals.bytes)}
+              </Checkbox>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="d-tree">
       {detail.accounts.map((acct) => (
         <div key={acct.name}>
-          {acct.characters.map((ch) => {
-            const base = `char|${acct.name}|${ch.realm}|${ch.name}`;
-            const ks = ch.categories.map((c) => `${base}|${c.category}`);
-            const all = ks.every((k) => keys.has(k));
-            return (
-              <div key={base}>
-                <Checkbox checked={all} onChange={(on) => toggle(ks, on)}>
-                  <b>{characterName(ch.name)}</b> {size(ch.totals.bytes)}
-                </Checkbox>
-                <div className="indent">
-                  {ch.categories.map((c) => {
-                    const k = `${base}|${c.category}`;
-                    const count =
-                      c.category === "AddonSettings" ? ` (${c.totals.files.toLocaleString()})` : "";
-                    return (
-                      <Checkbox key={k} checked={keys.has(k)} onChange={(on) => toggle([k], on)}>
-                        {CATEGORY_LABEL[c.category]}
-                        {count} {size(c.totals.bytes)}
-                      </Checkbox>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {acct.characters.filter((ch) => !ch.older).map((ch) => characterRow(acct.name, ch))}
+          {acct.characters.some((ch) => ch.older) && (
+            <div>
+              <span className="d-muted" title={OLDER_FOLDERS_WHY}>
+                {OLDER_FOLDERS}
+              </span>
+              {acct.characters.filter((ch) => ch.older).map((ch) => characterRow(acct.name, ch))}
+            </div>
+          )}
           {acct.categories.length > 0 && (
             <div>
               <span className="d-muted">Account-wide ({acct.name})</span>

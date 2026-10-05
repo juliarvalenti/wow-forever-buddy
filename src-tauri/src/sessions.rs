@@ -17,6 +17,7 @@ use tauri_specta::Event;
 
 use crate::db::Db;
 use crate::error::AppResult;
+use crate::install::wtf::older_groups;
 
 /// One character folder: `WTF/Account/<account>/<realm>/<name>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
@@ -40,6 +41,10 @@ pub struct WtfCharacter {
     /// When any file in its folder last changed (RFC 3339, UTC): close to
     /// when it was last logged out.
     pub last_played: Option<String>,
+    /// An older settings folder: the layout from before surnames, next to
+    /// the new one (`install::wtf::older_groups`). Listed apart, not counted,
+    /// and never a session's character.
+    pub older: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -90,21 +95,24 @@ fn newest_mtime(dir: &Path) -> Option<SystemTime> {
         .max()
 }
 
-/// Every character folder under `wtf`, with its newest file mtime.
-fn character_mtimes(wtf: &Path) -> Vec<(CharacterRef, Option<SystemTime>)> {
+/// Every character folder under `wtf`, with its newest file mtime and
+/// whether it's an older settings folder (`install::wtf::older_groups`).
+fn character_mtimes(wtf: &Path) -> Vec<(CharacterRef, Option<SystemTime>, bool)> {
     let accounts_dir = wtf.join("Account");
     let mut out = Vec::new();
     for account in subdirs(&accounts_dir) {
         let account_dir = accounts_dir.join(&account);
-        for realm in subdirs(&account_dir) {
-            for name in subdirs(&account_dir.join(&realm)) {
-                let mtime = newest_mtime(&account_dir.join(&realm).join(&name));
+        let groups = subdirs(&account_dir);
+        let older = older_groups(groups.iter().map(String::as_str));
+        for realm in &groups {
+            for name in subdirs(&account_dir.join(realm)) {
+                let mtime = newest_mtime(&account_dir.join(realm).join(&name));
                 let character = CharacterRef {
                     account: account.clone(),
                     realm: realm.clone(),
                     name,
                 };
-                out.push((character, mtime));
+                out.push((character, mtime, older.contains(realm.as_str())));
             }
         }
     }
@@ -115,22 +123,26 @@ fn rfc3339(t: SystemTime) -> String {
     DateTime::<Utc>::from(t).to_rfc3339()
 }
 
-/// The characters in the WTF folder, most recently played first.
+/// The characters in the WTF folder, most recently played first, and the
+/// older settings folders (marked `older`).
 pub fn wtf_characters(wtf: &Path) -> Vec<WtfCharacter> {
-    let mut list: Vec<(CharacterRef, Option<SystemTime>)> = character_mtimes(wtf);
+    let mut list = character_mtimes(wtf);
     list.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.name.cmp(&b.0.name)));
     list.into_iter()
-        .map(|(character, mtime)| WtfCharacter {
+        .map(|(character, mtime, older)| WtfCharacter {
             character,
             last_played: mtime.map(rfc3339),
+            older,
         })
         .collect()
 }
 
+/// Session attribution: characters only, never older settings folders.
 fn snapshot(wtf: &Path) -> Mtimes {
     character_mtimes(wtf)
         .into_iter()
-        .filter_map(|(c, m)| Some((c, m?)))
+        .filter(|(_, _, older)| !older)
+        .filter_map(|(c, m, _)| Some((c, m?)))
         .collect()
 }
 
@@ -345,32 +357,69 @@ mod tests {
 
     /// Probe run 1: Forever's `<group id>/<First>-<Surname>` and the older
     /// `<Realm>/<Name>` side by side. Folder names are kept whole, never split
-    /// on '-', and the same first name under both stays two characters.
+    /// on '-'. W1b: on an account with the group-id layout, every folder
+    /// under a realm name is an older settings folder, whatever its name; an
+    /// account with only realm folders keeps them as characters.
     #[test]
     fn lists_characters_in_both_wtf_layouts() {
         let tmp = tempfile::tempdir().unwrap();
         let wtf = tmp.path().join("WTF");
         for dir in [
-            "70/Ellygie-Vargur",
-            "70/Brannic",
-            "Classic Beta PvP 2/Ellygie",
+            "ACCOUNT1/70/Ellygie-Vargur",
+            "ACCOUNT1/70/Brannic",
+            "ACCOUNT1/Classic Beta PvP 2/Ellygie",
+            "ACCOUNT1/Classic Beta PvP 2/Sela",
+            "ACCOUNT2/Classic Beta PvP 2/Ellygie",
         ] {
-            let dir = wtf.join("Account/ACCOUNT1").join(dir);
+            let dir = wtf.join("Account").join(dir);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("AddOns.txt"), b"").unwrap();
         }
-        let mut found: Vec<CharacterRef> = wtf_characters(&wtf)
+        let mut found: Vec<(CharacterRef, bool)> = wtf_characters(&wtf)
             .into_iter()
-            .map(|c| c.character)
+            .map(|c| (c.character, c.older))
             .collect();
-        found.sort_by(|a, b| (&a.realm, &a.name).cmp(&(&b.realm, &b.name)));
+        found.sort_by(|a, b| {
+            (&a.0.account, &a.0.realm, &a.0.name).cmp(&(&b.0.account, &b.0.realm, &b.0.name))
+        });
         assert_eq!(
             found,
             [
-                character("ACCOUNT1", "70", "Brannic"),
-                character("ACCOUNT1", "70", "Ellygie-Vargur"),
-                character("ACCOUNT1", "Classic Beta PvP 2", "Ellygie"),
+                (character("ACCOUNT1", "70", "Brannic"), false),
+                (character("ACCOUNT1", "70", "Ellygie-Vargur"), false),
+                (character("ACCOUNT1", "Classic Beta PvP 2", "Ellygie"), true),
+                (character("ACCOUNT1", "Classic Beta PvP 2", "Sela"), true),
+                (
+                    character("ACCOUNT2", "Classic Beta PvP 2", "Ellygie"),
+                    false
+                ),
             ]
+        );
+    }
+
+    /// W1b: an older settings folder that changes during a session (another
+    /// tool touching it, say) is never named as the character played.
+    #[test]
+    fn an_older_settings_folder_is_never_a_sessions_character() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path().join("_classic_beta_");
+        let account = game.join("WTF/Account/ACCOUNT1");
+        for dir in ["70/Ellygie-Vargur", "Classic Beta PvP 2/Ellygie"] {
+            std::fs::create_dir_all(account.join(dir)).unwrap();
+            std::fs::write(account.join(dir).join("AddOns.txt"), b"").unwrap();
+        }
+        let db = Db::open_in_memory().unwrap();
+        let open = start(&db, "_classic_beta_", &game, "2026-10-04T19:12:00+00:00").unwrap();
+        let later = SystemTime::now() + Duration::from_secs(10);
+        for dir in ["70/Ellygie-Vargur", "Classic Beta PvP 2/Ellygie"] {
+            touch(&account.join(dir).join("AddOns.txt"), later);
+        }
+        open.stop(&db, "2026-10-04T20:54:00+00:00").unwrap();
+        open.attribute(&db, &game).unwrap();
+        let done = list(&db, "_classic_beta_", SINCE).unwrap();
+        assert_eq!(
+            done[0].characters,
+            vec![character("ACCOUNT1", "70", "Ellygie-Vargur")]
         );
     }
 

@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { Check, Clock, FolderOpen, RefreshCw, Scale, ScrollText, Shield, ShoppingBag, TrendingUp } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  FolderOpen,
+  RefreshCw,
+  Scale,
+  ScrollText,
+  Shield,
+  ShoppingBag,
+  TrendingUp,
+} from "lucide-react";
 import {
   commands,
   type GameStatus,
@@ -29,6 +41,8 @@ import {
   ago,
   bytes,
   characterName,
+  OLDER_FOLDERS,
+  OLDER_FOLDERS_WHY,
   duration,
   errorText,
   longDate,
@@ -121,7 +135,11 @@ export function Dashboard({
   const flavor = active?.flavors.find((f) => f.id === active.active);
   const running = game?.running ?? false;
   const last = list?.[0];
-  const names = [...new Set((characters ?? []).map((c) => characterName(c.name)))];
+  // Older settings folders are listed apart and aren't characters (W1b).
+  const counted = characters?.filter((c) => !c.older);
+  const older = (characters ?? []).filter((c) => c.older);
+  const [showOlder, setShowOlder] = useState(false);
+  const names = [...new Set((counted ?? []).map((c) => characterName(c.name)))];
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -144,7 +162,7 @@ export function Dashboard({
         lede={[
           longDate(),
           flavor?.label,
-          characters && plural(characters.length, "character found", "characters found"),
+          counted && plural(counted.length, "character found", "characters found"),
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -224,7 +242,7 @@ export function Dashboard({
         />
         <Tile
           label="Characters found"
-          value={characters?.length ?? "…"}
+          value={counted?.length ?? "…"}
           sub="From your WTF folder"
         />
         <Tile
@@ -428,7 +446,7 @@ export function Dashboard({
               </PanelBody>
             ) : (
               <ul className="d-rows">
-                {(characters ?? []).slice(0, 5).map((c) => (
+                {(counted ?? []).slice(0, 5).map((c) => (
                   <li key={`${c.account}|${c.realm}|${c.name}`}>
                     <span className="main">{characterName(c.name)}</span>
                     <span className="side d-dim">
@@ -436,6 +454,29 @@ export function Dashboard({
                     </span>
                   </li>
                 ))}
+                {older.length > 0 && (
+                  <li className="d-muted">
+                    <button
+                      type="button"
+                      className="main d-link"
+                      style={{ color: "inherit" }}
+                      title={OLDER_FOLDERS_WHY}
+                      aria-expanded={showOlder}
+                      onClick={() => setShowOlder((v) => !v)}
+                    >
+                      {showOlder ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}{" "}
+                      {OLDER_FOLDERS} · {older.length}
+                    </button>
+                  </li>
+                )}
+                {showOlder &&
+                  older.map((c) => (
+                    <li key={`${c.account}|${c.realm}|${c.name}`} className="d-dim">
+                      <i className="main">
+                        {c.name} ({c.realm})
+                      </i>
+                    </li>
+                  ))}
               </ul>
             )}
           </Panel>
