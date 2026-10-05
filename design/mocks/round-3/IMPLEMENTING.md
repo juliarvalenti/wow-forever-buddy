@@ -119,7 +119,7 @@ Cases: `?case=newer` (default: the database is from a newer version) and `?case=
 
 ## 7. v0.2 (companion addon) notes
 These follow `specs/v0.2-addon` §8.
-- **Item tooltips** cite date and zone, never a source: "Looted 12 Sep · Molten Core". Boss *encounters* are shared in full, so a timeline line like "Defeated Baron Rivendare" is fine, but a tooltip never says "Looted from <boss>".
+- **Item tooltips** cite date and zone, never a source: "Gained 12 Sep · Molten Core". Use "Gained", not "Looted": the addon can't tell loot from quest rewards, crafting or trades, so "Looted" would over-claim. With no zone known, it's just "Gained 12 Sep". Boss *encounters* are shared in full, so a timeline line like "Defeated Baron Rivendare" is fine, but a tooltip never names a source ("from <boss>").
 - **Bank and mail freshness:** the addon only sees the bank or mailbox when you open it. On those tabs, put a muted line under the tab header: "As of your last bank visit, 2 Oct" or "As of your last mailbox visit, 2 Oct". Older than 7 days, use the ember colour with "Visit the bank in-game to refresh". If it has never been seen: "Not seen yet. Open your bank once in-game and it appears here."
 - **AH-derived numbers stay hidden until v0.4.** Remove them and let the layout close up; never show zeros or dashes. That means:
   - **Characters header:** drop "Net worth", leaving "Gold" and "Items".

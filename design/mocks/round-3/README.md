@@ -41,7 +41,7 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
   - Names are neutral (no class colour) and use a plain silhouette portrait.
   - "Install addon" is the bronze primary but is a write, so it's locked while WoW runs.
 - **Secret values (Forever hides some combat data from addons):**
-  - Timeline lines degrade naturally: "Died in Stratholme" with no killer, "Looted Truestrike Shoulders" with no source. A quiet ◌ marker explains what was hidden, and there's one footnote per page.
+  - Timeline lines degrade naturally: "Died in Stratholme" with no killer, "Gained Truestrike Shoulders" with no source (the addon can't tell loot from quest rewards or trades, so never "Looted"). A quiet ◌ marker explains what was hidden, and there's one footnote per page.
   - Item tooltips cite time and zone, never the source.
 - **No SavedVariables caveat on restore.** The beta bug where the client didn't reload SavedVariables was fixed in build 70009 (see specs/feature-matrix), so the round-3 caveat line was removed.
 - **The app can't know who is playing right now.** It detects that WowB.exe is running (process watcher), but character data only arrives when the addon writes at logout or /reload. So nothing claims a live character: the sidebar says "WoW is running" plus "Last played Thrandor", the Game tile shows the session length and the last-played name, and character cards say "Last played yesterday", never "Online".
