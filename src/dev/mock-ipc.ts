@@ -13,6 +13,7 @@ import type {
   SnapshotSummary,
   StorageInfo,
   Trigger,
+  VerifyReport,
 } from "@/lib/bindings";
 
 /** The scenarios, for `scripts/shots.sh` and anyone poking around. */
@@ -26,6 +27,7 @@ export const SCENARIOS = [
   "recover-unreadable-no-safety",
   "backups",
   "backups-corrupt", // restoring hits a damaged snapshot
+  "backups-locked", // restoring hits copies another program holds; Try again then works
   "backups-deletions", // restore refused: more to delete than confirmed
   "backups-partial", // restore fails partway
   "backup-failed", // the last automatic backup failed
@@ -194,7 +196,27 @@ export function installMockIpc(): void {
     crashed,
   });
 
+  // backups-corrupt: as in backups.html?error=corrupt, two copies that don't
+  // match and one that's gone.
+  const thrandor = "WTF/Account/ACCOUNT1/Ashenvale/Thrandor";
+  const damaged = {
+    files: [
+      `${thrandor}/SavedVariables/Details.lua`,
+      `${thrandor}/SavedVariables/Bartender4.lua`,
+      `${thrandor}/macros-cache.txt`,
+    ],
+    missing: [`${thrandor}/macros-cache.txt`],
+    unreadable: [] as string[],
+  };
+  // backups-locked: two copies another program holds open; nothing damaged.
+  const locked = {
+    files: [`${thrandor}/SavedVariables/Details.lua`, `${thrandor}/SavedVariables/Questie.lua`],
+    missing: [] as string[],
+    unreadable: [`${thrandor}/SavedVariables/Details.lua`, `${thrandor}/SavedVariables/Questie.lua`],
+  };
+
   // Scenario state that changes as you click through.
+  let unlocked = false; // backups-locked: the lock is gone by the first "Try again"
   let refused = false;
   let recoveryRefused = false;
   let resolved = false;
@@ -234,15 +256,19 @@ export function installMockIpc(): void {
           }
         : null,
     backup_create: () => sum("S0", "manual", "Manual", 0),
-    // In backups-corrupt only the newest snapshot (S1) is damaged.
-    backup_verify: ({ id }) => ({
-      snapshot_id: id,
-      files: 1912,
-      corrupt:
-        s === "backups-corrupt" && id === "S1"
-          ? ["WTF/Account/ACCOUNT1/Ashenvale/Thrandor/SavedVariables/Details.lua"]
-          : [],
-    }),
+    // In backups-corrupt only the newest snapshot (S1) is damaged. In
+    // backups-locked, checking again finds the lock released.
+    backup_verify: ({ id }): VerifyReport => {
+      if (s === "backups-locked") unlocked = true;
+      const bad = s === "backups-corrupt" && id === "S1";
+      return {
+        snapshot_id: id as string,
+        files: 1912,
+        corrupt: bad ? damaged.files : [],
+        missing: bad ? damaged.missing : [],
+        unreadable: [],
+      };
+    },
     backup_get: () => {
       if (s === "snapshot-unreadable") throw { kind: "Io", detail: "manifest for S1 is unreadable" };
       return detail;
@@ -260,11 +286,8 @@ export function installMockIpc(): void {
         refused = true;
         throw { kind: "Io", detail: "Details.lua is locked by another program" };
       }
-      if (s === "backups-corrupt")
-        throw {
-          kind: "BackupCorrupt",
-          detail: { files: ["WTF/Account/ACCOUNT1/Ashenvale/Thrandor/SavedVariables/Details.lua"] },
-        };
+      if (s === "backups-corrupt") throw { kind: "BackupCorrupt", detail: damaged };
+      if (s === "backups-locked" && !unlocked) throw { kind: "BackupCorrupt", detail: locked };
       return { snapshot_id: "S1", pre_restore_snapshot: "S9", written: 3, deleted: 1, summary: plan.summary };
     },
     restore_journal_status: () =>

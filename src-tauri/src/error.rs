@@ -33,8 +33,16 @@ pub enum AppError {
         col: u32,
         msg: String,
     },
+    /// Stored copies that can't be used. Of `files`, `missing` lists those
+    /// whose copy is gone and `unreadable` those that couldn't be read right
+    /// now (worth retrying); the rest don't match what was saved. Both lists
+    /// hold file paths only.
     #[error("backup is corrupt: {files:?}")]
-    BackupCorrupt { files: Vec<String> },
+    BackupCorrupt {
+        files: Vec<String>,
+        missing: Vec<String>,
+        unreadable: Vec<String>,
+    },
     /// Game files marked read-only (players pin e.g. Config.wtf this way).
     /// Never overridden; the user clears the flag to allow the change.
     #[error("read-only files: {paths:?}")]
@@ -57,6 +65,18 @@ pub enum AppError {
     /// or the folder doesn't exist).
     #[error("can't save the export there: {0}")]
     BadDestination(String),
+}
+
+impl AppError {
+    /// `BackupCorrupt` for things that aren't a file's stored copy (a
+    /// manifest, a bad blob id), so there's no missing/unreadable split.
+    pub fn corrupt(what: impl Into<String>) -> Self {
+        AppError::BackupCorrupt {
+            files: vec![what.into()],
+            missing: Vec::new(),
+            unreadable: Vec::new(),
+        }
+    }
 }
 
 impl From<std::io::Error> for AppError {
@@ -83,12 +103,17 @@ mod tests {
         );
 
         let strukt = serde_json::to_value(AppError::BackupCorrupt {
-            files: vec!["a".into()],
+            files: vec!["a".into(), "b".into(), "c".into()],
+            missing: vec!["b".into()],
+            unreadable: vec!["c".into()],
         })
         .unwrap();
         assert_eq!(
             strukt,
-            serde_json::json!({ "kind": "BackupCorrupt", "detail": { "files": ["a"] } })
+            serde_json::json!({
+                "kind": "BackupCorrupt",
+                "detail": { "files": ["a", "b", "c"], "missing": ["b"], "unreadable": ["c"] }
+            })
         );
     }
 }

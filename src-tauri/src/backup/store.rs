@@ -15,6 +15,18 @@ use crate::fsx::atomic::sweep_temp_files_shallow;
 
 const ZSTD_LEVEL: i32 = 3;
 
+/// Why a stored copy can't be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlobFault {
+    /// The blob file is gone.
+    Missing,
+    /// It couldn't be read right now (locked by antivirus, no permission):
+    /// it may well be fine, so worth trying again.
+    Unreadable,
+    /// It was read, but doesn't decompress or doesn't match its hash.
+    Damaged,
+}
+
 pub struct BlobStore {
     objects: PathBuf,
     staging: PathBuf,
@@ -41,9 +53,7 @@ impl BlobStore {
     fn path_for(&self, hash: &str) -> AppResult<PathBuf> {
         let valid = hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit());
         if !valid {
-            return Err(AppError::BackupCorrupt {
-                files: vec![format!("bad blob id {hash:?}")],
-            });
+            return Err(AppError::corrupt(format!("bad blob id {hash:?}")));
         }
         Ok(self.objects.join(&hash[..2]).join(&hash[2..]))
     }
@@ -77,15 +87,31 @@ impl BlobStore {
         }
     }
 
-    /// Reads a blob back and verifies it against its hash.
+    /// Reads a blob back and verifies it against its hash. The error names
+    /// the blob, not a file, so its `missing`/`unreadable` lists stay empty:
+    /// those only ever hold file paths (callers that know the path use
+    /// `load` and fill them).
     pub fn get(&self, hash: &str) -> AppResult<Vec<u8>> {
-        let corrupt = || AppError::BackupCorrupt {
-            files: vec![hash.to_string()],
-        };
-        let compressed = std::fs::read(self.path_for(hash)?).map_err(|_| corrupt())?;
-        let bytes = zstd::stream::decode_all(compressed.as_slice()).map_err(|_| corrupt())?;
+        self.load(hash).map_err(|_| AppError::corrupt(hash))
+    }
+
+    /// Why a blob can't be used, if it can't: for "missing", "couldn't be
+    /// read" or "hash mismatch" in the damaged-snapshot dialog.
+    pub fn check(&self, hash: &str) -> Option<BlobFault> {
+        self.load(hash).err()
+    }
+
+    /// Like `get`, but says why it failed.
+    pub fn load(&self, hash: &str) -> Result<Vec<u8>, BlobFault> {
+        let path = self.path_for(hash).map_err(|_| BlobFault::Damaged)?;
+        let compressed = std::fs::read(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => BlobFault::Missing,
+            _ => BlobFault::Unreadable,
+        })?;
+        let bytes =
+            zstd::stream::decode_all(compressed.as_slice()).map_err(|_| BlobFault::Damaged)?;
         if Self::hash(&bytes) != hash {
-            return Err(corrupt());
+            return Err(BlobFault::Damaged);
         }
         Ok(bytes)
     }
@@ -179,6 +205,47 @@ mod tests {
         std::fs::write(&path, b"not zstd").unwrap();
         assert!(store.get(&hash).is_err());
         assert!(store.get("../../etc/passwd").is_err(), "ids are validated");
+    }
+
+    #[test]
+    fn says_why_a_blob_cant_be_used() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = BlobStore::open(tmp.path()).unwrap();
+        let hash = BlobStore::hash(b"original");
+        store.put(&hash, b"original").unwrap();
+        let path = store.path_for(&hash).unwrap();
+        assert_eq!(store.check(&hash), None);
+
+        std::fs::write(&path, b"not zstd").unwrap();
+        assert_eq!(store.check(&hash), Some(BlobFault::Damaged));
+
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(store.check(&hash), Some(BlobFault::Missing));
+        // `get` names the blob, so it never claims a file path is missing.
+        assert!(matches!(
+            store.get(&hash),
+            Err(AppError::BackupCorrupt { missing, unreadable, .. })
+                if missing.is_empty() && unreadable.is_empty()
+        ));
+    }
+
+    /// A copy that's there but can't be opened right now (antivirus lock, no
+    /// permission) may be fine: it's Unreadable, never "hash mismatch".
+    #[cfg(unix)]
+    #[test]
+    fn an_unopenable_blob_is_unreadable_not_damaged() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let store = BlobStore::open(tmp.path()).unwrap();
+        let hash = BlobStore::hash(b"original");
+        store.put(&hash, b"original").unwrap();
+        let path = store.path_for(&hash).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads anything; the check only means something as a user.
+        if std::fs::read(&path).is_err() {
+            assert_eq!(store.check(&hash), Some(BlobFault::Unreadable));
+        }
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
 
     #[test]

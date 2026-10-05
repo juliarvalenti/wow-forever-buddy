@@ -251,14 +251,23 @@ const OLDER_TRIES = 5;
 function DamagedSnapshot({
   id,
   files,
+  missing,
+  unreadable,
   snapshots,
   onUse,
+  onRetry,
   onClose,
 }: {
   id: string;
   files: string[];
+  /** Those of `files` whose stored copy is gone. */
+  missing: string[];
+  /** Those of `files` that couldn't be read right now; the rest don't match. */
+  unreadable: string[];
   snapshots: SnapshotSummary[];
   onUse: (olderId: string) => void;
+  /** Back to the restore preview for this snapshot (it reads fine now). */
+  onRetry: () => void;
   onClose: () => void;
 }) {
   const snap = snapshots.find((s) => s.id === id);
@@ -302,6 +311,70 @@ function DamagedSnapshot({
     }
   };
 
+  // Every faulty copy just couldn't be opened (a lock, not damage): a calmer
+  // dialog with "Try again" and no red. Mixed cases keep the damaged dialog.
+  const onlyUnreadable = unreadable.length > 0 && unreadable.length === files.length;
+  const [retry, setRetry] = useState<"idle" | "checking" | "still">("idle");
+  const tryAgain = async () => {
+    setRetry("checking");
+    const report = await commands.backupVerify(id).catch(() => null);
+    if (report && report.corrupt.length === 0) onRetry();
+    else setRetry("still");
+  };
+
+  const useOlder = older && (
+    <Button onClick={() => onUse(older.id)}>
+      <RotateCcw size={13} aria-hidden /> Use {whenInline(older.created_at)} instead
+    </Button>
+  );
+  const fileList = (
+    <ul className={onlyUnreadable ? "d-files paths" : "d-files dmg"}>
+      {files.map((f) => {
+        const locked = unreadable.includes(f);
+        return (
+          <li key={f} title={f} className={locked ? "unread" : undefined}>
+            <FileText size={13} aria-hidden />
+            {shortFile(f)}
+            <span className="h">
+              {missing.includes(f) ? "missing" : locked ? "couldn't be read" : "hash mismatch"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  if (onlyUnreadable)
+    return (
+      <Dialog
+        title="Some backup files couldn't be read"
+        onClose={onClose}
+        footer={
+          <>
+            <span className="d-grow" />
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            {useOlder}
+            <PrimaryButton onClick={tryAgain} disabled={retry === "checking"}>
+              {retry === "checking" ? "Checking…" : "Try again"}
+            </PrimaryButton>
+          </>
+        }
+      >
+        <p>
+          We couldn't open{" "}
+          {files.length === 1 ? "1 of this snapshot's files" : `${files.length} of this snapshot's files`}{" "}
+          just now. That's usually another program holding them (antivirus or a sync tool), not
+          damage. Nothing was changed.
+        </p>
+        {fileList}
+        {retry === "still" && (
+          <p className="d-muted">Still couldn't read them. Wait a moment, or close the program using them.</p>
+        )}
+      </Dialog>
+    );
+
   return (
     <Dialog
       title="This snapshot is damaged"
@@ -318,11 +391,7 @@ function DamagedSnapshot({
           {older === undefined && candidates.length > 0 && (
             <span className="d-muted">Looking for an older copy…</span>
           )}
-          {older && (
-            <Button onClick={() => onUse(older.id)}>
-              <RotateCcw size={13} aria-hidden /> Use {whenInline(older.created_at)} instead
-            </Button>
-          )}
+          {useOlder}
         </>
       }
     >
@@ -331,15 +400,10 @@ function DamagedSnapshot({
         {files.length === 1 ? "1 of its files doesn't" : `${files.length} of its files don't`} match
         what was saved. The backup copy on disk has changed or is damaged.
       </p>
-      <ul className="d-files dmg">
-        {files.map((f) => (
-          <li key={f} title={f}>
-            <FileText size={13} aria-hidden />
-            {shortFile(f)}
-            <span className="h">damaged</span>
-          </li>
-        ))}
-      </ul>
+      {fileList}
+      {unreadable.length > 0 && (
+        <p className="d-muted">Files marked “couldn't be read” may be fine; try again later.</p>
+      )}
       <div className="d-okline">
         <Check size={14} aria-hidden />
         <span>Nothing was changed. We stop before writing a single file.</span>
@@ -423,10 +487,16 @@ function ConfirmRestore({
       <DamagedSnapshot
         id={id}
         files={run.corrupt}
+        missing={run.missing ?? []}
+        unreadable={run.unreadable ?? []}
         snapshots={snapshots}
         onUse={(older) => {
           reset();
           setId(older);
+        }}
+        onRetry={() => {
+          reset();
+          again();
         }}
         onClose={onClose}
       />

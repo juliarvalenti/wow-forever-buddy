@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
+use crate::backup::restore::CorruptFiles;
 use crate::backup::BackupService;
 use crate::config::settings::{is_within, resolve_existing};
 use crate::error::{AppError, AppResult};
@@ -52,15 +53,15 @@ pub fn export_zip(
         .suffix(".tmp")
         .tempfile_in(parent)?;
     let mut zip = zip::ZipWriter::new(tmp);
-    let mut corrupt = Vec::new();
+    let mut corrupt = CorruptFiles::default();
     for (i, f) in manifest.files.iter().enumerate() {
         // A manifest is ours, but it's also a file on disk: never let a
         // tampered one name an entry like `../../x` (zip slip).
         let name = RelPath::new(&f.path)?.as_string();
-        let bytes = match backups.blobs().get(&f.blake3) {
+        let bytes = match backups.blobs().load(&f.blake3) {
             Ok(b) => b,
-            Err(_) => {
-                corrupt.push(f.path.clone());
+            Err(fault) => {
+                corrupt.add(&f.path, fault);
                 continue;
             }
         };
@@ -75,7 +76,7 @@ pub fn export_zip(
         progress(i as u32 + 1, total);
     }
     if !corrupt.is_empty() {
-        return Err(AppError::BackupCorrupt { files: corrupt });
+        return Err(corrupt.into_error());
     }
 
     let tmp = zip.finish().map_err(zip_err)?;
@@ -256,7 +257,7 @@ mod tests {
 
         let err = export_zip(&s.service, &s.id, &dest, &[], &mut |_, _| {}).unwrap_err();
         match err {
-            AppError::BackupCorrupt { files } => assert!(files.contains(&victim.path)),
+            AppError::BackupCorrupt { files, .. } => assert!(files.contains(&victim.path)),
             other => panic!("{other:?}"),
         }
         assert_eq!(std::fs::read(&dest).unwrap(), b"previous export");
