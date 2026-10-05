@@ -5,6 +5,7 @@ import { PanelBody, PanelHeader, Record } from "@/components/d";
 import { useEvent } from "@/hooks/useEvent";
 import { gold, sessionWhen, span } from "@/lib/format";
 import { ItemName, label } from "@/screens/Adventure";
+import { Crest, classStyle } from "@/screens/Characters";
 
 // The Dashboard's "Last adventure" card (design/mocks/round-3/dashboard.html,
 // V9): the newest adventure, condensed, with a way into the full recap.
@@ -25,7 +26,7 @@ export function LastAdventure({ a, onOpen }: { a: Adventure; onOpen: (id: number
   const levelled = a.level_start != null && a.level_end != null && a.level_end > a.level_start;
   const repairs = a.tally.repairs ?? 0;
   const xp = a.tally.xp ?? (a.tally.quest_xp ?? 0);
-  const cls = a.class?.toLowerCase();
+  const cls = a.class?.toLowerCase() ?? null;
   return (
     <Record ruled tilt>
       <PanelHeader title="Last adventure">
@@ -39,9 +40,10 @@ export function LastAdventure({ a, onOpen }: { a: Adventure; onOpen: (id: number
         </button>
       </PanelHeader>
       <PanelBody>
-        <div className="d-adv-head" style={{ color: "var(--ink)" }}>
+        <div className="d-adv-head" style={{ color: "var(--ink)", ...classStyle({ class: cls }) }}>
+          <Crest c={{ class: cls, race: label(a.race) || null }} size={48} />
           <div>
-            <div className="nm ch-cc" style={{ "--cc": cls ? `var(--c-${cls})` : undefined } as React.CSSProperties}>
+            <div className="nm ch-cc">
               {a.name}
             </div>
             <div className="sub">
