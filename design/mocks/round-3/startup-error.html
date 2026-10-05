@@ -23,7 +23,16 @@
   details { font-size: 12px; color: var(--ash); }
   details summary { cursor: pointer; color: var(--ash); }
   details pre { margin-top: 8px; padding: 10px 12px; border-radius: var(--r); background: rgba(0,0,0,.35); font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--soot); white-space: pre-wrap; }
-  .case { display: none; } body.c-newer .c-newer, body.c-settings .c-settings { display: revert; }
+  .case { display: none; } body.c-newer .c-newer, body.c-settings .c-settings, body.c-copy .c-copy { display: revert; }
+  /* `revert` would drop flex on these, so set it back */
+  body.c-newer .acts.c-newer, body.c-settings .acts.c-settings, body.c-copy .acts.c-copy, body.c-copy .space.c-copy { display: flex; }
+  body.c-copy .p-db code { color: var(--bad); }
+  .space { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ash); }
+  .space .bar { flex: 1; max-width: 220px; }
+  .space .bar i { background: var(--bad); }
+  .btn.danger { color: #f3b8a6; }
+  .scrim .dialog .body { padding: 14px 16px 10px; display: grid; gap: 10px; font-size: 13px; color: var(--ash); }
+  .scrim .dialog .body b { color: var(--chalk-hi); font-weight: 500; }
 </style>
 </head>
 <body data-shell="bare" class="c-newer">
@@ -33,9 +42,13 @@
     <div class="pb">
       <h1 class="case c-newer">This database is from a newer version</h1>
       <h1 class="case c-settings">Your settings file can't be read</h1>
+      <h1 class="case c-copy">Forever Buddy couldn't make a safety copy before updating</h1>
 
       <p class="what case c-newer">Forever Buddy's database was last opened by version 0.3.0, and this is 0.2.1. Opening it with an older version could lose data, so nothing was changed. Install 0.3.0 or newer to carry on.</p>
       <p class="what case c-settings">The settings file looks damaged, so Forever Buddy stopped before using it. Nothing was changed. You can open the folder and move the file aside; Forever Buddy will start with default settings and find your game again.</p>
+
+      <p class="what case c-copy">This version needs to update your data, and it always copies it first. The copy didn't work because the drive is full: about 40 MB is needed and 12 MB is free. Nothing was changed. Free up some space and try again.</p>
+      <div class="space case c-copy"><span>Drive C:</span><span class="bar" style="display:block"><i class="fill" style="width:99%"></i></span><span><b style="color:var(--chalk-hi)">12 MB</b> free of 40 MB needed</span></div>
 
       <div class="safe"><i data-i="check"></i><span>Your backups and your game files are untouched.</span></div>
 
@@ -45,9 +58,16 @@
         <div><span>Backups</span><code>%LOCALAPPDATA%\com.juliarvalenti.wowforeverbuddy\backups</code></div>
       </div>
 
-      <div class="acts">
+      <div class="acts case c-newer c-settings">
         <button class="primary"><i data-i="folder"></i>Open data folder</button>
         <button class="btn"><i data-i="file" class="sm"></i>Copy error details</button>
+        <button class="btn ghost">Quit</button>
+      </div>
+      <!-- copy failed: Try again first (most causes pass); the way out is quiet and behind a confirm -->
+      <div class="acts case c-copy">
+        <button class="primary"><i data-i="refresh"></i>Try again</button>
+        <button class="btn"><i data-i="folder" class="sm"></i>Open data folder</button>
+        <button class="btn ghost" id="noCopy">Update without a safety copy…</button>
         <button class="btn ghost">Quit</button>
       </div>
 
@@ -57,13 +77,30 @@
 buddy.db user_version 4 · app 0.2.1 · 2026-10-04 22:41:07</pre>
         <pre class="case c-settings">AppCore::new: Settings(Parse { line: 14, column: 3 })
 settings.json · app 0.2.1 · 2026-10-04 22:41:07</pre>
+        <pre class="case c-copy">migration 004: pre-migration copy failed
+VACUUM INTO: disk full · fallback file copy: disk full · app 0.2.0 · 2026-10-05 08:02:11</pre>
       </details>
     </div>
   </article>
+
+  <!-- startup-error.html?case=copy&confirm : one-shot, never saved; asked again next time -->
+  <div class="scrim" id="confirm">
+    <div class="panel dialog" style="width:470px">
+      <div class="ph"><h2>Update without a safety copy?</h2></div>
+      <div class="body">
+        <p>If the update fails partway, your gold history and adventures may be lost. Forever Buddy would fall back to the daily copy from <b>yesterday, 21:40</b>, or start fresh if there isn't one.</p>
+        <p>Your game backups and your game files aren't affected.</p>
+        <p class="muted" style="font-size:12px">This only applies to this update. If a later one can't make a copy, you'll be asked again.</p>
+      </div>
+      <div class="foot"><button class="btn ghost">Cancel</button><button class="btn danger">Update anyway</button></div>
+    </div>
+  </div>
 </main>
 <script>
-  const c = new URLSearchParams(location.search).get('case');
+  const q = new URLSearchParams(location.search), c = q.get('case');
   if (c === 'settings') document.body.className = 'c-settings';
+  if (c === 'copy') document.body.className = 'c-copy';
+  if (c === 'copy' && q.has('confirm')) document.getElementById('confirm').classList.add('open');
 </script>
 <script src="_shell.js"></script>
 </body>
