@@ -748,6 +748,8 @@ export function installMockIpc(): void {
           quality,
           ilvl: 50,
           count,
+          // Velyra's bank visit is 12 days old, so its Where shows ember.
+          as_of: location === "bag" ? null : iso(60 * 24 * (character_id === 3 ? 12 : 2)),
         }));
       return {
         hits,

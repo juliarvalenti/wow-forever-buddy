@@ -1171,6 +1171,11 @@ export type SearchHit = {
 	ilvl: number | null,
 	/**  Summed over every stack of it in that place. */
 	count: number,
+	/**
+	 *  Bank and mail: when that place was last seen (RFC 3339), for "As of
+	 *  your last bank visit". Satchels are as of the last logout: `None`.
+	 */
+	as_of: string | null,
 };
 
 export type SearchResults = {

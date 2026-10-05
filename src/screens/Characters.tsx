@@ -344,7 +344,7 @@ function Results({
     <Panel>
       <PanelHeader title={title}>
         {results.hits.length > 0 && (
-          <span className="d-dim">
+          <span className="d-dim ch-meta">
             <b className="ch-strong">{results.total.toLocaleString()}</b> on{" "}
             {plural(results.characters.length, "character", "characters")}
           </span>
@@ -368,6 +368,11 @@ function Results({
             {results.hits.map((h) => {
               const where = WHERE[h.location] ?? { label: h.location, icon: Backpack };
               const Icon = where.icon;
+              // Bank and mail are as of the last visit: say when, ember past 7 days.
+              const visit =
+                h.location === "bank" || h.location === "mail"
+                  ? visitLine(h.as_of, h.location === "bank" ? "bank" : "mailbox")
+                  : null;
               const q = h.quality != null ? `ch-q${h.quality}` : "";
               const c = kin(h.character_id);
               return (
@@ -384,7 +389,7 @@ function Results({
                     {h.character}
                   </td>
                   <td>
-                    <span className="ch-where">
+                    <span className={`ch-where${visit?.old ? " old" : ""}`} title={visit?.text}>
                       <Icon size={13} aria-hidden />
                       {where.label}
                     </span>
@@ -535,23 +540,22 @@ const SLOTS: Record<number, string> = {
 };
 
 /** "As of your last bank visit, 2 Oct"; ember past 7 days (IMPLEMENTING.md §7). */
-function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mailbox" }) {
+function visitLine(asOf: string | null, place: "bank" | "mailbox"): { text: string; old: boolean } {
   if (!asOf) {
     const what = place === "bank" ? "your bank" : "your mailbox";
-    return (
-      <p className="ch-fresh">
-        Not seen yet. Open {what} once in-game and it appears here.
-      </p>
-    );
+    return { text: `Not seen yet. Open ${what} once in-game and it appears here.`, old: false };
   }
   const old = Date.now() - new Date(asOf).getTime() > 7 * 86400000;
   const day = new Date(asOf).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return (
-    <p className={`ch-fresh${old ? " old" : ""}`}>
-      As of your last {place} visit, {day}
-      {old ? `. Visit the ${place === "bank" ? "bank" : "mailbox"} in-game to refresh.` : ""}
-    </p>
-  );
+  return {
+    text: `As of your last ${place} visit, ${day}${old ? `. Visit the ${place} in-game to refresh.` : ""}`,
+    old,
+  };
+}
+
+function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mailbox" }) {
+  const { text, old } = visitLine(asOf, place);
+  return <p className={`ch-fresh${old ? " old" : ""}`}>{text}</p>;
 }
 
 /** The tooltip glass, with only what the addon captured: name in its
