@@ -289,7 +289,10 @@ end
 -- mailbox visit, a lockout, and an item the client had to load.
 local function stocked(o)
     local c = client(o)
-    c.world.lockouts = { { name = "The Deadmines", reset = 2 * DAY, raid = false, difficulty = "Normal" } }
+    c.world.lockouts = {
+        { name = "The Deadmines", reset = 2 * DAY, raid = false, difficulty = "Normal" },
+        { name = "Molten Core", reset = 6 * DAY, raid = true, difficulty = "40 Player" },
+    }
     c.world.inbox = {
         { sender = "Coinpurse", subject = "Linen for you", money = 500, cod = 0, days = 29.5,
           items = { { id = 2589, count = 10 } } },
@@ -357,9 +360,13 @@ scenario("snapshot", function()
     eq(#s.professions, 3, "professions")
     eq(s.professions[3].name, "Cooking", "the fifth index, after two nils")
     eq(s.professions[1].skill, 60, "skill")
-    eq(s.professions[1].spec, nil, "no specialization")
-    eq(#s.lockouts, 1, "lockouts")
+    eq(s.professions[1].spec, nil, "no specialization (-1)")
+    eq(s.professions[2].spec, 2, "a specialization index")
+    eq(#s.lockouts, 2, "lockouts")
     eq(s.lockouts[1].reset_at, t0 + 1 + 2 * DAY, "reset_at")
+    eq(s.lockouts[1].raid, nil, "a dungeon isn't a raid")
+    eq(s.lockouts[2].raid, true, "a raid")
+    eq(s.lockouts[2].difficulty, "40 Player", "raid difficulty")
 
     -- Every item seen has its static info, including the one that had to load.
     for _, id in ipairs({ 25, 2589, 6948, 14047 }) do

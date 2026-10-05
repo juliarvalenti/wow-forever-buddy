@@ -555,7 +555,21 @@ mod tests {
             count(&db, "SELECT line FROM professions WHERE name = 'Herbalism'"),
             182
         );
-        assert_eq!(count(&db, "SELECT raid FROM lockouts"), 0);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT raid FROM lockouts WHERE name = 'The Deadmines'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(&db, "SELECT raid FROM lockouts WHERE name = 'Molten Core'"),
+            1
+        );
+        assert_eq!(
+            count(&db, "SELECT spec FROM professions WHERE name = 'Tailoring'"),
+            2
+        );
         assert_eq!(count(&db, "SELECT count(*) FROM items"), 4);
     }
 

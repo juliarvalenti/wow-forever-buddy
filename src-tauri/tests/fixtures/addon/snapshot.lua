@@ -138,6 +138,12 @@ ForeverBuddyDB = {
 				["name"] = "The Deadmines",
 				["reset_at"] = 1791136801,
 			}, -- [1]
+			{
+				["difficulty"] = "40 Player",
+				["name"] = "Molten Core",
+				["raid"] = true,
+				["reset_at"] = 1791482401,
+			}, -- [2]
 		},
 		["mail"] = {
 			["at"] = 1790964900,
@@ -174,6 +180,7 @@ ForeverBuddyDB = {
 				["max"] = 75,
 				["name"] = "Tailoring",
 				["skill"] = 34,
+				["spec"] = 2,
 			}, -- [2]
 			{
 				["line"] = 185,

@@ -128,7 +128,8 @@ function M.new(opts)
         guild = { name = "Hearthguard", rank = "Officer" },
         professions = {
             { name = "Herbalism", skill = 60, max = 75, line = 182 },
-            { name = "Tailoring", skill = 34, max = 75, line = 197 },
+            -- A specialization index (GetProfessionInfo's 9th return); -1 is none.
+            { name = "Tailoring", skill = 34, max = 75, line = 197, spec = 2 },
             nil,
             nil,
             { name = "Cooking", skill = 29, max = 75, line = 185 },
@@ -308,7 +309,7 @@ function M.new(opts)
         GetProfessionInfo = function(i)
             local p = world.professions[i]
             if p then
-                return p.name, 136246, p.skill, p.max, 1, 21, p.line, 0, -1, 0, p.name
+                return p.name, 136246, p.skill, p.max, 1, 21, p.line, 0, p.spec or -1, 0, p.name
             end
         end,
         RequestTimePlayed = function()
