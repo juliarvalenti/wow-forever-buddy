@@ -159,6 +159,10 @@ local function counts(db)
         events = events,
         items = count(db.items),
         bag_items = bagItems,
+        -- Only in files that have the list (0.4.0 on), so a file from an
+        -- older version still validates and carries forward.
+        quests_done = type(db.snapshot) == "table" and type(db.snapshot.quests_done) == "table"
+            and count(db.snapshot.quests_done) or nil,
     }
 end
 
@@ -458,6 +462,26 @@ local function prior(key)
     return nil
 end
 
+-- Every quest this character has completed, as sorted ids (quest data
+-- spike, #94): what the app's planner starts from. nil when the client has
+-- no such API, never an empty list in its place.
+local function questsDone()
+    local ids = read("C_QuestLog.GetAllCompletedQuestIDs")
+    if type(ids) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for _, id in ipairs(ids) do
+        -- arg(): a secret id is dropped and counted in secret_hits.
+        local v = arg(id)
+        if type(v) == "number" then
+            out[#out + 1] = v
+        end
+    end
+    table.sort(out)
+    return out
+end
+
 local function snapshot(t)
     local s = { at = t }
     s.money = read(GetMoney)
@@ -493,6 +517,7 @@ local function snapshot(t)
     -- session, the last one carries forward (a relog mustn't wipe it).
     s.bank = bank or prior("bank")
     s.mail = mail or prior("mail")
+    s.quests_done = questsDone()
     return s
 end
 
@@ -819,6 +844,15 @@ handlers.PLAYER_MONEY = function()
     else
         lastMoney = addEvent("money", { money = money })
     end
+end
+
+-- Retail sends the quest id alone; older clients sent the log index first.
+handlers.QUEST_ACCEPTED = function(a, b)
+    local id = arg(b or a)
+    addEvent("quest_accepted", {
+        id = id,
+        title = id and read("C_QuestLog.GetTitleForQuestID", id) or nil,
+    })
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xp, money)

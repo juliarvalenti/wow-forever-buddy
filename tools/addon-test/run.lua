@@ -58,6 +58,10 @@ local function file(text)
         bagItems = bagItems + entries(bag.items)
     end
     local want = { sessions = entries(db.sessions), events = events, items = entries(db.items), bag_items = bagItems }
+    -- Counted only when the file has the list (0.4.0 on).
+    if db.snapshot and db.snapshot.quests_done then
+        want.quests_done = entries(db.snapshot.quests_done)
+    end
     eq(entries(meta.counts), entries(want), "number of _meta.counts")
     for k, v in pairs(want) do
         eq(meta.counts[k], v, "_meta.counts." .. k)
@@ -610,6 +614,35 @@ scenario("bridge", function()
     eq(db.bridge.Tooltip1.seen, wow.EPOCH, "seen at load")
     eq(db.bridge.Tooltip2.schema, 2, "Tooltip2 schema")
     eq(entries(db.bridge), 2, "receipts")
+    return text
+end)
+
+-- Quest recording (quest data spike, #94): accepts as session events, and
+-- every completed quest id at logout, sorted.
+scenario("quests", function()
+    local c = client()
+    c.login(nil)
+    c.advance(10 * MINUTE)
+    c.accept(176)
+    c.advance(20 * MINUTE)
+    c.turnIn(176, 450, 75)
+    c.advance(5 * MINUTE)
+    local text = c.logout()
+    local db = file(text)
+    local kinds = {}
+    for _, e in ipairs(db.sessions[1].events) do
+        kinds[#kinds + 1] = e.kind
+    end
+    eq(table.concat(kinds, ","), "quest_accepted,quest,money", "events")
+    local accepted = db.sessions[1].events[1]
+    eq(accepted.id, 176, "accepted id")
+    eq(accepted.title, "Wanted: Hogger", "accepted title")
+    eq(table.concat(db.snapshot.quests_done, ","), "7,176,783", "quests_done, sorted")
+    eq(db._meta.counts.quests_done, 3, "counted")
+
+    -- A client without the API leaves the list out, never empty.
+    local old = client({ api = { ["C_QuestLog.GetAllCompletedQuestIDs"] = false } })
+    eq(file(play(old, nil, 10)).snapshot.quests_done, nil, "no list without the API")
     return text
 end)
 

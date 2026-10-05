@@ -144,6 +144,7 @@ function M.new(opts)
         requests = { played = 0, raid = 0, items = 0 },
         combat = false, -- InCombatLockdown
         shift = false, -- IsShiftKeyDown
+        quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
     }
     client.world = world
 
@@ -263,6 +264,13 @@ function M.new(opts)
         end,
         ["C_QuestLog.GetTitleForQuestID"] = function(id)
             return M.QUESTS[id]
+        end,
+        ["C_QuestLog.GetAllCompletedQuestIDs"] = function()
+            local copy = {}
+            for i, id in ipairs(world.quests_done) do
+                copy[i] = id
+            end
+            return copy
         end,
         ["C_Item.GetItemInfo"] = function(id)
             local name = M.ITEMS[id]
@@ -648,8 +656,13 @@ function M.new(opts)
         client.fire("PLAYER_DEAD")
     end
 
+    function client.accept(id)
+        client.fire("QUEST_ACCEPTED", id)
+    end
+
     function client.turnIn(id, xp, money)
         world.xp = world.xp + xp
+        table.insert(world.quests_done, id)
         client.fire("QUEST_TURNED_IN", id, xp, money)
         client.setMoney(world.money + money)
     end

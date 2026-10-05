@@ -7,6 +7,7 @@ ForeverBuddyDB = {
 			["bag_items"] = 3,
 			["events"] = 2,
 			["items"] = 4,
+			["quests_done"] = 2,
 			["sessions"] = 1,
 		},
 		["loaded_prior"] = true,
@@ -154,6 +155,10 @@ ForeverBuddyDB = {
 				["name"] = "Cooking",
 				["skill"] = 29,
 			}, -- [3]
+		},
+		["quests_done"] = {
+			7, -- [1]
+			783, -- [2]
 		},
 		["rest_state"] = "Rested",
 		["rested"] = 674,
