@@ -60,21 +60,6 @@ export function useBackups() {
   return { list, storage, error, progress, failed, autoFailed, backUpNow, refresh };
 }
 
-/** How many snapshots there are, for the sidebar's Backups count. */
-export function useSnapshotCount(): number | null {
-  const [count, setCount] = useState<number | null>(null);
-  const refresh = useCallback(() => {
-    commands.backupList().then(
-      (l) => setCount(l.length),
-      () => setCount(null),
-    );
-  }, []);
-  useEffect(refresh, [refresh]);
-  useEvent(events.backupCreated, refresh);
-  useEvent(events.restoreCompleted, refresh);
-  return count;
-}
-
 /** One snapshot grouped by account, character and category, for the panel. */
 export function useSnapshot(id: string | null) {
   const [detail, setDetail] = useState<SnapshotDetail | null>(null);

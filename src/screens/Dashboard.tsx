@@ -324,7 +324,7 @@ export function Dashboard({
               {flavor ? (
                 <li>
                   <Check size={14} className="ok" aria-hidden />
-                  <span className="lead">
+                  <span className="main">
                     {[flavor.label, flavor.version].filter(Boolean).join(" · ")}
                   </span>
                   <span className="sub">
@@ -334,14 +334,14 @@ export function Dashboard({
               ) : (
                 <li>
                   <LiveDot />
-                  <span className="lead">{folderMissing != null ? "Game folder missing" : "Game folder not set"}</span>
+                  <span className="main">{folderMissing != null ? "Game folder missing" : "Game folder not set"}</span>
                   <span className="sub">{folderMissing ?? "Choose it on the Game folder screen."}</span>
                 </li>
               )}
               {flavor?.has_wtf && (
                 <li>
                   <Check size={14} className="ok" aria-hidden />
-                  <span className="lead">WTF folder found</span>
+                  <span className="main">WTF folder found</span>
                   <span className="sub">
                     {plural(flavor.accounts.length, "account", "accounts")} ·{" "}
                     {plural(flavor.characters, "character", "characters")}
@@ -353,7 +353,7 @@ export function Dashboard({
                 (settings.backup?.on_game_exit !== false ? (
                   <li>
                     <Check size={14} className="ok" aria-hidden />
-                    <span className="lead">Backups are on</span>
+                    <span className="main">Backups are on</span>
                     <span className="sub">
                       On game exit{last && ` · last one ${ago(last.created_at)}`}
                     </span>
@@ -361,7 +361,7 @@ export function Dashboard({
                 ) : (
                   <li>
                     <LiveDot />
-                    <span className="lead">Backups on game exit are off</span>
+                    <span className="main">Backups on game exit are off</span>
                     <span className="sub">
                       <button className="d-link" onClick={onOpenBackups}>
                         Back up by hand in Backups
@@ -371,7 +371,7 @@ export function Dashboard({
                 ))}
               <li>
                 <LiveDot />
-                <span className="lead">ForeverBuddy addon not installed</span>
+                <span className="main">ForeverBuddy addon not installed</span>
                 <span className="sub">Needed for gold, gear and session details</span>
               </li>
             </ul>
@@ -393,11 +393,11 @@ export function Dashboard({
               <ul className="d-rows">
                 {shownSessions.slice(0, 5).map((s) => (
                   <li key={s.id}>
-                    <span className="lead">
+                    <span className="main">
                       {!s.ended_at && <LiveDot />}
                       {sessionWhen(s.started_at, s.ended_at)}
                     </span>
-                    <span className="trail" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
+                    <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
                       {span(sessionMs(s))}
                     </span>
                     <SessionWho s={s} />
@@ -428,10 +428,10 @@ export function Dashboard({
               <ul className="d-rows">
                 {(characters ?? []).slice(0, 5).map((c) => (
                   <li key={`${c.account}|${c.realm}|${c.name}`}>
-                    <span className="lead">
+                    <span className="main">
                       {c.name} <small className="d-dim">{c.realm}</small>
                     </span>
-                    <span className="trail d-dim">
+                    <span className="side d-dim">
                       {c.last_played ? `last played ${ago(c.last_played)}` : ""}
                     </span>
                   </li>
