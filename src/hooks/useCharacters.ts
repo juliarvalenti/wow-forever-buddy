@@ -4,6 +4,7 @@ import {
   events,
   type CharacterSheet,
   type CharactersOverview,
+  type WtfCharacter,
 } from "@/lib/bindings";
 import { errorText } from "@/lib/format";
 import { useEvent } from "./useEvent";
@@ -26,6 +27,21 @@ export function useCharacters() {
   useEvent(events.ingestCompleted, refresh);
   useEvent(events.installChanged, refresh);
   return { overview, error, refresh };
+}
+
+/** The characters found in the WTF folder (older settings folders left
+ *  out), for cards the addon hasn't filled in yet. */
+export function useRoster() {
+  const [roster, setRoster] = useState<WtfCharacter[] | null>(null);
+  const refresh = useCallback(() => {
+    commands.charactersList().then(
+      (list) => setRoster(list.filter((c) => !c.older)),
+      () => setRoster(null),
+    );
+  }, []);
+  useEffect(refresh, [refresh]);
+  useEvent(events.installChanged, refresh);
+  return roster;
 }
 
 /** One character's sheet, reloaded when that character's notes change. */

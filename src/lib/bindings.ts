@@ -434,6 +434,13 @@ export type CategoryNode = {
 /**  One card on the Characters screen. */
 export type CharacterCard = {
 	id: number,
+	/**
+	 *  The folder identity (WTF/Account/<account>/<group>/<folder>), to
+	 *  match the WTF roster's characters the addon hasn't seen yet.
+	 */
+	account: string,
+	group_dir: string,
+	folder: string,
 	name: string,
 	surname: string | null,
 	/**  File token, lowercase (`warrior`), for the class colour. */
@@ -705,6 +712,12 @@ export type ItemRow = {
 	quality: number | null,
 	ilvl: number | null,
 	count: number,
+	/**
+	 *  When this character last looted one (RFC 3339), if the journal has
+	 *  it, and the zone it was in. Never a source (IMPLEMENTING.md §7).
+	 */
+	looted_at: string | null,
+	looted_in: string | null,
 };
 
 /**  An interrupted restore: enough to roll it back or run it again. */

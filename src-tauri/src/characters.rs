@@ -16,6 +16,11 @@ use crate::error::{AppError, AppResult};
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct CharacterCard {
     pub id: u32,
+    /// The folder identity (WTF/Account/<account>/<group>/<folder>), to
+    /// match the WTF roster's characters the addon hasn't seen yet.
+    pub account: String,
+    pub group_dir: String,
+    pub folder: String,
     pub name: String,
     pub surname: Option<String>,
     /// File token, lowercase (`warrior`), for the class colour.
@@ -63,6 +68,10 @@ pub struct ItemRow {
     pub quality: Option<u8>,
     pub ilvl: Option<u32>,
     pub count: u32,
+    /// When this character last looted one (RFC 3339), if the journal has
+    /// it, and the zone it was in. Never a source (IMPLEMENTING.md §7).
+    pub looted_at: Option<String>,
+    pub looted_in: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -162,7 +171,8 @@ const CARD_SQL: &str = "
            (SELECT sum(size) FROM char_bags b WHERE b.character_id = c.id AND b.location = 'bag'),
            (SELECT count(*) FROM char_mail m WHERE m.character_id = c.id),
            (SELECT coalesce(sum(count), 0) FROM char_items i
-             WHERE i.character_id = c.id AND i.location = 'bank')
+             WHERE i.character_id = c.id AND i.location = 'bank'),
+           c.account, c.group_dir, c.char_dir
     FROM characters c
     LEFT JOIN char_snapshots s
       ON s.character_id = c.id
@@ -172,6 +182,9 @@ fn card(r: &Row<'_>) -> rusqlite::Result<CharacterCard> {
     let f = |v: Option<i64>| v.map(|v| v as f64);
     Ok(CharacterCard {
         id: r.get::<_, i64>(0)? as u32,
+        account: r.get(21)?,
+        group_dir: r.get(22)?,
+        folder: r.get(23)?,
         name: r.get(1)?,
         surname: r.get(2)?,
         class: r.get::<_, Option<String>>(3)?.map(|c| c.to_lowercase()),
@@ -220,9 +233,25 @@ pub fn overview(db: &Db, flavor: &str) -> AppResult<CharactersOverview> {
 }
 
 fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<ItemRow>> {
+    // `loot`: the latest time this character picked each item up (a `gain`
+    // with no `how`: not bought, not from mail), and the zone it was in.
     let mut stmt = c.prepare(
-        "SELECT i.container, i.slot, i.item_id, i.link, i.count, it.name, it.quality, it.ilvl
-         FROM char_items i LEFT JOIN items it ON it.item_id = i.item_id
+        "WITH loot AS (
+           SELECT json_extract(e.data, '$.item') AS item_id, e.at,
+                  (SELECT json_extract(z.data, '$.zone') FROM adventure_events z
+                    WHERE z.adventure_id = e.adventure_id AND z.kind = 'zone' AND z.at <= e.at
+                    ORDER BY z.at DESC, z.seq DESC LIMIT 1) AS zone,
+                  row_number() OVER (PARTITION BY json_extract(e.data, '$.item')
+                                     ORDER BY e.at DESC, e.seq DESC) AS n
+           FROM adventure_events e JOIN adventures a ON a.id = e.adventure_id
+           WHERE a.character_id = ?1 AND e.kind = 'gain'
+             AND json_extract(e.data, '$.how') IS NULL
+         )
+         SELECT i.container, i.slot, i.item_id, i.link, i.count, it.name, it.quality, it.ilvl,
+                l.at, l.zone
+         FROM char_items i
+         LEFT JOIN items it ON it.item_id = i.item_id
+         LEFT JOIN loot l ON l.item_id = i.item_id AND l.n = 1
          WHERE i.character_id = ?1 AND i.location = ?2
          ORDER BY i.container, i.slot",
     )?;
@@ -243,6 +272,8 @@ fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<
                     .or_else(|| link_quality(&link)),
                 ilvl: opt_u32(r.get(7)?),
                 count: r.get::<_, i64>(4)? as u32,
+                looted_at: r.get::<_, Option<i64>>(8)?.map(iso),
+                looted_in: r.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -480,6 +511,39 @@ mod tests {
         assert_eq!(s.bank.bags[0].items[0].count, 20);
         assert_eq!(s.mail.messages[0].sender.as_deref(), Some("Coinpurse"));
         assert_eq!(s.professions.len(), 3);
+    }
+
+    /// The tooltip's "Looted <date> · <zone>": from the journal's `gain`
+    /// events, never for items bought or mailed. Both files are the addon's.
+    #[test]
+    fn items_know_when_and_where_they_were_looted() {
+        let db = Db::open_in_memory().unwrap();
+        for name in ["adventure.lua", "snapshot.lua"] {
+            let src = std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/addon")
+                    .join(name),
+            )
+            .unwrap();
+            ingest_text(&db, "Thrandor-Vargur", &src);
+        }
+        let id = overview(&db, "_classic_beta_").unwrap().characters[0].id;
+        let s = sheet(&db, id).unwrap();
+        let bag = |item: u32| {
+            s.bags
+                .iter()
+                .flat_map(|b| &b.items)
+                .find(|i| i.item_id == item)
+                .unwrap()
+        };
+        // Linen Cloth: picked up in Westfall during the adventure.
+        assert_eq!(bag(2589).looted_in.as_deref(), Some("Westfall"));
+        assert_eq!(
+            bag(2589).looted_at.as_deref(),
+            Some(iso(1790964360).as_str())
+        );
+        // The Hearthstone was never looted in the journal.
+        assert_eq!(bag(6948).looted_at, None);
     }
 
     #[test]

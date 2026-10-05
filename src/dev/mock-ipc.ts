@@ -81,6 +81,9 @@ export function installMockIpc(): void {
     extra: Partial<CharacterCard> = {},
   ): CharacterCard => ({
     id,
+    account: "ACCOUNT1",
+    group_dir: "70",
+    folder: surname ? `${name}-${surname}` : name,
     name,
     surname,
     class: cls,
@@ -299,7 +302,7 @@ export function installMockIpc(): void {
   // The default dashboard has WoW running, so Install is locked.
   const addon: AddonStatus = {
     installed_version:
-      s === "addon-installed" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
+      s === "addon-installed" || s === "characters" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
     bundled_version: "0.2.0",
     update_available: s === "addon-update",
     enabled_on: ["Brannic", "Coinpurse", "Fizzwick", "Kaelor", "Sela", "Thrandor"],
@@ -499,6 +502,9 @@ export function installMockIpc(): void {
         quality,
         ilvl,
         count,
+        // The journal saw the shoulders and the potions drop.
+        looted_at: name === "Truestrike Shoulders" || name === "Major Healing Potion" ? iso(60 * 26) : null,
+        looted_in: name === "Truestrike Shoulders" || name === "Major Healing Potion" ? "Stratholme" : null,
       });
       return {
         card: c,
@@ -518,6 +524,7 @@ export function installMockIpc(): void {
           item(13, "Hand of Justice", 3, 58),
           item(14, "Drake Fang Talisman", 4, 75),
           item(16, "Ashkandi, Greatsword of the Brotherhood", 4, 77),
+          item(18, "Libram of Hope", 3, 60),
         ],
         bags: [
           { container: 0, name: "Backpack", size: 16, free: 0, items: [item(1, "Hearthstone", 1, 1), item(2, "Runecloth", 1, 50, 0, 40)] },
@@ -550,6 +557,8 @@ export function installMockIpc(): void {
           ["Fizzwick", 60 * 140],
           ["Sela", 60 * 200],
           ["Kaelor", 60 * 300],
+          // Not logged in since the addon went in: a neutral card on Characters.
+          ["Ashwyn", 60 * 24 * 20],
         ] as const
       )
         .map(

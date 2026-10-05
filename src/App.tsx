@@ -191,7 +191,7 @@ function Shell() {
             onCheckFolder={() => setScreen("game")}
           />
         )}
-        {current === "characters" && <Characters />}
+        {current === "characters" && <Characters onOpenDashboard={() => setScreen("dashboard")} />}
         {current === "backups" && (
           <Backups
             game={game}

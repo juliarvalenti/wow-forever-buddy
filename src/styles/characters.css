@@ -35,12 +35,38 @@
 .d-record .ch-bar { background: rgba(58,38,22,.12); box-shadow: inset 0 1px 1px rgba(58,38,22,.3); }
 .d-record .ch-bar .fill { background: linear-gradient(90deg, #6e5537, #3a2616); }
 
-/* crest: class-coloured shield with initials (portraits come later) */
-.ch-crest { width: var(--w, 64px); height: var(--w, 64px); flex-shrink: 0; display: grid; place-items: center;
-  border-radius: 8px 8px 50% 50% / 8px 8px 60% 60%;
-  background: color-mix(in srgb, var(--cc, #8a6a3e) 34%, #15110d);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cc, #8a6a3e) 55%, #cfc6b8), 0 3px 8px rgba(0,0,0,.5);
-  font: 400 calc(var(--w, 64px) * .34) "Marcellus", Georgia, serif; color: var(--cc, var(--chalk-hi)); }
+/* portrait slot (_d.css .pslot): a 4:5 stone bezel holding the class crest
+   (shield in the class tint + glyph) with a race badge; armory renders and
+   screenshots come later. `blank` is the neutral silhouette before the
+   addon has seen a character. */
+.ch-pslot { --w: 64px; display: inline-block; position: relative; width: var(--w); aspect-ratio: 4 / 5; flex-shrink: 0;
+  border-radius: 5px; padding: 3px;
+  background: var(--grit), linear-gradient(160deg, #57524b, #2a2724 40%, #151413 70%, #3a3632);
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.15), 0 4px 10px rgba(0,0,0,.55); }
+.ch-pslot .pi { display: block; position: relative; width: 100%; height: 100%; border-radius: 3px; overflow: hidden;
+  background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--cc, #888) 32%, #1a1410), #0b0908 78%); }
+.ch-pslot .pi::after { content: ""; position: absolute; inset: 0; border-radius: 3px; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), inset 0 0 calc(var(--w) * .2) rgba(0,0,0,.7); }
+.ch-pslot .crest { position: absolute; inset: 12% 14% 18%; width: 72%; height: 70%; }
+.ch-pslot .crest > path { fill: color-mix(in srgb, var(--cc, #8a6a3e) 34%, #15110d);
+  stroke: color-mix(in srgb, var(--cc, #8a6a3e) 55%, #cfc6b8); stroke-width: .9; }
+.ch-pslot .crest > g { fill: var(--cc); stroke: var(--cc); stroke-linecap: round; }
+.ch-pslot .race { position: absolute; right: -6px; bottom: -6px; z-index: 1; display: grid; place-items: center;
+  width: max(18px, calc(var(--w) * .34)); height: max(18px, calc(var(--w) * .34)); border-radius: 50%;
+  font: 400 max(9px, calc(var(--w) * .13)) "Marcellus", Georgia, serif; color: var(--chalk-hi);
+  background: var(--grit), radial-gradient(circle at 40% 35%, #3a3631, #121110);
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.15), 0 2px 5px rgba(0,0,0,.6); }
+.d-record .ch-pslot { box-shadow: 0 0 0 1px rgba(58,38,22,.6), inset 0 1px 0 rgba(255,255,255,.15), 0 3px 8px rgba(58,38,22,.45); }
+.ch-pslot.blank .pi { display: grid; place-items: end center; background: radial-gradient(circle at 50% 32%, #2a2622, #0d0c0b 78%); }
+.ch-pslot.blank svg { width: 72%; height: 88%; fill: rgba(205,191,169,.16); }
+
+/* install banner (characters-noaddon.html) */
+.ch-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r, 6px); font-size: 12.5px;
+  color: var(--chalk); background: rgba(0,0,0,.22); box-shadow: inset 0 2px 5px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.04); }
+.ch-banner svg { color: #b79c6c; flex-shrink: 0; }
+.ch-banner b { color: var(--chalk-hi); font-weight: 600; }
+.ch-banner .grow { flex: 1; color: var(--ash); }
+.ch-banner button { display: inline-flex; align-items: center; gap: 3px; color: var(--ember-2); white-space: nowrap; font-size: 12px; }
 
 /* list */
 .ch-totals { display: flex; gap: 20px; font-size: 12px; color: var(--ash); align-items: baseline; }
@@ -65,6 +91,13 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
 .ch-facts div { font-size: 11.5px; font-weight: 500; color: var(--soot); white-space: nowrap; }
 .ch-facts b { display: block; font: 600 13px "Geist Variable", "Geist", sans-serif; color: var(--chalk-hi); margin-top: 1px; }
+/* a character the addon hasn't seen: placeholders, never zeros */
+.ch-card.unseen { cursor: default; }
+.ch-card.unseen:hover { filter: none; }
+.ch-card.unseen .ch-nm { color: var(--chalk); }
+.ch-prog .lbl i { font-style: normal; color: #8f7d66; }
+.ch-nobar { height: 6px; border-radius: 3px; border: 1px dashed rgba(205,191,169,.18); }
+.ch-card.unseen .ch-facts b { font-style: italic; font-weight: 500; font-size: 12px; color: #5a544b; }
 
 /* sheet */
 .ch-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -115,3 +148,14 @@
 .ch-prof .muted { color: var(--ash); }
 .ch-wallet svg { width: 100%; height: 56px; display: block; }
 .ch-up { color: var(--ok); } .ch-down { color: var(--bad); }
+
+/* item tooltip glass (_d.css .tt), in-game colours */
+.ch-slot:hover { background: rgba(80,140,255,.06); }
+.ch-tt { position: fixed; z-index: 60; padding: 9px 11px 10px; font-size: 12.5px; line-height: 1.4; color: #fff; pointer-events: none;
+  background: linear-gradient(180deg, rgba(14,18,44,.97), rgba(4,5,14,.97)); border: 1px solid #a9afc0; border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 0 0 2px rgba(108,113,132,.4), 0 14px 30px rgba(0,0,0,.75); text-shadow: 1px 1px 0 #000; }
+.ch-tt .t { font-size: 14px; font-weight: 600; }
+.ch-tt .y { color: #ffd100; }
+.ch-tt .src { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(108,113,132,.35); color: #9da3b8; font-size: 11.5px; }
+.ch-tt .tq0 { color: #9d9d9d; } .ch-tt .tq1 { color: #fff; } .ch-tt .tq2 { color: #1eff00; }
+.ch-tt .tq3 { color: #3d8bff; } .ch-tt .tq4 { color: #b553f5; } .ch-tt .tq5 { color: #ff8000; }

@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, Puzzle } from "lucide-react";
 import type {
   BagView,
   CharacterCard,
   CharacterSheet,
   ItemRow,
+  WtfCharacter,
 } from "@/lib/bindings";
 import {
   Button,
@@ -17,8 +19,9 @@ import {
   Record as Parchment,
   Segmented,
 } from "@/components/d";
-import { useCharacterSheet, useCharacters } from "@/hooks/useCharacters";
-import { ago, coins, plural, played, when } from "@/lib/format";
+import { useAddon } from "@/hooks/useAddon";
+import { useCharacterSheet, useCharacters, useRoster } from "@/hooks/useCharacters";
+import { ago, characterName, coins, plural, played, when } from "@/lib/format";
 
 // design/mocks/round-3/characters.html and character.html, with
 // IMPLEMENTING.md §7: no net worth or "worth carried" (AH numbers stay
@@ -52,21 +55,117 @@ function classLine(c: CharacterCard): string {
   return parts.filter(Boolean).join(" ");
 }
 
+// The class crest (design/mocks/round-3/_shell.js `GLYPH` and `crest()`):
+// a shield in the class tint with the class glyph. Classes without a glyph
+// yet show the shield alone.
+const GLYPH: Record<string, React.ReactNode> = {
+  paladin: (
+    <>
+      <path d="M8 5h8v5H8z" />
+      <path d="M11 10h2v10h-2z" />
+    </>
+  ),
+  druid: (
+    <>
+      <circle cx="8" cy="8" r="1.8" />
+      <circle cx="12" cy="6.5" r="1.8" />
+      <circle cx="16" cy="8" r="1.8" />
+      <path d="M12 11c3 0 5 3 5 5.5 0 1.7-1.5 2.5-3 2-1.3-.4-2.7-.4-4 0-1.5.5-3-.3-3-2C7 14 9 11 12 11z" />
+    </>
+  ),
+  hunter: (
+    <>
+      <path d="M6 18L17 7" strokeWidth="2" />
+      <path d="M13 6h5v5z" />
+      <path d="M5 16l3 3-3 1z" />
+    </>
+  ),
+  mage: <path d="M12 3l2 6.5L20.5 12 14 14.5 12 21l-2-6.5L3.5 12 10 9.5z" />,
+  priest: (
+    <>
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" strokeWidth="2" />
+    </>
+  ),
+  rogue: (
+    <>
+      <path d="M12 3l2 3v9h-4V6z" />
+      <path d="M8 15h8v2H8z" />
+      <path d="M11 17h2v4h-2z" />
+    </>
+  ),
+  warrior: (
+    <>
+      <path d="M5 5l14 14M19 5L5 19" strokeWidth="2.2" />
+      <path d="M4 8l4-4M16 4l4 4" />
+    </>
+  ),
+};
+
+/** "Hu" for Human, "NE" for Night Elf: the crest's race badge. */
+function raceBadge(race: string): string {
+  const words = race.split(/\s+/).filter(Boolean);
+  return words.length > 1 ? words.map((w) => w[0].toUpperCase()).join("") : race.slice(0, 2);
+}
+
 function Crest({ c, size = 64 }: { c: CharacterCard; size?: number }) {
   return (
-    <span className="ch-crest" style={{ ...classStyle(c), "--w": `${size}px` } as React.CSSProperties} aria-hidden>
-      {c.name.slice(0, 1)}
+    <span
+      className={`ch-pslot${c.class ? "" : " plain"}`}
+      style={{ ...classStyle(c), "--w": `${size}px` } as React.CSSProperties}
+      aria-hidden
+    >
+      <span className="pi">
+        <svg className="crest" viewBox="0 0 24 24">
+          <path d="M12 1.5l9 3.3v6.6c0 6.2-4.3 10.3-9 12.1-4.7-1.8-9-5.9-9-12.1V4.8z" />
+          <g transform="translate(4.2 4.2) scale(.65)">{c.class ? GLYPH[c.class] : null}</g>
+        </svg>
+      </span>
+      {c.race && <span className="race">{raceBadge(c.race)}</span>}
+    </span>
+  );
+}
+
+/** Before the addon has seen a character: a stone slot with a silhouette. */
+function Blank({ size = 64 }: { size?: number }) {
+  return (
+    <span className="ch-pslot blank" style={{ "--w": `${size}px` } as React.CSSProperties} aria-hidden>
+      <span className="pi">
+        <svg viewBox="0 0 40 50">
+          <circle cx="20" cy="18" r="8" />
+          <path d="M4 50c0-13 7-19 16-19s16 6 16 19z" />
+        </svg>
+      </span>
     </span>
   );
 }
 
 type Sort = "level" | "gold" | "seen";
 
-/** Characters: every alt's card, or one character's sheet. */
-export function Characters() {
+const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
+
+/** Characters: every alt's card, or one character's sheet. Characters in
+ *  the WTF folder the addon hasn't seen yet get a neutral card
+ *  (characters-noaddon.html) and fill in as each one is seen. */
+export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void }) {
   const { overview, error } = useCharacters();
+  const roster = useRoster();
+  const addon = useAddon();
   const [sort, setSort] = useState<Sort>("gold");
   const [open, setOpen] = useState<number | null>(null);
+
+  const unseen = useMemo(() => {
+    const seen = overview?.characters ?? [];
+    return (roster ?? [])
+      .filter(
+        (r) =>
+          !seen.some(
+            (c) => same(c.account, r.account) && same(c.group_dir, r.realm) && same(c.folder, r.name),
+          ),
+      )
+      .sort((a, b) => (b.last_played ?? "").localeCompare(a.last_played ?? ""));
+  }, [overview, roster]);
+  const addonMissing = addon.status != null && addon.status.installed_version == null;
 
   const cards = useMemo(() => {
     const list = [...(overview?.characters ?? [])];
@@ -82,13 +181,18 @@ export function Characters() {
     return <Sheet id={open} cards={cards} onOpen={setOpen} onBack={() => setOpen(null)} />;
   }
 
+  const anySeen = cards.length > 0;
   return (
     <Page>
       <PageHeader
         title="Characters"
-        lede="Everything your alts carry, as of their last logout."
+        lede={
+          anySeen
+            ? "Everything your alts carry, as of their last logout."
+            : "Found in your WTF folder. Class, level and gold appear once the addon has seen each character."
+        }
         actions={
-          overview && overview.characters.length > 0 ? (
+          anySeen && overview ? (
             <span className="ch-totals">
               <span>
                 Gold <b><Coins copper={overview.gold} silver={false} /></b>
@@ -97,41 +201,97 @@ export function Characters() {
                 Items <b>{overview.items.toLocaleString()}</b>
               </span>
             </span>
+          ) : unseen.length > 0 ? (
+            <span className="ch-totals">
+              <span>
+                <b>{unseen.length}</b> {unseen.length === 1 ? "character" : "characters"}
+              </span>
+            </span>
           ) : undefined
         }
       />
       {error && <Callout tone="bad">{error}</Callout>}
-      {overview && overview.characters.length === 0 ? (
+      {addonMissing && (
+        <div className="ch-banner">
+          <Puzzle size={16} aria-hidden />
+          <span className="grow">
+            <b>Install the ForeverBuddy addon</b> to see class, level, gold and satchels for every alt.
+          </span>
+          <button onClick={onOpenDashboard}>
+            How to install <ChevronRight size={13} aria-hidden />
+          </button>
+        </div>
+      )}
+      {overview && !anySeen && unseen.length === 0 ? (
         <Panel>
           <PanelBody>
             <p className="d-muted">
-              No character notes yet. Once the ForeverBuddy addon is installed and you log out of a
-              character, its gold, gear and bags appear here.
+              No characters found yet. Log in to a character once and it appears here.
             </p>
           </PanelBody>
         </Panel>
       ) : (
         <>
-          <div className="ch-toolbar">
-            Sort
-            <Segmented<Sort>
-              value={sort}
-              onChange={setSort}
-              options={[
-                { value: "level", label: "Level" },
-                { value: "gold", label: "Gold" },
-                { value: "seen", label: "Last seen" },
-              ]}
-            />
-          </div>
+          {anySeen && (
+            <div className="ch-toolbar">
+              Sort
+              <Segmented<Sort>
+                value={sort}
+                onChange={setSort}
+                options={[
+                  { value: "level", label: "Level" },
+                  { value: "gold", label: "Gold" },
+                  { value: "seen", label: "Last seen" },
+                ]}
+              />
+            </div>
+          )}
           <section className="ch-cards">
             {cards.map((c) => (
               <Card key={c.id} c={c} onOpen={() => setOpen(c.id)} />
+            ))}
+            {unseen.map((r) => (
+              <UnseenCard key={`${r.account}/${r.realm}/${r.name}`} r={r} addonMissing={addonMissing} />
             ))}
           </section>
         </>
       )}
     </Page>
+  );
+}
+
+/** A character the addon hasn't written about yet: name and last played
+ *  from the folder, quiet placeholders for the rest, never zeros. */
+function UnseenCard({ r, addonMissing }: { r: WtfCharacter; addonMissing: boolean }) {
+  const need = addonMissing ? "needs addon" : "log in once";
+  return (
+    <div className="d-panel ch-card unseen">
+      <div className="ch-id">
+        <Blank />
+        <div>
+          <div className="ch-nm">{characterName(r.name)}</div>
+          <div className="ch-loc">{r.last_played ? `Last played ${ago(r.last_played)}` : "Not played yet"}</div>
+        </div>
+      </div>
+      <div className="ch-prog">
+        <div className="lbl">
+          <span>Level &amp; experience</span>
+          <i>{need}</i>
+        </div>
+        <div className="ch-nobar" />
+      </div>
+      <div className="ch-facts">
+        <div>
+          Gold<b>n/a</b>
+        </div>
+        <div>
+          Satchels<b>n/a</b>
+        </div>
+        <div>
+          Played<b>n/a</b>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -233,10 +393,40 @@ function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mail
   );
 }
 
-function Slot({ item, label }: { item: ItemRow; label?: string }) {
+/** The tooltip glass, with only what the addon captured: name in its
+ *  quality colour, slot, item level, stack, and "Looted 2 Oct · Westfall"
+ *  when the journal has it. Never a source (IMPLEMENTING.md §7). Rendered
+ *  into <body> so the parchment's tilt doesn't move it. */
+function Tooltip({ item, slot, at }: { item: ItemRow; slot?: string; at: DOMRect }) {
+  const width = 256;
+  const left = at.right + 10 + width > window.innerWidth ? at.left - 10 - width : at.right + 10;
+  const top = Math.max(8, Math.min(at.top, window.innerHeight - 160));
+  const looted = item.looted_at
+    ? `Looted ${new Date(item.looted_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}${
+        item.looted_in ? ` · ${item.looted_in}` : ""
+      }`
+    : null;
+  return createPortal(
+    <div className="ch-tt" style={{ left, top, width }} role="tooltip">
+      <div className={`t tq${item.quality ?? 1}`}>{item.name}</div>
+      {slot && <div>{slot}</div>}
+      {item.ilvl != null && <div className="y">Item Level {item.ilvl}</div>}
+      {item.count > 1 && <div>Stack of {item.count}</div>}
+      {looted && <div className="src">{looted}</div>}
+    </div>,
+    document.body,
+  );
+}
+
+function Slot({ item, label, slot }: { item: ItemRow; label?: string; slot?: string }) {
   const q = item.quality != null ? `ch-q${item.quality}` : "";
+  const [hover, setHover] = useState<DOMRect | null>(null);
   return (
-    <div className="ch-slot">
+    <div
+      className="ch-slot"
+      onMouseEnter={(e) => setHover(e.currentTarget.getBoundingClientRect())}
+      onMouseLeave={() => setHover(null)}
+    >
       <span className={`ch-ico ${q}`} aria-hidden>
         <b>{item.name.slice(0, 1)}</b>
       </span>
@@ -245,7 +435,37 @@ function Slot({ item, label }: { item: ItemRow; label?: string }) {
         <small>{label ?? (item.count > 1 ? `× ${item.count}` : "")}</small>
       </div>
       <span className="il">{item.ilvl ?? ""}</span>
+      {hover && <Tooltip item={item} slot={slot} at={hover} />}
     </div>
+  );
+}
+
+/** Main hand, off hand and ranged/relic: their own row under the gear. */
+const WEAPON_SLOTS = new Set([16, 17, 18]);
+
+function Gear({ items }: { items: ItemRow[] }) {
+  if (items.length === 0) return <p className="ch-empty">No gear recorded yet.</p>;
+  const slot = (i: ItemRow) => SLOTS[i.slot] ?? `Slot ${i.slot}`;
+  const armor = items.filter((i) => !WEAPON_SLOTS.has(i.slot));
+  const weapons = items.filter((i) => WEAPON_SLOTS.has(i.slot));
+  return (
+    <>
+      <div className="ch-doll">
+        {armor.map((i) => (
+          <Slot key={i.slot} item={i} label={slot(i)} slot={slot(i)} />
+        ))}
+      </div>
+      {weapons.length > 0 && (
+        <>
+          <div className="ch-sec">Weapons</div>
+          <div className="ch-doll">
+            {weapons.map((i) => (
+              <Slot key={i.slot} item={i} label={slot(i)} slot={slot(i)} />
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -396,16 +616,7 @@ function Sheet({
               ))}
               <span className="stamp">{ago(c.last_seen)}</span>
             </nav>
-            {tab === "gear" &&
-              (sheet.equipped.length === 0 ? (
-                <p className="ch-empty">No gear recorded yet.</p>
-              ) : (
-                <div className="ch-doll">
-                  {sheet.equipped.map((i) => (
-                    <Slot key={i.slot} item={i} label={SLOTS[i.slot] ?? `Slot ${i.slot}`} />
-                  ))}
-                </div>
-              ))}
+            {tab === "gear" && <Gear items={sheet.equipped} />}
             {tab === "satchels" && <Bags bags={sheet.bags} empty="No satchels recorded yet." />}
             {tab === "bank" && (
               <>
