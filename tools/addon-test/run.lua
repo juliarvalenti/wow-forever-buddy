@@ -638,27 +638,38 @@ scenario("tooltip", function()
     })
     c.login(nil)
     local lines = table.concat(c.hover(14047), "\n")
+    -- Compact by default (INGAME §8): the other alts on one gold line, names
+    -- in class colour (our own codes around the escaped name), then the price
+    -- and a hint. No head, no total, no footer, and never this character.
     eq(lines, table.concat({
         "Runecloth",
         " ",
-        "Forever Buddy",
-        -- No row for this character in the compact view (INGAME §8).
-        "Coinpurse | 340 · bank",
-        "Evil||Hitem:19019||h[Thunderfury]||h | 3 · mail",
-        "All alts | 343",
-        "Last scan | ~1g 12s each",
-        "As of each alt's last logout · scan 3 days ago",
+        "Your alts: |cffc79c6eCoinpurse|r 340 bank · |cfff58cbaEvil||Hitem:19019||h[Thunderfury]||h|r 3 mail",
+        "~1g 12s each at your last scan",
+        "Shift for details",
     }, "\n"), "tooltip")
 
     -- Shift: this character first, live, then the alts by place and date.
     c.world.shift = true
-    local full = c.hover(14047)
-    eq(full[4], "Thrandor | 20 · on you", "with Shift: this character")
-    eq(full[5], "Coinpurse | 340 bank · 1 day ago", "with Shift: an alt")
-    eq(full[7], "All alts | 363", "with Shift: the total")
+    eq(table.concat(c.hover(14047), "\n"), table.concat({
+        "Runecloth",
+        " ",
+        "Forever Buddy",
+        "Thrandor | 20 · on you",
+        "Coinpurse | 340 bank · 1 day ago",
+        "Evil||Hitem:19019||h[Thunderfury]||h | 3 mail · 3 days ago",
+        "All characters | 363",
+        "Last scan | ~1g 12s each · 3 days ago",
+        "As of each alt's last logout",
+    }, "\n"), "with Shift")
     c.world.shift = false
 
     eq(#c.hover(2488), 1, "nothing for an item no alt holds")
+    -- The Hearthstone is in this character's bags only: nothing either way.
+    eq(#c.hover(6948), 1, "nothing for an item only this character holds")
+    c.world.shift = true
+    eq(#c.hover(6948), 1, "nothing for it with Shift either")
+    c.world.shift = false
     c.world.combat = true
     eq(#c.hover(14047), 1, "nothing in combat")
     c.world.combat = false

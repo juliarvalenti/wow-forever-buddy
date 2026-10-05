@@ -548,8 +548,9 @@ end
 -- is looked up, never run, and the whole callback is pcall'd, so a bad
 -- entry drops our lines rather than raising an error.
 
-local MAX_ROWS = 6
-local PLACES = { "bags", "bank", "mail", "equipped" }
+local MAX_ROWS = 8 -- in the Shift view
+local COMPACT_NAMES = 3 -- in the default line
+local PLACES = { "bags", "bank", "mail", "worn" }
 local tooltipErrors = 0
 
 -- Slot text shown as text: every "|" doubled, so a name can't carry an item
@@ -584,6 +585,96 @@ local function isMe(alt)
         and (alt.surname or "") == (character.surname or "")
 end
 
+local function classColor(class)
+    return RAID_CLASS_COLORS and RAID_CLASS_COLORS[class or ""]
+end
+
+-- An alt's place for the compact line: where most of its stack is.
+local function mainPlace(row)
+    local best = 1
+    for p = 2, 4 do
+        if row.places[p] > row.places[best] then
+            best = p
+        end
+    end
+    return PLACES[best]
+end
+
+-- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
+-- with names in class colour, at most three, then the price and a hint.
+local function compactLines(tooltip, others, price)
+    local parts = {}
+    for k = 1, math.min(#others, COMPACT_NAMES) do
+        local row = others[k]
+        local name, c = plain(row.name), classColor(row.class)
+        if c then
+            -- Our own colour code around the escaped name; |r returns to gold.
+            name = string.format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5),
+                math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) .. name .. "|r"
+        end
+        parts[#parts + 1] = name .. " " .. row.total .. " " .. mainPlace(row)
+    end
+    if #others > COMPACT_NAMES then
+        parts[#parts + 1] = "+" .. (#others - COMPACT_NAMES) .. " more"
+    end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Your alts: " .. table.concat(parts, " · "), 1, 0.82, 0)
+    if price > 0 then
+        -- "~", not "≈": the game's fonts may not have the glyph.
+        tooltip:AddLine("~" .. coins(price) .. " each at your last scan", 1, 1, 1)
+    end
+    tooltip:AddLine("Shift for details", 0.5, 0.6, 0.8)
+end
+
+-- The Shift view: a head, this character first with its live count, then
+-- each alt by place and date, the total and the scan.
+local function fullLines(tooltip, slot, id, others, price)
+    local rows, total = {}, 0
+    local mine = read("C_Item.GetItemCount", id, true)
+    if type(mine) == "number" and mine > 0 and character and character.name then
+        rows[1] = { name = character.name, class = character.class, total = mine, live = true }
+        total = mine
+    end
+    for _, row in ipairs(others) do
+        rows[#rows + 1] = row
+        total = total + row.total
+    end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
+    for k = 1, math.min(#rows, MAX_ROWS) do
+        local row = rows[k]
+        local right
+        if row.live then
+            right = row.total .. " · on you"
+        else
+            local where = {}
+            for p = 1, 4 do
+                if row.places[p] > 0 then
+                    where[#where + 1] = row.places[p] .. " " .. PLACES[p]
+                end
+            end
+            right = table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
+        end
+        local c = classColor(row.class)
+        if c then
+            tooltip:AddDoubleLine(plain(row.name), right, c.r, c.g, c.b, 1, 1, 1)
+        else
+            tooltip:AddDoubleLine(plain(row.name), right, 1, 1, 1, 1, 1, 1)
+        end
+    end
+    if #rows > MAX_ROWS then
+        tooltip:AddLine("+" .. (#rows - MAX_ROWS) .. " more", 0.6, 0.6, 0.6)
+    end
+    if #rows >= 2 then
+        tooltip:AddDoubleLine("All characters", tostring(total), 1, 0.82, 0, 1, 1, 1)
+    end
+    if price > 0 then
+        local scan = type(slot.scanAt) == "number" and (" · " .. ago(slot.scanAt)) or ""
+        tooltip:AddDoubleLine("Last scan", "~" .. coins(price) .. " each" .. scan, 1, 0.82, 0, 1, 1, 1)
+    end
+    tooltip:AddLine("As of each alt's last logout", 0.5, 0.5, 0.5)
+end
+
 local function addItemLines(tooltip, id)
     if type(id) ~= "number" or isSecret(id) or read("InCombatLockdown") then
         return
@@ -606,15 +697,8 @@ local function addItemLines(tooltip, id)
     end
     local entry = type(slot.items) == "table" and slot.items[id]
     local alts = type(slot.alts) == "table" and slot.alts or {}
-    local rows, total = {}, 0
-    local shift = read("IsShiftKeyDown")
-    -- This character's count, live from the game, only in the Shift view
-    -- (INGAME §8): the compact lines are about the other alts.
-    local mine = shift and read("C_Item.GetItemCount", id, true)
-    if type(mine) == "number" and mine > 0 and character and character.name then
-        rows[#rows + 1] = { name = character.name, class = character.class, total = mine, live = true }
-        total = total + mine
-    end
+    -- The other alts holding it, from the index.
+    local others = {}
     if type(entry) == "table" then
         for i = 2, #entry, 5 do
             local alt = alts[entry[i]]
@@ -626,56 +710,22 @@ local function addItemLines(tooltip, id)
                     row.total = row.total + n
                 end
                 if row.total > 0 then
-                    rows[#rows + 1] = row
-                    total = total + row.total
+                    others[#others + 1] = row
                 end
             end
         end
     end
-    local price = type(entry) == "table" and tonumber(entry[1]) or 0
-    if #rows == 0 then
+    -- Nothing when only this character has it, or nobody does: never an
+    -- empty head (INGAME §8).
+    if #others == 0 then
         return
     end
-
-    tooltip:AddLine(" ")
-    tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
-    for k = 1, math.min(#rows, MAX_ROWS) do
-        local row = rows[k]
-        local right
-        if row.live then
-            right = row.total .. " · on you"
-        else
-            local where = {}
-            for p = 1, 4 do
-                if row.places[p] > 0 then
-                    where[#where + 1] = shift and (row.places[p] .. " " .. PLACES[p]) or PLACES[p]
-                end
-            end
-            right = shift and table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
-                or (row.total .. " · " .. table.concat(where, ", "))
-        end
-        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[row.class or ""]
-        if color then
-            tooltip:AddDoubleLine(plain(row.name), right, color.r, color.g, color.b, 1, 1, 1)
-        else
-            tooltip:AddDoubleLine(plain(row.name), right, 1, 1, 1, 1, 1, 1)
-        end
+    local price = type(entry) == "table" and tonumber(entry[1]) or 0
+    if read("IsShiftKeyDown") then
+        fullLines(tooltip, slot, id, others, price)
+    else
+        compactLines(tooltip, others, price)
     end
-    if #rows > MAX_ROWS then
-        tooltip:AddLine("+" .. (#rows - MAX_ROWS) .. " more", 0.6, 0.6, 0.6)
-    end
-    if #rows >= 2 then
-        tooltip:AddDoubleLine("All alts", tostring(total), 1, 0.82, 0, 1, 1, 1)
-    end
-    if price > 0 then
-        -- "~", not "≈": the game's fonts may not have the glyph.
-        tooltip:AddDoubleLine("Last scan", "~" .. coins(price) .. " each", 1, 0.82, 0, 1, 1, 1)
-    end
-    local footer = "As of each alt's last logout"
-    if type(slot.scanAt) == "number" and price > 0 then
-        footer = footer .. " · scan " .. ago(slot.scanAt)
-    end
-    tooltip:AddLine(footer, 0.5, 0.5, 0.5)
 end
 
 local hooked = false
