@@ -50,6 +50,19 @@ export const commands = {
 	read_at: string,
 } | null>("addons_list"),
 	/**
+	 *  Applies the staged addon switches (F6) by rewriting the characters'
+	 *  AddOns.txt through the write gate: refused while WoW runs, with one
+	 *  safety snapshot first. Every addon and character is checked against what
+	 *  the list shows; nothing else can be named. Runs as the one backup/restore
+	 *  job.
+	 */
+	addonsApply: (changes: AddonChange[]) => __TAURI_INVOKE<ToggleResult>("addons_apply", { changes }),
+	/**
+	 *  Undoes a toggle from its safety snapshot (`ToggleResult::snapshot_id`):
+	 *  only AddOns.txt files are put back, through the write gate.
+	 */
+	addonsUndo: (snapshotId: string) => __TAURI_INVOKE<null>("addons_undo", { snapshotId }),
+	/**
 	 *  One adventure's recap, or the newest one when `id` is `None`. `None`
 	 *  back means there are no adventures yet (or none with that id).
 	 */
@@ -336,12 +349,24 @@ export type AccountNode = {
 	characters: CharacterNode[],
 };
 
+/**  One staged switch: turn `addon` on or off for `character`. */
+export type AddonChange = {
+	addon: string,
+	character: CharacterKey,
+	enabled: boolean,
+};
+
 export type AddonCharacter = {
 	account: string,
 	/**  The group folder (Forever's opaque id, or a realm). */
 	group: string,
 	/**  The character folder, e.g. `Ellygie-Vargur`. */
 	folder: string,
+	/**
+	 *  Its settings folder is a link to somewhere else, so the write gate
+	 *  won't write its AddOns.txt: "linked folder" instead of a switch.
+	 */
+	linked: boolean,
 };
 
 export type AddonInfo = {
@@ -674,6 +699,13 @@ export type CharacterCard = {
 	bank_items: number,
 	/**  Marked by the user as a bank alt (F3): a "Bank" tag on the card. */
 	bank_alt: boolean,
+};
+
+/**  A character the Addons screen shows, as the UI names it back. */
+export type CharacterKey = {
+	account: string,
+	group: string,
+	folder: string,
 };
 
 export type CharacterNode = {
@@ -1502,6 +1534,20 @@ export type Tiles = {
 	last_30_days: number | null,
 	this_week: number | null,
 	best_earner: Earner | null,
+};
+
+/**
+ *  What Apply did, for "4 changes applied. A safety snapshot was taken
+ *  first." with Undo.
+ */
+export type ToggleResult = {
+	/**
+	 *  The safety snapshot taken first; `None` if every file already said
+	 *  so and nothing was written.
+	 */
+	snapshot_id: string | null,
+	/**  Changes that took effect (ones already so are left out). */
+	applied: number,
 };
 
 export type Totals = {
