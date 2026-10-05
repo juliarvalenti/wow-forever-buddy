@@ -20,6 +20,7 @@ import { useGameStatus } from "@/hooks/useGameStatus";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
+import { Adventure } from "@/screens/Adventure";
 import { Backups } from "@/screens/Backups";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
@@ -27,7 +28,7 @@ import { Ledger } from "@/screens/Ledger";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "ledger" | "backups" | "game";
+type Screen = "dashboard" | "ledger" | "adventures" | "backups" | "game";
 
 type NavRow =
   | { group: string }
@@ -62,6 +63,12 @@ function Shell() {
   const recovery = useRecovery();
   const snapshots = useSnapshotCount();
   const [screen, setScreen] = useState<Screen>("dashboard");
+  // The adventure on show; null is the newest. The sidebar opens the newest.
+  const [adventureId, setAdventureId] = useState<number | null>(null);
+  const openAdventure = (id: number | null) => {
+    setAdventureId(id);
+    setScreen("adventures");
+  };
   const [deferred, setDeferred] = useState(false);
   const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
   const [backupsFilter, setBackupsFilter] = useState<"Safety" | null>(null);
@@ -88,7 +95,7 @@ function Shell() {
     { id: "dashboard", label: "Dashboard", icon: Home },
     { soon: "Characters", icon: Users },
     { id: "ledger", label: "Ledger", icon: Coins },
-    { soon: "Adventures", icon: ScrollText },
+    { id: "adventures", label: "Adventures", icon: ScrollText },
     { soon: "Auction House", icon: Scale },
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
@@ -130,7 +137,7 @@ function Shell() {
                 key={row.id}
                 title={row.label}
                 aria-current={current === row.id ? "page" : undefined}
-                onClick={() => setScreen(row.id)}
+                onClick={() => (row.id === "adventures" ? openAdventure(null) : setScreen(row.id))}
               >
                 <Icon size={16} aria-hidden />
                 <span className="lbl">{row.label}</span>
@@ -188,6 +195,7 @@ function Shell() {
             folderMissing={folderMissing}
             onOpenBackups={() => setScreen("backups")}
             onCheckFolder={() => setScreen("game")}
+            onOpenAdventure={openAdventure}
           />
         )}
         {current === "backups" && (
@@ -200,7 +208,12 @@ function Shell() {
             show={backupsFilter}
           />
         )}
-        {current === "ledger" && <Ledger onOpenDashboard={() => setScreen("dashboard")} />}
+        {current === "ledger" && (
+          <Ledger onOpenDashboard={() => setScreen("dashboard")} onOpenAdventure={openAdventure} />
+        )}
+        {current === "adventures" && (
+          <Adventure id={adventureId} onOpen={openAdventure} onOpenDashboard={() => setScreen("dashboard")} />
+        )}
         {current === "game" && <GameFolder install={install} />}
       </main>
 

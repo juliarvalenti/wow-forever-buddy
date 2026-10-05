@@ -7,10 +7,12 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   AddonStatus,
+  Adventure,
   CategoryNode,
   JournalEntry,
   Ledger,
   LedgerRange,
+  PlaySession,
   RestorePlan,
   SnapshotDetail,
   SnapshotKind,
@@ -41,6 +43,7 @@ export const SCENARIOS = [
   "detect-failed",
   "startup-error",
   "ledger-empty", // the Ledger before the addon has written anything
+  "adventure-empty", // Adventures before the addon has written anything
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -208,13 +211,20 @@ export function installMockIpc(): void {
     ].map((path, i) => ({ source: i === 0 ? "registry" : "common_path", path })),
   };
   const who = (...names: string[]) => names.map((name) => ({ account: "ACCOUNT1", realm: "70", name }));
-  const session = (id: number, startMins: number, endMins: number | null, characters = who(), crashed = false) => ({
+  const session = (
+    id: number,
+    startMins: number,
+    endMins: number | null,
+    characters = who(),
+    adventures: number[] = [],
+  ): PlaySession => ({
     id,
     flavor: "_classic_beta_",
     started_at: iso(startMins),
     ended_at: endMins == null ? null : iso(endMins),
     characters,
-    crashed,
+    adventures,
+    crashed: false,
   });
 
   // backups-corrupt: as in backups.html?error=corrupt, two copies that don't
@@ -310,6 +320,81 @@ export function installMockIpc(): void {
         entry(4, "Thrandor Vargur", 60 * 51, 160, 178, { text: "Runecloth ×60", quality: 1 }),
         entry(5, "Brannic", 60 * 74, 115, 41, { text: "Feralas · 14 quests", quality: null }, 52),
       ],
+    };
+  };
+
+  // V9: session.html's Stratholme evening (192 minutes, 22 hours ago).
+  const adventureFor = (id: number): Adventure => {
+    const start = 60 * 22;
+    const t = (mins: number) => iso(start - mins);
+    const line = (mins: number, kind: string, text: string, extra: Partial<Adventure["timeline"][0]> = {}) => ({
+      at: t(mins),
+      kind,
+      text,
+      detail: null,
+      quality: null,
+      withheld: false,
+      ...extra,
+    });
+    return {
+      id,
+      character_id: 2,
+      name: "Thrandor Vargur",
+      class: "PALADIN",
+      race: "Human",
+      login: t(0),
+      logout: t(192),
+      played_secs: 192 * 60,
+      title: "Stratholme & Eastern Plaguelands",
+      level_start: 59,
+      level_end: 60,
+      last_zone: "Eastern Plaguelands",
+      travelled: ["Eastern Plaguelands", "Stratholme"],
+      tally: { gold: 3_124_000, xp: null, loot: 47, deaths: 1, repairs: 180_000 },
+      money: [
+        { at: t(0), money: 18_280_000 },
+        { at: t(40), money: 18_910_000 },
+        { at: t(60), money: 18_850_000 },
+        { at: t(126), money: 19_640_000 },
+        { at: t(150), money: 21_020_000 },
+        { at: t(192), money: 21_404_000 },
+      ],
+      markers: [
+        { at: t(58), kind: "death", label: "Died in Stratholme" },
+        { at: t(126), kind: "encounter", label: "Defeated Baron Rivendare" },
+        { at: t(135), kind: "level", label: "Reached level 60" },
+        { at: t(150), kind: "quest", label: "Turned in The Archivist" },
+      ],
+      timeline: [
+        line(0, "login", "Logged in", { detail: "1,828g" }),
+        line(0, "zone", "Travelled to Eastern Plaguelands"),
+        line(12, "zone", "Entered Stratholme"),
+        line(58, "death", "Died in Stratholme", { withheld: true }),
+        line(60, "repair", "Repaired for 6g"),
+        line(126, "encounter", "Defeated Baron Rivendare"),
+        line(127, "loot", "Looted Truestrike Shoulders", { quality: 3, withheld: true }),
+        line(135, "level", "Reached level 60"),
+        line(140, "zone", "Travelled to Eastern Plaguelands"),
+        line(150, "quest", "Turned in The Archivist", { detail: "+62g · +38400 XP" }),
+        line(192, "logout", "Logged out in Eastern Plaguelands", { detail: "2,140g" }),
+      ],
+      gained: [
+        { item_id: 16_000, name: "Truestrike Shoulders", quality: 3, count: 1, how: null },
+        { item_id: 14_047, name: "Runecloth", quality: 1, count: 40, how: null },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 6, how: null },
+      ],
+      spent: [
+        { item_id: 13_510, name: "Flask of the Titans", quality: 1, count: 1, how: "used" },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 4, how: "used" },
+        { item_id: 999, name: "Vendor junk", quality: 0, count: 22, how: "sold" },
+      ],
+      quests: [
+        { title: "The Archivist", zone: "Eastern Plaguelands" },
+        { title: "Dead Man's Plea", zone: "Stratholme" },
+      ],
+      note: "Ding at last. The Baron dropped the shoulders on the second run.",
+      prev: { id: id + 1, name: "Velyra Duskmane", login: iso(60 * 48) },
+      next: id > 1 ? { id: id - 1, name: "Coinpurse", login: iso(60 * 20) } : null,
     };
   };
 
@@ -453,10 +538,14 @@ export function installMockIpc(): void {
         ? []
         : [
             ...(running ? [session(9, 102, null)] : []),
-            session(8, 60 * 24 + 100, 60 * 24 - 92, who("Thrandor")),
-            session(7, 60 * 29, 60 * 29 - 22, who("Coinpurse")),
+            // The first two have addon adventures (V9): they open the recap.
+            session(8, 60 * 24 + 100, 60 * 24 - 92, who("Thrandor"), [1]),
+            session(7, 60 * 29, 60 * 29 - 22, who("Coinpurse"), [2]),
             session(6, 60 * 47, 60 * 47 - 125, who("Velyra-Duskmane")),
           ],
+    // V9: session.html's evening, condensed; `adventure-empty` has none.
+    adventure_get: ({ id }) => (s === "adventure-empty" ? null : adventureFor((id as number | null) ?? 1)),
+    adventure_set_note: () => null,
   };
 
   mockWindows("main");
