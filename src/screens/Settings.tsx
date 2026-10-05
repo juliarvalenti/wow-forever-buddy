@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, KeyRound, Lock } from "lucide-react";
-import type { IntegrationId, StorageInfo } from "@/lib/bindings";
-import { commands } from "@/lib/bindings";
+import type { AppInfo, IntegrationId, StorageInfo } from "@/lib/bindings";
+import { commands, events } from "@/lib/bindings";
 import {
   Button,
   Meter,
@@ -12,9 +12,11 @@ import {
   PanelHeader,
   Pill,
   type PillKind,
+  PrimaryButton,
   Switch,
 } from "@/components/d";
 import { useBackups } from "@/hooks/useBackups";
+import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
 import { useAppInfo, useSecrets, useSettings } from "@/hooks/useSettings";
 import { bytes, errorText, plural } from "@/lib/format";
@@ -105,42 +107,6 @@ export function Settings({
   const flavor = active?.flavors.find((f) => f.id === active.active);
   const backup = settings?.backup;
   const hours = backup?.schedule_hours ?? 24;
-  const picked = backup?.location ?? null;
-  const location = picked
-    ? join(picked, STORE_FOLDER)
-    : info
-      ? join(info.paths.local_data_dir, "backups")
-      : "…";
-
-  // Moving copies every backup to the new folder, then removes the old one.
-  const [moving, setMoving] = useState(false);
-  const [moved, setMoved] = useState<{ ok: boolean; text: string } | null>(null);
-  const move = async (to: string | null) => {
-    setMoving(true);
-    setMoved(null);
-    try {
-      const r = await commands.backupMoveLocation(to);
-      await reload();
-      refreshBackups();
-      setMoved({
-        ok: true,
-        text: r.left_behind
-          ? `Moved. The old folder couldn't be removed; delete it by hand: ${r.left_behind}`
-          : r.files > 0
-            ? `Moved ${bytes(r.bytes)} of backups.`
-            : "Backups will be stored here from now on.",
-      });
-    } catch (e) {
-      setMoved({ ok: false, text: errorText(e) });
-    } finally {
-      setMoving(false);
-    }
-  };
-  const chooseLocation = async () => {
-    const path = await open({ directory: true, multiple: false });
-    if (typeof path === "string") await move(path);
-  };
-
   const connected = SERVICES.filter((s) => s.keys.every((k) => secrets.isSet(k.id))).length;
 
   return (
@@ -159,10 +125,11 @@ export function Settings({
             <div className="st-set full">
               <div className="t">World of Warcraft folder</div>
               <div className="ctl">
-                <span className="d-field d-mono">
-                  <FolderOpen size={14} aria-hidden style={{ color: "var(--soot)", flexShrink: 0 }} />
-                  <span>{active?.root ?? (install.state.kind === "invalid" ? "Missing" : "Not set")}</span>
-                </span>
+                <PathField
+                  path={active?.root ?? (install.state.kind === "invalid" ? "Missing" : "Not set")}
+                  info={info}
+                  icon
+                />
                 <Button onClick={onOpenGameFolder}>Change…</Button>
               </div>
               <div className="d" style={{ marginTop: 2 }}>
@@ -218,32 +185,16 @@ export function Settings({
               onChange={(v) => update({ backup: { include_addons: v } })}
             />
             <Keep storage={storage} onPruned={refreshBackups} />
-            <div className="st-set full">
-              <div className="t">Store backups in</div>
-              <div className="ctl">
-                <span className="d-field d-mono" title={location}>
-                  <span>{location}</span>
-                </span>
-                <Button onClick={chooseLocation} disabled={!settings || moving}>
-                  {moving ? "Moving…" : "Change…"}
-                </Button>
-              </div>
-              <div className="d">
-                {moving
-                  ? "Copying your backups, then removing the old folder. Backups wait until this is done."
-                  : "Your backups move with it. "}
-                {picked && !moving && (
-                  <button className="d-link" onClick={() => move(null)}>
-                    Move them back to the default folder
-                  </button>
-                )}
-              </div>
-              {moved && (
-                <div className={moved.ok ? "d" : "d err"} style={{ marginTop: 2 }}>
-                  {moved.text}
-                </div>
-              )}
-            </div>
+            <StoreLocation
+              picked={backup?.location ?? null}
+              ready={settings != null}
+              info={info}
+              storage={storage}
+              onMoved={() => {
+                reload();
+                refreshBackups();
+              }}
+            />
           </Panel>
 
           <Panel>
@@ -285,6 +236,150 @@ export function Settings({
         </Panel>
       </section>
     </Page>
+  );
+}
+
+function parent(p: string): string {
+  return p.replace(/[\\/][^\\/]*[\\/]?$/, "");
+}
+
+/** Known folders the way the OS names them: %LOCALAPPDATA% and %APPDATA% on
+ *  Windows (the parents of the app's own folders), ~ elsewhere. */
+function collapse(p: string, info: AppInfo | null): string {
+  if (!info) return p;
+  const { local_data_dir, config_dir } = info.paths;
+  const bases: [string, string][] = local_data_dir.includes("\\")
+    ? [
+        [parent(local_data_dir), "%LOCALAPPDATA%"],
+        [parent(config_dir), "%APPDATA%"],
+      ]
+    : [[local_data_dir.split("/Library/")[0], "~"]];
+  for (const [base, name] of bases) {
+    if (base && p.toLowerCase().startsWith(base.toLowerCase())) return name + p.slice(base.length);
+  }
+  return p;
+}
+
+/** A path in a field, cut at the start when it doesn't fit so the folder
+ *  that matters (the end) stays visible. The full path is the tooltip. */
+function PathField({ path, info, icon }: { path: string; info: AppInfo | null; icon?: boolean }) {
+  return (
+    <span className="d-field d-mono" title={path}>
+      {icon && <FolderOpen size={14} aria-hidden style={{ color: "var(--soot)", flexShrink: 0 }} />}
+      <span className="st-path">
+        <bdi>{collapse(path, info)}</bdi>
+      </span>
+    </span>
+  );
+}
+
+/** "Store backups in": pick a folder, confirm, and the backups move there
+ *  (backup_move_location: copied, checked, then the old folder removed). */
+function StoreLocation({
+  picked,
+  ready,
+  info,
+  storage,
+  onMoved,
+}: {
+  picked: string | null;
+  ready: boolean;
+  info: AppInfo | null;
+  storage: StorageInfo | null;
+  onMoved: () => void;
+}) {
+  const here = picked ? join(picked, STORE_FOLDER) : info ? join(info.paths.local_data_dir, "backups") : "…";
+  // A picked folder waiting for "Move backups"; null as `to` is the default.
+  const [confirm, setConfirm] = useState<{ to: string | null } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  useEvent(events.moveProgress, (p) => setProgress(p));
+
+  const target = (to: string | null) =>
+    to ? join(to, STORE_FOLDER) : info ? join(info.paths.local_data_dir, "backups") : "the default folder";
+  const size = storage?.used_bytes ? bytes(storage.used_bytes) : null;
+
+  const pick = async () => {
+    setResult(null);
+    const path = await open({ directory: true, multiple: false });
+    if (typeof path === "string") setConfirm({ to: path });
+  };
+  const move = async (to: string | null) => {
+    setConfirm(null);
+    setMoving(true);
+    setProgress(null);
+    try {
+      const r = await commands.backupMoveLocation(to);
+      onMoved();
+      setResult({
+        ok: true,
+        text: r.left_behind
+          ? `Moved. The old folder couldn't be removed; delete it by hand: ${r.left_behind}`
+          : r.files > 0
+            ? `Moved ${bytes(r.bytes)} of backups.`
+            : "Backups will be stored here from now on.",
+      });
+    } catch (e) {
+      setResult({ ok: false, text: `Nothing was moved. ${errorText(e)}` });
+    } finally {
+      setMoving(false);
+      setProgress(null);
+    }
+  };
+
+  return (
+    <div className="st-set full">
+      <div className="t">Store backups in</div>
+      <div className="ctl">
+        <PathField path={here} info={info} />
+        <Button onClick={pick} disabled={!ready || moving || confirm != null}>
+          Change…
+        </Button>
+      </div>
+
+      {confirm ? (
+        <div className="st-confirm">
+          <p>
+            Move {size ? <b>{size}</b> : "your"} of backups to{" "}
+            <b className="d-mono" title={target(confirm.to)}>
+              {collapse(target(confirm.to), info)}
+            </b>
+            ? Each file is copied and checked first; the old folder is removed after. Backups and
+            restores wait until it's done.
+          </p>
+          <div className="row">
+            <PrimaryButton onClick={() => move(confirm.to)}>Move backups</PrimaryButton>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : moving ? (
+        <div className="st-moving" role="status">
+          <Meter fraction={progress && progress.total > 0 ? progress.done / progress.total : 0} />
+          <span>
+            {progress
+              ? `Copying ${progress.done.toLocaleString()} of ${plural(progress.total, "file", "files")}…`
+              : "Getting ready…"}
+          </span>
+        </div>
+      ) : (
+        <div className="d">
+          Your backups move with it.{" "}
+          {picked && (
+            <button className="d-link" onClick={() => setConfirm({ to: null })}>
+              Move them back to the default folder
+            </button>
+          )}
+        </div>
+      )}
+      {result && (
+        <div className={result.ok ? "d" : "d err"} style={{ marginTop: 2 }}>
+          {result.text}
+        </div>
+      )}
+    </div>
   );
 }
 

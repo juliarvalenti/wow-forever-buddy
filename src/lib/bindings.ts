@@ -128,7 +128,8 @@ export const commands = {
 	/**
 	 *  Settings' "Store backups in": moves the store to a picked folder (into
 	 *  its own subfolder there), or back to the default with `None`, and points
-	 *  the setting at it. Waits for any running backup or restore.
+	 *  the setting at it. Waits for any running backup or restore. Emits
+	 *  `MoveProgress` while it copies.
 	 */
 	backupMoveLocation: (location: string | null) => __TAURI_INVOKE<MoveReport>("backup_move_location", { location }),
 	backupSetLabel: (id: string, label: string | null) => __TAURI_INVOKE<SnapshotSummary>("backup_set_label", { id, label }),
@@ -277,6 +278,7 @@ export const events = {
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
 	ingestCompleted: makeEvent<IngestCompleted>("ingest-completed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
+	moveProgress: makeEvent<MoveProgress>("move-progress"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
 	sessionsChanged: makeEvent<SessionsChanged>("sessions-changed"),
@@ -952,6 +954,12 @@ export type Marker = {
 export type MoneyPoint = {
 	at: string,
 	money: number | null,
+};
+
+/**  Emitted while the backups are copied to a new folder. */
+export type MoveProgress = {
+	done: number,
+	total: number,
 };
 
 /**  What a move did, for the Settings screen. */

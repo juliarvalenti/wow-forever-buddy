@@ -4,6 +4,7 @@
 // contains it (see main.tsx). Names and numbers follow the round-3 mocks so
 // app and mock screenshots line up.
 
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   AddonStatus,
@@ -52,7 +53,9 @@ export const SCENARIOS = [
   "characters-empty", // no addon notes yet
   "ledger-empty", // the Ledger before the addon has written anything
   "adventure-empty", // Adventures before the addon has written anything
-  "settings", // F1: a 24 h schedule and two keys saved (CurseForge, GitHub)
+  "settings", // F1: a 24 h schedule and two keys saved (CurseForge, GitHub); Change… then confirms a move
+  "settings-moving", // moving the backups, stuck part way so the progress shows
+  "settings-pending", // moving is refused: an interrupted restore waits
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -316,12 +319,12 @@ export function installMockIpc(): void {
       include_addons: false,
       on_app_start: true,
       on_game_exit: true,
-      schedule_hours: s === "settings" ? 24 : 0,
+      schedule_hours: s.startsWith("settings") ? 24 : 0,
     },
   };
   const secrets = new Map<IntegrationId, boolean>([
-    ["curseforge", s === "settings"],
-    ["github", s === "settings"],
+    ["curseforge", s.startsWith("settings")],
+    ["github", s.startsWith("settings")],
   ]);
   let refused = false;
   let recoveryRefused = false;
@@ -548,6 +551,12 @@ export function installMockIpc(): void {
     }),
     "plugin:dialog|open": () => "D:\\Backups",
     backup_move_location: ({ location }) => {
+      if (s === "settings-pending") throw { kind: "RestorePending" };
+      if (s === "settings-moving") {
+        // Part way through the copy, and it stays there.
+        setTimeout(() => emit("move-progress", { done: 412, total: 1843 }), 50);
+        return new Promise(() => {});
+      }
       settings.backup.location = (location as string | null) ?? null;
       return {
         dir: location ? `${location}\\WoW Forever Buddy backups` : "C:\\…\\backups",

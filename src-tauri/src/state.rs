@@ -117,7 +117,11 @@ impl AppCore {
     /// meanwhile. Refused while an interrupted restore waits, and for a
     /// location the setting would refuse anyway. See `backup::relocate`:
     /// the old store stays in use until the copy is complete and opens.
-    pub fn move_backups(&self, location: Option<PathBuf>) -> AppResult<MoveReport> {
+    pub fn move_backups(
+        &self,
+        location: Option<PathBuf>,
+        progress: crate::backup::Progress<'_>,
+    ) -> AppResult<MoveReport> {
         let _job = self.jobs.lock().expect("job lock poisoned");
         if crate::backup::journal::read(&self.paths.local_data_dir)?.is_some() {
             return Err(AppError::RestorePending);
@@ -141,7 +145,7 @@ impl AppCore {
         // Nothing to carry over if the store was never created (or its
         // drive is gone): then this only points the setting elsewhere.
         let (files, bytes) = if src.exists() {
-            relocate::copy_store(&src, &dst)?
+            relocate::copy_store(&src, &dst, progress)?
         } else {
             (0, 0)
         };
@@ -402,6 +406,10 @@ mod tests {
         }
     }
 
+    fn mv(core: &AppCore, location: Option<PathBuf>) -> AppResult<MoveReport> {
+        core.move_backups(location, &mut |_, _| {})
+    }
+
     /// F1: moving the store carries every snapshot over, switches to it,
     /// and removes the old copy; moving back to the default works too.
     #[test]
@@ -411,7 +419,7 @@ mod tests {
         let elsewhere = dir.path().join("Elsewhere");
         std::fs::create_dir(&elsewhere).unwrap();
 
-        let report = core.move_backups(Some(elsewhere.clone())).unwrap();
+        let report = mv(&core, Some(elsewhere.clone())).unwrap();
         assert!(
             report.files > 0 && report.left_behind.is_none(),
             "{report:?}"
@@ -421,7 +429,7 @@ mod tests {
         assert!(!default.exists(), "the old copy is gone");
         assert_whole(&core, &id);
 
-        core.move_backups(None).unwrap();
+        mv(&core, None).unwrap();
         assert_eq!(core.backups_dir(), default);
         assert!(!elsewhere.join(STORE_FOLDER).exists());
         assert!(elsewhere.is_dir(), "the picked folder itself stays");
@@ -464,12 +472,12 @@ mod tests {
         let used = dir.path().join("Used");
         std::fs::create_dir_all(used.join(STORE_FOLDER)).unwrap();
         std::fs::write(used.join(STORE_FOLDER).join("notes.txt"), b"mine").unwrap();
-        assert!(core.move_backups(Some(used)).is_err());
+        assert!(mv(&core, Some(used)).is_err());
 
         let game_root = core.settings.get().install.unwrap().root;
         let inside = game_root.join("Backups");
         assert!(matches!(
-            core.move_backups(Some(inside.clone())),
+            mv(&core, Some(inside.clone())),
             Err(AppError::InvalidSettings(_))
         ));
         assert!(!inside.exists(), "refused before copying anything");
@@ -481,7 +489,7 @@ mod tests {
             b"{ interrupted",
         )
         .unwrap();
-        assert!(core.move_backups(Some(dir.path().join("Free"))).is_err());
+        assert!(mv(&core, Some(dir.path().join("Free"))).is_err());
         assert!(!dir.path().join("Free").exists());
 
         assert_eq!(core.backups_dir(), before);

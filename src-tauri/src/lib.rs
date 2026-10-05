@@ -88,6 +88,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::BackupFailed,
             commands::backup::BackupProgress,
             commands::backup::ExportProgress,
+            commands::backup::MoveProgress,
             commands::restore::RestoreProgress,
             commands::restore::RestoreCompleted,
             commands::game::GameStatusChanged,

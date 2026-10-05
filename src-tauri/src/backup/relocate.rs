@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::backup::Progress;
 use crate::config::settings::{is_within, resolve_existing};
 use crate::error::{AppError, AppResult};
 
@@ -35,8 +36,9 @@ pub fn same_dir(a: &Path, b: &Path) -> bool {
 /// Each file is written, flushed to disk and read back to compare. The copy
 /// is built in `<dst>.moving` and renamed into place at the end, so `dst`
 /// never holds half a store. `staging/` (in-progress writes) is skipped.
-/// Returns the files and bytes copied.
-pub fn copy_store(src: &Path, dst: &Path) -> AppResult<(u32, u64)> {
+/// `progress` gets (files done, files in all). Returns the files and bytes
+/// copied.
+pub fn copy_store(src: &Path, dst: &Path, progress: Progress<'_>) -> AppResult<(u32, u64)> {
     let (rs, rd) = (resolve_existing(src), resolve_existing(dst));
     if is_within(&rd, &rs) || is_within(&rs, &rd) {
         return Err(AppError::InvalidSettings(format!(
@@ -57,8 +59,13 @@ pub fn copy_store(src: &Path, dst: &Path) -> AppResult<(u32, u64)> {
         fs::remove_dir_all(&tmp)?;
     }
     fs::create_dir_all(&tmp)?;
-    let mut copied = (0u32, 0u64);
-    let result = copy_dir(src, &tmp, true, &mut copied).and_then(|()| {
+    let mut copy = Copy {
+        files: 0,
+        bytes: 0,
+        total: count_files(src, true)?,
+        progress,
+    };
+    let result = copy_dir(src, &tmp, true, &mut copy).and_then(|()| {
         if dst.exists() {
             fs::remove_dir(dst)?; // empty, checked above
         }
@@ -69,7 +76,32 @@ pub fn copy_store(src: &Path, dst: &Path) -> AppResult<(u32, u64)> {
         let _ = fs::remove_dir_all(&tmp);
         return Err(e);
     }
-    Ok(copied)
+    Ok((copy.files, copy.bytes))
+}
+
+struct Copy<'a> {
+    files: u32,
+    bytes: u64,
+    total: u32,
+    progress: Progress<'a>,
+}
+
+/// The files `copy_dir` will copy, for the progress bar.
+fn count_files(dir: &Path, top: bool) -> AppResult<u32> {
+    let mut n = 0;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if top && entry.file_name() == "staging" {
+            continue;
+        }
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            n += count_files(&entry.path(), false)?;
+        } else {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 fn moving_dir(dst: &Path) -> PathBuf {
@@ -78,7 +110,7 @@ fn moving_dir(dst: &Path) -> PathBuf {
     dst.with_file_name(name)
 }
 
-fn copy_dir(src: &Path, dst: &Path, top: bool, copied: &mut (u32, u64)) -> AppResult<()> {
+fn copy_dir(src: &Path, dst: &Path, top: bool, copy: &mut Copy<'_>) -> AppResult<()> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let name = entry.file_name();
@@ -89,7 +121,7 @@ fn copy_dir(src: &Path, dst: &Path, top: bool, copied: &mut (u32, u64)) -> AppRe
         let kind = entry.file_type()?;
         if kind.is_dir() {
             fs::create_dir(&to)?;
-            copy_dir(&from, &to, false, copied)?;
+            copy_dir(&from, &to, false, copy)?;
         } else if kind.is_file() {
             let bytes = fs::read(&from)?;
             {
@@ -104,8 +136,9 @@ fn copy_dir(src: &Path, dst: &Path, top: bool, copied: &mut (u32, u64)) -> AppRe
                     from.display()
                 )));
             }
-            copied.0 += 1;
-            copied.1 += bytes.len() as u64;
+            copy.files += 1;
+            copy.bytes += bytes.len() as u64;
+            (copy.progress)(copy.files, copy.total);
         } else {
             // The store never makes links; one here isn't ours to follow.
             return Err(AppError::Io(format!(
@@ -136,7 +169,10 @@ mod tests {
         let (src, dst) = (tmp.path().join("old"), tmp.path().join("new"));
         store(&src);
 
-        assert_eq!(copy_store(&src, &dst).unwrap(), (2, 6));
+        let mut seen = Vec::new();
+        let copied = copy_store(&src, &dst, &mut |done, total| seen.push((done, total))).unwrap();
+        assert_eq!(copied, (2, 6));
+        assert_eq!(seen, vec![(1, 2), (2, 2)], "staging isn't counted either");
         assert_eq!(fs::read(dst.join("objects/ab/cdef")).unwrap(), b"blob");
         assert_eq!(fs::read(dst.join("manifests/S1.json")).unwrap(), b"{}");
         assert!(!dst.join("staging").exists());
@@ -155,12 +191,12 @@ mod tests {
 
         let empty = tmp.path().join("empty");
         fs::create_dir(&empty).unwrap();
-        copy_store(&src, &empty).unwrap();
+        copy_store(&src, &empty, &mut |_, _| {}).unwrap();
 
         let used = tmp.path().join("used");
         fs::create_dir(&used).unwrap();
         fs::write(used.join("mine.txt"), b"someone's file").unwrap();
-        let err = copy_store(&src, &used).unwrap_err();
+        let err = copy_store(&src, &used, &mut |_, _| {}).unwrap_err();
         assert!(matches!(err, AppError::InvalidSettings(_)), "{err:?}");
         assert_eq!(fs::read_dir(&used).unwrap().count(), 1, "nothing added");
     }
@@ -170,7 +206,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("old");
         store(&src);
-        let err = copy_store(&src, &src.join("inner")).unwrap_err();
+        let err = copy_store(&src, &src.join("inner"), &mut |_, _| {}).unwrap_err();
         assert!(matches!(err, AppError::InvalidSettings(_)), "{err:?}");
         assert!(!src.join("inner").exists());
     }
@@ -183,7 +219,7 @@ mod tests {
         fs::create_dir_all(tmp.path().join("new.moving/objects")).unwrap();
         fs::write(tmp.path().join("new.moving/objects/stale"), b"x").unwrap();
 
-        copy_store(&src, &dst).unwrap();
+        copy_store(&src, &dst, &mut |_, _| {}).unwrap();
         assert!(!dst.join("objects/stale").exists());
     }
 
