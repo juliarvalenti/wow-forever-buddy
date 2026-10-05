@@ -173,3 +173,21 @@ Raw file: [`tools/probe-addon/results/ForeverBuddyProbe.run3.lua`](../../tools/p
 | WTF folders | `70/Ellygie-Vargur/`, `Classic Beta PvP 2/Ellygie/` |
 
 One detail that supports fact 5's surname reading over a ruleset reading: all three characters in the `70/` folder share the suffix (`Ellyanna-Vargur`, `Ellygie-Vargur`, `Ellyvation-Vargur`), so the surname looks account-wide rather than per-character. Either way fact 5's rule — treat the character folder as a full name and never split it — is what the v0.1 scanner should follow, since the ruleset is not recoverable from the path.
+
+### Run 4 (Bridge v0.4 spike): reload on a click, and a data slot re-read
+
+Probe version 3 answers two questions the Bridge (app → addon data, in-game Sync) depends on. Neither has been measured on Forever yet:
+
+1. **Can an addon reload the UI when the player clicks?** `ReloadUI()` has needed a hardware event (a click or key) since 2.0, and it may be stricter on Forever. The probe tries two routes. (A) is a plain addon button calling `ReloadUI()`. (B) is a secure button running the `/reload` macro. Each attempt is saved before the reload. The next load marks it `reloaded`, and an `ADDON_ACTION_BLOCKED`/`ADDON_ACTION_FORBIDDEN` marks it blocked, naming the function.
+2. **Does `/reload` re-read a data file changed while the game runs?** `Data.lua` is listed in the TOC and holds `stamp = 1`. Every load records the stamp it saw.
+
+**For Julia (about 5 minutes):**
+
+1. Replace the `ForeverBuddyProbe` folder in `Interface\AddOns\` with this version (it has a new `Data.lua`). Then fully restart WoW, since a new file needs a restart, and log in.
+2. Out of combat, type `/fbprobe reload`. A small window with two buttons appears.
+3. Click **A: ReloadUI()**. If the UI reloads, type `/fbprobe reload` again; if a "blocked" message appears instead, just carry on.
+4. Click **B: secure /reload**.
+5. While still logged in, open `Interface\AddOns\ForeverBuddyProbe\Data.lua` in a text editor, change `stamp = 1` to `stamp = 2`, and save. Then type `/reload`.
+6. Log out normally and send `WTF\Account\<ACCOUNT>\SavedVariables\ForeverBuddyProbe.lua` (copy it off first, as with every run).
+
+The file then holds `reloadAttempts` (one entry per click: route, combat, result) and `dataStamps` (the stamp seen at each load: 1, then 2 after the edit if a reload re-reads it). It contains nothing new about other players.
