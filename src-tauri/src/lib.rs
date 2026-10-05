@@ -1,4 +1,5 @@
 mod addon;
+mod adventures;
 mod applog;
 mod backup;
 mod characters;
@@ -41,6 +42,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::addon::addon_status,
             commands::addon::addon_install,
             commands::addon::addon_remove,
+            commands::adventures::adventure_get,
+            commands::adventures::adventure_set_note,
             commands::app::app_info,
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,

@@ -140,6 +140,7 @@ export function Dashboard({
   folderMissing,
   onOpenBackups,
   onCheckFolder,
+  onOpenAdventure,
 }: {
   game: GameStatus | null;
   install: ReturnType<typeof useInstall>;
@@ -147,6 +148,7 @@ export function Dashboard({
   folderMissing: string | null;
   onOpenBackups: () => void;
   onCheckFolder: () => void;
+  onOpenAdventure: (id: number) => void;
 }) {
   const { list, storage, progress, failed, backUpNow, refresh: refreshBackups } = useBackups();
   const { sessions, characters, refresh: refreshSessions } = useSessions();
@@ -493,7 +495,13 @@ export function Dashboard({
             ) : (
               <ul className="d-rows">
                 {shownSessions.slice(0, 5).map((s) => (
-                  <li key={s.id}>
+                  // With the addon, a session opens its (first) adventure.
+                  <li
+                    key={s.id}
+                    className={s.adventures.length > 0 ? "d-open" : undefined}
+                    title={s.adventures.length > 0 ? "Open this adventure" : undefined}
+                    onClick={s.adventures.length > 0 ? () => onOpenAdventure(s.adventures[0]) : undefined}
+                  >
                     <span className="main">
                       {!s.ended_at && <LiveDot />}
                       {sessionWhen(s.started_at, s.ended_at)}

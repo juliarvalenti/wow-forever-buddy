@@ -20,6 +20,52 @@ export const commands = {
 	 *  The SavedVariables stay: they're the player's data.
 	 */
 	addonRemove: () => __TAURI_INVOKE<AddonStatus>("addon_remove"),
+	/**
+	 *  One adventure's recap, or the newest one when `id` is `None`. `None`
+	 *  back means there are no adventures yet (or none with that id).
+	 */
+	adventureGet: (id: number | null) => __TAURI_INVOKE<{
+	id: number,
+	character_id: number,
+	name: string,
+	/**  File tokens, e.g. "WARRIOR" and "Human". */
+	class: string | null,
+	race: string | null,
+	/**  RFC 3339, UTC. */
+	login: string,
+	logout: string | null,
+	played_secs: number | null,
+	/**
+	 *  The zone or instance with the most time, or the top two joined
+	 *  ("Stratholme & Eastern Plaguelands") when the second had at least
+	 *  half as long.
+	 */
+	title: string,
+	level_start: number | null,
+	level_end: number | null,
+	/**  Where the character logged out. */
+	last_zone: string | null,
+	/**  Zones in the order first visited. */
+	travelled: string[],
+	tally: Tally,
+	/**  Gold through the session: login, every money point, logout. */
+	money: MoneyPoint[],
+	/**  Deaths, bosses, level-ups and quests, for the money chart. */
+	markers: Marker[],
+	timeline: Line[],
+	gained: ItemLine[],
+	spent: ItemLine[],
+	quests: QuestLine[],
+	note: string | null,
+	/**  The adventures before and after this one, across characters. */
+	prev: AdventureLink | null,
+	next: AdventureLink | null,
+} | null>("adventure_get", { id }),
+	/**
+	 *  Saves the user's note on an adventure (blank clears it). Only the app's
+	 *  own database changes; nothing is written to the game folder.
+	 */
+	adventureSetNote: (id: number, note: string) => __TAURI_INVOKE<null>("adventure_set_note", { id, note }),
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
@@ -267,6 +313,50 @@ export type AddonStatus = {
 };
 
 export type AddonTarget = { kind: "Account"; account: string } | { kind: "Character"; account: string; realm: string; character: string } | { kind: "Everywhere" };
+
+export type Adventure = {
+	id: number,
+	character_id: number,
+	name: string,
+	/**  File tokens, e.g. "WARRIOR" and "Human". */
+	class: string | null,
+	race: string | null,
+	/**  RFC 3339, UTC. */
+	login: string,
+	logout: string | null,
+	played_secs: number | null,
+	/**
+	 *  The zone or instance with the most time, or the top two joined
+	 *  ("Stratholme & Eastern Plaguelands") when the second had at least
+	 *  half as long.
+	 */
+	title: string,
+	level_start: number | null,
+	level_end: number | null,
+	/**  Where the character logged out. */
+	last_zone: string | null,
+	/**  Zones in the order first visited. */
+	travelled: string[],
+	tally: Tally,
+	/**  Gold through the session: login, every money point, logout. */
+	money: MoneyPoint[],
+	/**  Deaths, bosses, level-ups and quests, for the money chart. */
+	markers: Marker[],
+	timeline: Line[],
+	gained: ItemLine[],
+	spent: ItemLine[],
+	quests: QuestLine[],
+	note: string | null,
+	/**  The adventures before and after this one, across characters. */
+	prev: AdventureLink | null,
+	next: AdventureLink | null,
+};
+
+export type AdventureLink = {
+	id: number,
+	name: string,
+	login: string,
+};
 
 /**
  *  The single error type every command returns. Serialized as
@@ -702,6 +792,18 @@ export type IntegrationsPatch = {
 	battlenet?: IntegrationSetting | null,
 };
 
+export type ItemLine = {
+	item_id: number,
+	name: string,
+	quality: number | null,
+	count: number,
+	/**
+	 *  sold | used | mailed for what was spent; bought | mail for a gain
+	 *  that didn't drop; `None` for loot.
+	 */
+	how: string | null,
+};
+
 /**  One item in a slot, ready to show. */
 export type ItemRow = {
 	container: number,
@@ -790,6 +892,18 @@ export type LedgerExport =
 
 export type LedgerRange = "week" | "month" | "quarter" | "all";
 
+export type Line = {
+	at: string,
+	/**  login | zone | death | repair | encounter | level | quest | loot | logout */
+	kind: string,
+	text: string,
+	detail: string | null,
+	/**  For an item line, its quality (the letter tile's colour). */
+	quality: number | null,
+	/**  The client withholds part of this (a killer, a loot source). */
+	withheld: boolean,
+};
+
 export type LinkedFolder = {
 	/**  `/`-separated path relative to the game root, e.g. "WTF". */
 	folder: string,
@@ -818,6 +932,18 @@ export type MailRow = {
 export type MailView = {
 	as_of: string | null,
 	messages: MailRow[],
+};
+
+export type Marker = {
+	at: string,
+	/**  death | encounter | level | quest */
+	kind: string,
+	label: string,
+};
+
+export type MoneyPoint = {
+	at: string,
+	money: number | null,
 };
 
 /**
@@ -850,11 +976,18 @@ export type PlaySession = {
 	/**  `None` while WoW is still running. */
 	ended_at: string | null,
 	/**
-	 *  Characters whose settings changed during the session, in WTF folder
-	 *  order. Empty while running, or if nothing changed (e.g. WoW was
-	 *  closed at character select).
+	 *  Who played. With the addon (V9): the characters whose adventures
+	 *  started during the session, in login order, for certain. Without it:
+	 *  the characters whose settings changed, in WTF folder order. Empty
+	 *  while running, or if nothing changed (e.g. WoW was closed at
+	 *  character select).
 	 */
 	characters: CharacterRef[],
+	/**
+	 *  The addon's adventures in this session, in login order, so the
+	 *  Recent sessions row can open their recaps. Empty without the addon.
+	 */
+	adventures: number[],
 	/**
 	 *  WoW wrote a crash report (`<flavor>/Errors`) during the run. A process
 	 *  killed without one can't be told apart from a clean exit.
@@ -881,6 +1014,12 @@ export type PruneReport = {
 	 *  pinned or the newest few are left): the UI shows a warning.
 	 */
 	over_budget: boolean,
+};
+
+export type QuestLine = {
+	title: string,
+	/**  The zone the character was in when they turned it in. */
+	zone: string | null,
 };
 
 /**  What the UI shows about interrupted restores. */
@@ -1138,6 +1277,25 @@ export type StorageInfo = {
 	 *  one, and why), so the budget isn't being enforced. Shown as a warning.
 	 */
 	cleanup_blocked: string | null,
+};
+
+/**  Money is copper, as `f64` (specta sends no `i64`). */
+export type Tally = {
+	gold: number | null,
+	/**
+	 *  Only when the level didn't change: across a level the client's XP
+	 *  numbers restart, and the addon doesn't record the old maximum.
+	 */
+	xp: number | null,
+	/**
+	 *  XP from quest rewards, which is known even across a level-up (the
+	 *  tally shows it when `xp` isn't).
+	 */
+	quest_xp: number | null,
+	/**  Items looted (not bought or taken from mail). */
+	loot: number,
+	deaths: number,
+	repairs: number | null,
 };
 
 export type Tiles = {
