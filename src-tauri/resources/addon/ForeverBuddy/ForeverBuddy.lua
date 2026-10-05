@@ -13,12 +13,18 @@
 --   replaced or hooked.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
+-- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
+-- files into Data/, listed in the TOC before this file. Their values are
+-- data only and never run, passed to a macro, a secure attribute or a frame
+-- name; this file reads their header and saves a receipt so the app knows
+-- what the game has seen.
+--
 -- tools/addon-test/run.lua runs this file against a fake client.
 
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.2.0"
+local VERSION = "0.4.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -90,6 +96,33 @@ end
 
 local function now()
     return read(GetServerTime) or read(time)
+end
+
+-- Bridge slots -------------------------------------------------------------------
+
+local SLOT_SCHEMA = 1 -- the slot format this version reads
+local SLOT_NAMES = { "Tooltip1", "Tooltip2" }
+local slots = {} -- name -> the slot's table, when its schema is one we read
+local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
+
+-- What each slot file set as its global. A slot from a newer app (another
+-- schema) gets a receipt, so the app can tell, but its data isn't used.
+local function loadSlots()
+    receipts = {}
+    for _, name in ipairs(SLOT_NAMES) do
+        local data = _G["ForeverBuddyData_" .. name]
+        if type(data) == "table" then
+            local schema = type(data.schema) == "number" and data.schema or nil
+            receipts[name] = {
+                stamp = type(data.stamp) == "number" and data.stamp or nil,
+                schema = schema,
+                seen = now(),
+            }
+            if schema == SLOT_SCHEMA then
+                slots[name] = data
+            end
+        end
+    end
 end
 
 -- The file -----------------------------------------------------------------------
@@ -180,6 +213,7 @@ local handlers = {}
 handlers.ADDON_LOADED = function(name)
     if name == ADDON_NAME then
         loaded = validate(ForeverBuddyDB)
+        loadSlots()
     end
 end
 
@@ -741,6 +775,7 @@ handlers.PLAYER_LOGOUT = function()
         snapshot = snapshot(session.logout),
         items = items,
         sessions = sessions,
+        bridge = receipts and next(receipts) and receipts or nil,
     }
     local version, build = read(GetBuildInfo)
     db._meta = {

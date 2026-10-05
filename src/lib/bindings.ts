@@ -662,7 +662,12 @@ export type AppError =
  *  An export can't be saved there (inside the game or backup folder,
  *  or the folder doesn't exist).
  */
-{ kind: "BadDestination"; detail: string };
+{ kind: "BadDestination"; detail: string } | 
+/**
+ *  A data slot for our addon failed the data-only check or the size cap
+ *  (bridge spec §2). Nothing in the batch was written.
+ */
+{ kind: "SlotRefused"; detail: string };
 
 export type AppInfo = {
 	version: string,

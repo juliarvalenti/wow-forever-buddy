@@ -20,6 +20,7 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/005_char_bags.sql")),
     M::up(include_str!("migrations/006_bank_alt.sql")),
     M::up(include_str!("migrations/007_ah_prices.sql")),
+    M::up(include_str!("migrations/008_bridge.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 /// The schema version this build migrates to (`PRAGMA user_version`, which
@@ -266,6 +267,8 @@ mod tests {
                 "ah_prices",
                 "ah_scans",
                 "ah_watch",
+                "bridge_receipts",
+                "bridge_slots",
                 "char_bags",
                 "char_items",
                 "char_mail",
@@ -315,7 +318,7 @@ mod tests {
         std::fs::write(&path, vec![0xAB; 8192]).unwrap();
 
         let db = Db::open(&path).unwrap();
-        assert_eq!(tables(&db).len(), 21);
+        assert_eq!(tables(&db).len(), 23);
         assert_eq!(
             db.get_meta(RESTORED_FROM_COPY).unwrap(),
             None,
@@ -488,7 +491,7 @@ mod tests {
         std::fs::write(&path, bytes).unwrap();
 
         let db = Db::open(&path).expect("starts instead of failing");
-        assert_eq!(tables(&db).len(), 21);
+        assert_eq!(tables(&db).len(), 23);
         assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
         let quarantined = std::fs::read_dir(tmp.path()).unwrap().flatten().any(|e| {
             e.file_name()

@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::bridge::{self, Slot};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::atomic_replace;
@@ -86,6 +87,35 @@ impl WriteGate {
             audit_id,
             committed: false,
         })
+    }
+
+    /// Writes our addon's data slots (bridge spec §3): no snapshot, since
+    /// they're the app's own generated data. Every file is checked first
+    /// (`bridge::check`: data only, size cap) and every path resolved
+    /// (a linked `ForeverBuddy` or `Data` folder is refused), so one bad
+    /// slot leaves the whole set as it was. Then each is replaced
+    /// atomically. Takes `Slot`s from the constant list, never a path.
+    ///
+    /// Refused while WoW runs, like every other write, until probe run 4
+    /// shows `/reload` re-reads a changed slot (spec §8, B4).
+    pub fn write_slots(&self, target: &MutationTarget, slots: &[(Slot, Vec<u8>)]) -> AppResult<()> {
+        let mut resolved = Vec::with_capacity(slots.len());
+        for (slot, bytes) in slots {
+            bridge::check(*slot, bytes)?;
+            resolved.push((slot.path(), slot.path().resolve(&target.game)?, bytes));
+        }
+        if let Some(blocker) = self.watcher.blocking_now(&target.probe) {
+            return Err(AppError::GameRunning(blocker.to_string()));
+        }
+        let paths: Vec<RelPath> = resolved.iter().map(|(p, _, _)| p.clone()).collect();
+        let audit_id = self.audit_start("bridge_slots", &paths, "")?;
+        for (_, abs, bytes) in &resolved {
+            if let Err(e) = atomic_replace(abs, bytes) {
+                self.audit_finish(audit_id, "failed")?;
+                return Err(e);
+            }
+        }
+        self.audit_finish(audit_id, "committed")
     }
 
     fn audit_start(&self, op: &str, paths: &[RelPath], snapshot_id: &str) -> AppResult<i64> {

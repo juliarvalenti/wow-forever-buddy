@@ -585,10 +585,32 @@ scenario("toc", function()
     eq(fields.Interface, "16001", "Interface")
     eq(fields.SavedVariablesPerCharacter, "ForeverBuddyDB", "SavedVariablesPerCharacter")
     eq(fields.SavedVariables, nil, "account-wide SavedVariables")
-    eq(#files, 1, "files")
-    eq(files[1], "ForeverBuddy.lua", "file")
+    -- The bridge slots load first, so their globals exist when the addon runs.
+    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
+end)
+
+-- Bridge receipts (bridge spec §4): the addon notes each slot's stamp and
+-- schema when it loads, and saves them. The bundled stubs (nil) leave none.
+scenario("bridge", function()
+    eq(file(firstFile()).bridge, nil, "no receipts from the stubs")
+
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = 'ForeverBuddyData_Tooltip1 = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n\t["app"] = "0.4.0",\n}\n',
+            -- From a newer app: noted, so the app can tell, but not used.
+            ["Data/Tooltip2.lua"] = 'ForeverBuddyData_Tooltip2 = {\n\t["schema"] = 2,\n\t["stamp"] = 1790960000,\n}\n',
+        },
+    })
+    local text = play(c, nil, 30)
+    local db = file(text)
+    eq(db.bridge.Tooltip1.stamp, 1790960000, "Tooltip1 stamp")
+    eq(db.bridge.Tooltip1.schema, 1, "Tooltip1 schema")
+    eq(db.bridge.Tooltip1.seen, wow.EPOCH, "seen at load")
+    eq(db.bridge.Tooltip2.schema, 2, "Tooltip2 schema")
+    eq(entries(db.bridge), 2, "receipts")
+    return text
 end)
 
 -- Runner ---------------------------------------------------------------------

@@ -4,6 +4,7 @@ mod adventures;
 mod ah;
 mod applog;
 mod backup;
+mod bridge;
 mod characters;
 mod commands;
 mod config;
