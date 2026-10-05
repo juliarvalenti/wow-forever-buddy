@@ -127,13 +127,13 @@
   // item tooltips: real in-game tooltip content
   const C = (g, s, c) => `<span class="coins">${g ? `<span class="g">${g}</span>` : ''}${s ? `<span class="s">${s}</span>` : ''}${c ? `<span class="c">${c}</span>` : ''}</span>`;
   const ITEMS = {
-    truestrike: { q: 'rare', n: 'Truestrike Shoulders', lines: ['Binds when picked up', ['Shoulder', 'Leather'], '129 Armor', '+24 Agility', '+11 Stamina', ['g', 'Equip: Improves your chance to hit by 2%.'], 'Durability 60 / 60', 'Requires Level 58'], sell: C(2, 31, 40), src: 'Looted 21:47 · Stratholme' },
+    truestrike: { q: 'rare', n: 'Truestrike Shoulders', lines: ['Binds when picked up', ['Shoulder', 'Leather'], '129 Armor', '+24 Agility', '+11 Stamina', ['g', 'Equip: Improves your chance to hit by 2%.'], 'Durability 60 / 60', 'Requires Level 58'], sell: C(2, 31, 40), src: 'Gained 21:47 · Stratholme' },
     runecloth: { q: 'common', n: 'Runecloth', lines: ['Max Stack: 20', ['y', 'Used to make Runecloth armor and bags.']], sell: C(0, 20), src: 'Last scanned on the AH: 1g 12s each' },
     lionheart: { q: 'epic', n: 'Lionheart Helm', lines: ['Binds when equipped', ['Head', 'Plate'], '565 Armor', '+18 Strength', ['g', 'Equip: Improves your chance to get a critical strike by 2%.'], ['g', 'Equip: Improves your chance to hit by 2%.'], 'Durability 100 / 100', 'Requires Level 60'], sell: C(4, 12, 8), src: 'Crafted · Blacksmithing (300)' },
     flask: { q: 'common', n: 'Flask of the Titans', lines: ['Requires Alchemy (300)', ['g', 'Use: Increases the player\'s maximum health by 400 for 2 hrs. Effect persists through death.']], sell: C(0, 50), src: 'Used 21:12 · Stratholme' },
-    orb: { q: 'uncommon', n: 'Righteous Orb', lines: ['Max Stack: 20', ['y', 'Used by Thorium Brotherhood smiths.']], sell: C(0, 0, 0), src: 'Looted 20:51 · Stratholme' },
+    orb: { q: 'uncommon', n: 'Righteous Orb', lines: ['Max Stack: 20', ['y', 'Used by Thorium Brotherhood smiths.']], sell: C(0, 0, 0), src: 'Gained 20:51 · Stratholme' },
     potion: { q: 'common', n: 'Major Healing Potion', lines: ['Max Stack: 5', ['g', 'Use: Restores 1050 to 1750 health.']], sell: C(0, 10), src: 'Bought from Alchemist' },
-    ashkandi: { q: 'epic', n: 'Ashkandi, Greatsword of the Brotherhood', lines: ['Binds when picked up', ['Two-Hand', 'Sword'], ['171 - 258 Damage', 'Speed 3.50'], '+33 Stamina', ['g', 'Equip: +86 Attack Power.'], 'Durability 120 / 120', 'Requires Level 60'], sell: C(23, 41, 50), src: 'Looted 14 Sep · Blackwing Lair' },
+    ashkandi: { q: 'epic', n: 'Ashkandi, Greatsword of the Brotherhood', lines: ['Binds when picked up', ['Two-Hand', 'Sword'], ['171 - 258 Damage', 'Speed 3.50'], '+33 Stamina', ['g', 'Equip: +86 Attack Power.'], 'Durability 120 / 120', 'Requires Level 60'], sell: C(23, 41, 50), src: 'Gained 14 Sep · Blackwing Lair' },
     arcanite: { q: 'uncommon', n: 'Arcanite Bar', lines: ['Max Stack: 20'], sell: C(0, 10), src: 'Last scanned on the AH: 38g each' },
   };
   // pages may add their own: <script>window.EXTRA_ITEMS = { key: { q, n, lines, sell, src } }</script> before _shell.js
