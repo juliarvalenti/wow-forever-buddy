@@ -34,23 +34,44 @@ pub struct Db {
     conn: Arc<Mutex<Connection>>,
 }
 
+/// How to open the db. The default is always safe.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenOptions {
+    /// Update without the pre-migration safety copy. Only ever set by the
+    /// startup screen's "Update without a safety copy", after the copy
+    /// failed, for that one launch; never saved.
+    pub skip_pre_migration_copy: bool,
+}
+
 /// Meta key set when the db was recreated, so derived indexes get rebuilt.
 pub const NEEDS_REINDEX: &str = "needs_reindex";
 /// Meta key: the date of the daily copy a corrupt db was restored from.
 pub const RESTORED_FROM_COPY: &str = "restored_from_copy";
 
 impl Db {
-    /// Opens (creating if needed) and migrates the db. A file SQLite reports as
-    /// corrupt or not-a-database is moved aside (kept for inspection) and
+    /// `open_with` with the safe defaults.
+    #[cfg(test)]
+    pub fn open(path: &Path) -> AppResult<Self> {
+        Self::open_with(path, OpenOptions::default())
+    }
+
+    /// Opens (creating if needed) and migrates the db. Before migrating an
+    /// older db it takes a safety copy (`backup_before_migrating`), unless the
+    /// startup screen's one-shot override says not to. A file SQLite reports
+    /// as corrupt or not-a-database is moved aside (kept for inspection) and
     /// replaced by the newest daily copy that opens cleanly (`copies`), or by
     /// a fresh db if there's none. The v0.1 tables are caches or rebuildable
     /// from backup manifests; the v0.2 addon data isn't, which is what the
     /// copies are for. After a quarantine the `needs_reindex` meta flag is
     /// set, so the backup store rebuilds its index before it prunes anything,
     /// and `restored_from_copy` names the copy's date if one was used.
-    pub fn open(path: &Path) -> AppResult<Self> {
+    pub fn open_with(path: &Path, opts: OpenOptions) -> AppResult<Self> {
         // `false`: copying it showed the db is corrupt, so don't migrate it.
-        let sound = backup_before_migrating(path)?;
+        let sound = if opts.skip_pre_migration_copy {
+            true
+        } else {
+            backup_before_migrating(path)?
+        };
         let first = sound.then(|| Self::open_and_migrate(path));
         let mut quarantined = false;
         let mut restored = None;
@@ -183,11 +204,9 @@ fn backup_before_migrating(path: &Path) -> AppResult<bool> {
     if version == 0 || version >= LATEST_VERSION {
         return Ok(true);
     }
-    let copy = copies::take_pre_migration(&conn, &copies::dir_for(path), version).map_err(|e| {
-        AppError::Db(format!(
-            "couldn't back up the database before upgrading it, so it wasn't upgraded: {e}"
-        ))
-    })?;
+    // An `UpgradeCopyFailed` goes to the startup screen as is: Try again,
+    // or update without the copy (`OpenOptions`).
+    let copy = copies::take_pre_migration(&conn, path, &copies::dir_for(path), version)?;
     Ok(copy.is_some())
 }
 
@@ -488,6 +507,54 @@ mod tests {
                 .starts_with("buddy.db.corrupt-")
         });
         assert!(quarantined, "the damaged file is kept as evidence");
+    }
+
+    /// V5b: when neither copy can be made, the update is refused with a
+    /// typed reason, nothing is changed, and only the one-shot override
+    /// updates without the copy.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_safety_copy_refuses_unless_overridden() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("buddy.db");
+        let mut conn = Connection::open(&path).unwrap();
+        Migrations::from_slice(&MIGRATION_LIST[..3])
+            .to_latest(&mut conn)
+            .unwrap();
+        drop(conn);
+        // The copies folder can't be written to.
+        let dir = copies::dir_for(&path);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::write(dir.join("probe"), b"x").is_ok() {
+            return; // running as root: permissions don't apply
+        }
+
+        let err = Db::open(&path).err().expect("refused");
+        assert!(
+            matches!(
+                err,
+                AppError::UpgradeCopyFailed(copies::CopyFailure::Locked)
+            ),
+            "{err:?}"
+        );
+        let version: i64 = Connection::open(&path)
+            .unwrap()
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 3, "nothing was changed");
+
+        let db = Db::open_with(
+            &path,
+            OpenOptions {
+                skip_pre_migration_copy: true,
+            },
+        )
+        .expect("updates without the copy when told to");
+        assert_eq!(tables(&db).len(), 16);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     /// #41 review: two quarantines in the same second keep both files.

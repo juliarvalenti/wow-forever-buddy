@@ -7,7 +7,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::config::paths::AppPaths;
 use crate::error::{AppError, AppResult};
 use crate::install;
-use crate::startup::StartupFailure;
+use crate::startup::{Retry, StartupFailure, StartupSlot};
 use crate::state::{AppCore, AppState};
 
 #[derive(Debug, Serialize, specta::Type)]
@@ -69,7 +69,7 @@ pub fn app_open_folder(
 #[tauri::command]
 #[specta::specta]
 pub fn startup_failure(app: AppHandle) -> Option<StartupFailure> {
-    app.try_state::<StartupFailure>().map(|s| s.inner().clone())
+    app.try_state::<StartupSlot>().and_then(|s| s.get())
 }
 
 /// "Open data folder" on the startup error screen: the folder holding the
@@ -78,11 +78,33 @@ pub fn startup_failure(app: AppHandle) -> Option<StartupFailure> {
 #[specta::specta]
 pub fn startup_open_data_folder(app: AppHandle) -> AppResult<()> {
     let failure = app
-        .try_state::<StartupFailure>()
+        .try_state::<StartupSlot>()
+        .and_then(|s| s.get())
         .ok_or_else(|| AppError::NotFound("the app started normally".into()))?;
     app.opener()
         .open_path(failure.folder().to_string_lossy(), None::<&str>)
         .map_err(|e| AppError::Io(e.to_string()))
+}
+
+/// The startup screen's "Try again", and its "Update without a safety copy"
+/// (`skip_safety_copy`). Re-runs startup; returns `null` if the app started
+/// (the UI then reloads into it), or the new failure. Skipping the copy is
+/// refused unless the current failure is that the copy failed, and it
+/// applies to this attempt only: nothing is saved.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn startup_retry(app: AppHandle, skip_safety_copy: bool) -> AppResult<Option<StartupFailure>> {
+    let slot = app
+        .try_state::<StartupSlot>()
+        .ok_or_else(|| AppError::NotFound("the app started normally".into()))?;
+    let outcome = slot.retry(skip_safety_copy, AppCore::new_with)?;
+    match outcome {
+        Retry::Started(core) => {
+            crate::start(&app, core);
+            Ok(None)
+        }
+        Retry::Failed(failure) => Ok(Some(failure)),
+    }
 }
 
 #[cfg(test)]
