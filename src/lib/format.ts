@@ -30,6 +30,11 @@ export function when(iso: string, now = new Date()): string {
   return `${day}, ${time}`;
 }
 
+/** `when` inside a sentence: "the copy from today, 21:15". */
+export function whenInline(iso: string, now = new Date()): string {
+  return when(iso, now).replace(/^(Today|Yesterday)/, (w) => w.toLowerCase());
+}
+
 /** "3 hours ago". */
 export function ago(iso: string, now = Date.now()): string {
   const s = Math.round((now - new Date(iso).getTime()) / 1000);

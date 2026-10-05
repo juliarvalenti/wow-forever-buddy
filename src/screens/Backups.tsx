@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, FileText, RotateCcw } from "lucide-react";
 import {
+  commands,
   events,
   type Category,
   type GameStatus,
@@ -32,7 +34,7 @@ import { useBackups, useSnapshot } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import { useRestore } from "@/hooks/useRestore";
 import { PlanDetails, planBlocked } from "@/screens/PlanDetails";
-import { ago, bytes, plural, when } from "@/lib/format";
+import { ago, bytes, plural, when, whenInline } from "@/lib/format";
 
 // Copy from design/mocks/round-3/IMPLEMENTING.md §4.
 
@@ -77,7 +79,7 @@ function note(s: SnapshotSummary) {
 
 function contents(s: SnapshotSummary) {
   const parts = [];
-  if (s.char_count > 0) parts.push(plural(s.char_count, "character", "characters"));
+  if (s.char_count > 0) parts.push(plural(s.char_count, "char", "chars"));
   if (s.addon_count > 0) parts.push(plural(s.addon_count, "addon", "addons"));
   if (parts.length === 0) parts.push(plural(s.file_count, "file", "files"));
   return parts.join(" · ");
@@ -117,7 +119,9 @@ function toSelection(keys: Keys): RestoreSelection {
   return { items };
 }
 
-function restoreLabel(keys: Keys): { button: string; title: string } {
+/** Button and dialog title for the current selection, and `who` when it's
+ *  exactly one character ("Thrandor's keybindings… will be replaced"). */
+function restoreLabel(keys: Keys): { button: string; title: string; who?: string } {
   if (keys.has("all")) return { button: "Restore everything…", title: "Restore everything?" };
   const chars = new Set(
     [...keys].filter((k) => k.startsWith("char|")).map((k) => k.split("|").slice(1, 4).join("|")),
@@ -128,6 +132,7 @@ function restoreLabel(keys: Keys): { button: string; title: string } {
     return {
       button: `Restore ${plural(chars.size, "character", "characters")}…`,
       title: chars.size === 1 ? `Restore ${only}?` : `Restore ${chars.size} characters?`,
+      who: chars.size === 1 ? only : undefined,
     };
   }
   if (addons.length > 0 && chars.size === 0)
@@ -231,23 +236,162 @@ function SnapshotTree({
   );
 }
 
-function ConfirmRestore({
+/** "…\Thrandor\SavedVariables\Details.lua": the last three parts, Windows-style. */
+function shortFile(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts.length > 3 ? `…\\${parts.slice(-3).join("\\")}` : parts.join("\\");
+}
+
+/** How many older snapshots to check for an intact copy before giving up. */
+const OLDER_TRIES = 5;
+
+/** The restore stopped because the snapshot's stored copies don't check out
+ *  (backups.html?error=corrupt). Offers the newest older full snapshot that
+ *  verifies, and a check of every snapshot. Nothing was changed. */
+function DamagedSnapshot({
   id,
+  files,
+  snapshots,
+  onUse,
+  onClose,
+}: {
+  id: string;
+  files: string[];
+  snapshots: SnapshotSummary[];
+  onUse: (olderId: string) => void;
+  onClose: () => void;
+}) {
+  const snap = snapshots.find((s) => s.id === id);
+  const candidates = useMemo(
+    () =>
+      snapshots
+        .filter((s) => snap && s.scope === "full" && s.flavor === snap.flavor && s.created_at < snap.created_at)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, OLDER_TRIES),
+    [snapshots, snap],
+  );
+
+  // undefined while looking; null if none of the tries checked out.
+  const [older, setOlder] = useState<SnapshotSummary | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      for (const c of candidates) {
+        const report = await commands.backupVerify(c.id).catch(() => null);
+        if (report && report.corrupt.length === 0) {
+          if (live) setOlder(c);
+          return;
+        }
+      }
+      if (live) setOlder(null);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [candidates]);
+
+  const [verify, setVerify] = useState<{ done: number; bad: SnapshotSummary[] } | null>(null);
+  const verifying = verify != null && verify.done < snapshots.length;
+  const verifyAll = async () => {
+    const bad: SnapshotSummary[] = [];
+    setVerify({ done: 0, bad });
+    for (const [i, s] of snapshots.entries()) {
+      const report = await commands.backupVerify(s.id).catch(() => null);
+      if (!report || report.corrupt.length > 0) bad.push(s);
+      setVerify({ done: i + 1, bad: [...bad] });
+    }
+  };
+
+  return (
+    <Dialog
+      title="This snapshot is damaged"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={verifyAll} disabled={verifying}>
+            Verify all snapshots
+          </Button>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          {older === undefined && candidates.length > 0 && (
+            <span className="d-muted">Looking for an older copy…</span>
+          )}
+          {older && (
+            <Button onClick={() => onUse(older.id)}>
+              <RotateCcw size={13} aria-hidden /> Use {whenInline(older.created_at)} instead
+            </Button>
+          )}
+        </>
+      }
+    >
+      <p>
+        We checked {snap ? <b>{whenInline(snap.created_at)}</b> : "this snapshot"} before restoring, and{" "}
+        {files.length === 1 ? "1 of its files doesn't" : `${files.length} of its files don't`} match
+        what was saved. The backup copy on disk has changed or is damaged.
+      </p>
+      <ul className="d-files dmg">
+        {files.map((f) => (
+          <li key={f} title={f}>
+            <FileText size={13} aria-hidden />
+            {shortFile(f)}
+            <span className="h">damaged</span>
+          </li>
+        ))}
+      </ul>
+      <div className="d-okline">
+        <Check size={14} aria-hidden />
+        <span>Nothing was changed. We stop before writing a single file.</span>
+      </div>
+      {verify && (
+        <p className="d-muted">
+          {verifying
+            ? `Checking snapshots… ${verify.done} of ${snapshots.length}`
+            : verify.bad.length === 0
+              ? `All ${plural(snapshots.length, "snapshot checks", "snapshots check")} out.`
+              : `Checked ${snapshots.length}: ${plural(verify.bad.length, "is", "are")} damaged (${verify.bad
+                  .map((s) => whenInline(s.created_at))
+                  .join(", ")}).`}
+        </p>
+      )}
+      {older === null && (
+        <p className="d-muted">
+          {candidates.length === 0
+            ? "There's no older full snapshot to fall back to."
+            : candidates.length === 1
+              ? "The one older snapshot is damaged too."
+              : `The ${candidates.length} older snapshots we checked are damaged too. Pick another from the list to try.`}
+        </p>
+      )}
+    </Dialog>
+  );
+}
+
+function ConfirmRestore({
+  id: chosen,
   keys,
   mode,
   running,
+  snapshots,
   onClose,
 }: {
   id: string;
   keys: Keys;
   mode: RestoreMode;
   running: boolean;
+  /** All snapshots, newest first: for dates and an older one to fall back to. */
+  snapshots: SnapshotSummary[];
   onClose: () => void;
 }) {
-  const { plan, planError, loading, changed, run, preview, start } = useRestore();
+  const { plan, planError, loading, changed, run, preview, start, reset } = useRestore();
+  // Starts as the snapshot the user picked; "Use <older> instead" switches it
+  // when that one is damaged, keeping the same selection.
+  const [id, setId] = useState(chosen);
   const selection = useMemo(() => toSelection(keys), [keys]);
   const again = useCallback(() => preview(id, selection, mode), [id, selection, mode, preview]);
-  const { title } = restoreLabel(keys);
+  const { title, who } = restoreLabel(keys);
+  const takenAt = snapshots.find((s) => s.id === id)?.created_at;
 
   // A plan from before WoW's exit writes is stale. When WoW closes, re-plan
   // and keep Restore locked until that fresh plan is in ("Checking what
@@ -276,19 +420,16 @@ function ConfirmRestore({
 
   if (run.kind === "error" && run.corrupt)
     return (
-      <Dialog
-        title="This snapshot is damaged"
+      <DamagedSnapshot
+        id={id}
+        files={run.corrupt}
+        snapshots={snapshots}
+        onUse={(older) => {
+          reset();
+          setId(older);
+        }}
         onClose={onClose}
-        footer={<Button onClick={onClose}>Close</Button>}
-      >
-        <p>Nothing was changed. We stop before writing a single file.</p>
-        <ul className="d-files d-mono">
-          {run.corrupt.map((f) => (
-            <li key={f}>{f}</li>
-          ))}
-        </ul>
-        <p className="d-muted">Pick an older snapshot to restore from instead.</p>
-      </Dialog>
+      />
     );
 
   if (run.kind === "done")
@@ -311,7 +452,7 @@ function ConfirmRestore({
           {running ? (
             <span>
               Waiting for WoW to close…{" "}
-              <span className="d-muted">Restore enables automatically when it exits.</span>
+              <span className="d-muted">Restore unlocks once WoW closes and the list is checked again.</span>
             </span>
           ) : (
             <span>WoW closed. Checking what changed…</span>
@@ -346,6 +487,12 @@ function ConfirmRestore({
 
   return (
     <Dialog title={title} onClose={busy ? undefined : onClose} footer={footer}>
+      {id !== chosen && (
+        <p className="d-muted">
+          From the copy taken {whenInline(snapshots.find((s) => s.id === id)?.created_at ?? "")}, since the
+          one you picked is damaged.
+        </p>
+      )}
       {planError && <Callout tone="bad">{planError}</Callout>}
       {run.kind === "error" && (
         <Callout tone="bad">
@@ -357,7 +504,19 @@ function ConfirmRestore({
       {!plan && !planError && <p className="d-muted">Working out what changes…</p>}
       {plan && (
         <>
-          <PlanDetails plan={plan} />
+          <PlanDetails
+            plan={plan}
+            lead={
+              plan.write_count > 0 && takenAt ? (
+                <>
+                  {who ? `${who}'s ` : ""}
+                  {/* The summary's "; removes N" part is listed separately below. */}
+                  <b>{plan.summary.split(";")[0]}</b> will be replaced with the copy from{" "}
+                  <b>{whenInline(takenAt)}</b>.
+                </>
+              ) : undefined
+            }
+          />
           <p className="d-muted">
             A safety snapshot of the current files is taken before anything changes, so you can
             undo this.
@@ -514,45 +673,45 @@ export function Backups({
       )}
       {error && <Callout tone="bad">{error}</Callout>}
 
-      {storage && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 520 }}>
-          {/* Verbatim from the backend: it's generated from the real policy. */}
-          <p className="d-muted">{storage.retention_summary}</p>
-          {storage.budget_bytes != null && storage.used_bytes != null && (
-            <>
-              <Meter
-                fraction={storage.used_bytes / storage.budget_bytes}
-                over={storage.over_budget}
-              />
-              <p className="d-dim">
-                {bytes(storage.used_bytes)} of {bytes(storage.budget_bytes)}
-                {storage.over_budget &&
-                  ". Over budget: only manual, pinned and the newest few backups are left."}
-              </p>
-            </>
-          )}
-          {storage.cleanup_blocked && (
-            <Callout tone="ember">
-              <span>
-                <b>Old backups aren't being cleaned up</b> because one backup's record is damaged, so
-                it isn't safe to tell which stored files are still needed. Your backups are untouched.{" "}
-                <span className="d-dim">({storage.cleanup_blocked})</span>
+      <div className="d-toolbar">
+        <Segmented<Filter>
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: `All ${counts.all}` },
+            { value: "Auto", label: `Auto ${counts.Auto}` },
+            { value: "Manual", label: `Manual ${counts.Manual}` },
+            { value: "Safety", label: `Safety ${counts.Safety}` },
+          ]}
+        />
+        {storage && (
+          <div className="d-storage">
+            {/* Verbatim from the backend: it's generated from the real policy. */}
+            <span className="retention">{storage.retention_summary}</span>
+            {storage.budget_bytes != null && storage.used_bytes != null && (
+              <span className="usage">
+                <b>{bytes(storage.used_bytes)}</b> of {bytes(storage.budget_bytes)}
+                <Meter
+                  fraction={storage.used_bytes / storage.budget_bytes}
+                  over={storage.over_budget}
+                />
               </span>
-            </Callout>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+      </div>
+      {storage?.over_budget && (
+        <p className="d-dim">Over budget: only manual, pinned and the newest few backups are left.</p>
       )}
-
-      <Segmented<Filter>
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: "all", label: `All ${counts.all}` },
-          { value: "Auto", label: `Auto ${counts.Auto}` },
-          { value: "Manual", label: `Manual ${counts.Manual}` },
-          { value: "Safety", label: `Safety ${counts.Safety}` },
-        ]}
-      />
+      {storage?.cleanup_blocked && (
+        <Callout tone="ember">
+          <span>
+            <b>Old backups aren't being cleaned up</b> because one backup's record is damaged, so
+            it isn't safe to tell which stored files are still needed. Your backups are untouched.{" "}
+            <span className="d-dim">({storage.cleanup_blocked})</span>
+          </span>
+        </Callout>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: selected ? "minmax(0, 1fr) 360px" : "1fr", gap: 16 }}>
         <Panel>
@@ -563,13 +722,14 @@ export function Backups({
           )}
           {shown.length > 0 && (
             <DataTable
+              className={selected ? "with-panel" : undefined}
               head={
                 <tr>
                   <th>When</th>
                   <th>Type</th>
                   <th>Note</th>
-                  {/* No room beside the snapshot panel. */}
-                  {!selected && <th>Contents</th>}
+                  {/* Hidden beside the snapshot panel only in the narrow layout (d.css). */}
+                  <th className="col-contents">Contents</th>
                   <th className="num">Size</th>
                   <th />
                 </tr>
@@ -585,7 +745,8 @@ export function Backups({
                     <Pill kind={KIND_PILL[s.kind]}>{KIND_LABEL[s.kind]}</Pill>
                   </td>
                   <td>{note(s)}</td>
-                  {!selected && <td className="d-muted">{contents(s)}</td>}
+                  {/* Not "contents": that's Tailwind's display: contents utility. */}
+                  <td className="col-contents d-muted nowrap">{contents(s)}</td>
                   <td className="num">{bytes(s.total_bytes)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     {restoreAction("Restore", () => setSelected(s.id), "ghost")}
@@ -664,6 +825,7 @@ export function Backups({
           keys={keys}
           mode={mirror ? "mirror" : "overlay"}
           running={running}
+          snapshots={list ?? []}
           onClose={() => setConfirming(false)}
         />
       )}
