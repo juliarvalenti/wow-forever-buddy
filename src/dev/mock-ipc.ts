@@ -9,6 +9,9 @@ import type {
   AddonStatus,
   Adventure,
   CategoryNode,
+  CharacterCard,
+  CharacterSheet,
+  ItemRow,
   JournalEntry,
   Ledger,
   LedgerRange,
@@ -42,6 +45,8 @@ export const SCENARIOS = [
   "nogame", // first run, nothing found
   "detect-failed",
   "startup-error",
+  "characters", // V7: the alts' cards (open one for the sheet)
+  "characters-empty", // no addon notes yet
   "ledger-empty", // the Ledger before the addon has written anything
   "adventure-empty", // Adventures before the addon has written anything
 ] as const;
@@ -54,6 +59,56 @@ export function installMockIpc(): void {
   const now = Date.now();
   const iso = (minsAgo: number) => new Date(now - minsAgo * 60000).toISOString();
   const running = s === "dashboard" || s === "dashboard-missing";
+
+  // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
+  type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
+  const alts: Alt[] = [
+    [1, "Coinpurse", null, "warrior", "Human", 12, 27790000, "Stormwind City", 60 * 46, { xp: 5800, xp_max: 10000, rested: 4200, bag_free: 3, bag_size: 60, mail: 14 }],
+    [2, "Thrandor", null, "paladin", "Human", 60, 21401872, "Eastern Plaguelands", 60 * 20, { ilvl: 63.4, bag_free: 12, bag_size: 80, played: 9 * 86400 + 4 * 3600 }],
+    [3, "Velyra", "Duskmane", "druid", "Night Elf", 60, 10660000, "Moonglade", 60 * 22, { ilvl: 58.1, bag_free: 21, bag_size: 80, played: 7 * 86400 + 19 * 3600 }],
+    [4, "Brannic", null, "hunter", "Dwarf", 52, 4880000, "Ironforge", 60 * 50, { xp: 64, xp_max: 100, rested: 30, bag_free: 9, bag_size: 64, played: 4 * 86400 + 2 * 3600 }],
+    [5, "Fizzwick", null, "mage", "Gnome", 44, 2120000, "Tanaris", 60 * 140, { xp: 22, xp_max: 100, rested: 78, bag_free: 15, bag_size: 56, played: 3 * 86400 + 11 * 3600 }],
+    [6, "Sela", null, "priest", "Human", 38, 960000, "Desolace", 60 * 200, { xp: 81, xp_max: 100, rested: 19, bag_free: 6, bag_size: 48, played: 2 * 86400 + 8 * 3600 }],
+    [7, "Kaelor", null, "rogue", "Night Elf", 27, 310000, "Ashenvale", 60 * 300, { xp: 10, xp_max: 100, rested: 90, bag_free: 4, bag_size: 40, played: 86400 + 6 * 3600 }],
+  ];
+  const card = (
+    id: number,
+    name: string,
+    surname: string | null,
+    cls: string,
+    race: string,
+    level: number,
+    money: number,
+    zone: string,
+    mins: number,
+    extra: Partial<CharacterCard> = {},
+  ): CharacterCard => ({
+    id,
+    account: "ACCOUNT1",
+    group_dir: "70",
+    folder: surname ? `${name}-${surname}` : name,
+    name,
+    surname,
+    class: cls,
+    race,
+    level,
+    realm: "Classic Beta PvP 2",
+    guild: id === 2 ? "Wardens of Dawn" : null,
+    zone,
+    subzone: null,
+    last_seen: iso(mins),
+    money,
+    xp: null,
+    xp_max: null,
+    rested: null,
+    ilvl: null,
+    played: null,
+    bag_free: null,
+    bag_size: null,
+    mail: 0,
+    bank_items: 0,
+    ...extra,
+  });
 
   const flavor = {
     id: "_classic_beta_",
@@ -257,7 +312,7 @@ export function installMockIpc(): void {
   // The default dashboard has WoW running, so Install is locked.
   const addon: AddonStatus = {
     installed_version:
-      s === "addon-installed" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
+      s === "addon-installed" || s === "characters" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
     bundled_version: "0.2.0",
     update_available: s === "addon-update",
     enabled_on: ["Brannic", "Coinpurse", "Fizzwick", "Kaelor", "Sela", "Thrandor"],
@@ -510,6 +565,73 @@ export function installMockIpc(): void {
       resolved = true;
       return { snapshot_id: "S1", pre_restore_snapshot: "S9", written: 3, deleted: 1, summary: plan.summary };
     },
+    // V7: the round-3 characters.html alts (no net worth, §7).
+    characters_overview: () => {
+      const characters = alts.map(([id, name, surname, cls, race, level, money, zone, mins, extra]) =>
+        card(id, name, surname, cls, race, level, money, zone, mins, extra),
+      );
+      return {
+        gold: characters.reduce((n, c) => n + (c.money ?? 0), 0),
+        items: 1284,
+        characters: s === "characters-empty" ? [] : characters,
+      };
+    },
+    character_detail: ({ id }): CharacterSheet => {
+      const row = alts.find((a) => a[0] === id) ?? alts[1];
+      const c = card(...row);
+      const item = (slot: number, name: string, quality: number, ilvl: number, container = 0, count = 1): ItemRow => ({
+        container,
+        slot,
+        item_id: 1000 + slot,
+        name,
+        quality,
+        ilvl,
+        count,
+        // The journal saw the shoulders and the potions drop.
+        looted_at: name === "Truestrike Shoulders" || name === "Major Healing Potion" ? iso(60 * 26) : null,
+        looted_in: name === "Truestrike Shoulders" || name === "Major Healing Potion" ? "Stratholme" : null,
+      });
+      return {
+        card: c,
+        equipped: [
+          item(1, "Lionheart Helm", 4, 67),
+          item(2, "Mark of Fordring", 3, 63),
+          item(3, "Truestrike Shoulders", 3, 63),
+          item(15, "Cape of the Black Baron", 3, 63),
+          item(5, "Lawbringer Chestguard", 4, 66),
+          item(9, "Vambraces of the Sadist", 3, 63),
+          item(10, "Lawbringer Gauntlets", 4, 66),
+          item(6, "Onslaught Girdle", 4, 71),
+          item(7, "Legplates of the Chromatic Defier", 3, 63),
+          item(8, "Lawbringer Boots", 4, 66),
+          item(11, "Don Julio's Band", 3, 65),
+          item(12, "Painweaver Band", 3, 63),
+          item(13, "Hand of Justice", 3, 58),
+          item(14, "Drake Fang Talisman", 4, 75),
+          item(16, "Ashkandi, Greatsword of the Brotherhood", 4, 77),
+          item(18, "Libram of Hope", 3, 60),
+        ],
+        bags: [
+          { container: 0, name: "Backpack", size: 16, free: 0, items: [item(1, "Hearthstone", 1, 1), item(2, "Runecloth", 1, 50, 0, 40)] },
+          { container: 1, name: "Mooncloth Bag", size: 20, free: 4, items: [item(1, "Major Healing Potion", 1, 55, 1, 12)] },
+          { container: 2, name: "Mooncloth Bag", size: 20, free: 4, items: [] },
+          { container: 3, name: "Runecloth Bag", size: 24, free: 4, items: [] },
+        ],
+        bank: { as_of: iso(60 * 24 * 2), bags: [{ container: 1, name: "Bank", size: 28, free: 6, items: [item(1, "Arcanite Bar", 2, 60, 1, 8)] }] },
+        mail: {
+          as_of: iso(60 * 24 * 9),
+          messages: [{ sender: "Coinpurse", subject: "Runecloth", money: 0, cod: 0, days_left: 27.5, items: [item(1, "Runecloth", 1, 50, 1, 20)] }],
+        },
+        professions: [
+          { name: "Blacksmithing", skill: 300, max: 300 },
+          { name: "Mining", skill: 285, max: 300 },
+        ],
+        gold_30d: [46, 44, 45, 38, 40, 34, 36, 28, 31, 24, 26, 18, 20, 8].map((y, i) => ({
+          at: iso(60 * 24 * (28 - i * 2)),
+          money: (2140 - y * 14) * 10000,
+        })),
+      };
+    },
     characters_list: () =>
       (
         [
@@ -520,6 +642,8 @@ export function installMockIpc(): void {
           ["Fizzwick", 60 * 140],
           ["Sela", 60 * 200],
           ["Kaelor", 60 * 300],
+          // Not logged in since the addon went in: a neutral card on Characters.
+          ["Ashwyn", 60 * 24 * 20],
         ] as const
       )
         .map(

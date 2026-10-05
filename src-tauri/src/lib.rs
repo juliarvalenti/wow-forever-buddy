@@ -2,6 +2,7 @@ mod addon;
 mod adventures;
 mod applog;
 mod backup;
+mod characters;
 mod commands;
 mod config;
 mod db;
@@ -66,6 +67,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::sessions::sessions_list,
             commands::sessions::characters_list,
             commands::ingest::ingest_problems,
+            commands::characters::characters_overview,
+            commands::characters::character_detail,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,

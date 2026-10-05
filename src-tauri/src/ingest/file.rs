@@ -80,10 +80,21 @@ pub struct SlotItem {
     pub count: i64,
 }
 
+/// A bag or bank tab itself: what the cards' "3 free" and the sheet's
+/// "68 of 80 used" come from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Container {
+    pub container: i64,
+    pub name: Option<String>,
+    pub size: Option<i64>,
+    pub free: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bank {
     pub at: i64,
     pub items: Vec<SlotItem>,
+    pub tabs: Vec<Container>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +152,8 @@ pub struct Snapshot {
     /// V2 doesn't capture yet), as opposed to an empty one.
     pub equipped: Option<Vec<SlotItem>>,
     pub bags: Option<Vec<SlotItem>>,
+    /// The bags themselves; present whenever `bags` is.
+    pub bag_info: Vec<Container>,
     pub bank: Option<Bank>,
     pub mail: Option<Mail>,
     pub professions: Option<Vec<Profession>>,
@@ -277,6 +290,21 @@ fn containers(t: &LuaTable) -> Vec<SlotItem> {
         }
     }
     out
+}
+
+/// The containers in a bags or bank-tabs table: `{ [i] = { name, size, free } }`.
+fn container_info(t: &LuaTable) -> Vec<Container> {
+    pairs(t)
+        .filter_map(|(container, v)| {
+            let c = v.as_table()?;
+            Some(Container {
+                container: container?,
+                name: text(c, "name"),
+                size: int(c, "size"),
+                free: int(c, "free"),
+            })
+        })
+        .collect()
 }
 
 fn json(v: &LuaValue) -> serde_json::Value {
@@ -431,6 +459,7 @@ fn snapshot(t: &LuaTable) -> Option<Snapshot> {
         Some(Bank {
             at: int(b, "at")?,
             items: containers(tbl(b, "bags")?),
+            tabs: tbl(b, "bags").map(container_info).unwrap_or_default(),
         })
     });
     let mail = tbl(t, "mail").and_then(|m| {
@@ -505,6 +534,7 @@ fn snapshot(t: &LuaTable) -> Option<Snapshot> {
         map: zone.and_then(|z| int(z, "map")),
         equipped,
         bags: tbl(t, "bags").map(containers),
+        bag_info: tbl(t, "bags").map(container_info).unwrap_or_default(),
         bank,
         mail,
         professions,

@@ -80,6 +80,16 @@ export function sessionWhen(startIso: string, endIso: string | null, now = new D
   return `${dayLabel(start, now)}, ${clock(start)} – ${clock(new Date(endIso))}`;
 }
 
+/** Time played: "9d 4h", "6h 12m" or "40m". */
+export function played(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  return `${m}m`;
+}
+
 /** "Sunday, 4 October". */
 export function longDate(d = new Date()): string {
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });

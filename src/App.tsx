@@ -22,13 +22,14 @@ import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
 import { Adventure } from "@/screens/Adventure";
 import { Backups } from "@/screens/Backups";
+import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { Ledger } from "@/screens/Ledger";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "ledger" | "adventures" | "backups" | "game";
+type Screen = "dashboard" | "characters" | "ledger" | "adventures" | "backups" | "game";
 
 type NavRow =
   | { group: string }
@@ -93,7 +94,7 @@ function Shell() {
   const nav: NavRow[] = [
     { group: "Overview" },
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { soon: "Characters", icon: Users },
+    { id: "characters", label: "Characters", icon: Users },
     { id: "ledger", label: "Ledger", icon: Coins },
     { id: "adventures", label: "Adventures", icon: ScrollText },
     { soon: "Auction House", icon: Scale },
@@ -198,6 +199,7 @@ function Shell() {
             onOpenAdventure={openAdventure}
           />
         )}
+        {current === "characters" && <Characters onOpenDashboard={() => setScreen("dashboard")} />}
         {current === "backups" && (
           <Backups
             game={game}

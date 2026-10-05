@@ -158,12 +158,16 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
         replace_items(tx, id, "equipped", s.at, items)?;
     }
     if let Some(items) = &s.bags {
-        replace_items(tx, id, "bag", s.at, items)?;
+        if replace_items(tx, id, "bag", s.at, items)? {
+            replace_containers(tx, id, "bag", s.at, &s.bag_info)?;
+        }
     }
     // Bank and mail carry their own time: the last visit, carried forward
     // by the addon when this session had none.
     if let Some(bank) = &s.bank {
-        replace_items(tx, id, "bank", bank.at, &bank.items)?;
+        if replace_items(tx, id, "bank", bank.at, &bank.items)? {
+            replace_containers(tx, id, "bank", bank.at, &bank.tabs)?;
+        }
     }
     if let Some(mail) = &s.mail {
         if replace_items(tx, id, "mail", mail.at, &mail.items)? {
@@ -224,6 +228,30 @@ fn newer(tx: &Transaction<'_>, table: &str, id: i64, as_of: i64) -> AppResult<bo
         |r| r.get(0),
     )?;
     Ok(stored.is_none_or(|s| as_of >= s))
+}
+
+/// Replaces one location's bags or tabs, together with its items (the caller
+/// only calls this when `replace_items` did), so the two never disagree.
+fn replace_containers(
+    tx: &Transaction<'_>,
+    id: i64,
+    location: &str,
+    as_of: i64,
+    containers: &[crate::ingest::file::Container],
+) -> AppResult<()> {
+    tx.execute(
+        "DELETE FROM char_bags WHERE character_id = ?1 AND location = ?2",
+        params![id, location],
+    )?;
+    for c in containers {
+        tx.execute(
+            "INSERT OR REPLACE INTO char_bags (character_id, location, container, name, size,
+                                               free, as_of)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, location, c.container, c.name, c.size, c.free, as_of],
+        )?;
+    }
+    Ok(())
 }
 
 /// Replaces one location's items, unless what's stored is newer. Returns

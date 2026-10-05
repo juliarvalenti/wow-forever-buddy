@@ -1,0 +1,161 @@
+/* Characters + character sheet (V7), from design/mocks/round-3/characters.html
+   and character.html. Prefixed ch- so nothing collides with the d- styles.
+   Per IMPLEMENTING.md §7: no net worth, no "worth carried", no search yet. */
+
+:root {
+  --c-warrior: #c69b6d; --c-paladin: #f48cba; --c-hunter: #aad372; --c-rogue: #fff468;
+  --c-priest: #f0ebe0; --c-shaman: #2a8cff; --c-mage: #3fc7eb; --c-warlock: #8788ee;
+  --c-druid: #ff7c0a;
+}
+.ch-cc { color: var(--cc, var(--chalk-hi)); }
+.d-record .ch-cc { color: color-mix(in srgb, var(--cc, var(--ink)) 50%, #2a1608); }
+
+/* coins: gold only for money */
+.ch-coins { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.ch-coins span { display: inline-flex; align-items: center; gap: 2px; }
+.ch-coins span::after { content: ""; width: .6em; height: .6em; border-radius: 50%; margin-left: 2px;
+  box-shadow: inset 0 -1px 1px rgba(0,0,0,.45), inset 0 1px 1px rgba(255,255,255,.45); }
+.ch-coins .g::after { background: #e9c45a; } .ch-coins .s::after { background: #c3c7cc; } .ch-coins .c::after { background: #c27a47; }
+.ch-coins .s, .ch-coins .c { opacity: .8; }
+
+/* item quality */
+.ch-q0 { color: #8a8580; } .ch-q1 { color: #ece4d6; } .ch-q2 { color: #58d23c; }
+.ch-q3 { color: #4f95ff; } .ch-q4 { color: #b86cf0; } .ch-q5 { color: #ff8000; }
+.d-record .ch-q0 { color: #6f6a62; } .d-record .ch-q1 { color: var(--ink); } .d-record .ch-q2 { color: #23710f; }
+.d-record .ch-q3 { color: #1a4f9c; } .d-record .ch-q4 { color: #6b2a9a; } .d-record .ch-q5 { color: #a85400; }
+
+/* bars */
+.ch-bar { position: relative; height: 6px; border-radius: 3px; background: rgba(0,0,0,.45);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.7); overflow: hidden; }
+.ch-bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+.ch-bar .xp { background: linear-gradient(90deg, #6b3a99, #9a58d0); }
+.ch-bar .rested { background: rgba(70,120,220,.55); }
+.ch-bar .ilvl { background: linear-gradient(90deg, #5e4a2c, var(--ember-2)); }
+.ch-bar .fill { background: linear-gradient(90deg, #7a6a52, #b8a27a); }
+.d-record .ch-bar { background: rgba(58,38,22,.12); box-shadow: inset 0 1px 1px rgba(58,38,22,.3); }
+.d-record .ch-bar .fill { background: linear-gradient(90deg, #6e5537, #3a2616); }
+
+/* portrait slot (_d.css .pslot): a 4:5 stone bezel holding the class crest
+   (shield in the class tint + glyph) with a race badge; armory renders and
+   screenshots come later. `blank` is the neutral silhouette before the
+   addon has seen a character. */
+.ch-pslot { --w: 64px; display: inline-block; position: relative; width: var(--w); aspect-ratio: 4 / 5; flex-shrink: 0;
+  border-radius: 5px; padding: 3px;
+  background: var(--grit), linear-gradient(160deg, #57524b, #2a2724 40%, #151413 70%, #3a3632);
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.15), 0 4px 10px rgba(0,0,0,.55); }
+.ch-pslot .pi { display: block; position: relative; width: 100%; height: 100%; border-radius: 3px; overflow: hidden;
+  background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--cc, #888) 32%, #1a1410), #0b0908 78%); }
+.ch-pslot .pi::after { content: ""; position: absolute; inset: 0; border-radius: 3px; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), inset 0 0 calc(var(--w) * .2) rgba(0,0,0,.7); }
+.ch-pslot .crest { position: absolute; inset: 12% 14% 18%; width: 72%; height: 70%; }
+.ch-pslot .crest > path { fill: color-mix(in srgb, var(--cc, #8a6a3e) 34%, #15110d);
+  stroke: color-mix(in srgb, var(--cc, #8a6a3e) 55%, #cfc6b8); stroke-width: .9; }
+.ch-pslot .crest > g { fill: var(--cc); stroke: var(--cc); stroke-linecap: round; }
+.ch-pslot .race { position: absolute; right: -6px; bottom: -6px; z-index: 1; display: grid; place-items: center;
+  width: max(18px, calc(var(--w) * .34)); height: max(18px, calc(var(--w) * .34)); border-radius: 50%;
+  font: 400 max(9px, calc(var(--w) * .13)) "Marcellus", Georgia, serif; color: var(--chalk-hi);
+  background: var(--grit), radial-gradient(circle at 40% 35%, #3a3631, #121110);
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.15), 0 2px 5px rgba(0,0,0,.6); }
+.d-record .ch-pslot { box-shadow: 0 0 0 1px rgba(58,38,22,.6), inset 0 1px 0 rgba(255,255,255,.15), 0 3px 8px rgba(58,38,22,.45); }
+.ch-pslot.blank .pi { display: grid; place-items: end center; background: radial-gradient(circle at 50% 32%, #2a2622, #0d0c0b 78%); }
+.ch-pslot.blank svg { width: 72%; height: 88%; fill: rgba(205,191,169,.16); }
+
+/* install banner (characters-noaddon.html) */
+.ch-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r, 6px); font-size: 12.5px;
+  color: var(--chalk); background: rgba(0,0,0,.22); box-shadow: inset 0 2px 5px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.04); }
+.ch-banner svg { color: #b79c6c; flex-shrink: 0; }
+.ch-banner b { color: var(--chalk-hi); font-weight: 600; }
+.ch-banner .grow { flex: 1; color: var(--ash); }
+.ch-banner button { display: inline-flex; align-items: center; gap: 3px; color: var(--ember-2); white-space: nowrap; font-size: 12px; }
+
+/* list */
+.ch-totals { display: flex; gap: 20px; font-size: 12px; color: var(--ash); align-items: baseline; }
+.ch-totals b { color: var(--chalk-hi); font-weight: 600; font-size: 13px; }
+.ch-toolbar { display: flex; align-items: center; gap: 10px; justify-content: flex-end; font-size: 12px; color: var(--ash); }
+.ch-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+.ch-card { display: grid; grid-template-rows: 80px 34px auto; gap: 10px; padding: 12px 13px 10px; cursor: pointer;
+  text-align: left; color: inherit; transition: filter .15s; }
+.ch-card:hover { filter: brightness(1.06); }
+.ch-card:focus-visible { outline: 2px solid var(--ember-2); outline-offset: 2px; }
+.ch-id { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.ch-id > div { min-width: 0; }
+.ch-nm { font: 600 15.5px/1.2 "Geist Variable", "Geist", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-cl, .ch-loc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-cl { font-size: 11.5px; color: var(--ash); }
+.ch-loc { font-size: 11px; color: var(--soot); margin-top: 3px; }
+.ch-prog { display: grid; gap: 5px; align-content: center; }
+.ch-prog .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--ash); }
+.ch-prog .lbl b { color: var(--chalk-hi); font-weight: 600; }
+.ch-prog .rest { color: #8fb0e8; }
+.ch-facts { display: grid; grid-template-columns: repeat(3, 1fr); padding-top: 9px; border-top: 1px solid rgba(0,0,0,.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+.ch-facts div { font-size: 11.5px; font-weight: 500; color: var(--soot); white-space: nowrap; }
+.ch-facts b { display: block; font: 600 13px "Geist Variable", "Geist", sans-serif; color: var(--chalk-hi); margin-top: 1px; }
+/* a character the addon hasn't seen: placeholders, never zeros */
+.ch-card.unseen { cursor: default; }
+.ch-card.unseen:hover { filter: none; }
+.ch-card.unseen .ch-nm { color: var(--chalk); }
+.ch-prog .lbl i { font-style: normal; color: #8f7d66; }
+.ch-nobar { height: 6px; border-radius: 3px; border: 1px dashed rgba(205,191,169,.18); }
+.ch-card.unseen .ch-facts b { font-style: italic; font-weight: 500; font-size: 12px; color: #5a544b; }
+
+/* sheet */
+.ch-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.ch-crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--soot); }
+.ch-crumbs button { color: var(--ash); } .ch-crumbs button:hover { color: var(--chalk-hi); }
+.ch-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+@media (max-width: 980px) { .ch-body { grid-template-columns: 1fr; } }
+.ch-sheet { padding: 18px 20px 20px; }
+.ch-ident { display: flex; gap: 16px; align-items: center; }
+.ch-ident h1 { font: 700 30px/1.1 Georgia, "Iowan Old Style", serif; }
+.ch-sub { font: italic 13.5px Georgia, serif; color: var(--ink-2); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ch-pill { font: 500 11px "Geist Variable", "Geist", sans-serif; font-style: normal; color: var(--ink); padding: 2px 8px; border-radius: 10px;
+  background: rgba(255,255,255,.2); box-shadow: inset 0 0 0 1px rgba(58,38,22,.3); }
+.ch-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0 14px; padding: 12px 0;
+  border-top: 1.5px solid var(--ink-rule); border-bottom: 1px solid var(--ink-hair); }
+.ch-stats .k { font: italic 12px Georgia, serif; color: var(--ink-3); }
+.ch-stats .v { font: 700 18px Georgia, serif; color: var(--ink); margin-top: 2px; }
+.ch-tabs { display: flex; gap: 2px; align-items: center; border-bottom: 1.5px solid var(--ink-rule); margin-bottom: 12px; }
+.ch-tabs button { padding: 7px 10px; font: 600 13px Georgia, serif; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1.5px; }
+.ch-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--wax); }
+.ch-tabs .n { font: 500 11px "Geist Variable", "Geist", sans-serif; color: var(--ink-3); margin-left: 4px; }
+.ch-tabs .stamp { margin-left: auto; font: italic 12px Georgia, serif; color: var(--ink-3); }
+.ch-fresh { font: italic 12.5px Georgia, serif; color: var(--ink-3); margin-bottom: 10px; }
+.ch-fresh.old { color: var(--warn-ink); }
+.ch-doll { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }
+@media (max-width: 720px) { .ch-doll { grid-template-columns: 1fr; } }
+.ch-slot { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0;
+  border-bottom: 1px solid var(--ink-hair); }
+.ch-ico { width: 34px; height: 34px; border-radius: 3px; display: grid; place-items: center; font: 400 13px "Marcellus", Georgia, serif;
+  background: rgba(255,255,255,.25); border: 1.5px solid currentColor; box-shadow: inset 0 0 6px rgba(90,55,20,.25); }
+.ch-ico b { color: var(--ink); }
+.ch-slot .t { min-width: 0; }
+.ch-slot .t > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13.5px Georgia, serif; }
+.ch-slot small { font: italic 11.5px Georgia, serif; color: var(--ink-3); }
+.ch-slot .il { font: 700 13px Georgia, serif; color: var(--ink-2); }
+.ch-sec { font: italic 12.5px Georgia, serif; color: var(--ink-3); margin: 14px 0 6px; }
+.ch-empty { font: italic 13px Georgia, serif; color: var(--ink-3); padding: 10px 0; }
+.ch-mail { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--ink-hair); }
+.ch-mail .who { font: 600 13.5px Georgia, serif; }
+.ch-mail .what { font: italic 12.5px Georgia, serif; color: var(--ink-2); }
+
+/* side column (stone panels) */
+.ch-side { display: grid; gap: 12px; }
+.ch-bagrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font-size: 12px; padding: 4px 0; color: var(--chalk); }
+.ch-bagrow .free { color: var(--ash); }
+.ch-prof { list-style: none; display: grid; gap: 10px; margin: 0; padding: 0; }
+.ch-prof li > div:first-child { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; color: var(--chalk); }
+.ch-prof .muted { color: var(--ash); }
+.ch-wallet svg { width: 100%; height: 56px; display: block; }
+.ch-up { color: var(--ok); } .ch-down { color: var(--bad); }
+
+/* item tooltip glass (_d.css .tt), in-game colours */
+.ch-slot:hover { background: rgba(80,140,255,.06); }
+.ch-tt { position: fixed; z-index: 60; padding: 9px 11px 10px; font-size: 12.5px; line-height: 1.4; color: #fff; pointer-events: none;
+  background: linear-gradient(180deg, rgba(14,18,44,.97), rgba(4,5,14,.97)); border: 1px solid #a9afc0; border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 0 0 2px rgba(108,113,132,.4), 0 14px 30px rgba(0,0,0,.75); text-shadow: 1px 1px 0 #000; }
+.ch-tt .t { font-size: 14px; font-weight: 600; }
+.ch-tt .y { color: #ffd100; }
+.ch-tt .src { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(108,113,132,.35); color: #9da3b8; font-size: 11.5px; }
+.ch-tt .tq0 { color: #9d9d9d; } .ch-tt .tq1 { color: #fff; } .ch-tt .tq2 { color: #1eff00; }
+.ch-tt .tq3 { color: #3d8bff; } .ch-tt .tq4 { color: #b553f5; } .ch-tt .tq5 { color: #ff8000; }

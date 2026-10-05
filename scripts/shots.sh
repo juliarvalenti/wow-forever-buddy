@@ -34,6 +34,10 @@ SCENARIOS=(
   "backups-error|backup-failed|$NAV|backups-error"
   "onboarding-notfound|nogame|wait:text=couldn't find World of Warcraft|onboarding-notfound"
   "startup-error|startup-error||startup-error"
+  "characters|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card|characters"
+  "character|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet|character"
+  "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
+  "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
 )
 
 echo "== build:mock"

@@ -191,6 +191,13 @@ export const commands = {
 	 *  when the file changes.
 	 */
 	ingestProblems: () => __TAURI_INVOKE<IngestProblem[]>("ingest_problems"),
+	/**
+	 *  The Characters screen: totals and one card per character of the active
+	 *  game flavor. Empty (not an error) before a game folder is set.
+	 */
+	charactersOverview: () => __TAURI_INVOKE<CharactersOverview>("characters_overview"),
+	/**  One character's sheet: gear, satchels, bank, mail, professions, 30-day gold. */
+	characterDetail: (id: number) => __TAURI_INVOKE<CharacterSheet>("character_detail", { id }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -485,6 +492,14 @@ export type BackupSettings = {
 	schedule_hours?: number,
 };
 
+export type BagView = {
+	container: number,
+	name: string | null,
+	size: number | null,
+	free: number | null,
+	items: ItemRow[],
+};
+
 export type CandidateSource = "saved" | "registry" | "common_path";
 
 /**
@@ -504,6 +519,43 @@ export type Category =
 export type CategoryNode = {
 	category: Category,
 	totals: Totals,
+};
+
+/**  One card on the Characters screen. */
+export type CharacterCard = {
+	id: number,
+	/**
+	 *  The folder identity (WTF/Account/<account>/<group>/<folder>), to
+	 *  match the WTF roster's characters the addon hasn't seen yet.
+	 */
+	account: string,
+	group_dir: string,
+	folder: string,
+	name: string,
+	surname: string | null,
+	/**  File token, lowercase (`warrior`), for the class colour. */
+	class: string | null,
+	race: string | null,
+	level: number | null,
+	realm: string | null,
+	guild: string | null,
+	zone: string | null,
+	subzone: string | null,
+	/**  The last logout we have (RFC 3339, UTC). */
+	last_seen: string,
+	/**  Copper. */
+	money: number | null,
+	xp: number | null,
+	xp_max: number | null,
+	rested: number | null,
+	ilvl: number | null,
+	/**  Seconds. */
+	played: number | null,
+	/**  Free slots across all bags, if the bags have been seen. */
+	bag_free: number | null,
+	bag_size: number | null,
+	mail: number,
+	bank_items: number,
 };
 
 export type CharacterNode = {
@@ -538,6 +590,25 @@ export type CharacterRef = {
 	 *  `Ellygie-Vargur`. Never split; the UI shows it as "Ellygie Vargur".
 	 */
 	name: string,
+};
+
+export type CharacterSheet = {
+	card: CharacterCard,
+	equipped: ItemRow[],
+	bags: BagView[],
+	bank: Visited,
+	mail: MailView,
+	professions: ProfessionRow[],
+	/**  The last 30 days of gold, oldest first. */
+	gold_30d: GoldPoint[],
+};
+
+export type CharactersOverview = {
+	/**  Copper, across every character. */
+	gold: number | null,
+	/**  Items carried, across bags, bank and mail. */
+	items: number,
+	characters: CharacterCard[],
 };
 
 export type Chart = {
@@ -635,6 +706,11 @@ export type GameStatus = {
 /**  Emitted when WoW starts or stops. */
 export type GameStatusChanged = GameStatus;
 
+export type GoldPoint = {
+	at: string,
+	money: number | null,
+};
+
 /**  Emitted after a scan or replay that changed characters' data. */
 export type IngestCompleted = {
 	/**  `characters.id` (u32: row ids, and specta refuses i64 in TypeScript). */
@@ -726,6 +802,24 @@ export type ItemLine = {
 	 *  that didn't drop; `None` for loot.
 	 */
 	how: string | null,
+};
+
+/**  One item in a slot, ready to show. */
+export type ItemRow = {
+	container: number,
+	slot: number,
+	item_id: number,
+	name: string,
+	/**  0 poor … 5 legendary, when known. */
+	quality: number | null,
+	ilvl: number | null,
+	count: number,
+	/**
+	 *  When this character last looted one (RFC 3339), if the journal has
+	 *  it, and the zone it was in. Never a source (IMPLEMENTING.md §7).
+	 */
+	looted_at: string | null,
+	looted_in: string | null,
 };
 
 /**  An interrupted restore: enough to roll it back or run it again. */
@@ -825,6 +919,21 @@ export type LookedIn = {
 	path: string,
 };
 
+export type MailRow = {
+	/**  Other players' text from your own mailbox: shown here, never exported. */
+	sender: string | null,
+	subject: string | null,
+	money: number | null,
+	cod: number | null,
+	days_left: number | null,
+	items: ItemRow[],
+};
+
+export type MailView = {
+	as_of: string | null,
+	messages: MailRow[],
+};
+
 export type Marker = {
 	at: string,
 	/**  death | encounter | level | quest */
@@ -884,6 +993,12 @@ export type PlaySession = {
 	 *  killed without one can't be told apart from a clean exit.
 	 */
 	crashed: boolean,
+};
+
+export type ProfessionRow = {
+	name: string,
+	skill: number | null,
+	max: number | null,
 };
 
 /**  What a prune did. */
@@ -1214,6 +1329,13 @@ export type VerifyReport = {
 	missing: string[],
 	/**  Those of `corrupt` whose copy couldn't be read right now (retry). */
 	unreadable: string[],
+};
+
+/**  A location the addon only sees when it's opened (bank, mailbox). */
+export type Visited = {
+	/**  When it was last seen (RFC 3339), `None` if never. */
+	as_of: string | null,
+	bags: BagView[],
 };
 
 /**  A character found in the WTF folder. */
