@@ -190,6 +190,10 @@ scenario("reload", function()
     eq(s.events[1].item, 2589, "before the reload")
     eq(s.events[2].item, 14047, "after the reload")
     eq(db._meta.loaded_prior, true, "loaded_prior")
+    -- Played time is asked for once per login (it prints to chat), and
+    -- carries on across the reload from the file.
+    eq(c.world.requests.played, 1, "RequestTimePlayed calls")
+    eq(db.snapshot.played.total, c.world.played + HOUR, "played across the reload")
 
     -- If the reload didn't read the file back, the second half starts over.
     c = client()
@@ -281,6 +285,119 @@ local function events(s, want)
 end
 
 -- An evening in Westfall and the Deadmines: every kind of event once.
+-- V2: everything the snapshot holds, from a session with a bank and a
+-- mailbox visit, a lockout, and an item the client had to load.
+local function stocked(o)
+    local c = client(o)
+    c.world.lockouts = { { name = "The Deadmines", reset = 2 * DAY, raid = false, difficulty = "Normal" } }
+    c.world.inbox = {
+        { sender = "Coinpurse", subject = "Linen for you", money = 500, cod = 0, days = 29.5,
+          items = { { id = 2589, count = 10 } } },
+    }
+    c.world.uncached[14047] = true -- the bank's Runecloth
+    return c
+end
+
+scenario("snapshot", function()
+    local c = stocked()
+    local t0 = wow.EPOCH
+    c.login(nil)
+    c.advance(10 * MINUTE)
+    c.bank()
+    c.advance(5 * MINUTE)
+    c.mail()
+    c.advance(HOUR)
+    local text = c.logout()
+    local db = file(text)
+    local out = t0 + HOUR + 15 * MINUTE
+
+    local ch = db.character
+    eq(ch.class, "WARRIOR", "class")
+    eq(ch.race, "Human", "race")
+    eq(ch.sex, 2, "sex")
+    eq(ch.faction, "Alliance", "faction")
+    eq(ch.level, 12, "level")
+    eq(ch.guild.name, "Hearthguard", "guild")
+    eq(ch.guild.rank, "Officer", "guild rank")
+
+    local s = db.snapshot
+    eq(s.at, out, "at")
+    eq(s.money, 25000, "money")
+    eq(s.xp, 1200, "xp")
+    eq(s.xp_max, 8800, "xp_max")
+    eq(s.rested, 674, "rested")
+    eq(s.rest_state, "Rested", "rest_state")
+    eq(s.ilvl.avg, 21.5, "ilvl.avg")
+    eq(s.ilvl.equipped, 20.25, "ilvl.equipped")
+    eq(s.played.total, c.world.played + (out - t0), "played.total")
+    eq(s.played.level, c.world.played_level + (out - t0), "played.level")
+    eq(s.zone.zone, "Elwynn Forest", "zone")
+    eq(s.zone.subzone, "Goldshire", "subzone")
+    eq(s.zone.map, 1429, "map")
+    eq(s.equipped[16], wow.link(25), "main hand")
+    eq(s.bags[0].size, 16, "backpack size")
+    eq(s.bags[0].free, 14, "backpack free")
+    eq(s.bags[0].name, "Backpack", "backpack name")
+    eq(s.bags[0].items[1].link, wow.link(6948), "backpack slot 1")
+    eq(s.bags[0].items[2].count, 4, "backpack slot 2 count")
+    eq(s.bags[1], nil, "an empty bag slot")
+
+    eq(s.bank.at, t0 + 10 * MINUTE, "bank.at")
+    eq(s.bank.bags[-1].items[1].count, 20, "bank slot 1")
+    eq(s.bank.bags[6].size, 98, "bank tab")
+    eq(s.mail.at, t0 + 15 * MINUTE, "mail.at")
+    local letter = s.mail.items[1]
+    eq(letter.sender, "Coinpurse", "sender")
+    eq(letter.subject, "Linen for you", "subject")
+    eq(letter.money, 500, "letter money")
+    eq(letter.days_left, 29.5, "days_left")
+    eq(letter.items[1].link, wow.link(2589), "attachment")
+    eq(letter.items[1].count, 10, "attachment count")
+
+    eq(#s.professions, 3, "professions")
+    eq(s.professions[3].name, "Cooking", "the fifth index, after two nils")
+    eq(s.professions[1].skill, 60, "skill")
+    eq(s.professions[1].spec, nil, "no specialization")
+    eq(#s.lockouts, 1, "lockouts")
+    eq(s.lockouts[1].reset_at, t0 + 1 + 2 * DAY, "reset_at")
+
+    -- Every item seen has its static info, including the one that had to load.
+    for _, id in ipairs({ 25, 2589, 6948, 14047 }) do
+        eq(db.items[id] and db.items[id].name, wow.ITEMS[id], "items[" .. id .. "]")
+    end
+    eq(c.world.requests.items, 1, "item data requests")
+    eq(c.world.requests.played, 1, "RequestTimePlayed calls")
+    return text
+end)
+
+-- The bank and mailbox can only be read there, so a session without a visit
+-- carries the last ones forward instead of wiping them (probe runs 2-3).
+scenario("carry_forward", function()
+    local c = stocked()
+    c.login(nil)
+    c.advance(10 * MINUTE)
+    c.bank()
+    c.mail()
+    c.advance(HOUR)
+    local first = c.logout()
+    local visited = c.now - HOUR
+
+    c.advance(DAY)
+    local text = play(c, first, 60)
+    local db = file(text)
+    eq(db.snapshot.bank.at, visited, "bank as of the visit")
+    eq(db.snapshot.mail.at, visited, "mail as of the visit")
+    eq(db.snapshot.bank.bags[-1].items[1].count, 20, "bank contents")
+    eq(db.snapshot.lockouts[1].name, "The Deadmines", "lockouts")
+
+    -- Without read-back there's nothing to carry: left out, never emptied.
+    c.advance(DAY)
+    db = file(play(c, text, 60, { readback = false }))
+    eq(db.snapshot.bank, nil, "bank without read-back")
+    eq(db.snapshot.mail, nil, "mail without read-back")
+    return text
+end)
+
 scenario("adventure", function()
     local c = client()
     local t0 = wow.EPOCH

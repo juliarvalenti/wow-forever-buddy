@@ -1,4 +1,4 @@
--- Written by tools/addon-test/run.lua (scenario session_cap). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario carry_forward). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.2.0",
@@ -7,15 +7,15 @@ ForeverBuddyDB = {
 			["bag_items"] = 2,
 			["events"] = 0,
 			["items"] = 3,
-			["sessions"] = 10,
+			["sessions"] = 2,
 		},
 		["loaded_prior"] = true,
 		["missing_events"] = {
 		},
 		["schema"] = 1,
 		["secret_hits"] = 0,
-		["truncated"] = true,
-		["written"] = 1791957600,
+		["truncated"] = false,
+		["written"] = 1791058200,
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -65,9 +65,9 @@ ForeverBuddyDB = {
 		{
 			["events"] = {
 			},
-			["id"] = 1791144000,
-			["login"] = 1791144000,
-			["logout"] = 1791147600,
+			["id"] = 1790964000,
+			["login"] = 1790964000,
+			["logout"] = 1790968200,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -78,9 +78,9 @@ ForeverBuddyDB = {
 		{
 			["events"] = {
 			},
-			["id"] = 1791234000,
-			["login"] = 1791234000,
-			["logout"] = 1791237600,
+			["id"] = 1791054600,
+			["login"] = 1791054600,
+			["logout"] = 1791058200,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -88,113 +88,9 @@ ForeverBuddyDB = {
 				["zone"] = "Elwynn Forest",
 			},
 		}, -- [2]
-		{
-			["events"] = {
-			},
-			["id"] = 1791324000,
-			["login"] = 1791324000,
-			["logout"] = 1791327600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [3]
-		{
-			["events"] = {
-			},
-			["id"] = 1791414000,
-			["login"] = 1791414000,
-			["logout"] = 1791417600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [4]
-		{
-			["events"] = {
-			},
-			["id"] = 1791504000,
-			["login"] = 1791504000,
-			["logout"] = 1791507600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [5]
-		{
-			["events"] = {
-			},
-			["id"] = 1791594000,
-			["login"] = 1791594000,
-			["logout"] = 1791597600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [6]
-		{
-			["events"] = {
-			},
-			["id"] = 1791684000,
-			["login"] = 1791684000,
-			["logout"] = 1791687600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [7]
-		{
-			["events"] = {
-			},
-			["id"] = 1791774000,
-			["login"] = 1791774000,
-			["logout"] = 1791777600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [8]
-		{
-			["events"] = {
-			},
-			["id"] = 1791864000,
-			["login"] = 1791864000,
-			["logout"] = 1791867600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [9]
-		{
-			["events"] = {
-			},
-			["id"] = 1791954000,
-			["login"] = 1791954000,
-			["logout"] = 1791957600,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [10]
 	},
 	["snapshot"] = {
-		["at"] = 1791957600,
+		["at"] = 1791058200,
 		["bags"] = {
 			[0] = {
 				["free"] = 14,
@@ -212,6 +108,27 @@ ForeverBuddyDB = {
 				["size"] = 16,
 			},
 		},
+		["bank"] = {
+			["at"] = 1790964600,
+			["bags"] = {
+				[-1] = {
+					["free"] = 27,
+					["items"] = {
+						{
+							["count"] = 20,
+							["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
+						}, -- [1]
+					},
+					["size"] = 28,
+				},
+				[6] = {
+					["free"] = 98,
+					["items"] = {
+					},
+					["size"] = 98,
+				},
+			},
+		},
 		["equipped"] = {
 			[16] = "|cffffffff|Hitem:25::::::::12:::::|h[Worn Shortsword]|h|r",
 		},
@@ -220,11 +137,34 @@ ForeverBuddyDB = {
 			["equipped"] = 20.25,
 		},
 		["lockouts"] = {
+			{
+				["difficulty"] = "Normal",
+				["name"] = "The Deadmines",
+				["reset_at"] = 1791227401,
+			}, -- [1]
+		},
+		["mail"] = {
+			["at"] = 1790964600,
+			["items"] = {
+				{
+					["cod"] = 0,
+					["days_left"] = 29.5,
+					["items"] = {
+						{
+							["count"] = 10,
+							["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
+						}, -- [1]
+					},
+					["money"] = 500,
+					["sender"] = "Coinpurse",
+					["subject"] = "Linen for you",
+				}, -- [1]
+			},
 		},
 		["money"] = 25000,
 		["played"] = {
-			["level"] = 994074,
-			["total"] = 1013151,
+			["level"] = 94674,
+			["total"] = 113751,
 		},
 		["professions"] = {
 			{

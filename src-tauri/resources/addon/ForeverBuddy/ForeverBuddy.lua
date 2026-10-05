@@ -156,11 +156,20 @@ end
 -- the realm of a player from another realm, and nil for yourself.
 local function identity()
     local name, surname = read(UnitName, "player")
+    local _, class = read(UnitClass, "player")
+    local _, race = read(UnitRace, "player")
+    local guild, rank = read(GetGuildInfo, "player")
     return {
         name = name,
         surname = surname ~= "" and surname or nil,
         realm = read(GetRealmName),
         guid = read(UnitGUID, "player"),
+        class = class,
+        race = race,
+        sex = read(UnitSex, "player"),
+        faction = read(UnitFactionGroup, "player"),
+        level = read(UnitLevel, "player"),
+        guild = guild and { name = guild, rank = rank } or nil,
     }
 end
 
@@ -248,6 +257,210 @@ local function carried()
     return counts
 end
 
+-- Snapshot (spec §2, "What it captures") -------------------------------------
+
+local MAX_LETTERS = 50 -- the inbox shows at most 50
+local ATTACHMENTS = 16 -- ATTACHMENTS_MAX_RECEIVE
+local played -- { total, level, at } from TIME_PLAYED_MSG, or the file after /reload
+local bank, mail -- this session's visits, if there were any
+local lockouts -- from the latest UPDATE_INSTANCE_INFO
+-- Item ids whose info is loading (true), or that loaded without info (false).
+local pendingItems = {}
+
+-- "|cnIQ1:|Hitem:6948::...|h[Hearthstone]|h|r" -> 6948
+local function linkItemID(link)
+    if type(link) ~= "string" then
+        return nil
+    end
+    return tonumber(string.match(link, "|Hitem:(%d+)"))
+end
+
+local function fillItem(id)
+    local name, _, quality, ilvl, _, _, _, _, _, icon, sell, class, subclass =
+        read("C_Item.GetItemInfo", id)
+    if not name then
+        return false
+    end
+    items[id] = {
+        name = name,
+        quality = quality,
+        ilvl = ilvl,
+        icon = icon,
+        sell = sell,
+        class = class,
+        subclass = subclass,
+    }
+    return true
+end
+
+-- Static info for every item seen (row 19), once. If the client hasn't
+-- cached it yet it's requested, and ITEM_DATA_LOAD_RESULT fills it in.
+local function noteItem(id)
+    if type(id) ~= "number" or items[id] or pendingItems[id] ~= nil then
+        return
+    end
+    if not fillItem(id) then
+        pendingItems[id] = true
+        read("C_Item.RequestLoadItemDataByID", id)
+    end
+end
+
+-- A container: { size, free, name, items[slot] = { link, count } }, or nil
+-- for an empty bag slot or a bank bag that can't be read away from the bank.
+local function container(bag)
+    local size = read("C_Container.GetContainerNumSlots", bag)
+    if type(size) ~= "number" or size <= 0 then
+        return nil
+    end
+    local out = {
+        size = size,
+        free = read("C_Container.GetContainerNumFreeSlots", bag),
+        name = read("C_Container.GetBagName", bag),
+        items = {},
+    }
+    for slot = 1, size do
+        local info = read("C_Container.GetContainerItemInfo", bag, slot)
+        if type(info) == "table" then
+            local link = arg(info.hyperlink)
+            if link then
+                out.items[slot] = { link = link, count = arg(info.stackCount) }
+                noteItem(arg(info.itemID) or linkItemID(link))
+            end
+        end
+    end
+    return out
+end
+
+-- The bank as of now: the main bank plus each purchased tab (row 14). Only
+-- readable while the bank is open.
+local function scanBank()
+    local ids = { (Enum and Enum.BagIndex and Enum.BagIndex.Bank) or -1 }
+    local tabs = read("C_Bank.FetchPurchasedBankTabIDs", Enum and Enum.BankType and Enum.BankType.Character)
+    if type(tabs) == "table" then
+        for _, id in ipairs(tabs) do
+            ids[#ids + 1] = arg(id)
+        end
+    end
+    local bags = {}
+    for _, id in ipairs(ids) do
+        bags[id] = container(id)
+    end
+    bank = { at = now(), bags = bags }
+end
+
+-- The mailbox as of now (row 15). Senders and subjects are other players'
+-- words: the app keeps them locally and never exports or logs them.
+local function scanMail()
+    local n = read(GetInboxNumItems)
+    if type(n) ~= "number" then
+        return
+    end
+    local letters = {}
+    for i = 1, math.min(n, MAX_LETTERS) do
+        local _, _, sender, subject, money, cod, daysLeft, itemCount = read(GetInboxHeaderInfo, i)
+        local letter = {
+            sender = sender,
+            subject = subject,
+            money = money,
+            cod = cod,
+            days_left = daysLeft,
+            items = {},
+        }
+        if type(itemCount) == "number" and itemCount > 0 then
+            for a = 1, ATTACHMENTS do
+                local link = read(GetInboxItemLink, i, a)
+                if link then
+                    local _, id, _, count = read(GetInboxItem, i, a)
+                    letter.items[#letter.items + 1] = { link = link, count = count }
+                    noteItem(id or linkItemID(link))
+                end
+            end
+        end
+        letters[#letters + 1] = letter
+    end
+    mail = { at = now(), items = letters }
+end
+
+-- Row 16. GetProfessions returns up to five indices, any of them nil.
+local function professions()
+    local out = {}
+    local p = pack(read(GetProfessions))
+    for i = 1, p.n do
+        if p[i] then
+            local name, _, skill, max, _, _, line, _, spec = read(GetProfessionInfo, p[i])
+            if name then
+                out[#out + 1] = {
+                    name = name,
+                    skill = skill,
+                    max = max,
+                    line = line,
+                    spec = type(spec) == "number" and spec >= 0 and spec or nil,
+                }
+            end
+        end
+    end
+    return out
+end
+
+-- Played time at `t`: the last TIME_PLAYED_MSG plus the seconds since.
+local function playedAt(t)
+    if not played or not t or not played.at then
+        return nil
+    end
+    local since = t - played.at
+    return {
+        total = played.total + since,
+        level = played.level and played.level + since or nil,
+    }
+end
+
+-- A table from the loaded file, if it's one.
+local function prior(key)
+    local s = loaded and loaded.snapshot
+    if type(s) == "table" and type(s[key]) == "table" then
+        return s[key]
+    end
+    return nil
+end
+
+local function snapshot(t)
+    local s = { at = t }
+    s.money = read(GetMoney)
+    s.xp = read(UnitXP, "player")
+    s.xp_max = read(UnitXPMax, "player")
+    s.rested = read(GetXPExhaustion)
+    local _, restState = read(GetRestState)
+    s.rest_state = restState
+    local avg, equipped = read(GetAverageItemLevel)
+    s.ilvl = { avg = avg, equipped = equipped }
+    s.played = playedAt(t)
+    local subzone = read(GetSubZoneText)
+    s.zone = {
+        zone = zoneNow(),
+        subzone = subzone ~= "" and subzone or nil,
+        map = read("C_Map.GetBestMapForUnit", "player"),
+    }
+    s.equipped = {}
+    for slot = 1, 19 do
+        local link = read(GetInventoryItemLink, "player", slot)
+        if link then
+            s.equipped[slot] = link
+            noteItem(read(GetInventoryItemID, "player", slot) or linkItemID(link))
+        end
+    end
+    s.bags = {}
+    for bag = 0, 5 do
+        s.bags[bag] = container(bag)
+    end
+    s.professions = professions()
+    s.lockouts = lockouts or prior("lockouts")
+    -- Only readable at the banker and the mailbox: without a visit this
+    -- session, the last one carries forward (a relog mustn't wipe it).
+    s.bank = bank or prior("bank")
+    s.mail = mail or prior("mail")
+    return s
+end
+
 local function sortedKeys(t)
     local keys = {}
     for k in pairs(t) do
@@ -272,6 +485,7 @@ local function scanBags()
             local d = now_[id] - (inventory[id] or 0)
             if d > 0 then
                 addEvent("gain", { item = id, count = d, how = gainHow })
+                noteItem(id)
             end
         end
         for _, id in ipairs(sortedKeys(inventory)) do
@@ -321,6 +535,15 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
         return
     end
     entered = true
+    read(RequestRaidInfo)
+    -- Played time is asked for once per login (it prints the two "Total time
+    -- played" lines). After /reload the file just written has it.
+    local p = prior("played")
+    if isReloadingUi and p and type(p.total) == "number" and loaded.snapshot.at then
+        played = { total = p.total, level = p.level, at = loaded.snapshot.at }
+    else
+        read(RequestTimePlayed)
+    end
     if not (isReloadingUi and loaded and session) then
         return
     end
@@ -406,10 +629,23 @@ handlers.MERCHANT_CLOSED = function()
     merchantOpen, repairCost = false, nil
 end
 
-handlers.BAG_UPDATE_DELAYED = scanBags
+handlers.BAG_UPDATE_DELAYED = function()
+    scanBags()
+    if bankOpen then
+        scanBank()
+    end
+end
 
 handlers.BANKFRAME_OPENED = function()
     bankOpen = true
+    scanBank()
+end
+
+-- The main bank's slots change without a BAG_UPDATE.
+handlers.PLAYERBANKSLOTS_CHANGED = function()
+    if bankOpen then
+        scanBank()
+    end
 end
 
 handlers.BANKFRAME_CLOSED = function()
@@ -423,6 +659,49 @@ end
 
 handlers.MAIL_CLOSED = function()
     mailOpen = false
+end
+
+handlers.MAIL_INBOX_UPDATE = function()
+    if mailOpen then
+        scanMail()
+    end
+end
+
+handlers.TIME_PLAYED_MSG = function(total, level)
+    total, level = arg(total), arg(level)
+    if type(total) == "number" then
+        played = { total = total, level = level, at = now() }
+    end
+end
+
+handlers.UPDATE_INSTANCE_INFO = function()
+    local n = read(GetNumSavedInstances)
+    if type(n) ~= "number" then
+        return
+    end
+    local t, out = now(), {}
+    for i = 1, n do
+        local name, _, reset, _, locked, _, _, isRaid, _, difficulty = read(GetSavedInstanceInfo, i)
+        if name and locked then
+            out[#out + 1] = {
+                name = name,
+                difficulty = difficulty,
+                reset_at = t and type(reset) == "number" and t + reset or nil,
+                raid = isRaid or nil,
+            }
+        end
+    end
+    lockouts = out
+end
+
+handlers.ITEM_DATA_LOAD_RESULT = function(itemID, success)
+    local id = arg(itemID)
+    if id and pendingItems[id] then
+        pendingItems[id] = false
+        if arg(success) then
+            fillItem(id)
+        end
+    end
 end
 
 -- Builds the whole file from this session plus the sessions carried forward.
@@ -459,7 +738,7 @@ handlers.PLAYER_LOGOUT = function()
 
     local db = {
         character = character,
-        snapshot = { at = session.logout },
+        snapshot = snapshot(session.logout),
         items = items,
         sessions = sessions,
     }
