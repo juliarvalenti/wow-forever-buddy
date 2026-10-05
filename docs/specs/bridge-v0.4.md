@@ -55,6 +55,7 @@ ForeverBuddyData_Checklist = {
 
 - The addon reads only `schema` values it knows. An unknown one gets a single line in the frame ("This checklist is from a newer Forever Buddy. Update the addon from the app."), never a Lua error.
 - Strings are display text only. The addon never passes a slot value to `RunScript`, `loadstring`, a macro, a slash command, a secure attribute or a frame name.
+- **No markup from a slot.** `SetText` interprets WoW escape codes, so a slot string with `|Hitem:…|h[Fake Epic]|h`, `|T…|t` or `|c` could fake an item link, embed a texture or recolour text. The addon passes every slot string through one helper, `plain(s)`, that doubles each `|` to `||` before any `SetText` or tooltip line. The colours and icons the frame needs come from our own Lua (class colour from the `class` token), never from slot text. The escaping happens in the addon, at display, so the slot keeps the raw string and the check covers every producer, the app's and agents'.
 
 ### Writing a slot (`bridge::write_slot`)
 
@@ -64,7 +65,9 @@ ForeverBuddyData_Checklist = {
 4. Write with `fsx::atomic_replace`, so WoW never reads half a file.
 5. Record the write in `bridge_slots` (§5, migration 008).
 
-A unit test round-trips hostile strings (`]]`, `"`, `\`, newlines, control bytes, invalid UTF-8, `--[[`) through write and parse, and a property test checks that every generated table passes step 2.
+A unit test round-trips hostile strings (`]]`, `"`, `\`, newlines, control bytes, invalid UTF-8, `--[[`, `|Hitem:19019|h[Fake]|h`, `|TInterface\\Icons\\X:0|t`) through write and parse, and a property test checks that every generated table passes step 2. The addon test harness (`tools/addon-test`) loads a slot with the `|H` and `|T` strings and asserts that `plain()` returns them with every `|` doubled.
+
+**Several slots in one write.** When more than one slot changes, every file is built and passes steps 2 and 3 **before any is written**, so one bad slot can't leave a half-updated set. Then each is replaced in turn.
 
 ---
 
@@ -77,7 +80,13 @@ The write gate refuses every game-folder write while WoW runs. Slots are the one
 3. **Data-only, checked at runtime** (§2, step 2), not just in tests.
 4. **1 MB cap per slot.**
 
-The exception lives in its own small function (`WriteGate::write_slot(slot: Slot, bytes)`), which takes a `Slot` from the constant list, not a path. It still takes the jobs lock, so it can't race a restore or an addon install. Everything else keeps today's rule.
+The exception lives in its own small function (`WriteGate::write_slots(&[(Slot, bytes)])`), which takes `Slot`s from the constant list, not paths. It can't go through `gate.begin`, since that refuses exactly the running case. Instead it:
+
+- resolves every path through `RelPath` and `GameRoot`, where the escape check lives, so a linked `ForeverBuddy` or `Data` folder is refused with `PathEscape` (test modelled on `remove_never_follows_a_linked_folder_out`);
+- writes with `atomic_replace`, and skips only the running check and the snapshot;
+- takes the jobs lock, so it can't race a restore or an addon install.
+
+Everything else keeps today's rule.
 
 If the addon on disk is older than 0.4.0 (its TOC doesn't list the slot), the app doesn't write, and the panel shows the "restart" state ("needs the addon update below").
 
