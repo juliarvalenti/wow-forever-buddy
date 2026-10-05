@@ -1,11 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Puzzle } from "lucide-react";
+import {
+  Backpack,
+  ChevronLeft,
+  ChevronRight,
+  Landmark,
+  type LucideIcon,
+  Mail,
+  Puzzle,
+  Search,
+} from "lucide-react";
 import type {
   BagView,
   CharacterCard,
   CharacterSheet,
   ItemRow,
+  SearchResults,
   WtfCharacter,
 } from "@/lib/bindings";
 import {
@@ -20,12 +30,13 @@ import {
   Segmented,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
-import { useCharacterSheet, useCharacters, useRoster } from "@/hooks/useCharacters";
+import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
 import { ago, characterName, coins, plural, played, when } from "@/lib/format";
 
 // design/mocks/round-3/characters.html and character.html, with
-// IMPLEMENTING.md §7: no net worth or "worth carried" (AH numbers stay
-// hidden), no search until satchels are indexed. Every name, zone, item and
+// IMPLEMENTING.md §7: no net worth, "worth carried" or search values (AH
+// numbers stay hidden). Search shows once the addon has filled in a
+// character, since that's what indexes satchels. Every name, zone, item and
 // mail line is game text, rendered as React text and never as HTML.
 
 /** Money: gold only for coins. */
@@ -157,6 +168,22 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   const addon = useAddon();
   const [sort, setSort] = useState<Sort>("gold");
   const [open, setOpen] = useState<number | null>(null);
+  // Kept while a sheet opened from a result is on show, so Back returns to it.
+  const [query, setQuery] = useState("");
+  const search = useItemSearch(query);
+  const field = useRef<HTMLInputElement>(null);
+  // Ctrl K (Cmd K on a Mac) jumps to the search box, as the mock's hint says.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        field.current?.focus();
+        field.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const unseen = useMemo(() => {
     const seen = overview?.characters ?? [];
@@ -186,6 +213,9 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   }
 
   const anySeen = cards.length > 0;
+  const results = search.results;
+  const match = (id: number | null): "hit" | "miss" | undefined =>
+    results ? (id != null && results.characters.includes(id) ? "hit" : "miss") : undefined;
   return (
     <Page>
       <PageHeader
@@ -238,24 +268,46 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
         <>
           {anySeen && (
             <div className="ch-toolbar">
-              Sort
-              <Segmented<Sort>
-                value={sort}
-                onChange={setSort}
-                options={[
-                  { value: "level", label: "Level" },
-                  { value: "gold", label: "Gold" },
-                  { value: "seen", label: "Last seen" },
-                ]}
-              />
+              <label className="ch-search">
+                <Search size={14} aria-hidden />
+                <input
+                  ref={field}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+                  placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite, ilvl>60"
+                  aria-label="Search every satchel, bank and mailbox"
+                  spellCheck={false}
+                />
+                <kbd>{/Mac/.test(navigator.platform) ? "⌘ K" : "Ctrl K"}</kbd>
+              </label>
+              <span className="right">
+                Sort
+                <Segmented<Sort>
+                  value={sort}
+                  onChange={setSort}
+                  options={[
+                    { value: "level", label: "Level" },
+                    { value: "gold", label: "Gold" },
+                    { value: "seen", label: "Last seen" },
+                  ]}
+                />
+              </span>
             </div>
           )}
-          <section className="ch-cards">
+          {search.error && <Callout tone="bad">{search.error}</Callout>}
+          {results && <Results query={query} results={results} cards={cards} onOpen={setOpen} />}
+          <section className={`ch-cards${results ? " searching" : ""}`}>
             {cards.map((c) => (
-              <Card key={c.id} c={c} onOpen={() => setOpen(c.id)} />
+              <Card key={c.id} c={c} match={match(c.id)} onOpen={() => setOpen(c.id)} />
             ))}
             {unseen.map((r) => (
-              <UnseenCard key={`${r.account}/${r.realm}/${r.name}`} r={r} addonMissing={addonMissing} />
+              <UnseenCard
+                key={`${r.account}/${r.realm}/${r.name}`}
+                r={r}
+                addonMissing={addonMissing}
+                match={match(null)}
+              />
             ))}
           </section>
         </>
@@ -264,12 +316,109 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   );
 }
 
+const WHERE: Record<string, { label: string; icon: LucideIcon }> = {
+  bag: { label: "Satchels", icon: Backpack },
+  bank: { label: "Bank", icon: Landmark },
+  mail: { label: "Mail", icon: Mail },
+};
+
+/** The search results (characters-search mock), without the Value column
+ *  and "≈ at last scan": AH numbers stay hidden until v0.4 (IMPLEMENTING.md
+ *  §7). A row opens that character's sheet. */
+function Results({
+  query,
+  results,
+  cards,
+  onOpen,
+}: {
+  query: string;
+  results: SearchResults;
+  cards: CharacterCard[];
+  onOpen: (id: number) => void;
+}) {
+  const names = new Set(results.hits.map((h) => h.name));
+  // One item found: name it, as the mock does. Several: the query.
+  const title = names.size === 1 ? [...names][0] : query.trim();
+  const kin = (id: number) => cards.find((c) => c.id === id);
+  return (
+    <Panel>
+      <PanelHeader title={title}>
+        {results.hits.length > 0 && (
+          <span className="d-dim">
+            <b className="ch-strong">{results.total.toLocaleString()}</b> on{" "}
+            {plural(results.characters.length, "character", "characters")}
+          </span>
+        )}
+      </PanelHeader>
+      {results.hits.length === 0 ? (
+        <PanelBody>
+          <p className="d-muted">Nothing matches in any satchel, bank or mailbox.</p>
+        </PanelBody>
+      ) : (
+        <table className="d-table ch-results">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Character</th>
+              <th>Where</th>
+              <th className="num">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.hits.map((h) => {
+              const where = WHERE[h.location] ?? { label: h.location, icon: Backpack };
+              const Icon = where.icon;
+              const q = h.quality != null ? `ch-q${h.quality}` : "";
+              const c = kin(h.character_id);
+              return (
+                <tr key={`${h.character_id}-${h.location}-${h.item_id}`} onClick={() => onOpen(h.character_id)}>
+                  <td>
+                    <span className="ch-item">
+                      <span className={`ch-ico sm ${q}`} aria-hidden>
+                        <b>{h.name.slice(0, 1)}</b>
+                      </span>
+                      <span className={q}>{h.name}</span>
+                    </span>
+                  </td>
+                  <td className="ch-cc" style={classStyle({ class: c?.class ?? h.class })}>
+                    {h.character}
+                  </td>
+                  <td>
+                    <span className="ch-where">
+                      <Icon size={13} aria-hidden />
+                      {where.label}
+                    </span>
+                  </td>
+                  <td className="num">{h.count.toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {results.more && (
+        <PanelBody>
+          <p className="d-dim">Showing the {results.hits.length} largest. Add a word to narrow it down.</p>
+        </PanelBody>
+      )}
+    </Panel>
+  );
+}
+
 /** A character the addon hasn't written about yet: name and last played
  *  from the folder, quiet placeholders for the rest, never zeros. */
-function UnseenCard({ r, addonMissing }: { r: WtfCharacter; addonMissing: boolean }) {
+function UnseenCard({
+  r,
+  addonMissing,
+  match,
+}: {
+  r: WtfCharacter;
+  addonMissing: boolean;
+  match?: "hit" | "miss";
+}) {
   const need = addonMissing ? "needs addon" : "log in once";
   return (
-    <div className="d-panel ch-card unseen">
+    <div className={`d-panel ch-card unseen${match ? ` ${match}` : ""}`}>
       <div className="ch-id">
         <Blank />
         <div>
@@ -335,10 +484,18 @@ function Progress({ c }: { c: CharacterCard }) {
   return <div className="ch-prog" />;
 }
 
-function Card({ c, onOpen }: { c: CharacterCard; onOpen: () => void }) {
+function Card({
+  c,
+  match,
+  onOpen,
+}: {
+  c: CharacterCard;
+  match?: "hit" | "miss";
+  onOpen: () => void;
+}) {
   const where = c.subzone ?? c.zone;
   return (
-    <button className="d-panel ch-card" onClick={onOpen} style={classStyle(c)}>
+    <button className={`d-panel ch-card${match ? ` ${match}` : ""}`} onClick={onOpen} style={classStyle(c)}>
       <div className="ch-id">
         <Crest c={c} />
         <div>

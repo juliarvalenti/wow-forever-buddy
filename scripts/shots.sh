@@ -40,6 +40,7 @@ SCENARIOS=(
   "character|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
+  "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
 )
 
 echo "== build:mock"

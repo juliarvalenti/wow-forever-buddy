@@ -199,6 +199,12 @@ export const commands = {
 	charactersOverview: () => __TAURI_INVOKE<CharactersOverview>("characters_overview"),
 	/**  One character's sheet: gear, satchels, bank, mail, professions, 30-day gold. */
 	characterDetail: (id: number) => __TAURI_INVOKE<CharacterSheet>("character_detail", { id }),
+	/**
+	 *  The Characters search box: every satchel, bank and mailbox of the active
+	 *  flavor's characters, searched by item name words and `ilvl>60`-style
+	 *  filters. Nothing before a game folder is set.
+	 */
+	charactersSearch: (query: string) => __TAURI_INVOKE<SearchResults>("characters_search", { query }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1122,6 +1128,33 @@ export type ScopeItem =
 { kind: "AddonData"; addon: string; target: AddonTarget } | 
 /**  Exact files or folders, relative to the flavor folder. */
 { kind: "Paths"; paths: RelPath[] };
+
+/**  One item stack total on one character, in one place. */
+export type SearchHit = {
+	character_id: number,
+	/**  "Velyra Duskmane". */
+	character: string,
+	class: string | null,
+	/**  `bag`, `bank` or `mail`. */
+	location: string,
+	item_id: number,
+	name: string,
+	quality: number | null,
+	ilvl: number | null,
+	/**  Summed over every stack of it in that place. */
+	count: number,
+};
+
+export type SearchResults = {
+	/**  Most first, at most `SEARCH_MAX`. */
+	hits: SearchHit[],
+	/**  Items matched, across every hit (shown or not). */
+	total: number,
+	/**  Characters with a match, to light their cards. */
+	characters: number[],
+	/**  More hits than `hits` holds. */
+	more: boolean,
+};
 
 /**
  *  One row of the Integrations panel. Each id is checked on its own, so one

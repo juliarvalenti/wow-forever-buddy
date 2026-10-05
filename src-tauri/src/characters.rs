@@ -398,6 +398,182 @@ pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
     })
 }
 
+/// One item stack total on one character, in one place.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct SearchHit {
+    pub character_id: u32,
+    /// "Velyra Duskmane".
+    pub character: String,
+    pub class: Option<String>,
+    /// `bag`, `bank` or `mail`.
+    pub location: String,
+    pub item_id: u32,
+    pub name: String,
+    pub quality: Option<u8>,
+    pub ilvl: Option<u32>,
+    /// Summed over every stack of it in that place.
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct SearchResults {
+    /// Most first, at most `SEARCH_MAX`.
+    pub hits: Vec<SearchHit>,
+    /// Items matched, across every hit (shown or not).
+    pub total: u32,
+    /// Characters with a match, to light their cards.
+    pub characters: Vec<u32>,
+    /// More hits than `hits` holds.
+    pub more: bool,
+}
+
+/// The most rows the results table shows.
+pub const SEARCH_MAX: usize = 200;
+
+/// What a search box query asks for: words that must all be in the item's
+/// name (any case), and item level filters like `ilvl>60` (the mock's
+/// placeholder): `>`, `>=`, `<`, `<=` or `=`.
+#[derive(Debug, Default, PartialEq)]
+struct Query {
+    words: Vec<String>,
+    ilvl: Vec<(Cmp, u32)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Cmp {
+    Gt,
+    Ge,
+    Lt,
+    Le,
+    Eq,
+}
+
+impl Cmp {
+    fn holds(self, a: u32, b: u32) -> bool {
+        match self {
+            Cmp::Gt => a > b,
+            Cmp::Ge => a >= b,
+            Cmp::Lt => a < b,
+            Cmp::Le => a <= b,
+            Cmp::Eq => a == b,
+        }
+    }
+}
+
+impl Query {
+    fn parse(text: &str) -> Query {
+        // Longest operators first, so ">=" isn't read as ">" then "=5".
+        const OPS: [(&str, Cmp); 5] = [
+            (">=", Cmp::Ge),
+            ("<=", Cmp::Le),
+            (">", Cmp::Gt),
+            ("<", Cmp::Lt),
+            ("=", Cmp::Eq),
+        ];
+        let mut q = Query::default();
+        for token in text.split_whitespace() {
+            let lower = token.to_lowercase();
+            let filter = lower.strip_prefix("ilvl").and_then(|rest| {
+                let (cmp, n) = OPS
+                    .iter()
+                    .find_map(|&(op, cmp)| rest.strip_prefix(op).map(|n| (cmp, n)))?;
+                Some((cmp, n.parse::<u32>().ok()?))
+            });
+            match filter {
+                Some(f) => q.ilvl.push(f),
+                None => q.words.push(lower),
+            }
+        }
+        q
+    }
+
+    fn is_empty(&self) -> bool {
+        self.words.is_empty() && self.ilvl.is_empty()
+    }
+
+    /// An item level filter needs a known item level: an item the addon has
+    /// no info for doesn't match `ilvl>60`.
+    fn matches(&self, name: &str, ilvl: Option<u32>) -> bool {
+        let name = name.to_lowercase();
+        self.words.iter().all(|w| name.contains(w.as_str()))
+            && self
+                .ilvl
+                .iter()
+                .all(|&(cmp, n)| ilvl.is_some_and(|i| cmp.holds(i, n)))
+    }
+}
+
+/// Every satchel, bank and mailbox of `flavor`'s characters, searched for
+/// `text` (see `Query`). Bank and mail are as of each character's last
+/// visit, like the sheet. An empty query finds nothing.
+pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
+    let query = Query::parse(text);
+    let mut hits: Vec<SearchHit> = Vec::new();
+    if !query.is_empty() {
+        db.with_conn(|c| {
+            let mut stmt = c.prepare(
+                "SELECT c.id, c.name, c.surname, c.class, i.location, i.item_id, max(i.link),
+                        sum(i.count), it.name, it.quality, it.ilvl
+                 FROM char_items i
+                 JOIN characters c ON c.id = i.character_id
+                 LEFT JOIN items it ON it.item_id = i.item_id
+                 WHERE c.flavor = ?1 AND i.location IN ('bag', 'bank', 'mail')
+                 GROUP BY c.id, i.location, i.item_id",
+            )?;
+            let rows = stmt.query_map([flavor], |r| {
+                let link: String = r.get(6)?;
+                let surname: Option<String> = r.get(2)?;
+                let first: String = r.get(1)?;
+                let quality: Option<i64> = r.get(9)?;
+                Ok(SearchHit {
+                    character_id: r.get::<_, i64>(0)? as u32,
+                    character: match surname {
+                        Some(s) => format!("{first} {s}"),
+                        None => first,
+                    },
+                    class: r.get::<_, Option<String>>(3)?.map(|c| c.to_lowercase()),
+                    location: r.get(4)?,
+                    item_id: r.get::<_, i64>(5)? as u32,
+                    name: r
+                        .get::<_, Option<String>>(8)?
+                        .or_else(|| link_name(&link))
+                        .unwrap_or_else(|| "Unknown item".into()),
+                    quality: quality
+                        .and_then(|q| u8::try_from(q).ok())
+                        .or_else(|| link_quality(&link)),
+                    ilvl: opt_u32(r.get(10)?),
+                    count: u32::try_from(r.get::<_, i64>(7)?).unwrap_or(u32::MAX),
+                })
+            })?;
+            for hit in rows {
+                let hit = hit?;
+                if query.matches(&hit.name, hit.ilvl) {
+                    hits.push(hit);
+                }
+            }
+            Ok(())
+        })?;
+    }
+    hits.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.character.cmp(&b.character))
+    });
+    let total = hits.iter().fold(0u32, |n, h| n.saturating_add(h.count));
+    let mut characters: Vec<u32> = hits.iter().map(|h| h.character_id).collect();
+    characters.sort_unstable();
+    characters.dedup();
+    let more = hits.len() > SEARCH_MAX;
+    hits.truncate(SEARCH_MAX);
+    Ok(SearchResults {
+        hits,
+        total,
+        characters,
+        more,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,5 +738,105 @@ mod tests {
         );
         assert_eq!(link_quality("|cffa335ee|Hitem:19019|h[x]|h|r"), Some(4));
         assert_eq!(link_quality("|Hitem:1|h[x]|h"), None);
+    }
+
+    /// Two characters: Thrandor from the addon's own snapshot.lua (Linen ×4
+    /// in bags, ×10 in mail; Runecloth ×20 in the bank), and Ellygie from
+    /// `full` (Linen ×20 in bags, Wool ×7 in the bank, no item info for Wool).
+    fn two_alts() -> Db {
+        let db = Db::open_in_memory().unwrap();
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/addon/snapshot.lua"),
+        )
+        .unwrap();
+        ingest_text(&db, "Thrandor-Vargur", &src);
+        ingest_text(&db, "Ellygie-Vargur", &full(1000, 1));
+        db
+    }
+
+    #[test]
+    fn search_finds_an_item_across_alts_and_places() {
+        let db = two_alts();
+        let r = search(&db, "_classic_beta_", "linen").unwrap();
+        let rows: Vec<(&str, &str, u32)> = r
+            .hits
+            .iter()
+            .map(|h| (h.character.as_str(), h.location.as_str(), h.count))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("Ellygie Vargur", "bag", 20),
+                ("Thrandor Vargur", "mail", 10),
+                ("Thrandor Vargur", "bag", 4),
+            ],
+            "most first"
+        );
+        assert_eq!((r.total, r.characters.len(), r.more), (34, 2, false));
+        // Every word, any case.
+        assert_eq!(
+            search(&db, "_classic_beta_", "CLOTH linen").unwrap().total,
+            34
+        );
+        assert_eq!(
+            search(&db, "_classic_beta_", "linen wool")
+                .unwrap()
+                .hits
+                .len(),
+            0
+        );
+        // The bank, as of the last visit.
+        let rune = search(&db, "_classic_beta_", "rune").unwrap();
+        assert_eq!(
+            (rune.hits[0].location.as_str(), rune.hits[0].count),
+            ("bank", 20)
+        );
+    }
+
+    #[test]
+    fn search_leaves_out_gear_other_flavors_and_empty_queries() {
+        let db = two_alts();
+        // The Worn Shortsword is equipped, not carried.
+        assert!(search(&db, "_classic_beta_", "shortsword")
+            .unwrap()
+            .hits
+            .is_empty());
+        assert!(search(&db, "_classic_", "linen").unwrap().hits.is_empty());
+        let empty = search(&db, "_classic_beta_", "   ").unwrap();
+        assert!(empty.hits.is_empty() && empty.characters.is_empty());
+    }
+
+    #[test]
+    fn search_filters_by_item_level() {
+        let db = two_alts();
+        // Wool has no item info, so no known item level: an ilvl filter
+        // leaves it out.
+        let r = search(&db, "_classic_beta_", "ilvl>=10").unwrap();
+        assert!(r.hits.iter().any(|h| h.name == "Runecloth"));
+        assert!(!r.hits.iter().any(|h| h.name == "Wool"));
+        assert!(search(&db, "_classic_beta_", "rune ilvl>10")
+            .unwrap()
+            .hits
+            .is_empty());
+        assert_eq!(
+            search(&db, "_classic_beta_", "rune ilvl=10")
+                .unwrap()
+                .hits
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn queries_parse_words_and_item_level_filters() {
+        let q = Query::parse("Arcanite  ilvl>60 ILVL<=70 ilvl>x");
+        assert_eq!(
+            q.words,
+            ["arcanite", "ilvl>x"],
+            "a filter without a number is a word"
+        );
+        assert_eq!(q.ilvl, [(Cmp::Gt, 60), (Cmp::Le, 70)]);
+        assert!(Query::parse(" ").is_empty());
     }
 }
