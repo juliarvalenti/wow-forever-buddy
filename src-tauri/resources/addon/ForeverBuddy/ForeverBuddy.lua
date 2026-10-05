@@ -607,8 +607,10 @@ local function addItemLines(tooltip, id)
     local entry = type(slot.items) == "table" and slot.items[id]
     local alts = type(slot.alts) == "table" and slot.alts or {}
     local rows, total = {}, 0
-    -- This character's count is live: its bags and bank as the game has them.
-    local mine = read("C_Item.GetItemCount", id, true)
+    local shift = read("IsShiftKeyDown")
+    -- This character's count, live from the game, only in the Shift view
+    -- (INGAME §8): the compact lines are about the other alts.
+    local mine = shift and read("C_Item.GetItemCount", id, true)
     if type(mine) == "number" and mine > 0 and character and character.name then
         rows[#rows + 1] = { name = character.name, class = character.class, total = mine, live = true }
         total = total + mine
@@ -635,7 +637,6 @@ local function addItemLines(tooltip, id)
         return
     end
 
-    local shift = read("IsShiftKeyDown")
     tooltip:AddLine(" ")
     tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
     for k = 1, math.min(#rows, MAX_ROWS) do

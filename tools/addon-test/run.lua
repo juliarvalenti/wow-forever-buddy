@@ -642,16 +642,20 @@ scenario("tooltip", function()
         "Runecloth",
         " ",
         "Forever Buddy",
-        "Thrandor | 20 · on you",
+        -- No row for this character in the compact view (INGAME §8).
         "Coinpurse | 340 · bank",
         "Evil||Hitem:19019||h[Thunderfury]||h | 3 · mail",
-        "All alts | 363",
+        "All alts | 343",
         "Last scan | ~1g 12s each",
         "As of each alt's last logout · scan 3 days ago",
     }, "\n"), "tooltip")
 
+    -- Shift: this character first, live, then the alts by place and date.
     c.world.shift = true
-    eq(c.hover(14047)[5], "Coinpurse | 340 bank · 1 day ago", "with Shift")
+    local full = c.hover(14047)
+    eq(full[4], "Thrandor | 20 · on you", "with Shift: this character")
+    eq(full[5], "Coinpurse | 340 bank · 1 day ago", "with Shift: an alt")
+    eq(full[7], "All alts | 363", "with Shift: the total")
     c.world.shift = false
 
     eq(#c.hover(2488), 1, "nothing for an item no alt holds")
