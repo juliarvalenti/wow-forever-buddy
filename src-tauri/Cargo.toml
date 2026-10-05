@@ -1,6 +1,6 @@
 [package]
 name = "wow-forever-buddy"
-version = "0.1.2"
+version = "0.1.3"
 description = "A companion app for World of Warcraft: Forever"
 authors = ["Julia Valenti"]
 edition = "2021"
