@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Macros · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* F7: the read-only first cut of macros.html (the v0.6 sketch). Nothing here writes:
+     no editing, icon picker, library or copy-to-character. See IMPLEMENTING.md §12. */
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar .who { display: inline-flex; align-items: center; gap: 8px; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+  .grid2 { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .mlist { max-height: 560px; overflow: auto; }
+  .mlist li { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+  .mlist li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .mlist li.sel { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+  .mlist li .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mlist li .len { margin-left: auto; font-size: 11px; color: var(--soot); font-variant-numeric: tabular-nums; }
+  .mlist li .len.hot { color: var(--warn); }
+  .mlist li .len.over { color: var(--bad); }
+  .mlist .ico { width: 26px; height: 26px; flex-shrink: 0; }
+  .viewer .pb { display: grid; gap: 10px; }
+  .v-top { display: flex; align-items: center; gap: 12px; }
+  .v-top .ico { width: 36px; height: 36px; font-size: 14px; }
+  .v-top .t { font: 600 15px "Geist", sans-serif; color: var(--chalk-hi); }
+  .v-top .s { font-size: 11.5px; color: var(--soot); }
+  .v-top .grow { flex: 1; }
+  .code { font: 13px/1.7 ui-monospace, "Cascadia Mono", Menlo, monospace; padding: 12px 14px; min-height: 170px; border-radius: var(--r); white-space: pre-wrap; word-break: break-word; color: var(--chalk);
+    background: rgba(0,0,0,.45); box-shadow: inset 0 2px 6px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); user-select: text; }
+  .code .meta-d { color: #b79c6c; }
+  .code .cmd { color: #ffb15c; }
+  .code .cond { color: #8fb4ee; }
+  .code .sp { color: #ece4d6; }
+  .count { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--soot); }
+  .count .bar { flex: 1; }
+  .count .bar .fill { background: linear-gradient(90deg, #7a6a52, var(--warn)); }
+  .count b { color: var(--warn); font-weight: 600; }
+  .note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; line-height: 1.45; }
+  .note svg { flex-shrink: 0; margin-top: 1px; }
+  .copied { font-size: 11.5px; color: var(--ok); display: none; align-items: center; gap: 4px; }
+  body.c-copied .copied { display: inline-flex; }
+  @media (max-width: 1100px) { .grid2 { grid-template-columns: 220px minmax(0, 1fr); } }
+</style>
+</head>
+<body data-page="macros" data-wow="closed">
+<main class="main">
+  <header class="head">
+    <div><h1>Macros</h1><div class="lede">From each character's macros-cache.txt, as of their last logout</div></div>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg"><button>Account 18</button><button class="on">Character 11</button></div>
+    <span class="who"><span class="cdot c-paladin"></span><span class="cc c-paladin" style="font-weight:600">Thrandor</span><button class="btn ghost" style="height:24px">Change <i data-i="down" class="sm"></i></button></span>
+    <span class="meta">18 account macros · 11 for Thrandor</span>
+  </div>
+
+  <section class="grid2">
+    <div class="panel">
+      <div class="ph"><h2>Thrandor</h2><span class="meta">11 macros</span></div>
+      <ul class="mlist">
+        <li class="sel"><span class="ico q-common"><b>J</b></span><span class="nm">Judge + Seal</span><span class="len hot">231</span></li>
+        <li><span class="ico q-common"><b>H</b></span><span class="nm">Holy Light @mouseover</span><span class="len">88</span></li>
+        <li><span class="ico q-common"><b>B</b></span><span class="nm">BoP focus</span><span class="len">64</span></li>
+        <li><span class="ico q-common"><b>C</b></span><span class="nm">Cleanse self</span><span class="len">52</span></li>
+        <li><span class="ico q-common"><b>M</b></span><span class="nm">Mount</span><span class="len">41</span></li>
+        <li><span class="ico q-common"><b>T</b></span><span class="nm">Trinket + Wings</span><span class="len">97</span></li>
+        <li><span class="ico q-common"><b>D</b></span><span class="nm">Divine Shield + Hearth</span><span class="len over">262</span></li>
+        <li><span class="ico q-common"><b>S</b></span><span class="nm">Seal twist</span><span class="len">143</span></li>
+        <li><span class="ico q-common"><b>R</b></span><span class="nm">Righteous Fury</span><span class="len">29</span></li>
+        <li><span class="ico q-common"><b>L</b></span><span class="nm">Lay on Hands focus</span><span class="len">58</span></li>
+        <li><span class="ico q-common"><b>W</b></span><span class="nm">Wisdom party</span><span class="len">76</span></li>
+      </ul>
+    </div>
+
+    <div class="panel viewer">
+      <div class="ph"><h2>Judge + Seal</h2><span class="meta">character macro · as of logout, 3 Oct</span></div>
+      <div class="pb">
+        <div class="v-top">
+          <span class="ico lg q-common"><b>J</b></span>
+          <div class="grow"><div class="t">Judge + Seal</div><div class="s">Thrandor · slot 1</div></div>
+          <span class="copied"><i data-i="check" class="sm"></i>Copied</span>
+          <button class="btn" id="copy"><i data-i="file" class="sm"></i>Copy</button>
+        </div>
+<div class="code"><span class="meta-d">#showtooltip</span> <span class="sp">Judgement</span>
+<span class="cmd">/cast</span> <span class="cond">[mod:shift]</span> <span class="sp">Seal of Light</span>; <span class="cond">[mod:ctrl]</span> <span class="sp">Seal of Wisdom</span>
+<span class="cmd">/cast</span> <span class="cond">[@target,harm,nodead]</span> <span class="sp">Judgement</span>
+<span class="cmd">/use</span> <span class="sp">13</span>
+<span class="cmd">/startattack</span>
+<span class="cmd">/cast</span> <span class="cond">[nomod]</span> <span class="sp">Seal of Command</span></div>
+        <div class="count"><span><b>231</b> / 255</span><span class="bar"><i class="fill" style="width:90.6%"></i></span><span class="warn">24 left</span></div>
+        <div class="note"><i data-i="file" class="sm"></i><span>Editing macros and copying them to other characters come later, with a safety snapshot first. For now, Copy puts the text on your clipboard to paste in-game.</span></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+  // ?copied shows the moment after Copy
+  if (new URLSearchParams(location.search).has('copied')) document.body.classList.add('c-copied');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>
