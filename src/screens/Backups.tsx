@@ -58,6 +58,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
 };
 const RUNNING_WHY = "Unlocks when WoW closes. You can still pick what to restore.";
 const PENDING_WHY = "Roll back or finish the interrupted restore first.";
+const MISSING_WHY = "Unlocks when the game folder is found again.";
 
 type Filter = "all" | SnapshotSummary["kind"];
 type Scope = "everything" | "characters" | "addons";
@@ -416,12 +417,18 @@ function ConfirmRestore({
 export function Backups({
   game,
   restoresLocked,
+  folderMissing = null,
+  onCheckFolder,
   select,
   show,
 }: {
   game: GameStatus | null;
   /** An interrupted restore is unresolved: restores stay locked. */
   restoresLocked: boolean;
+  /** The saved game folder can't be found (why). Backups stay viewable;
+   *  restores and new backups are locked until it's back or re-chosen. */
+  folderMissing?: string | null;
+  onCheckFolder?: () => void;
   /** A snapshot to open (e.g. "Open the safety copy"). */
   select?: string | null;
   /** A list filter to apply (e.g. "Open Backups" on the safety copies). */
@@ -434,7 +441,7 @@ export function Backups({
   const [keys, setKeys] = useState<Keys>(new Set());
   const [mirror, setMirror] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const { detail } = useSnapshot(selected);
+  const { detail, error: detailError } = useSnapshot(selected);
   // Can't tell (the process list failed) locks restores like running does.
   const unknown = game?.unknown ?? false;
   const running = (game?.running ?? false) || unknown;
@@ -446,6 +453,10 @@ export function Backups({
     if (show) setFilter(show);
   }, [show]);
   useEffect(() => setKeys(new Set()), [selected, scope]);
+  // A restore that failed partway hands over to the recovery dialog.
+  useEffect(() => {
+    if (restoresLocked) setConfirming(false);
+  }, [restoresLocked]);
 
   const counts = useMemo(() => {
     const c = { all: 0, Auto: 0, Manual: 0, Safety: 0 };
@@ -460,7 +471,9 @@ export function Backups({
   const canPick = keys.size > 0;
 
   const restoreAction = (label: string, onClick: () => void, variant?: "ghost") =>
-    restoresLocked ? (
+    folderMissing != null ? (
+      <LockedAction why={MISSING_WHY}>{label}</LockedAction>
+    ) : restoresLocked ? (
       <LockedAction why={PENDING_WHY}>{label}</LockedAction>
     ) : running ? (
       <LockedAction why={RUNNING_WHY}>{label}</LockedAction>
@@ -476,15 +489,29 @@ export function Backups({
         title="Backups"
         lede="Snapshots of your WTF and SavedVariables, taken every time the game closes."
         actions={
-          <PrimaryButton onClick={() => backUpNow()} disabled={progress != null}>
-            {progress
-              ? `Backing up… ${progress.total > 0 ? `${progress.done} of ${progress.total}` : ""}`
-              : "Back up now"}
-          </PrimaryButton>
+          folderMissing != null ? (
+            <LockedAction why={MISSING_WHY}>Back up now</LockedAction>
+          ) : (
+            <PrimaryButton onClick={() => backUpNow()} disabled={progress != null}>
+              {progress
+                ? `Backing up… ${progress.total > 0 ? `${progress.done} of ${progress.total}` : ""}`
+                : "Back up now"}
+            </PrimaryButton>
+          )
         }
       />
 
-      {unknown ? (
+      {folderMissing != null ? (
+        <Callout tone="ember">
+          <span>
+            <b>We can't find your game folder, so restores and new backups are paused.</b> Your
+            backups are safe and you can still look through them.{" "}
+            <span className="d-dim">({folderMissing})</span>
+          </span>
+          <span className="d-grow" />
+          {onCheckFolder && <Button onClick={onCheckFolder}>Check game folder</Button>}
+        </Callout>
+      ) : unknown ? (
         <Callout tone="ember">
           <LiveDot />
           <span>
@@ -516,7 +543,7 @@ export function Backups({
             {when(autoFailed.at)}). {autoFailed.error}
           </span>
           <span className="d-grow" />
-          <Button onClick={() => backUpNow()}>Back up now</Button>
+          {folderMissing == null && <Button onClick={() => backUpNow()}>Back up now</Button>}
         </Callout>
       )}
       {error && <Callout tone="bad">{error}</Callout>}
@@ -603,7 +630,14 @@ export function Backups({
               </Button>
             </PanelHeader>
             <PanelBody>
-              {!detail && <p className="d-muted">Loading…</p>}
+              {detailError && (
+                <Callout tone="bad">
+                  <span>
+                    <b>This snapshot couldn't be opened.</b> {detailError}
+                  </span>
+                </Callout>
+              )}
+              {!detail && !detailError && <p className="d-muted">Loading…</p>}
               {detail && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <p className="d-muted">
@@ -638,7 +672,9 @@ export function Backups({
                     ) : (
                       <span className="d-muted">Pick what to restore.</span>
                     )}
-                    {canPick && running && !restoresLocked && <p className="d-dim">{RUNNING_WHY}</p>}
+                    {canPick && running && !restoresLocked && folderMissing == null && (
+                      <p className="d-dim">{RUNNING_WHY}</p>
+                    )}
                   </div>
                 </div>
               )}
