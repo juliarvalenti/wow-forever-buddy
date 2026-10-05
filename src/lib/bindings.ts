@@ -113,6 +113,12 @@ export const commands = {
 	 *  first. Names only: class, level and gold need the addon (v0.2).
 	 */
 	charactersList: () => __TAURI_INVOKE<WtfCharacter[]>("characters_list"),
+	/**
+	 *  Characters whose ForeverBuddy notes couldn't be read last time, for the
+	 *  Dashboard's "Couldn't read Thrandor's notes · will retry". They're retried
+	 *  when the file changes.
+	 */
+	ingestProblems: () => __TAURI_INVOKE<IngestProblem[]>("ingest_problems"),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -182,6 +188,7 @@ export const events = {
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	exportProgress: makeEvent<ExportProgress>("export-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
+	ingestCompleted: makeEvent<IngestCompleted>("ingest-completed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
@@ -472,6 +479,25 @@ export type GameStatus = {
 
 /**  Emitted when WoW starts or stops. */
 export type GameStatusChanged = GameStatus;
+
+/**  Emitted after a scan or replay that changed characters' data. */
+export type IngestCompleted = {
+	/**  `characters.id` (u32: row ids, and specta refuses i64 in TypeScript). */
+	characters: number[],
+};
+
+/**
+ *  A character's file that couldn't be read last time, for the Dashboard's
+ *  "Couldn't read Thrandor's notes · will retry".
+ */
+export type IngestProblem = {
+	/**  The character folder, e.g. `Ellygie-Vargur`. */
+	character: string,
+	/**  `skipped (parse)`, `skipped (integrity)` or `skipped (mismatch)`. */
+	status: string,
+	/**  Names the field at fault, never a value from the file. */
+	error: string | null,
+};
 
 /**  A WoW root folder and the game flavors found in it. */
 export type Install = {
