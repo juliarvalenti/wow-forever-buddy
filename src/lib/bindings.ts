@@ -188,7 +188,8 @@ export const commands = {
 	/**
 	 *  Characters whose ForeverBuddy notes couldn't be read last time, for the
 	 *  Dashboard's "Couldn't read Thrandor's notes · will retry". They're retried
-	 *  when the file changes.
+	 *  when the file changes. Only the active flavor's; none before a game
+	 *  folder is set.
 	 */
 	ingestProblems: () => __TAURI_INVOKE<IngestProblem[]>("ingest_problems"),
 	/**

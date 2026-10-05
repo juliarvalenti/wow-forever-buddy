@@ -2,23 +2,27 @@
 //! `ForeverBuddy.lua` into the db.
 //!
 //! When: a scan at app start (after replaying backups, below), after WoW
-//! exits (once its writes settle), and every 10 minutes while it runs (a
-//! `/reload` writes the file mid-session). A scan reads only files whose
-//! size or mtime changed since `ingest_state` says it last looked, and only
-//! once they've been still for 2 s. The file watcher the spec mentions is a
-//! follow-up: these scans already cover every write, just less instantly.
+//! exits (once its writes settle), and a few seconds after each logout or
+//! `/reload` while it runs ([`Watcher`]). A scan reads only files whose size
+//! or mtime changed since `ingest_state` says it last looked, and only once
+//! they've been still for 2 s.
 //!
 //! Gap-fill: the file keeps only the last 10 sessions, but every game-exit
 //! backup holds that logout's copy. At start, every full backup snapshot
 //! newer than that flavor's `meta.last_replayed_snapshot:<flavor>` is
-//! replayed, oldest first, through the same idempotent apply. That's also how a db restored from a
-//! daily copy (V5) catches up: the copy carries its own marker.
+//! replayed, oldest first, through the same idempotent apply. That's also
+//! how a db restored from a daily copy (V5) catches up: the copy carries its
+//! own marker.
+//!
+//! Older settings folders (W1b) are never read as characters, live or
+//! replayed.
 //!
 //! Ingest only ever reads the game folder.
 
 pub mod apply;
 pub mod file;
 
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -29,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::fsx::read::safe_read;
+use crate::install::wtf::older_groups;
 use crate::state::AppCore;
 use apply::Target;
 use file::Status;
@@ -115,6 +120,8 @@ pub fn ingest_bytes(db: &Db, target: &Target, bytes: &[u8]) -> AppResult<Outcome
 }
 
 /// Every `ForeverBuddy.lua` under the flavor folder, as `(relative, absolute)`.
+/// Older settings folders (W1b, `install::wtf::older_groups`) are left out:
+/// they're never a character.
 fn addon_files(flavor_dir: &Path) -> Vec<(String, PathBuf)> {
     let accounts = flavor_dir.join("WTF").join("Account");
     let mut out = Vec::new();
@@ -127,8 +134,15 @@ fn addon_files(flavor_dir: &Path) -> Vec<(String, PathBuf)> {
             .map(|e| e.path())
             .collect()
     };
+    let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned());
     for account in dirs(&accounts) {
-        for group in dirs(&account) {
+        let groups = dirs(&account);
+        let names: Vec<String> = groups.iter().filter_map(|g| name(g)).collect();
+        let older = older_groups(names.iter().map(String::as_str));
+        for group in groups {
+            if name(&group).is_some_and(|g| older.contains(g.as_str())) {
+                continue;
+            }
             for character in dirs(&group) {
                 let file = character.join("SavedVariables").join(FILE_NAME);
                 if !file.is_file() {
@@ -153,6 +167,13 @@ fn mtime_ns(meta: &std::fs::Metadata) -> i64 {
         .map_or(0, |d| d.as_nanos() as i64)
 }
 
+/// `ingest_state.path`: the file relative to the game root
+/// (`<flavor>/WTF/...`), so two flavors' copies of one character folder
+/// keep separate rows.
+fn state_key(flavor: &str, rel: &str) -> String {
+    format!("{flavor}/{rel}")
+}
+
 /// Reads every changed, settled `ForeverBuddy.lua` in the flavor folder.
 /// Returns the characters whose data was applied.
 pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
@@ -161,6 +182,7 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
         let Some(target) = target_for(flavor, &rel) else {
             continue;
         };
+        let key = state_key(flavor, &rel);
         let Ok(meta) = std::fs::metadata(&abs) else {
             continue;
         };
@@ -177,7 +199,7 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
         let seen: Option<(i64, i64)> = db.with_conn(|c| {
             Ok(c.query_row(
                 "SELECT size, mtime_ns FROM ingest_state WHERE path = ?1",
-                [&rel],
+                [&key],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?)
@@ -202,12 +224,32 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
             c.execute(
                 "INSERT OR REPLACE INTO ingest_state (path, size, mtime_ns, ingested_at, status, error)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![rel, size, mtime, chrono::Utc::now().to_rfc3339(), status.as_str(), error],
+                params![key, size, mtime, chrono::Utc::now().to_rfc3339(), status.as_str(), error],
             )?;
             Ok(())
         })?;
     }
     Ok(applied)
+}
+
+/// The older settings folders (W1b) among snapshot paths
+/// (`WTF/Account/<account>/<group>/...`), as `(account, group)`: the same
+/// rule a live scan applies to the folders on disk.
+fn older_in<'a>(paths: impl Iterator<Item = &'a str>) -> HashSet<(String, String)> {
+    let mut groups: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for p in paths {
+        if let [_, _, account, group, _, ..] = p.split('/').collect::<Vec<_>>()[..] {
+            groups.entry(account).or_default().insert(group);
+        }
+    }
+    groups
+        .into_iter()
+        .flat_map(|(account, gs)| {
+            older_groups(gs)
+                .into_iter()
+                .map(move |g| (account.to_string(), g.to_string()))
+        })
+        .collect()
 }
 
 /// Gap-fill: replays every full backup snapshot of `flavor` newer than that
@@ -242,10 +284,14 @@ pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
                 continue;
             }
         };
+        let older = older_in(manifest.files.iter().map(|f| f.path.as_str()));
         for f in &manifest.files {
             let Some(target) = target_for(flavor, &f.path) else {
                 continue;
             };
+            if older.contains(&(target.account.clone(), target.group_dir.clone())) {
+                continue;
+            }
             let Ok(bytes) = store.blobs().get(&f.blake3) else {
                 continue;
             };
@@ -260,17 +306,21 @@ pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
     Ok(applied)
 }
 
-/// Files that couldn't be read last time, for the Dashboard.
-pub fn problems(db: &Db) -> AppResult<Vec<IngestProblem>> {
+/// `flavor`'s files that couldn't be read last time, for the Dashboard.
+pub fn problems(db: &Db, flavor: &str) -> AppResult<Vec<IngestProblem>> {
+    let prefix = state_key(flavor, "");
     db.with_conn(|c| {
+        // substr, not LIKE: flavor folders have '_', LIKE's wildcard.
         let mut stmt = c.prepare(
-            "SELECT path, status, error FROM ingest_state WHERE status != 'ok' ORDER BY path",
+            "SELECT path, status, error FROM ingest_state
+             WHERE status != 'ok' AND substr(path, 1, length(?1)) = ?1 ORDER BY path",
         )?;
         let rows = stmt
-            .query_map([], |r| {
+            .query_map([&prefix], |r| {
                 let path: String = r.get(0)?;
                 Ok(IngestProblem {
-                    character: path.split('/').nth(4).unwrap_or_default().to_string(),
+                    // <flavor>/WTF/Account/<account>/<group>/<character>/...
+                    character: path.split('/').nth(5).unwrap_or_default().to_string(),
                     status: r.get(1)?,
                     error: r.get(2)?,
                 })
@@ -280,11 +330,57 @@ pub fn problems(db: &Db) -> AppResult<Vec<IngestProblem>> {
     })
 }
 
+/// How often the watcher looks while WoW runs.
+pub const WATCH_EVERY: Duration = Duration::from_secs(2);
+
+/// Notices a logout or `/reload` a few seconds after it lands, by polling
+/// the addon files' size and mtime while WoW runs. That's a stat of one file
+/// per character, so a poll costs next to nothing; polling also sees writes
+/// through a WTF folder linked elsewhere (a Dropbox junction), where native
+/// change notifications are unreliable, and can't miss one to a dropped
+/// event. It asks for a scan once the files changed since the last scan it
+/// asked for and have been still for `SETTLE`, so a save in progress waits
+/// instead of being read half-written and then never retried.
+#[derive(Default)]
+pub struct Watcher {
+    /// What the files looked like at the last scan this asked for.
+    last: Option<Vec<(String, u64, i64)>>,
+}
+
+impl Watcher {
+    /// True when a scan is due.
+    pub fn poll(&mut self, flavor_dir: &Path) -> bool {
+        let mut newest: Option<SystemTime> = None;
+        let now: Vec<(String, u64, i64)> = addon_files(flavor_dir)
+            .into_iter()
+            .filter_map(|(rel, abs)| {
+                let meta = std::fs::metadata(&abs).ok()?;
+                newest = newest.max(meta.modified().ok());
+                Some((rel, meta.len(), mtime_ns(&meta)))
+            })
+            .collect();
+        if self.last.as_ref() == Some(&now) {
+            return false;
+        }
+        // The same test as `scan`'s (a future mtime isn't settled), so a
+        // file the scan would skip is never recorded here as handled.
+        let settled = newest.is_none_or(|m| {
+            SystemTime::now()
+                .duration_since(m)
+                .is_ok_and(|age| age >= SETTLE)
+        });
+        if settled {
+            self.last = Some(now);
+        }
+        settled
+    }
+}
+
 /// What the ingest worker is asked to do.
 pub enum Job {
     /// App start: replay backups, then scan.
     Start,
-    /// A scan now (the 10-minute tick while WoW runs).
+    /// A scan now (the watcher saw a file change while WoW runs).
     Scan,
     /// WoW just exited: wait for its writes to settle, then scan.
     AfterExit,
@@ -631,7 +727,11 @@ mod tests {
 
         let ids = scan(&db, "_classic_beta_", flavor).unwrap();
         assert_eq!(ids.len(), 1);
-        let problems = problems(&db).unwrap();
+        assert!(
+            problems(&db, "_classic_").unwrap().is_empty(),
+            "another flavor's"
+        );
+        let problems = problems(&db, "_classic_beta_").unwrap();
         assert_eq!(problems.len(), 1);
         assert_eq!(problems[0].character, "Ellygie");
         assert_eq!(problems[0].status, "skipped (parse)");
@@ -645,6 +745,96 @@ mod tests {
             scan(&db, "_classic_beta_", flavor).unwrap().is_empty(),
             "unchanged: not re-read"
         );
+    }
+
+    /// Two flavors with the same account/group/character folder keep
+    /// separate `ingest_state` rows: reading one doesn't mark the other read.
+    #[test]
+    fn each_flavor_tracks_its_own_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Db::open_in_memory().unwrap();
+        let rel = "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua";
+        for flavor in ["_classic_", "_classic_beta_"] {
+            write(&tmp.path().join(flavor), rel, &fixture("adventure.lua"));
+        }
+        // Same bytes, same mtime: a shared row would skip the second flavor.
+        for flavor in ["_classic_", "_classic_beta_"] {
+            assert_eq!(
+                scan(&db, flavor, &tmp.path().join(flavor)).unwrap().len(),
+                1,
+                "{flavor}"
+            );
+        }
+        assert_eq!(count(&db, "SELECT count(*) FROM ingest_state"), 2);
+    }
+
+    /// Older settings folders (W1b) are never read as characters: the realm
+    /// folder next to a group id is skipped, while an account with only
+    /// realm folders keeps them.
+    #[test]
+    fn older_settings_folders_are_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = "SavedVariables/ForeverBuddy.lua";
+        write(
+            tmp.path(),
+            &format!("WTF/Account/A/70/Thrandor-Vargur/{file}"),
+            b"x\n",
+        );
+        write(
+            tmp.path(),
+            &format!("WTF/Account/A/Classic Beta PvP 2/Thrandor/{file}"),
+            b"x\n",
+        );
+        write(
+            tmp.path(),
+            &format!("WTF/Account/B/Whitemane/Brannic/{file}"),
+            b"x\n",
+        );
+        let found: Vec<String> = addon_files(tmp.path())
+            .into_iter()
+            .map(|(rel, _)| rel)
+            .collect();
+        assert_eq!(
+            found,
+            [
+                format!("WTF/Account/A/70/Thrandor-Vargur/{file}"),
+                format!("WTF/Account/B/Whitemane/Brannic/{file}"),
+            ]
+        );
+        // The same rule over a snapshot's paths, for replay.
+        let older = older_in(
+            [
+                "WTF/Account/A/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
+                "WTF/Account/A/Classic Beta PvP 2/Thrandor/SavedVariables/ForeverBuddy.lua",
+                "WTF/Account/B/Whitemane/Brannic/SavedVariables/ForeverBuddy.lua",
+            ]
+            .into_iter(),
+        );
+        assert!(older.contains(&("A".into(), "Classic Beta PvP 2".into())));
+        assert!(!older.contains(&("A".into(), "70".into())));
+        assert!(!older.iter().any(|(a, _)| a == "B"));
+    }
+
+    /// The watcher asks for a scan once per change, and only after the files
+    /// have been still for `SETTLE`: a save in progress waits.
+    #[test]
+    fn the_watcher_asks_once_per_settled_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rel = "WTF/Account/A/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua";
+        write(tmp.path(), rel, b"one\n");
+        let mut w = Watcher::default();
+        assert!(w.poll(tmp.path()), "first look: scan");
+        assert!(!w.poll(tmp.path()), "nothing changed");
+
+        // A /reload writes it: too fresh to read yet, so no scan, and the
+        // change isn't forgotten.
+        std::fs::write(tmp.path().join(rel), b"two, longer\n").unwrap();
+        assert!(!w.poll(tmp.path()), "still being written");
+        assert!(!w.poll(tmp.path()), "still too fresh");
+        // Once it's been still long enough: one scan.
+        write(tmp.path(), rel, b"two, longer\n");
+        assert!(w.poll(tmp.path()), "settled: scan");
+        assert!(!w.poll(tmp.path()), "once");
     }
 
     /// An app core over a copy of the fixture game folder.

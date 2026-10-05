@@ -159,14 +159,38 @@ pub fn run() {
                 let _ = ingest_start.send(ingest::Job::Start);
                 spawn_auto_backups(&install_handle);
             });
-            // A /reload writes the file mid-session: scan every 10 minutes
-            // while WoW runs.
-            let tick_handle = handle.clone();
-            let ingest_tick = ingest.clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_secs(600));
-                if tick_handle.state::<AppState>().core.game.status().running {
-                    let _ = ingest_tick.send(ingest::Job::Scan);
+            // A logout to the character screen or a /reload writes the file
+            // while WoW runs: the watcher asks for a scan a few seconds after.
+            let watch_handle = handle.clone();
+            let ingest_watch = ingest.clone();
+            // Validating the game folder rescans the install, so the folder
+            // is looked up when WoW starts and once a minute after, not on
+            // every poll; the poll only stats files, and the scan it asks
+            // for validates again.
+            std::thread::spawn(move || {
+                let mut watcher = ingest::Watcher::default();
+                let mut folder: Option<(std::path::PathBuf, std::time::Instant)> = None;
+                loop {
+                    std::thread::sleep(ingest::WATCH_EVERY);
+                    let core = &watch_handle.state::<AppState>().core;
+                    if !core.game.status().running {
+                        folder = None;
+                        continue;
+                    }
+                    if folder
+                        .as_ref()
+                        .is_none_or(|(_, at)| at.elapsed().as_secs() >= 60)
+                    {
+                        folder = core
+                            .active_game()
+                            .ok()
+                            .map(|g| (g.root.base, std::time::Instant::now()));
+                    }
+                    if let Some((dir, _)) = &folder {
+                        if watcher.poll(dir) {
+                            let _ = ingest_watch.send(ingest::Job::Scan);
+                        }
+                    }
                 }
             });
 
