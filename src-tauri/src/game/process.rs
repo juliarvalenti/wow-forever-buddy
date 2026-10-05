@@ -364,11 +364,18 @@ pub mod fake {
             self.blind.store(blind, std::sync::atomic::Ordering::SeqCst);
         }
 
+        /// The fake WoW's pid: never this test process's own, which the
+        /// matcher treats as the app and never as the game. (A fixed pid
+        /// failed every "WoW running" test the day the test binary drew it.)
+        pub fn wow_pid() -> u32 {
+            std::process::id().wrapping_add(1)
+        }
+
         /// Shorthand: a WoW process with an unreadable path (matches by name).
         pub fn set_running(&self, running: bool) {
             let list = if running {
                 vec![ProcInfo {
-                    pid: 4242,
+                    pid: Self::wow_pid(),
                     name: "WowB.exe".into(),
                     exe: None,
                 }]
@@ -510,7 +517,7 @@ mod tests {
         probe.set_running(true);
         assert_eq!(watcher.poll(&t), Some(Transition::Started));
         let since = watcher.status().since.expect("session start recorded");
-        assert_eq!(watcher.status().pids, vec![4242]);
+        assert_eq!(watcher.status().pids, vec![FakeProbe::wow_pid()]);
 
         assert_eq!(watcher.poll(&t), None);
         assert_eq!(watcher.status().since.as_deref(), Some(since.as_str()));
