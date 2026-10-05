@@ -1063,7 +1063,9 @@ export type IconCacheStatus = {
 	build: string | null,
 	/**
 	 *  This build's art files couldn't be read: the storage wouldn't open,
-	 *  or every icon tried failed and none is cached. Items show letters.
+	 *  or reads failed on damaged data with nothing read and none cached.
+	 *  Icons not downloaded yet, encrypted or not in the build don't count:
+	 *  those are one icon's letter, not a problem reading the game.
 	 */
 	unreadable: boolean,
 };
