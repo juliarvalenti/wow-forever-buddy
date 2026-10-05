@@ -102,6 +102,21 @@ When `AppCore::new` fails, open the window anyway and show `startup-error.html`:
 
 Cases: `?case=newer` (default: the database is from a newer version) and `?case=settings` (unreadable settings).
 
+**`?case=copy`: the safety copy before a data update failed** (V5; shown only after `VACUUM INTO` *and* the plain file-copy fallback have both failed).
+- **Title:** "Forever Buddy couldn't make a safety copy before updating".
+- **Body:** "This version needs to update your data, and it always copies it first. The copy didn't work because <reason in plain words>. Nothing was changed." For a full disk, also show the free space against the space needed, with a small meter. The database path is red. Keep the green "Your backups and your game files are untouched."
+- **Actions, in order:**
+  1. Primary "Try again"; most causes, such as an antivirus lock, pass.
+  2. "Open data folder".
+  3. Ghost "Update without a safety copy…".
+  4. Quit.
+- **Confirm (`&confirm`):**
+  - Title: "Update without a safety copy?"
+  - Body: "If the update fails partway, your gold history and adventures may be lost. Forever Buddy would fall back to the daily copy from <date>, or start fresh if there isn't one." Then "Your game backups and your game files aren't affected."
+  - A muted line: "This only applies to this update."
+  - Buttons: Cancel (the default), and "Update anyway" as plain danger text, never bronze.
+  - The override is one-shot and never saved, and the command only works from this state.
+
 ## 7. v0.2 (companion addon) notes
 These follow `specs/v0.2-addon` §8.
 - **Item tooltips** cite date and zone, never a source: "Looted 12 Sep · Molten Core". Boss *encounters* are shared in full, so a timeline line like "Defeated Baron Rivendare" is fine, but a tooltip never says "Looted from <boss>".
