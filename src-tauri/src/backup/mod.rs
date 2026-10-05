@@ -66,6 +66,8 @@ pub enum Gc {
 
 const GC_EVERY: Duration = Duration::from_secs(3600);
 const LAST_GC: &str = "last_gc";
+/// Meta key: why the last GC was refused (until one succeeds).
+const GC_BLOCKED: &str = "gc_blocked";
 
 /// What a prune did.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -89,6 +91,9 @@ pub struct StorageInfo {
     pub over_budget: bool,
     /// Generated from the policy, shown as is (spec §5).
     pub retention_summary: String,
+    /// Cleanup is refused because a snapshot's record is damaged (which
+    /// one, and why), so the budget isn't being enforced. Shown as a warning.
+    pub cleanup_blocked: Option<String>,
 }
 
 /// Reports progress while files are captured: (done, total).
@@ -422,7 +427,13 @@ impl BackupService {
     }
 
     /// Removes a snapshot. Its blobs are freed by the next GC (T8).
-    pub fn delete(&self, id: &str) -> AppResult<()> {
+    /// Deletes a snapshot, unless an interrupted restore still needs it
+    /// (`held`, from `journal::held_snapshots`): roll back or finish would
+    /// have nothing to restore from.
+    pub fn delete(&self, id: &str, held: &HashSet<String>) -> AppResult<()> {
+        if held.contains(id) {
+            return Err(AppError::RestorePending);
+        }
         let _edit = self.edits.lock().expect("edit lock poisoned");
         self.delete_unlocked(id)
     }
@@ -457,8 +468,7 @@ impl BackupService {
         let mut report = PruneReport::default();
         let expired = retention::expired(&self.list()?, now, policy);
         for id in expired.into_iter().filter(|id| !held.contains(id)) {
-            self.delete_unlocked(&id)?;
-            report.pruned.push(id);
+            self.prune_one(&id, &mut report)?;
         }
         // GC reads every manifest and walks the whole blob store, so it runs
         // at most hourly (spec §5) unless asked for ("Prune now").
@@ -474,8 +484,7 @@ impl BackupService {
             candidates.retain(|id| !held.contains(id));
             for batch in candidates.chunks(5) {
                 for id in batch {
-                    self.delete_unlocked(id)?;
-                    report.pruned.push(id.clone());
+                    self.prune_one(id, &mut report)?;
                 }
                 // Over budget, GC is how deleting a snapshot frees space.
                 self.collect_garbage(&mut report, now)?;
@@ -492,15 +501,42 @@ impl BackupService {
         Ok(report)
     }
 
+    /// Deletes one snapshot retention picked, after checking its manifest:
+    /// the manifest, not the index, says whether it's pinned or manual (the
+    /// index can drift, e.g. a crash between writing one and the other). A
+    /// protected one is kept and its index row corrected.
+    fn prune_one(&self, id: &str, report: &mut PruneReport) -> AppResult<()> {
+        let manifest = self.manifests.read(id)?;
+        if manifest.pinned || manifest.trigger.kind() == SnapshotKind::Manual {
+            return self.index(&manifest);
+        }
+        self.delete_unlocked(id)?;
+        report.pruned.push(id.to_string());
+        Ok(())
+    }
+
+    /// A GC that can't run (a manifest it can't read, so it can't tell which
+    /// blobs are still needed) is refused for safety, and the reason is kept
+    /// for the storage meter instead of failing silently every time.
     fn collect_garbage(
         &self,
         report: &mut PruneReport,
         now: chrono::DateTime<chrono::Utc>,
     ) -> AppResult<()> {
-        let refs = self.referenced_blobs()?;
+        let refs = match self.referenced_blobs() {
+            Ok(refs) => refs,
+            Err(e) => {
+                self.db.set_meta(GC_BLOCKED, &e.to_string())?;
+                return Err(e);
+            }
+        };
         let (removed, freed) = self.blobs.retain(&refs)?;
         report.blobs_removed += removed as u32;
         report.freed_bytes += freed as f64;
+        self.db.with_conn(|c| {
+            c.execute("DELETE FROM meta WHERE key = ?1", [GC_BLOCKED])?;
+            Ok(())
+        })?;
         self.db.set_meta(LAST_GC, &now.to_rfc3339())
     }
 
@@ -533,6 +569,7 @@ impl BackupService {
             budget_bytes: policy.budget_bytes as f64,
             over_budget: used > policy.budget_bytes,
             retention_summary: policy.summary(),
+            cleanup_blocked: self.db.get_meta(GC_BLOCKED).ok().flatten(),
         }
     }
 
@@ -1397,16 +1434,100 @@ mod tests {
     fn delete_removes_manifest_and_index() {
         let s = setup();
         let snap = full(&s, Trigger::Manual).unwrap();
-        s.service.delete(&snap.id).unwrap();
+        s.service.delete(&snap.id, &HashSet::new()).unwrap();
         assert!(s.service.list().unwrap().is_empty());
         assert!(matches!(
             s.service.manifest(&snap.id),
             Err(AppError::NotFound(_))
         ));
         assert!(matches!(
-            s.service.delete(&snap.id),
+            s.service.delete(&snap.id, &HashSet::new()),
             Err(AppError::NotFound(_))
         ));
+    }
+
+    /// H1: a snapshot an interrupted restore still needs can't be deleted.
+    #[test]
+    fn delete_refuses_held_snapshots() {
+        let s = setup();
+        let snap = full(&s, Trigger::Manual).unwrap();
+        let held = HashSet::from([snap.id.clone()]);
+        assert!(matches!(
+            s.service.delete(&snap.id, &held),
+            Err(AppError::RestorePending)
+        ));
+        assert!(s.service.manifest(&snap.id).is_ok(), "still there");
+    }
+
+    /// H1: prune trusts the manifest, not the index, on pinned: an index
+    /// that drifted (says unpinned) can't get a pinned snapshot deleted.
+    #[test]
+    fn prune_reads_pinned_from_the_manifest() {
+        let s = setup();
+        let old = changed_auto(&s, 1);
+        s.service.set_pinned(&old.id, true).unwrap();
+        backdate(&s, &old.id, 24 * 400);
+        // The index drifts: it says unpinned.
+        s.db.with_conn(|c| {
+            c.execute("UPDATE snapshots SET pinned = 0 WHERE id = ?1", [&old.id])?;
+            Ok(())
+        })
+        .unwrap();
+
+        let report = s
+            .service
+            .prune(
+                chrono::Utc::now(),
+                &retention::POLICY,
+                Gc::Now,
+                &HashSet::new(),
+            )
+            .unwrap();
+        assert!(report.pruned.is_empty(), "kept: the manifest says pinned");
+        let row = s
+            .service
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == old.id);
+        assert!(row.expect("still listed").pinned, "index corrected");
+    }
+
+    /// H1: a damaged manifest blocks cleanup (safely), and says so on the
+    /// storage meter instead of failing silently; a later GC clears it.
+    #[test]
+    fn blocked_cleanup_is_reported() {
+        let s = setup();
+        full(&s, Trigger::Manual).unwrap();
+        let bad = s
+            .backups_dir
+            .join("snapshots")
+            .join("01ZZZZZZZZZZZZZZZZZZZZZZZZ.json");
+        std::fs::write(&bad, b"{ damaged").unwrap();
+
+        let err = s.service.prune(
+            chrono::Utc::now(),
+            &retention::POLICY,
+            Gc::Now,
+            &HashSet::new(),
+        );
+        assert!(
+            matches!(err, Err(AppError::BackupCorrupt { .. })),
+            "{err:?}"
+        );
+        let why = s.service.storage(&retention::POLICY).cleanup_blocked;
+        assert!(why.is_some_and(|w| w.contains("01ZZZZZZZZZZZZZZZZZZZZZZZZ")));
+
+        std::fs::remove_file(&bad).unwrap();
+        s.service
+            .prune(
+                chrono::Utc::now(),
+                &retention::POLICY,
+                Gc::Now,
+                &HashSet::new(),
+            )
+            .unwrap();
+        assert_eq!(s.service.storage(&retention::POLICY).cleanup_blocked, None);
     }
 
     #[test]

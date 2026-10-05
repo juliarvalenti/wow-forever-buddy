@@ -12,6 +12,9 @@ use crate::game::gate::{MutationTarget, WriteGate};
 use crate::game::process::{GameWatcher, ProbeTarget, ProcessProbe, SysinfoProbe};
 use crate::secrets::{KeyringStore, SecretStore};
 
+/// The store's own folder inside a backup location the user picked.
+pub const STORE_FOLDER: &str = "WoW Forever Buddy backups";
+
 /// Everything the app does, minus Tauri. Integration tests build this directly
 /// against temp dirs; later tickets add the active install (T5).
 pub struct AppCore {
@@ -81,12 +84,14 @@ impl AppCore {
     }
 
     /// Where backups go: the configured location, or `<local data>/backups`.
+    /// A location the user picked (say `D:\Backups`) holds the store in its own
+    /// subfolder, never at the top: the store's GC deletes files it doesn't
+    /// recognize as referenced, so it must only ever see a folder it owns.
     pub fn backups_dir(&self) -> PathBuf {
-        self.settings
-            .get()
-            .backup
-            .location
-            .unwrap_or_else(|| self.paths.local_data_dir.join("backups"))
+        match self.settings.get().backup.location {
+            Some(picked) => picked.join(STORE_FOLDER),
+            None => self.paths.local_data_dir.join("backups"),
+        }
     }
 
     /// The backup store at the currently configured location, opened (or
@@ -104,6 +109,25 @@ impl AppCore {
         let service = Arc::new(service);
         *slot = Some(service.clone());
         Ok(service)
+    }
+
+    /// Sets the game folder (`install::set`) as a job: it sweeps temp files
+    /// in the WTF folder, which would break a restore that's mid-write, and
+    /// switching folders under a running backup or restore is wrong anyway.
+    pub fn set_install(
+        &self,
+        path: &std::path::Path,
+        flavor: Option<&str>,
+    ) -> AppResult<crate::install::layout::Install> {
+        let _job = self.jobs.lock().expect("job lock poisoned");
+        crate::install::set(&self.settings, path, flavor)
+    }
+
+    /// Startup's install resolution (`install::resolve_on_startup`), which
+    /// may also sweep temp files, as a job for the same reason.
+    pub fn resolve_install_on_startup(&self) -> Option<crate::install::layout::Install> {
+        let _job = self.jobs.lock().expect("job lock poisoned");
+        crate::install::resolve_on_startup(&self.settings)
     }
 
     /// The configured game folder, validated now. Until T5 lands this reads
@@ -236,7 +260,11 @@ mod tests {
         let elsewhere = tmp.path().join("Elsewhere");
         set_location(&core, &elsewhere);
         let second = core.backups().unwrap();
-        assert_eq!(second.dir(), elsewhere);
+        assert_eq!(
+            second.dir(),
+            elsewhere.join(STORE_FOLDER),
+            "H1: in its own subfolder of the picked location"
+        );
         assert!(
             Arc::ptr_eq(&second, &core.backups().unwrap()),
             "reused while unchanged"
@@ -268,5 +296,31 @@ mod tests {
         crate::test_support::unlink_dir(&flavor.join("WTF"));
         crate::test_support::link_dir(&other, &flavor.join("WTF"));
         assert!(core.active_game().is_err(), "re-pointed link refused");
+    }
+
+    /// H1: changing the game folder (which sweeps temp files in WTF) waits
+    /// for a running backup or restore instead of breaking it.
+    #[test]
+    fn set_install_waits_for_the_job_lock() {
+        let (dir, root) = crate::test_support::fixture_copy();
+        let core = Arc::new(AppCore::new(AppPaths::under(&dir.path().join("app"))).unwrap());
+        let job = core.jobs.lock().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = {
+            let core = core.clone();
+            std::thread::spawn(move || {
+                let result = core.set_install(&root, None);
+                tx.send(()).unwrap();
+                result
+            })
+        };
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "blocked while a job runs"
+        );
+        drop(job);
+        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        worker.join().unwrap().unwrap();
     }
 }

@@ -27,7 +27,8 @@ pub fn install_get(state: State<'_, AppState>) -> AppResult<Option<Install>> {
 }
 
 /// Sets the install from a picked folder (root, flavor folder or WTF) and
-/// optionally a flavor id. Validates, normalizes and saves.
+/// optionally a flavor id. Validates, normalizes and saves. Waits for any
+/// running backup or restore (it sweeps temp files in WTF).
 #[tauri::command(async)]
 #[specta::specta]
 pub fn install_set(
@@ -36,7 +37,7 @@ pub fn install_set(
     path: PathBuf,
     flavor: Option<String>,
 ) -> AppResult<Install> {
-    let install = install::set(&state.core.settings, &path, flavor.as_deref())?;
+    let install = state.core.set_install(&path, flavor.as_deref())?;
     let _ = InstallChanged {
         install: Some(install.clone()),
     }

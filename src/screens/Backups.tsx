@@ -531,6 +531,15 @@ export function Backups({
               </p>
             </>
           )}
+          {storage.cleanup_blocked && (
+            <Callout tone="ember">
+              <span>
+                <b>Old backups aren't being cleaned up</b> because one backup's record is damaged, so
+                it isn't safe to tell which stored files are still needed. Your backups are untouched.{" "}
+                <span className="d-dim">({storage.cleanup_blocked})</span>
+              </span>
+            </Callout>
+          )}
         </div>
       )}
 

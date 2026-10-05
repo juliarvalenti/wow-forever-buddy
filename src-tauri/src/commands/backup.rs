@@ -97,10 +97,14 @@ pub fn backup_get(state: State<'_, AppState>, id: String) -> AppResult<SnapshotD
     state.core.backups()?.detail(&id)
 }
 
+/// Refused for a snapshot an interrupted restore still needs, and while the
+/// restore journal is unreadable (then nobody can tell which those are).
 #[tauri::command(async)]
 #[specta::specta]
 pub fn backup_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    state.core.backups()?.delete(&id)
+    let core = &state.core;
+    let held = journal::held_snapshots(&core.paths.local_data_dir)?;
+    core.backups()?.delete(&id, &held)
 }
 
 #[tauri::command(async)]

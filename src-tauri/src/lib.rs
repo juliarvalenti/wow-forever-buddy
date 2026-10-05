@@ -130,7 +130,7 @@ pub fn run() {
             let install_handle = handle.clone();
             std::thread::spawn(move || {
                 let state = install_handle.state::<AppState>();
-                if let Some(install) = install::resolve_on_startup(&state.core.settings) {
+                if let Some(install) = state.core.resolve_install_on_startup() {
                     let _ = InstallChanged {
                         install: Some(install),
                     }
