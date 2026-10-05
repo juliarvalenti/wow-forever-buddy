@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::atomic_replace;
-use crate::install::wtf::older_folders;
+use crate::install::wtf::older_groups;
 
 pub const MANIFEST_VERSION: u32 = 1;
 
@@ -127,9 +127,8 @@ impl Manifest {
 
     /// Distinct characters: `WTF/Account/<acct>/<group>/<char>/…`, where the
     /// group is Forever's opaque id (`70`) or, in older folders, the realm.
-    /// An older pre-surname folder isn't counted, matching "Characters
-    /// found" (`install::wtf::older_folders`); its files are still in the
-    /// snapshot.
+    /// Older settings folders aren't counted, matching "Characters found"
+    /// (`install::wtf::older_groups`); their files are still in the snapshot.
     pub fn char_count(&self) -> usize {
         // (account, group, character), lowercased.
         let folders: BTreeSet<(String, String, String)> = self
@@ -154,13 +153,12 @@ impl Manifest {
         accounts
             .into_iter()
             .map(|account| {
-                let names: Vec<&str> = folders
-                    .iter()
-                    .filter(|(a, _, _)| a == account)
-                    .map(|(_, _, n)| n.as_str())
-                    .collect();
-                let older = older_folders(names.iter().copied());
-                names.iter().filter(|n| !older.contains(*n)).count()
+                let mine: Vec<&(String, String, String)> =
+                    folders.iter().filter(|(a, _, _)| a == account).collect();
+                let older = older_groups(mine.iter().map(|(_, g, _)| g.as_str()));
+                mine.iter()
+                    .filter(|(_, g, _)| !older.contains(g.as_str()))
+                    .count()
             })
             .sum()
     }

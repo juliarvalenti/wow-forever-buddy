@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { Check, Clock, FolderOpen, RefreshCw, Scale, ScrollText, Shield, ShoppingBag, TrendingUp } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  FolderOpen,
+  RefreshCw,
+  Scale,
+  ScrollText,
+  Shield,
+  ShoppingBag,
+  TrendingUp,
+} from "lucide-react";
 import {
   commands,
   type GameStatus,
@@ -29,8 +41,8 @@ import {
   ago,
   bytes,
   characterName,
-  OLDER_FOLDER_NOTE,
-  olderAfter,
+  OLDER_FOLDERS,
+  OLDER_FOLDERS_WHY,
   duration,
   errorText,
   longDate,
@@ -123,8 +135,10 @@ export function Dashboard({
   const flavor = active?.flavors.find((f) => f.id === active.active);
   const running = game?.running ?? false;
   const last = list?.[0];
-  // Older pre-surname folders are listed, muted, but aren't characters (W1b).
+  // Older settings folders are listed apart and aren't characters (W1b).
   const counted = characters?.filter((c) => !c.older);
+  const older = (characters ?? []).filter((c) => c.older);
+  const [showOlder, setShowOlder] = useState(false);
   const names = [...new Set((counted ?? []).map((c) => characterName(c.name)))];
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
@@ -432,16 +446,35 @@ export function Dashboard({
               </PanelBody>
             ) : (
               <ul className="d-rows">
-                {olderAfter([...(counted ?? []).slice(0, 5), ...(characters ?? []).filter((c) => c.older)])
-                  .map((c) => (
-                    <li key={`${c.account}|${c.realm}|${c.name}`} className={c.older ? "d-dim" : undefined}>
-                      <span className="main">
-                        {characterName(c.name)}
-                        {c.older && <small> · {OLDER_FOLDER_NOTE}</small>}
-                      </span>
-                      <span className="side d-dim">
-                        {c.last_played ? `last played ${ago(c.last_played)}` : ""}
-                      </span>
+                {(counted ?? []).slice(0, 5).map((c) => (
+                  <li key={`${c.account}|${c.realm}|${c.name}`}>
+                    <span className="main">{characterName(c.name)}</span>
+                    <span className="side d-dim">
+                      {c.last_played ? `last played ${ago(c.last_played)}` : ""}
+                    </span>
+                  </li>
+                ))}
+                {older.length > 0 && (
+                  <li className="d-muted">
+                    <button
+                      type="button"
+                      className="main d-link"
+                      style={{ color: "inherit" }}
+                      title={OLDER_FOLDERS_WHY}
+                      aria-expanded={showOlder}
+                      onClick={() => setShowOlder((v) => !v)}
+                    >
+                      {showOlder ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}{" "}
+                      {OLDER_FOLDERS} · {older.length}
+                    </button>
+                  </li>
+                )}
+                {showOlder &&
+                  older.map((c) => (
+                    <li key={`${c.account}|${c.realm}|${c.name}`} className="d-dim">
+                      <i className="main">
+                        {c.name} ({c.realm})
+                      </i>
                     </li>
                   ))}
               </ul>

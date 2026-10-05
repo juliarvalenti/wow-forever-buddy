@@ -370,8 +370,8 @@ export type CharacterNode = {
 	/**  The character folder as written (`Ellygie-Vargur`), never split. */
 	name: string,
 	/**
-	 *  An older pre-surname folder of a character that now has a surname
-	 *  (`install::wtf::older_folders`): shown muted, still restorable.
+	 *  An older settings folder, the layout from before surnames
+	 *  (`install::wtf::older_groups`): listed apart, fully restorable.
 	 */
 	older: boolean,
 	totals: Totals,
@@ -440,9 +440,9 @@ export type Flavor = {
 	 *  Character folders under `WTF/Account/<account>/<group>/`. Forever
 	 *  writes `<group>` as an opaque id (`70`) and the character folder as
 	 *  the full name, `Ellygie-Vargur` with a surname; older folders are
-	 *  `<Realm>/<Name>`. Both are counted, except an older folder of a
-	 *  character that now has a surname (`wtf::older_folders`). Neither
-	 *  folder is a realm or ruleset to show (probe run 1, matrix fact 5).
+	 *  `<Realm>/<Name>`. Next to the new layout, those are older settings
+	 *  folders and aren't counted (`wtf::older_groups`). Neither folder is a
+	 *  realm or ruleset to show (probe run 1, matrix fact 5).
 	 */
 	characters: number,
 	/**
@@ -905,8 +905,9 @@ export type WtfCharacter = {
 	 */
 	last_played: string | null,
 	/**
-	 *  An older pre-surname folder of a character that now has a surname
-	 *  (`install::wtf::older_folders`): listed muted, not counted.
+	 *  An older settings folder: the layout from before surnames, next to
+	 *  the new one (`install::wtf::older_groups`). Listed apart, not counted,
+	 *  and never a session's character.
 	 */
 	older: boolean,
 } & CharacterRef;

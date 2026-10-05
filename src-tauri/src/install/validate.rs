@@ -9,7 +9,7 @@ use crate::install::layout::{
     label_from_folder, lookup, parse_build_info, product_matches_folder, BuildRow, Flavor, Install,
     KNOWN_FLAVORS,
 };
-use crate::install::wtf::older_folders;
+use crate::install::wtf::older_groups;
 
 /// How far up from a picked folder we look for the root. Covers picking
 /// `<root>/_flavor_/WTF/Account/<ACCOUNT>/<Realm>`.
@@ -120,19 +120,18 @@ fn subdirs(dir: &Path) -> Vec<String> {
 
 /// The WTF roster: accounts, and how many characters there are
 /// (`Account/<account>/<group>/<character>`, see `layout::Flavor::characters`).
-/// Older pre-surname folders aren't counted (`wtf::older_folders`).
+/// Older settings folders aren't counted (`wtf::older_groups`).
 fn roster(wtf: &Path) -> (Vec<String>, u32) {
     let accounts_dir = wtf.join("Account");
     let accounts = subdirs(&accounts_dir);
     let mut characters = 0;
     for account in &accounts {
         let account_dir = accounts_dir.join(account);
-        let names: Vec<String> = subdirs(&account_dir)
-            .into_iter()
-            .flat_map(|group| subdirs(&account_dir.join(group)))
-            .collect();
-        let older = older_folders(names.iter().map(String::as_str));
-        characters += names.iter().filter(|n| !older.contains(n.as_str())).count() as u32;
+        let groups = subdirs(&account_dir);
+        let older = older_groups(groups.iter().map(String::as_str));
+        for group in groups.iter().filter(|g| !older.contains(g.as_str())) {
+            characters += subdirs(&account_dir.join(group)).len() as u32;
+        }
     }
     (accounts, characters)
 }
@@ -308,27 +307,28 @@ mod tests {
     }
 
     /// Probe run 1: Forever's `Account/<A>/<group id>/<First>-<Surname>`
-    /// next to the older `Account/<A>/<Realm>/<Name>`. Both layouts count,
-    /// except an older folder of a character that now has a surname (W1b).
+    /// next to the older `Account/<A>/<Realm>/<Name>`. Only the group-id
+    /// layout counts (W1b); an account with only realm folders counts all.
     #[test]
     fn counts_characters_in_both_wtf_layouts() {
         let tmp = tempfile::tempdir().unwrap();
-        let account = tmp.path().join("_classic_beta_/WTF/Account/ACCOUNT1");
+        let wtf = tmp.path().join("_classic_beta_/WTF/Account");
         for dir in [
-            "70/Ellygie-Vargur",
-            "70/Ellyanna-Vargur",
-            "70/Brannic",
-            "Classic Beta PvP 2/Ellygie", // Ellygie-Vargur's older folder
-            "Classic Beta PvP 2/Sela",
-            "SavedVariables",
+            "ACCOUNT1/70/Ellygie-Vargur",
+            "ACCOUNT1/70/Ellyanna-Vargur",
+            "ACCOUNT1/70/Brannic",
+            "ACCOUNT1/Classic Beta PvP 2/Ellygie",
+            "ACCOUNT1/Classic Beta PvP 2/Sela",
+            "ACCOUNT1/SavedVariables",
+            "ACCOUNT2/Classic Beta PvP 2/Fizzwick",
         ] {
-            std::fs::create_dir_all(account.join(dir)).unwrap();
+            std::fs::create_dir_all(wtf.join(dir)).unwrap();
         }
         let install = scan(tmp.path()).unwrap();
-        assert_eq!(install.flavors[0].accounts, ["ACCOUNT1"]);
+        assert_eq!(install.flavors[0].accounts, ["ACCOUNT1", "ACCOUNT2"]);
         assert_eq!(
             install.flavors[0].characters, 4,
-            "all but the older Ellygie"
+            "ACCOUNT1's three in 70, and ACCOUNT2's Fizzwick"
         );
     }
 

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::backup::manifest::{Manifest, SkippedFile, SnapshotSummary};
-use crate::install::wtf::older_folders;
+use crate::install::wtf::older_groups;
 
 /// What a file in a character (or account) folder is for. The restore panel
 /// lets you pick these per character.
@@ -68,8 +68,8 @@ pub struct CharacterNode {
     pub realm: String,
     /// The character folder as written (`Ellygie-Vargur`), never split.
     pub name: String,
-    /// An older pre-surname folder of a character that now has a surname
-    /// (`install::wtf::older_folders`): shown muted, still restorable.
+    /// An older settings folder, the layout from before surnames
+    /// (`install::wtf::older_groups`): listed apart, fully restorable.
     pub older: bool,
     pub totals: Totals,
     pub categories: Vec<CategoryNode>,
@@ -175,7 +175,7 @@ pub fn detail(manifest: &Manifest) -> SnapshotDetail {
             .into_iter()
             .map(|(name, a)| {
                 let older: HashSet<String> =
-                    older_folders(a.characters.keys().map(|(_, n)| n.as_str()))
+                    older_groups(a.characters.keys().map(|(g, _)| g.as_str()))
                         .into_iter()
                         .map(str::to_string)
                         .collect();
@@ -187,7 +187,7 @@ pub fn detail(manifest: &Manifest) -> SnapshotDetail {
                         .characters
                         .into_iter()
                         .map(|((realm, name), (totals, cats))| CharacterNode {
-                            older: older.contains(&name),
+                            older: older.contains(&realm),
                             realm,
                             name,
                             totals,
@@ -276,8 +276,9 @@ mod tests {
 
     /// Probe run 1: Forever's `<group id>/<First>-<Surname>` next to the
     /// older `<Realm>/<Name>`. The folders are kept whole (the restore
-    /// selection matches on them), and the same first name stays two folders:
-    /// the older one is marked and still restorable, but not counted (W1b).
+    /// selection matches on them). W1b: next to the group-id layout, every
+    /// realm-named folder is an older settings folder: marked, restorable,
+    /// not counted.
     #[test]
     fn groups_both_wtf_layouts() {
         let m = manifest(
@@ -302,9 +303,9 @@ mod tests {
                 ("70", "Brannic", 1, false),
                 ("70", "Ellygie-Vargur", 2, false),
                 ("Classic Beta PvP 2", "Ellygie", 1, true),
-                ("Classic Beta PvP 2", "Sela", 1, false),
+                ("Classic Beta PvP 2", "Sela", 1, true),
             ]
         );
-        assert_eq!(m.char_count(), 3, "not the older Ellygie");
+        assert_eq!(m.char_count(), 2, "Brannic and Ellygie-Vargur");
     }
 }
