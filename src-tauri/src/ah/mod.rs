@@ -23,6 +23,10 @@ use crate::fsx::read::safe_read;
 use auctionator::{PriceDb, Unreadable};
 
 const FILE_NAME: &str = "Auctionator.lua";
+/// Bigger than any price database Auctionator writes (a busy realm is a few
+/// MB): a file over this isn't read, so a crafted one can't make the parser
+/// or the CBOR decoder allocate without bound.
+pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 /// How far back "usual" looks: the median and the sightings.
 const WINDOW_DAYS: u64 = 30;
 
@@ -70,6 +74,11 @@ fn mtime_ns(meta: &std::fs::Metadata) -> i64 {
 /// Reads every changed, settled `Auctionator.lua`. Returns how many items
 /// now have a price if anything was read, `None` if nothing changed.
 pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Option<u32>> {
+    scan_within(db, flavor, flavor_dir, MAX_BYTES)
+}
+
+/// `scan`, with the size cap as a parameter (tests use a small one).
+fn scan_within(db: &Db, flavor: &str, flavor_dir: &Path, max_bytes: u64) -> AppResult<Option<u32>> {
     let mut read_any = false;
     for (account, rel, abs) in files(flavor_dir) {
         let key = state_key(flavor, &rel);
@@ -96,29 +105,45 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Option<u32>> 
         if seen == Some((size, mtime)) {
             continue;
         }
-        let Ok(bytes) = safe_read(&abs) else {
-            continue;
-        };
-        let (status, error) = match auctionator::decode(&bytes) {
-            Ok(prices) => {
-                db.with_conn(|c| {
-                    let tx = c.transaction()?;
-                    store(
-                        &tx,
-                        flavor,
-                        &account,
-                        &prices,
-                        chrono::Utc::now().timestamp(),
-                    )?;
-                    tx.commit()?;
-                    Ok(())
-                })?;
-                read_any = true;
-                ("ok", None)
+        let (status, error) = if meta.len() > max_bytes {
+            let mb = meta.len() >> 20;
+            (
+                "skipped (too large)",
+                Some(format!("Auctionator.lua is {mb} MB")),
+            )
+        } else {
+            let Ok(bytes) = safe_read(&abs) else {
+                continue;
+            };
+            // Never a value from the file in an error: positions, versions
+            // and realm names only.
+            match auctionator::decode(&bytes) {
+                Ok(prices) => {
+                    db.with_conn(|c| {
+                        let tx = c.transaction()?;
+                        store(
+                            &tx,
+                            flavor,
+                            &account,
+                            &prices,
+                            chrono::Utc::now().timestamp(),
+                        )?;
+                        tx.commit()?;
+                        Ok(())
+                    })?;
+                    read_any = true;
+                    // Realms in a format we don't read are noted, the rest kept.
+                    (
+                        "ok",
+                        (!prices.skipped.is_empty()).then(|| prices.skipped.join("; ")),
+                    )
+                }
+                Err(Unreadable::Parse(e)) => {
+                    ("skipped (parse)", Some(format!("Auctionator.lua: {e}")))
+                }
+                Err(Unreadable::NoPrices) => ("skipped (no prices)", None),
+                Err(Unreadable::Format(why)) => ("skipped (format)", Some(why)),
             }
-            // Never a value from the file: a parse error names a position.
-            Err(Unreadable::Parse(e)) => ("skipped (parse)", Some(format!("Auctionator.lua: {e}"))),
-            Err(Unreadable::NoPrices) => ("skipped (no prices)", None),
         };
         db.with_conn(|c| {
             c.execute(
@@ -757,6 +782,17 @@ mod tests {
             status(&db, FLAVOR).unwrap().has_prices,
             "earlier prices stay"
         );
+
+        // Over the size cap: not read at all, and recorded as such.
+        std::fs::write(&path, market_file()).unwrap();
+        age(&path);
+        let fresh = Db::open_in_memory().unwrap();
+        assert_eq!(scan_within(&fresh, FLAVOR, tmp.path(), 100).unwrap(), None);
+        let state: String = fresh
+            .with_conn(|c| Ok(c.query_row("SELECT status FROM ingest_state", [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(state, "skipped (too large)");
+        assert!(!status(&fresh, FLAVOR).unwrap().has_prices);
     }
 
     #[test]

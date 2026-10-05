@@ -17,8 +17,15 @@
 //! - `AUCTIONATOR_SAVEDVARS.TimeOfLastReplicateScan` / `TimeOfLastBrowseScan`:
 //!   Unix seconds of the last full and incremental scans, account-wide.
 //!
-//! Anything unexpected in one item is skipped, never fatal: a third-party
-//! file we don't control shouldn't stop the rest from being read.
+//! Only that format is read: `__dbversion` 8 and realm `version` 2. Any
+//! other is skipped with the version named, never decoded on a guess. Within
+//! it, anything unexpected in one item is skipped, never fatal: a
+//! third-party file we don't control shouldn't stop the rest from being read.
+//! (`ah::scan` also leaves files over `ah::MAX_BYTES` unread.)
+//!
+//! The test fixture `tests/fixtures/auctionator/Auctionator.lua` comes from
+//! `tools/addon-test/auctionator_fixture.lua`: an independent CBOR encoder
+//! and Lua's own `%q`, the escaping the game's serializer uses.
 
 use chrono::NaiveDate;
 
@@ -59,6 +66,9 @@ pub struct RealmPrices {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PriceDb {
     pub realms: Vec<RealmPrices>,
+    /// Realms left out, and why ("Forever: unknown realm format 3"). Names
+    /// and versions only, never prices.
+    pub skipped: Vec<String>,
     pub replicate_scan_at: Option<i64>,
     pub browse_scan_at: Option<i64>,
 }
@@ -70,7 +80,15 @@ pub enum Unreadable {
     Parse(String),
     /// No `AUCTIONATOR_PRICE_DATABASE`, or not a table.
     NoPrices,
+    /// A format other than the one verified (`__dbversion` 8 with realm
+    /// `version` 2): skipped with the version found, never guessed at.
+    Format(String),
 }
+
+/// The formats read: Auctionator's `VERSION_KEY_SERIALIZED` database and its
+/// realm data version 2 (v321 source; v339 is what Forever ships).
+pub const DB_VERSION: i64 = 8;
+pub const REALM_VERSION: i64 = 2;
 
 /// The item id in an item key: `"12345"` or `"g:12345:180"`; pets have none.
 pub fn item_id(key: &str) -> Option<u32> {
@@ -215,23 +233,51 @@ fn table<'g>(globals: &'g [(String, LuaValue)], name: &str) -> Option<&'g LuaTab
 pub fn decode(bytes: &[u8]) -> Result<PriceDb, Unreadable> {
     let globals = sv::parse(bytes).map_err(|e| Unreadable::Parse(e.to_string()))?;
     let db = table(&globals, "AUCTIONATOR_PRICE_DATABASE").ok_or(Unreadable::NoPrices)?;
+    let version = db
+        .get("__dbversion")
+        .and_then(LuaValue::as_f64)
+        .map(|v| v as i64);
+    if version != Some(DB_VERSION) {
+        return Err(Unreadable::Format(match version {
+            Some(v) => format!("unknown Auctionator format {v}"),
+            None => "no Auctionator format version".into(),
+        }));
+    }
     let mut realms = Vec::new();
+    let mut skipped = Vec::new();
     for (k, v) in &db.hash {
         let Some(name) = lua_key(k).filter(|n| !n.starts_with("__")) else {
             continue;
         };
-        match v {
-            LuaValue::Table(_) => realms.push(realm(name, &Node::Lua(v))),
-            LuaValue::Str(bytes) => {
-                // A realm whose CBOR doesn't decode is skipped, not fatal.
-                if let Ok(value) = ciborium::from_reader::<ciborium::Value, _>(&bytes[..]) {
-                    realms.push(realm(name, &Node::Cbor(&value)));
+        let decoded;
+        let node = match v {
+            LuaValue::Table(_) => Node::Lua(v),
+            LuaValue::Str(bytes) => match ciborium::from_reader::<ciborium::Value, _>(&bytes[..]) {
+                Ok(value) => {
+                    decoded = value;
+                    Node::Cbor(&decoded)
                 }
-            }
-            _ => {}
+                // A realm whose CBOR doesn't decode is skipped, not fatal.
+                Err(_) => {
+                    skipped.push(format!("{name}: not readable"));
+                    continue;
+                }
+            },
+            _ => continue,
+        };
+        match node.get("version").and_then(|v| v.int()) {
+            Some(REALM_VERSION) => realms.push(realm(name, &node)),
+            other => skipped.push(match other {
+                Some(v) => format!("{name}: unknown realm format {v}"),
+                None => format!("{name}: no realm format version"),
+            }),
         }
     }
+    if realms.is_empty() && !skipped.is_empty() {
+        return Err(Unreadable::Format(skipped.join("; ")));
+    }
     realms.sort_by(|a, b| a.realm.cmp(&b.realm));
+    skipped.sort();
     let saved = table(&globals, "AUCTIONATOR_SAVEDVARS");
     let at = |name: &str| {
         saved
@@ -242,6 +288,7 @@ pub fn decode(bytes: &[u8]) -> Result<PriceDb, Unreadable> {
     };
     Ok(PriceDb {
         realms,
+        skipped,
         replicate_scan_at: at("TimeOfLastReplicateScan"),
         browse_scan_at: at("TimeOfLastBrowseScan"),
     })
@@ -383,6 +430,75 @@ AUCTIONATOR_PRICE_DATABASE = {
         assert_eq!(items[0].days[0].available, None);
     }
 
+    /// A file escaped by Lua's own `%q`, CBOR from an encoder that isn't
+    /// ours (tools/addon-test/auctionator_fixture.lua): the bytes a quote,
+    /// a backslash, a NUL, a newline and a CR come back exactly.
+    #[test]
+    fn reads_a_file_escaped_like_the_game() {
+        let bytes = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/auctionator/Auctionator.lua"),
+        )
+        .unwrap();
+        let db = decode(&bytes).unwrap();
+        assert_eq!(db.replicate_scan_at, Some(1_791_200_000));
+        assert!(db.skipped.is_empty());
+        let items = &db.realms[0].items;
+        let by = |k: &str| items.iter().find(|i| i.key == k).unwrap();
+        let linen = by("2589");
+        assert_eq!(
+            linen.days.iter().map(|d| d.available).collect::<Vec<_>>(),
+            [Some(10), Some(13)]
+        );
+        assert_eq!((linen.days[1].low, linen.days[1].high), (120, 125));
+        assert_eq!(
+            (by("14047").last, by("14047").days[0].available),
+            (Some(92), Some(0))
+        );
+        assert_eq!(by("13468").last, Some(34));
+        assert_eq!(by("g:19019:180").item_id, Some(19019));
+    }
+
+    /// Only the verified format is read: database version 8, realm version
+    /// 2. Anything else is skipped with its version named, never guessed at.
+    #[test]
+    fn other_formats_are_skipped_not_guessed() {
+        let realm_v = |v: i64| {
+            let mut out = Vec::new();
+            let map = C::Map(vec![
+                (t("version"), C::Integer(v.into())),
+                (t("2589"), C::Map(vec![(t("m"), C::Integer(120.into()))])),
+            ]);
+            ciborium::into_writer(&map, &mut out).unwrap();
+            out
+        };
+        let good = cbor_realm(&[("2589", 120, &[(2469, 125, None, 1)])]);
+
+        // A newer database version: nothing is read.
+        let newer = String::from_utf8_lossy(&file(&[("Forever", good.clone())], None))
+            .replace("[\"__dbversion\"] = 8", "[\"__dbversion\"] = 9");
+        assert_eq!(
+            decode(newer.as_bytes()),
+            Err(Unreadable::Format("unknown Auctionator format 9".into()))
+        );
+        let none = String::from_utf8_lossy(&file(&[("Forever", good.clone())], None))
+            .replace("[\"__dbversion\"] = 8,", "");
+        assert!(matches!(
+            decode(none.as_bytes()),
+            Err(Unreadable::Format(_))
+        ));
+
+        // A realm in another format is skipped and named; the rest is read.
+        let db = decode(&file(&[("Elsewhere", realm_v(3)), ("Forever", good)], None)).unwrap();
+        assert_eq!(db.realms.len(), 1);
+        assert_eq!(db.skipped, ["Elsewhere: unknown realm format 3"]);
+        // Only realms in another format: the file counts as unread.
+        assert_eq!(
+            decode(&file(&[("Forever", realm_v(1))], None)),
+            Err(Unreadable::Format("Forever: unknown realm format 1".into()))
+        );
+    }
+
     #[test]
     fn bad_parts_are_skipped_not_fatal() {
         let good = cbor_realm(&[("2589", 120, &[(2469, 125, None, 1)])]);
@@ -393,6 +509,7 @@ AUCTIONATOR_PRICE_DATABASE = {
         .unwrap();
         assert_eq!(db.realms.len(), 1);
         assert_eq!(db.realms[0].realm, "Forever");
+        assert_eq!(db.skipped, ["Broken: not readable"]);
 
         assert_eq!(decode(b"SOMETHING_ELSE = {}\n"), Err(Unreadable::NoPrices));
         assert!(matches!(
