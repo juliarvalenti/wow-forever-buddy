@@ -127,3 +127,17 @@ These follow `specs/v0.2-addon` §8.
   - **Ledger:** use three tiles (Account gold, Last 30 days, Best earner). Drop the Net worth panel, and let the gold chart take the full width with the Journal below.
   - **Session recap:** drop "≈ 45g" worth cells, keeping quantities only.
   - **Search:** hidden until satchels are indexed.
+
+## 8. F3: lockouts and the bank alt (v0.2.1)
+The addon records `lockouts[] = {name, difficulty, reset_at, raid}` at login, for saved instances only. There's no boss progress, so don't show any.
+- **Character sheet (`character.html`):** add a stone **Lockouts** panel in the side column, after Professions.
+  - The meta reads "as of login, 4 Oct", using the snapshot's date.
+  - Show one row per saved instance, soonest reset first. The name sits left and the time to reset right: "resets in 14 h" under a day, "2 days" otherwise. The row's tooltip holds the full date: "Resets Tuesday 6 October, 09:00".
+  - Add the difficulty after the name in muted text only when it isn't the instance's only size.
+  - Drop rows whose `reset_at` has passed, since they're no longer saved.
+  - If none are left, show "Not saved anywhere this week." in muted text. If lockouts have never been seen, show "Lockouts appear after your next login."
+- **Dashboard (`dashboard.html`):** add a **Lockouts this week** panel under Characters, shown only with addon data and only when someone is saved. Otherwise leave it out and let the column close up.
+  - Group by instance, soonest reset first. Each row has the instance and the time to reset, with the saved alts' names in class colour on the line below.
+  - The meta reads "N characters saved". Show at most five rows.
+- **Bank alt:** a switch labelled "Bank alt" in the sheet's top bar, left of the alt arrows. It's set by the user, stored in the app's database, never written to the game, and off by default.
+  - When it's on, the card shows the "Bank" tag after the name (`characters.html`) and the Dashboard roster shows "bank" (`dashboard.html`). Nothing else changes: sorting and totals stay the same.

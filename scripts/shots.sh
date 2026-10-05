@@ -39,6 +39,10 @@ SCENARIOS=(
   "characters|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card|characters"
   "character|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
+  "settings|settings|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-svc|settings"
+  "settings-move-confirm|settings|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;wait:css=.st-confirm|settings"
+  "settings-moving|settings-moving|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Copying 412|settings"
+  "settings-move-refused|settings-pending|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Nothing was moved|settings"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
   "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
 )
