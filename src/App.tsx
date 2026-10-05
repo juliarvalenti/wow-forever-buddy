@@ -21,6 +21,7 @@ import { useCharacters } from "@/hooks/useCharacters";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
+import { Addons } from "@/screens/Addons";
 import { Adventure } from "@/screens/Adventure";
 import { Backups } from "@/screens/Backups";
 import { Characters } from "@/screens/Characters";
@@ -31,7 +32,15 @@ import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "dashboard" | "characters" | "ledger" | "adventures" | "backups" | "game" | "settings";
+type Screen =
+  | "dashboard"
+  | "characters"
+  | "ledger"
+  | "adventures"
+  | "backups"
+  | "game"
+  | "addons"
+  | "settings";
 
 type NavRow =
   | { group: string }
@@ -109,7 +118,7 @@ function Shell() {
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
-    { soon: "Addons", icon: Puzzle },
+    { id: "addons", label: "Addons", icon: Puzzle },
     { soon: "Macros", icon: SquareTerminal },
   ];
   const folderOk = install.state.kind === "ok";
@@ -232,6 +241,7 @@ function Shell() {
             show={backupsFilter}
           />
         )}
+        {current === "addons" && <Addons />}
         {current === "ledger" && (
           <Ledger onOpenDashboard={() => setScreen("dashboard")} onOpenAdventure={openAdventure} />
         )}

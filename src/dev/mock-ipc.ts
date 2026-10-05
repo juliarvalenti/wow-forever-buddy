@@ -7,6 +7,8 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
+  AddonInfo,
+  AddonsList,
   AddonStatus,
   Adventure,
   AltLockout,
@@ -58,6 +60,7 @@ export const SCENARIOS = [
   "settings", // F1: a 24 h schedule and two keys saved (CurseForge, GitHub); Change… then confirms a move
   "settings-moving", // moving the backups, stuck part way so the progress shows
   "settings-pending", // moving is refused: an interrupted restore waits
+  "addons-empty", // F4: no addons in Interface/AddOns yet (the Addons screen works in every scenario)
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -593,6 +596,62 @@ export function installMockIpc(): void {
       };
     },
     app_open_folder: () => null,
+    // F4: addons-readonly.html's ten addons and five characters.
+    addons_list: (): AddonsList => {
+      const folders = ["Thrandor", "Velyra-Duskmane", "Brannic", "Fizzwick", "Sela"];
+      const dir = "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\Interface\\AddOns";
+      const a = (
+        name: string,
+        title: string,
+        version: string,
+        author: string,
+        iface: number,
+        enabled: number[],
+        notes: string | null = null,
+        needs: string[] = [],
+      ): AddonInfo => ({
+        name,
+        title,
+        version,
+        author,
+        notes,
+        interfaces: [iface],
+        out_of_date: iface < 16001,
+        needs,
+        path: `${dir}\\${name}`,
+        enabled: enabled.map(Boolean),
+      });
+      return {
+        flavor: "_classic_beta_",
+        game: "WoW: Forever (Beta)",
+        folder: dir,
+        interface: 16001,
+        characters: folders.map((folder) => ({ account: "ACCOUNT1", group: "70", folder })),
+        read_at: iso(4),
+        addons: s === "addons-empty"
+          ? []
+          : [
+              a("AtlasLootClassic", "AtlasLoot Classic", "v2.4.6", "Hoizame", 11502, [1, 0, 1, 0, 0]),
+              a("Auctionator", "Auctionator", "11.1.4", "plusmouse", 16001, [1, 0, 0, 0, 0]),
+              a("Bagnon", "Bagnon", "10.2.5", "Jaliborc", 16001, [1, 1, 1, 1, 1]),
+              a("ClassicCastbars", "ClassicCastbars", "1.7.9", "wardz", 11504, [1, 1, 1, 1, 1]),
+              a("Details", "Details! Damage Meter", "v16001.27", "Tercio", 16001, [1, 1, 1, 1, 1]),
+              a("ForeverBuddy", "ForeverBuddy", "0.2.0", "Forever Buddy", 16001, [1, 1, 1, 1, 1]),
+              a("HealBot", "HealBot Continued", "10.2.0", "Strife", 16001, [0, 1, 0, 0, 1]),
+              a("MoveAnything", "MoveAnything", "2.1.0", "Vika", 16001, [0, 0, 0, 0, 0]),
+              a("OmniCC", "OmniCC", "10.2.3", "Tuller", 16001, [1, 1, 1, 1, 1]),
+              a(
+                "Questie",
+                "Questie",
+                "10.3.0",
+                "Aero, Logon",
+                16001,
+                [0, 0, 1, 1, 1],
+                "Shows quests on the map and minimap, with objectives and turn-ins.",
+              ),
+            ],
+      };
+    },
     startup_open_data_folder: () => null,
     backup_list: () => list,
     backup_storage: (): StorageInfo => ({

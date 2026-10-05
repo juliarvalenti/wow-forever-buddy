@@ -1,0 +1,56 @@
+/* Addons, read-only (F4), from design/mocks/round-3/addons-readonly.html and
+   IMPLEMENTING.md §9. Prefixed ad- so nothing collides with the d- styles. */
+
+.ad-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ad-toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+.ad-filter { width: 240px; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; min-width: 0;
+  border-radius: var(--r, 6px); color: var(--chalk-hi); font-size: 12.5px;
+  background: rgba(0,0,0,.4); box-shadow: inset 0 2px 4px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.05); }
+.ad-filter:focus-within { box-shadow: inset 0 2px 4px rgba(0,0,0,.7), 0 0 0 1px rgba(255,177,92,.5), 0 0 10px rgba(255,122,46,.15); }
+.ad-filter svg { color: var(--soot); flex-shrink: 0; }
+.ad-filter input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: inherit; font: inherit; }
+.ad-filter input::placeholder { color: var(--soot); }
+
+.ad-empty { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.ad-split { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; align-items: start; }
+.ad-tablewrap { overflow: auto; max-height: 560px; }
+.ad-table td, .ad-table th { padding-left: 10px; padding-right: 10px; }
+.ad-table td.auth { color: var(--ash); }
+.ad-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ad-name b { font-weight: 600; color: var(--chalk-hi); }
+.ad-name small { display: block; font-size: 11px; color: var(--soot); }
+.ad-ico { width: 22px; height: 22px; flex-shrink: 0; border-radius: 3px; display: grid; place-items: center;
+  font: 400 10px "Marcellus", Georgia, serif; background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(236,228,214,.45), inset 0 0 4px rgba(0,0,0,.6); }
+.ad-ico b { color: var(--chalk-hi); font-weight: 400; }
+.ad-toc { font-size: 12px; white-space: nowrap; color: var(--ash); }
+.ad-toc.old { color: var(--warn); }
+
+/* one class-coloured diamond per character, hollow when off */
+.ad-chars { display: inline-flex; gap: 3px; align-items: center; white-space: nowrap; }
+.ad-chars small { margin-left: 6px; font-size: 11px; color: var(--soot); }
+.ad-dot { width: 7px; height: 7px; transform: rotate(45deg); border-radius: 1px; flex-shrink: 0; display: inline-block;
+  background: var(--cc, #8f8574); }
+.ad-dot.off { background: transparent; box-shadow: inset 0 0 0 1px var(--soot); }
+
+/* the selected addon */
+.ad-meta { margin-left: auto; }
+.ad-detail { display: grid; gap: 12px; }
+.ad-detail .what { font-size: 12.5px; color: var(--chalk); line-height: 1.5; }
+.ad-kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 5px 10px; font-size: 12px; margin: 0; }
+.ad-kv dt { color: var(--soot); }
+.ad-kv dd { margin: 0; color: var(--chalk); min-width: 0; }
+.ad-kv code { display: block; font: 11.5px ui-monospace, "Cascadia Mono", Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-sec { font-size: 11.5px; color: var(--soot); margin-bottom: 4px; }
+.ad-who { list-style: none; margin: 0; padding: 0; }
+.ad-who li { display: flex; align-items: center; gap: 8px; height: 26px; font-size: 12.5px; border-top: 1px solid rgba(255,255,255,.05); }
+.ad-who li .st { margin-left: auto; font-size: 11.5px; color: var(--ash); }
+.ad-who li.off .ch-cc { opacity: .55; }
+.ad-who li.off .st { color: var(--soot); }
+.ad-note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; line-height: 1.45; margin: 0; }
+.ad-note svg { flex-shrink: 0; margin-top: 2px; }
+.ad-note.warn { color: var(--warn); }
+
+@media (max-width: 1100px) {
+  .ad-split { grid-template-columns: minmax(0, 1fr) 250px; }
+  .ad-table th.auth, .ad-table td.auth { display: none; }
+}
