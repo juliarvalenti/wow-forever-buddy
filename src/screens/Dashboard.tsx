@@ -54,17 +54,30 @@ import {
 // Copy from design/mocks/round-3/dashboard-noaddon.html (v0.1, no addon).
 
 const MISSING_WHY = "Unlocks when the game folder is found again.";
-const INSTALL_WHY = "Close WoW first. Installing writes to your game folder.";
-
-/** "v0.2.0 · on 7 / 7 characters", plus where it's turned off. */
-function addonLine(s: AddonStatus): string {
+/** "v0.2.0 · on 7 / 7 characters". */
+function addonCount(s: AddonStatus): string {
   const on = s.enabled_on.length;
   const all = on + s.disabled_on.length;
+  return `v${s.installed_version} · on ${on} / ${all} ${all === 1 ? "character" : "characters"}`;
+}
+
+/** The Game folder row: the count, plus where it's turned off. */
+function addonLine(s: AddonStatus): string {
   const off =
     s.disabled_on.length > 0
       ? ` · off on ${s.disabled_on.map(characterName).join(", ")}`
       : "";
-  return `v${s.installed_version} · on ${on} / ${all} ${all === 1 ? "character" : "characters"}${off}`;
+  return addonCount(s) + off;
+}
+
+/** Step 1 once installed: the count, and what to do where it's off. The app
+ *  doesn't switch it on itself (AddOns.txt is WoW's, per character). */
+function addonStepLine(s: AddonStatus): string {
+  const off =
+    s.disabled_on.length > 0
+      ? `. Turned off on ${s.disabled_on.map(characterName).join(", ")}. Turn it on in the in-game AddOns list.`
+      : "";
+  return addonCount(s) + off;
 }
 
 const TRIGGER_NOTE: Partial<Record<SnapshotSummary["trigger"], string>> = {
@@ -154,7 +167,12 @@ export function Dashboard({
   const names = [...new Set((counted ?? []).map((c) => characterName(c.name)))];
   const addon = useAddon();
   const addonCurrent = addon.status?.installed_version != null && !addon.status.update_available;
-  const installLabel = addon.status?.update_available ? "Update addon" : "Install addon";
+  const updating = addon.status?.update_available === true;
+  const installLabel = updating ? "Update addon" : "Install addon";
+  const installWhy = `Close WoW first. ${updating ? "Updating" : "Installing"} writes to your game folder.`;
+  // While step 1 offers the addon, its button is the page's one bronze.
+  const addonOffered = addon.status != null && !addonCurrent;
+  const BackUpButton = addonOffered ? Button : PrimaryButton;
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -192,11 +210,12 @@ export function Dashboard({
             {folderMissing != null ? (
               <LockedAction why={MISSING_WHY}>Back up now</LockedAction>
             ) : (
-              <PrimaryButton onClick={() => backUpNow()} disabled={progress != null}>
+              // One bronze per screen: while step 1 offers the addon, that's it.
+              <BackUpButton onClick={() => backUpNow()} disabled={progress != null}>
                 {progress
                   ? `Backing up… ${progress.total > 0 ? `${progress.done} of ${progress.total}` : ""}`
                   : "Back up now"}
-              </PrimaryButton>
+              </BackUpButton>
             )}
           </>
         }
@@ -305,16 +324,20 @@ export function Dashboard({
               in your UI is touched.
             </p>
             <ol className="d-steps">
-              <li>
+              <li className={addonCurrent ? "done" : undefined}>
                 <div>
                   <div className="st">
-                    {addonCurrent ? "ForeverBuddy is installed" : "Install ForeverBuddy"}
+                    {addonCurrent
+                      ? "ForeverBuddy is installed"
+                      : updating
+                        ? "Update ForeverBuddy"
+                        : "Install ForeverBuddy"}
                   </div>
                   <div className="sd">
                     {addonCurrent
-                      ? addonLine(addon.status!)
-                      : addon.status?.update_available
-                        ? `Version ${addon.status.installed_version} is installed; this update brings ${addon.status.bundled_version}.`
+                      ? addonStepLine(addon.status!)
+                      : updating
+                        ? `Version ${addon.status!.installed_version} is installed; this update brings ${addon.status!.bundled_version}.`
                         : (
                             <>
                               Copies the addon into{" "}
@@ -323,11 +346,16 @@ export function Dashboard({
                           )}
                   </div>
                   {!addonCurrent && (
-                    <div style={{ marginTop: 8 }}>
+                    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       {folderMissing != null ? (
                         <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
                       ) : running || game?.unknown ? (
-                        <LockedAction why={INSTALL_WHY}>{installLabel}</LockedAction>
+                        <>
+                          <LockedAction why={installWhy}>{installLabel}</LockedAction>
+                          <span className="sd">
+                            <LiveDot /> {installWhy}
+                          </span>
+                        </>
                       ) : (
                         <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
                           {addon.busy ? "Installing…" : installLabel}
