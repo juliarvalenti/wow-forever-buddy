@@ -1,0 +1,40 @@
+# Runs the ForeverBuddy addon through its Lua harness (tools/addon-test) on
+# plain Lua 5.1, and fails if the committed fixtures the Rust ingest tests use
+# are stale. Linux only and path-filtered: it's the cheapest runner, and the
+# addon code is the same Lua on every platform.
+name: Addon
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/resources/addon/**"
+      - "tools/addon-test/**"
+      - "src-tauri/tests/fixtures/addon/**"
+      - ".github/workflows/addon.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/resources/addon/**"
+      - "tools/addon-test/**"
+      - "src-tauri/tests/fixtures/addon/**"
+      - ".github/workflows/addon.yml"
+
+concurrency:
+  group: addon-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
+
+      - run: lua5.1 tools/addon-test/run.lua --check
