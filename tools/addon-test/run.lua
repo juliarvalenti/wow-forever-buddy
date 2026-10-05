@@ -613,6 +613,61 @@ scenario("bridge", function()
     return text
 end)
 
+-- Alt-aware tooltips (bridge spec §5): lines from the tooltip index, this
+-- character's own count live, slot text shown as plain text.
+local function tooltipSlot(name, body)
+    return "ForeverBuddyData_" .. name .. " = {\n\t[\"schema\"] = 1,\n\t[\"stamp\"] = 1790960000,\n" .. body .. "}\n"
+end
+local ALTS = '\t["alts"] = {\n'
+    .. '\t\t{ ["name"] = "Coinpurse", ["surname"] = "", ["class"] = "WARRIOR", ["seen"] = ' .. (wow.EPOCH - DAY) .. ' },\n'
+    -- This character: its row comes live from the game instead.
+    .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "PALADIN", ["seen"] = ' .. (wow.EPOCH - DAY) .. ' },\n'
+    .. '\t\t{ ["name"] = "Evil|Hitem:19019|h[Thunderfury]|h", ["surname"] = "", ["class"] = "PALADIN", ["seen"] = ' .. (wow.EPOCH - 3 * DAY) .. ' },\n'
+    .. '\t},\n'
+
+scenario("tooltip", function()
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", ALTS .. '\t["items"] = {},\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", ALTS
+                .. '\t["scanAt"] = ' .. (wow.EPOCH - 3 * DAY) .. ',\n'
+                -- Runecloth: 1g 12s; Coinpurse 340 in the bank, Thrandor 5
+                -- in bags (stale), the third alt 3 in the mail.
+                .. '\t["items"] = {\n\t\t[14047] = { 11200, 1, 0, 340, 0, 0, 2, 5, 0, 0, 0, 3, 0, 0, 3, 0 },\n\t},\n'),
+        },
+    })
+    c.login(nil)
+    local lines = table.concat(c.hover(14047), "\n")
+    eq(lines, table.concat({
+        "Runecloth",
+        " ",
+        "Forever Buddy",
+        "Thrandor | 20 · on you",
+        "Coinpurse | 340 · bank",
+        "Evil||Hitem:19019||h[Thunderfury]||h | 3 · mail",
+        "All alts | 363",
+        "Last scan | ~1g 12s each",
+        "As of each alt's last logout · scan 3 days ago",
+    }, "\n"), "tooltip")
+
+    c.world.shift = true
+    eq(c.hover(14047)[5], "Coinpurse | 340 bank · 1 day ago", "with Shift")
+    c.world.shift = false
+
+    eq(#c.hover(2488), 1, "nothing for an item no alt holds")
+    c.world.combat = true
+    eq(#c.hover(14047), 1, "nothing in combat")
+    c.world.combat = false
+
+    local big = client({
+        slots = { ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", '\t["tooLarge"] = true,\n') },
+    })
+    big.login(nil)
+    eq(big.hover(2488)[4], "Alt data too large to send", "too large")
+
+    eq(file(c.logout())._meta.tooltip_errors, nil, "no tooltip errors")
+end)
+
 -- Runner ---------------------------------------------------------------------
 
 local check = arg and arg[1] == "--check"

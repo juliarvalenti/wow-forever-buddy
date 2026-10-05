@@ -9,8 +9,9 @@
 --   listed in _meta.missing_events, and the rest still work.
 -- * This session is built from live APIs. What the client loaded from disk
 --   is only trusted if it validates, and only old sessions come from it.
--- * Nothing visible: no frames shown, no chat output, no Blizzard function
---   replaced or hooked.
+-- * Nothing visible but lines added to the game's own item tooltip, through
+--   TooltipDataProcessor (bridge spec §5): no frames shown, no chat output,
+--   no Blizzard function replaced.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
 -- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
@@ -540,9 +541,159 @@ local function repairCostNow()
     return nil
 end
 
+-- Alt-aware tooltips (bridge spec §5) ---------------------------------------------
+--
+-- Lines added to the game's own item tooltip from the tooltip index: which
+-- alts hold the item, where, and its last scan price. Read-only: the index
+-- is looked up, never run, and the whole callback is pcall'd, so a bad
+-- entry drops our lines rather than raising an error.
+
+local MAX_ROWS = 6
+local PLACES = { "bags", "bank", "mail", "equipped" }
+local tooltipErrors = 0
+
+-- Slot text shown as text: every "|" doubled, so a name can't carry an item
+-- link, a texture or a colour code.
+local function plain(s)
+    return (string.gsub(tostring(s), "|", "||"))
+end
+
+-- "1g 12s", "45s", "8c".
+local function coins(copper)
+    local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+    if g > 0 then
+        return s > 0 and (g .. "g " .. s .. "s") or (g .. "g")
+    elseif s > 0 then
+        return c > 0 and (s .. "s " .. c .. "c") or (s .. "s")
+    end
+    return c .. "c"
+end
+
+-- "today", "1 day ago", "3 days ago".
+local function ago(t)
+    local days = math.floor(((now() or t) - t) / 86400)
+    if days < 1 then
+        return "today"
+    end
+    return days == 1 and "1 day ago" or (days .. " days ago")
+end
+
+local function isMe(alt)
+    return character ~= nil
+        and alt.name == character.name
+        and (alt.surname or "") == (character.surname or "")
+end
+
+local function addItemLines(tooltip, id)
+    if type(id) ~= "number" or isSecret(id) or read("InCombatLockdown") then
+        return
+    end
+    local name = (id % 2 == 0) and "Tooltip1" or "Tooltip2"
+    local slot = slots[name]
+    if not slot then
+        local r = receipts and receipts[name]
+        if r and r.schema and r.schema ~= SLOT_SCHEMA then
+            tooltip:AddLine(" ")
+            tooltip:AddLine("From a newer Forever Buddy. Update the addon from the app.", 0.6, 0.6, 0.6)
+        end
+        return
+    end
+    if slot.tooLarge then
+        tooltip:AddLine(" ")
+        tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
+        tooltip:AddLine("Alt data too large to send", 0.6, 0.6, 0.6)
+        return
+    end
+    local entry = type(slot.items) == "table" and slot.items[id]
+    local alts = type(slot.alts) == "table" and slot.alts or {}
+    local rows, total = {}, 0
+    -- This character's count is live: its bags and bank as the game has them.
+    local mine = read("C_Item.GetItemCount", id, true)
+    if type(mine) == "number" and mine > 0 and character and character.name then
+        rows[#rows + 1] = { name = character.name, class = character.class, total = mine, live = true }
+        total = total + mine
+    end
+    if type(entry) == "table" then
+        for i = 2, #entry, 5 do
+            local alt = alts[entry[i]]
+            if type(alt) == "table" and not isMe(alt) then
+                local row = { name = alt.name, class = alt.class, total = 0, places = {}, alt = alt }
+                for p = 1, 4 do
+                    local n = tonumber(entry[i + p]) or 0
+                    row.places[p] = n
+                    row.total = row.total + n
+                end
+                if row.total > 0 then
+                    rows[#rows + 1] = row
+                    total = total + row.total
+                end
+            end
+        end
+    end
+    local price = type(entry) == "table" and tonumber(entry[1]) or 0
+    if #rows == 0 then
+        return
+    end
+
+    local shift = read("IsShiftKeyDown")
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Forever Buddy", 1, 0.82, 0)
+    for k = 1, math.min(#rows, MAX_ROWS) do
+        local row = rows[k]
+        local right
+        if row.live then
+            right = row.total .. " · on you"
+        else
+            local where = {}
+            for p = 1, 4 do
+                if row.places[p] > 0 then
+                    where[#where + 1] = shift and (row.places[p] .. " " .. PLACES[p]) or PLACES[p]
+                end
+            end
+            right = shift and table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
+                or (row.total .. " · " .. table.concat(where, ", "))
+        end
+        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[row.class or ""]
+        if color then
+            tooltip:AddDoubleLine(plain(row.name), right, color.r, color.g, color.b, 1, 1, 1)
+        else
+            tooltip:AddDoubleLine(plain(row.name), right, 1, 1, 1, 1, 1, 1)
+        end
+    end
+    if #rows > MAX_ROWS then
+        tooltip:AddLine("+" .. (#rows - MAX_ROWS) .. " more", 0.6, 0.6, 0.6)
+    end
+    if #rows >= 2 then
+        tooltip:AddDoubleLine("All alts", tostring(total), 1, 0.82, 0, 1, 1, 1)
+    end
+    if price > 0 then
+        -- "~", not "≈": the game's fonts may not have the glyph.
+        tooltip:AddDoubleLine("Last scan", "~" .. coins(price) .. " each", 1, 0.82, 0, 1, 1, 1)
+    end
+    local footer = "As of each alt's last logout"
+    if type(slot.scanAt) == "number" and price > 0 then
+        footer = footer .. " · scan " .. ago(slot.scanAt)
+    end
+    tooltip:AddLine(footer, 0.5, 0.5, 0.5)
+end
+
+local hooked = false
+local function hookTooltips()
+    if hooked or not (TooltipDataProcessor and Enum and Enum.TooltipDataType) then
+        return
+    end
+    hooked = true
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if not pcall(addItemLines, tooltip, data and data.id) then
+            tooltipErrors = tooltipErrors + 1
+        end
+    end)
+end
+
 handlers.PLAYER_LOGIN = function()
     local t = now()
     character = identity()
+    hookTooltips()
     session = {
         id = t,
         login = t,
@@ -786,6 +937,7 @@ handlers.PLAYER_LOGOUT = function()
         loaded_prior = loaded ~= nil,
         truncated = truncated,
         secret_hits = secretHits,
+        tooltip_errors = tooltipErrors > 0 and tooltipErrors or nil,
         missing_events = missingEvents,
         errors = errors,
     }

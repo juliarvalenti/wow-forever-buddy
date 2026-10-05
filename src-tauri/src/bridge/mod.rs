@@ -6,15 +6,22 @@
 //! table of strings, numbers and booleans, serialized by `sv::write_globals`
 //! and parsed back with the data-only `sv` parser before every write
 //! (`check`). The list of slots is a constant; no path ever comes from the
-//! UI or an agent. Writing goes through `WriteGate::write_slots`.
+//! UI or an agent. Writing goes through `AppCore::send_to_game`, which holds
+//! the jobs lock around `WriteGate::write_slots`.
 //!
-//! B1 adds the slots and the writer; the first producer (the tooltip index,
-//! T-TIP) is the next change, so `header`, `render` and `stub` have only
-//! tests as callers until then.
-#![allow(dead_code)]
+//! The first producer is the tooltip index (`tooltip`, spec §5).
 
+pub mod tooltip;
+
+use rusqlite::params;
+
+use crate::addon;
+use crate::db::Db;
 use crate::error::{AppError, AppResult};
+use crate::fsx::read::safe_read;
 use crate::fsx::relpath::RelPath;
+use crate::game::gate::{MutationTarget, WriteGate};
+use crate::state::AppCore;
 use crate::sv::{self, LuaTable, LuaValue};
 
 /// The largest slot file, so no producer can bloat the client's load time.
@@ -59,7 +66,9 @@ impl Slot {
         .expect("constant paths are valid")
     }
 
-    /// The file the addon ships before the app has written anything.
+    /// The file the addon ships before the app has written anything (the
+    /// bundled `Data/*.lua`; tests check they match).
+    #[cfg(test)]
     pub fn stub(self) -> Vec<u8> {
         format!("{} = nil\n", self.global()).into_bytes()
     }
@@ -84,13 +93,22 @@ pub fn header(stamp: i64) -> LuaTable {
 /// Serializes a slot's table and checks the bytes (`check`), including that
 /// they parse back to exactly `body`.
 pub fn render(slot: Slot, body: LuaTable) -> AppResult<Vec<u8>> {
+    render_capped(slot, body)?.ok_or_else(|| refused(slot, "over the 1 MB cap"))
+}
+
+/// `render`, or `None` when the file would be over the cap, so a producer
+/// can send a "too large" notice instead of cutting the data short.
+pub fn render_capped(slot: Slot, body: LuaTable) -> AppResult<Option<Vec<u8>>> {
     let value = LuaValue::Table(Box::new(body));
     let bytes = sv::write_globals(&[(slot.global(), value.clone())]);
+    if bytes.len() > MAX_SLOT_BYTES {
+        return Ok(None);
+    }
     let parsed = check(slot, &bytes)?;
     if parsed != value {
         return Err(refused(slot, "doesn't read back as written"));
     }
-    Ok(bytes)
+    Ok(Some(bytes))
 }
 
 /// The runtime check every slot passes before it's written (security's
@@ -141,6 +159,150 @@ fn data_only(v: &LuaValue, depth: usize) -> Result<(), &'static str> {
 
 fn refused(slot: Slot, why: &str) -> AppError {
     AppError::SlotRefused(format!("{}: {why}", slot.name()))
+}
+
+/// What `send_to_game` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sent {
+    /// New data in every slot.
+    Written,
+    /// Over the cap: every slot now says so instead of holding cut-short
+    /// data (spec §5).
+    TooLarge,
+    /// Nothing changed since the last write.
+    Unchanged,
+    /// The installed addon doesn't list the slots (not installed, or older
+    /// than 0.4.0), so the game wouldn't load them.
+    NoAddon,
+    /// WoW is running; the next ingest after it exits sends it.
+    Waiting,
+}
+
+impl AppCore {
+    /// Regenerates every slot and writes the ones that changed. Holds the
+    /// jobs lock, so it never races a restore or an addon install; this is
+    /// the only way slots get written.
+    pub fn send_to_game(&self) -> AppResult<Sent> {
+        let _job = self.jobs.lock().expect("job lock poisoned");
+        self.send_to_game_locked()
+    }
+
+    /// `send_to_game` for a caller that already holds `jobs` (addon install).
+    pub fn send_to_game_locked(&self) -> AppResult<Sent> {
+        let game = self.active_game()?;
+        let target = self.mutation_target()?;
+        send(
+            &self.db,
+            &self.write_gate()?,
+            &target,
+            &game.flavor,
+            chrono::Utc::now().timestamp(),
+        )
+    }
+}
+
+/// Builds the slots from the db and writes them if anything changed.
+pub(crate) fn send(
+    db: &Db,
+    gate: &WriteGate,
+    target: &MutationTarget,
+    flavor: &str,
+    stamp: i64,
+) -> AppResult<Sent> {
+    if !addon::lists_slots(&target.game) {
+        return Ok(Sent::NoAddon);
+    }
+    let built = tooltip::build(db, flavor, stamp)?;
+    if built
+        .slots
+        .iter()
+        .all(|(slot, bytes)| same_on_disk(target, *slot, bytes))
+    {
+        return Ok(Sent::Unchanged);
+    }
+    match gate.write_slots(target, &built.slots) {
+        Ok(()) => {}
+        Err(AppError::GameRunning(_)) => return Ok(Sent::Waiting),
+        Err(e) => {
+            let status = if matches!(e, AppError::SlotRefused(_)) {
+                "refused"
+            } else {
+                "failed"
+            };
+            record(
+                db,
+                flavor,
+                &built.slots,
+                stamp,
+                status,
+                Some(&e.to_string()),
+            )?;
+            return Err(e);
+        }
+    }
+    let (status, sent) = if built.too_large {
+        ("too_large", Sent::TooLarge)
+    } else {
+        ("written", Sent::Written)
+    };
+    record(db, flavor, &built.slots, stamp, status, None)?;
+    Ok(sent)
+}
+
+/// Whether the slot's file already holds this data (its stamp aside).
+fn same_on_disk(target: &MutationTarget, slot: Slot, bytes: &[u8]) -> bool {
+    let old = slot
+        .path()
+        .resolve(&target.game)
+        .ok()
+        .and_then(|p| safe_read(&p).ok())
+        .and_then(|b| check(slot, &b).ok());
+    match (old, check(slot, bytes)) {
+        (Some(old), Ok(new)) => without_stamp(old) == without_stamp(new),
+        _ => false,
+    }
+}
+
+fn without_stamp(v: LuaValue) -> LuaValue {
+    match v {
+        LuaValue::Table(mut t) => {
+            t.hash
+                .retain(|(k, _)| k.as_bytes() != Some(b"stamp".as_slice()));
+            LuaValue::Table(t)
+        }
+        other => other,
+    }
+}
+
+/// Notes the last write of each slot, for the app's "Sent to the game" panel.
+fn record(
+    db: &Db,
+    flavor: &str,
+    slots: &[(Slot, Vec<u8>)],
+    stamp: i64,
+    status: &str,
+    error: Option<&str>,
+) -> AppResult<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    db.with_conn(|c| {
+        for (slot, bytes) in slots {
+            c.execute(
+                "INSERT OR REPLACE INTO bridge_slots
+                   (flavor, slot, stamp, written_at, bytes, status, error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    flavor,
+                    slot.name(),
+                    stamp,
+                    now,
+                    bytes.len() as i64,
+                    status,
+                    error
+                ],
+            )?;
+        }
+        Ok(())
+    })
 }
 
 #[cfg(test)]

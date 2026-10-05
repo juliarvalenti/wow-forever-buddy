@@ -145,6 +145,25 @@ fn read_if_there(path: &Path) -> Option<Vec<u8>> {
     path.is_file().then(|| safe_read(path).ok()).flatten()
 }
 
+/// Whether the installed TOC lists every bridge slot, so the game loads
+/// what the app writes there (0.4.0 and later). WoW reads the TOC only at
+/// client start, which is why an older install needs an update and a
+/// restart first.
+pub fn lists_slots(game: &GameRoot) -> bool {
+    let Some(toc) = rel(TOC)
+        .resolve(game)
+        .ok()
+        .and_then(|path| read_if_there(&path))
+    else {
+        return false;
+    };
+    let toc = String::from_utf8_lossy(&toc);
+    crate::bridge::SLOTS.iter().all(|slot| {
+        let file = format!("Data/{}.lua", slot.name());
+        toc.lines().any(|line| line.trim() == file)
+    })
+}
+
 /// Installs or updates the addon: every bundled file through the write gate
 /// (refused while WoW runs, with a safety snapshot first), the TOC last.
 pub fn install(gate: &WriteGate, target: &MutationTarget) -> AppResult<()> {
@@ -493,5 +512,60 @@ mod tests {
                 "{linked}"
             );
         }
+    }
+
+    /// The tooltip index end to end (bridge spec §5): only into an addon
+    /// that lists the slots, rewritten only when the data changes, and held
+    /// while WoW runs.
+    #[test]
+    fn the_tooltip_index_is_sent_when_it_changes() {
+        use bridge::Sent;
+        let t = setup();
+        let db = Db::open_in_memory().unwrap();
+        let add = |count: i64| {
+            db.with_conn(|c| {
+                c.execute(
+                    "INSERT OR IGNORE INTO characters (id, flavor, account, group_dir, char_dir,
+                                                      name, class, first_seen, last_seen)
+                     VALUES (1, '_classic_beta_', 'ACCOUNT1', '70', 'Sela', 'Sela', 'PRIEST', 1, 1)",
+                    [],
+                )?;
+                c.execute(
+                    "INSERT INTO char_items (character_id, location, container, slot, item_id,
+                                             link, count, as_of)
+                     VALUES (1, 'bag', 0, ?1, 14047, '', ?2, 1)",
+                    [count, count],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        };
+        add(5);
+        let send = |stamp| bridge::send(&db, &t.gate, &t.target, "_classic_beta_", stamp);
+
+        assert_eq!(send(1).unwrap(), Sent::NoAddon, "not installed");
+        install(&t.gate, &t.target).unwrap();
+        assert_eq!(send(2).unwrap(), Sent::Written);
+        let file = t.flavor.join(Slot::Tooltip2.path().as_string());
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.contains("[14047] = {"), "{written}");
+        assert_eq!(send(3).unwrap(), Sent::Unchanged, "same data, new stamp");
+
+        add(7);
+        t.probe.set_running(true);
+        assert_eq!(send(4).unwrap(), Sent::Waiting);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), written);
+        t.probe.set_running(false);
+        assert_eq!(send(5).unwrap(), Sent::Written);
+        let status: String = db
+            .with_conn(|c| {
+                Ok(c.query_row(
+                    "SELECT status FROM bridge_slots WHERE slot = 'Tooltip2' AND stamp = 5",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(status, "written");
     }
 }

@@ -275,6 +275,16 @@ fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Jo
                 }
             }
         }
+        // The tooltip index (bridge spec §5), from what changed above. It's
+        // rewritten only when its data changed, and waits while WoW runs:
+        // the ingest after the game exits sends it.
+        match core.send_to_game() {
+            Ok(_) | Err(error::AppError::NoInstall) => {}
+            Err(e) => applog::append(
+                &core.paths.log_dir,
+                &format!("sending to the game failed: {e}"),
+            ),
+        }
     })
 }
 
