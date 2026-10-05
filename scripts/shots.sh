@@ -5,14 +5,14 @@
 # shotkit, and writes .shotkit/compare/<name>-<size>.png = [app | mock].
 #
 # Needs: shotkit (`shot` on PATH), ImageMagick (`magick`), libwebp (`dwebp`).
-# Usage: npm run shots [-- <scenario-name>]
+# Usage: npm run shots [-- <scenario-name>]   (SHOTS_PORT=… if 4173 is taken)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ONLY="${1:-}"
 OUT=.shotkit/compare
 MOCKS=design/mocks/round-3/shots
-PORT=4173
+PORT="${SHOTS_PORT:-4173}"
 FONT=$(fc-match -f '%{file}' sans 2>/dev/null || echo /System/Library/Fonts/Supplemental/Arial.ttf)
 mkdir -p "$OUT"
 
