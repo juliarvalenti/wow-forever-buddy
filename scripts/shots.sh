@@ -45,6 +45,10 @@ SCENARIOS=(
   "settings-move-refused|settings-pending|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Nothing was moved|settings"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
   "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
+  # F4 follows addons-readonly.html, which has no shot yet: until it does,
+  # these sit next to the v0.5 sketch (addons.html).
+  "addons|characters|click:css=nav button[title=\"Addons\"];wait:css=.ad-table|addons"
+  "addons-empty|addons-empty|click:css=nav button[title=\"Addons\"];wait:text=No addons in|addons"
 )
 
 echo "== build:mock"

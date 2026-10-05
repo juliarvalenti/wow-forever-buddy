@@ -21,6 +21,35 @@ export const commands = {
 	 */
 	addonRemove: () => __TAURI_INVOKE<AddonStatus>("addon_remove"),
 	/**
+	 *  The Addons screen (F4): every addon in the active flavor's
+	 *  `Interface/AddOns`, read-only, with each character's on/off. `null`
+	 *  before a game folder is set.
+	 */
+	addonsList: () => __TAURI_INVOKE<{
+	/**
+	 *  The flavor folder, e.g. `_classic_beta_`, and its display name
+	 *  ("WoW: Forever (Beta)"), for the lede.
+	 */
+	flavor: string,
+	game: string,
+	/**  The flavor's `Interface/AddOns` (full path). */
+	folder: string,
+	/**
+	 *  The interface number this client reads (`16001` on Forever), from its
+	 *  version; `None` when the version isn't known.
+	 */
+	interface: number | null,
+	/**
+	 *  The characters the "Enabled for" columns are for, in the Characters
+	 *  screen's order (the WTF roster, older settings folders left out).
+	 */
+	characters: AddonCharacter[],
+	/**  Sorted by title. */
+	addons: AddonInfo[],
+	/**  When this was read (RFC 3339). */
+	read_at: string,
+} | null>("addons_list"),
+	/**
 	 *  One adventure's recap, or the newest one when `id` is `None`. `None`
 	 *  back means there are no adventures yet (or none with that id).
 	 */
@@ -299,6 +328,35 @@ export type AccountNode = {
 	characters: CharacterNode[],
 };
 
+export type AddonCharacter = {
+	account: string,
+	/**  The group folder (Forever's opaque id, or a realm). */
+	group: string,
+	/**  The character folder, e.g. `Ellygie-Vargur`. */
+	folder: string,
+};
+
+export type AddonInfo = {
+	/**  The folder name: the addon's name to WoW and in `AddOns.txt`. */
+	name: string,
+	/**  `## Title`, plain text; the folder name if there's none. */
+	title: string,
+	version: string | null,
+	author: string | null,
+	/**  `## Notes`, plain text. */
+	notes: string | null,
+	/**  Every value in `## Interface`. */
+	interfaces: number[],
+	/**  Every listed interface is below the client's. */
+	out_of_date: boolean,
+	/**  `## Dependencies` / `## RequiredDeps` (and other `Dep…` fields). */
+	needs: string[],
+	/**  The full path of its folder. */
+	path: string,
+	/**  One per `AddonsList::characters`, in that order. */
+	enabled: boolean[],
+};
+
 export type AddonNode = {
 	/**  SavedVariables file stem, e.g. "Details". */
 	name: string,
@@ -329,6 +387,31 @@ export type AddonStatus = {
 };
 
 export type AddonTarget = { kind: "Account"; account: string } | { kind: "Character"; account: string; realm: string; character: string } | { kind: "Everywhere" };
+
+export type AddonsList = {
+	/**
+	 *  The flavor folder, e.g. `_classic_beta_`, and its display name
+	 *  ("WoW: Forever (Beta)"), for the lede.
+	 */
+	flavor: string,
+	game: string,
+	/**  The flavor's `Interface/AddOns` (full path). */
+	folder: string,
+	/**
+	 *  The interface number this client reads (`16001` on Forever), from its
+	 *  version; `None` when the version isn't known.
+	 */
+	interface: number | null,
+	/**
+	 *  The characters the "Enabled for" columns are for, in the Characters
+	 *  screen's order (the WTF roster, older settings folders left out).
+	 */
+	characters: AddonCharacter[],
+	/**  Sorted by title. */
+	addons: AddonInfo[],
+	/**  When this was read (RFC 3339). */
+	read_at: string,
+};
 
 export type Adventure = {
 	id: number,
@@ -705,7 +788,12 @@ export type Flavor = {
 /**  The folders the UI can reveal. A fixed set: the frontend never passes a path. */
 export type FolderTarget = "backups" | "logs" | 
 /**  The active flavor folder, e.g. `<root>/_classic_beta_`. */
-"game";
+"game" | 
+/**
+ *  Its `Interface/AddOns`. Never created by the app: if it isn't there,
+ *  opening it fails.
+ */
+"addons";
 
 export type GameStatus = {
 	running: boolean,

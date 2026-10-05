@@ -34,15 +34,22 @@ pub enum FolderTarget {
     Logs,
     /// The active flavor folder, e.g. `<root>/_classic_beta_`.
     Game,
+    /// Its `Interface/AddOns`. Never created by the app: if it isn't there,
+    /// opening it fails.
+    Addons,
 }
 
 pub fn folder_path(core: &AppCore, which: FolderTarget) -> AppResult<PathBuf> {
+    let game = || {
+        install::current(&core.settings)?
+            .and_then(|i| i.active_flavor().map(|f| f.dir.clone()))
+            .ok_or(AppError::NoInstall)
+    };
     match which {
         FolderTarget::Backups => Ok(core.backups_dir()),
         FolderTarget::Logs => Ok(core.paths.log_dir.clone()),
-        FolderTarget::Game => install::current(&core.settings)?
-            .and_then(|i| i.active_flavor().map(|f| f.dir.clone()))
-            .ok_or(AppError::NoInstall),
+        FolderTarget::Game => game(),
+        FolderTarget::Addons => Ok(game()?.join("Interface").join("AddOns")),
     }
 }
 
@@ -56,7 +63,8 @@ pub fn app_open_folder(
     which: FolderTarget,
 ) -> AppResult<()> {
     let dir = folder_path(&state.core, which)?;
-    if which != FolderTarget::Game {
+    // The app's own folders may not exist yet; the game's are never created.
+    if matches!(which, FolderTarget::Backups | FolderTarget::Logs) {
         std::fs::create_dir_all(&dir)?;
     }
     app.opener()
