@@ -18,6 +18,11 @@ export const commands = {
 	trigger: Trigger,
 	/**  The error, as shown to the user. */
 	error: string,
+	/**
+	 *  0: the backup failed. Otherwise it was taken, but this many files
+	 *  couldn't be read and were left out.
+	 */
+	skipped?: number,
 } | null>("backup_auto_status"),
 	/**
 	 *  "Back up now": a full manual snapshot. Allowed while WoW runs, and then
@@ -226,9 +231,9 @@ export type AppPaths = {
 };
 
 /**
- *  An automatic backup that failed, for the Backups screen (R1): nobody is
- *  watching when one runs, so the failure is kept until a later automatic
- *  backup succeeds, and the UI asks for it on start.
+ *  An automatic backup that failed, or that left files out, for the Backups
+ *  screen (R1): nobody is watching when one runs, so it's kept until a later
+ *  automatic backup captures everything, and the UI asks for it on start.
  */
 export type AutoBackupFailure = {
 	/**  RFC 3339, UTC. */
@@ -236,6 +241,11 @@ export type AutoBackupFailure = {
 	trigger: Trigger,
 	/**  The error, as shown to the user. */
 	error: string,
+	/**
+	 *  0: the backup failed. Otherwise it was taken, but this many files
+	 *  couldn't be read and were left out.
+	 */
+	skipped?: number,
 };
 
 /**  Emitted when a snapshot has been written. */

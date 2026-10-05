@@ -435,6 +435,8 @@ export function Backups({
   show?: Filter | null;
 }) {
   const { list, storage, error, progress, failed, autoFailed, backUpNow } = useBackups();
+  // > 0: the automatic backup was taken but left files out (a warning).
+  const autoSkipped = autoFailed?.skipped ?? 0;
   const [filter, setFilter] = useState<Filter>(show ?? "all");
   const [selected, setSelected] = useState<string | null>(select ?? null);
   const [scope, setScope] = useState<Scope>("characters");
@@ -537,10 +539,15 @@ export function Backups({
         </Callout>
       ) : null}
       {autoFailed && !failed && (
-        <Callout tone="bad">
+        <Callout tone={autoSkipped > 0 ? "ember" : "bad"}>
           <span>
-            <b>The last automatic backup didn't finish</b> ({AUTO_NOTE[autoFailed.trigger]?.toLowerCase() ?? "automatic"},{" "}
-            {when(autoFailed.at)}). {autoFailed.error}
+            <b>
+              {autoSkipped > 0
+                ? `The last automatic backup left out ${plural(autoSkipped, "file", "files")}`
+                : "The last automatic backup didn't finish"}
+            </b>{" "}
+            ({AUTO_NOTE[autoFailed.trigger]?.toLowerCase() ?? "automatic"}, {when(autoFailed.at)}).{" "}
+            {autoFailed.error}
           </span>
           <span className="d-grow" />
           {folderMissing == null && <Button onClick={() => backUpNow()}>Back up now</Button>}

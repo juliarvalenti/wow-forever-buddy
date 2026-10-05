@@ -566,7 +566,26 @@ fn resolve(
         deletes.extend(existing_files(game, &rel)?);
     }
     // Mirror: also remove current files in scope that the snapshot lacks.
-    if mode == RestoreMode::Mirror && manifest.scope == Scope::Full {
+    // A file the snapshot *skipped* (couldn't read) isn't lacking, it was
+    // never copied: deleting it would destroy a file with no backup. So
+    // skipped paths, and anything under a skipped folder, are kept; and a
+    // skip with no path at all (a walk error) means no Mirror deletions.
+    let skipped: Vec<String> = manifest
+        .skipped
+        .iter()
+        .map(|s| s.path.to_lowercase())
+        .collect();
+    let mirror_safe = !skipped.iter().any(String::is_empty);
+    let was_skipped = |path: &str| {
+        let path = path.to_lowercase();
+        skipped.iter().any(|s| {
+            path == *s
+                || path
+                    .strip_prefix(s.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    };
+    if mode == RestoreMode::Mirror && manifest.scope == Scope::Full && mirror_safe {
         let mut roots = vec![RelPath::new("WTF")?];
         if manifest.include_addons {
             roots.push(RelPath::new("Interface/AddOns")?);
@@ -574,7 +593,10 @@ fn resolve(
         for root in roots {
             for rel in existing_files(game, &root)? {
                 let path = rel.as_string();
-                if selected(selection, &path) && !in_snapshot.contains(&path.to_lowercase()) {
+                if selected(selection, &path)
+                    && !in_snapshot.contains(&path.to_lowercase())
+                    && !was_skipped(&path)
+                {
                     deletes.push(rel);
                 }
             }
@@ -685,7 +707,7 @@ fn summarize(resolved: &Resolved) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backup::manifest::Trigger;
+    use crate::backup::manifest::{SkippedFile, Trigger};
     use crate::backup::{SnapshotRequest, SnapshotScope};
     use crate::config::paths::AppPaths;
     use crate::game::process::fake::FakeProbe;
@@ -850,6 +872,45 @@ mod tests {
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()
             .is_none());
+    }
+
+    /// #27 review blocker: a file (or folder) the snapshot skipped was never
+    /// copied, so Mirror must not delete it as "not in that snapshot"; and a
+    /// skip without a path means no Mirror deletions at all.
+    #[test]
+    fn mirror_never_deletes_what_the_snapshot_skipped() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t); // adds NewAddon.lua, which Mirror would remove
+        let store = t.core.backups().unwrap();
+        let mut m = store.manifest(&id).unwrap();
+        let config = "WTF/Config.wtf";
+        let skip = |m: &mut Manifest, path: &str| {
+            m.files
+                .retain(|f| f.path != path && !f.path.starts_with(&format!("{path}/")));
+            m.skipped.push(SkippedFile {
+                path: path.into(),
+                reason: "locked".into(),
+            });
+        };
+        skip(&mut m, config);
+        skip(&mut m, &THRANDOR.to_uppercase()); // case-insensitive
+        store.manifests.write(&m).unwrap();
+
+        let plan = preview(&t, &id, &everything(), RestoreMode::Mirror);
+        assert_eq!(
+            plan.delete,
+            [format!("{ACCT}/SavedVariables/NewAddon.lua")],
+            "only the truly new file; nothing skipped"
+        );
+
+        m.skipped.push(SkippedFile {
+            path: String::new(),
+            reason: "walk error".into(),
+        });
+        store.manifests.write(&m).unwrap();
+        let plan = preview(&t, &id, &everything(), RestoreMode::Mirror);
+        assert!(plan.delete.is_empty(), "a pathless skip: no Mirror deletes");
     }
 
     #[test]

@@ -171,6 +171,17 @@ impl BackupService {
             progress(i as u32 + 1, total);
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
+        // Skipping everything isn't a backup, it's a failure.
+        if files.is_empty() {
+            if let Some(first) = skipped.first() {
+                return Err(AppError::Io(format!(
+                    "none of the game files could be read ({} skipped; first: {}: {})",
+                    skipped.len(),
+                    first.path,
+                    first.reason
+                )));
+            }
+        }
 
         let scope = match req.scope {
             SnapshotScope::Full { .. } => Scope::Full,
@@ -1257,6 +1268,48 @@ mod tests {
         );
         assert_skipped_but_strict_for_safety(&s, "WTF/Config.wtf");
         std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    /// #27 review: a snapshot that captured nothing is a failure, not a
+    /// success with every file skipped.
+    #[cfg(unix)]
+    #[test]
+    fn skipping_every_file_is_a_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let s = setup();
+        let files: Vec<_> = walkdir::WalkDir::new(s.flavor_dir.join("WTF"))
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .map(|e| e.into_path())
+            .collect();
+        let mode = |m| {
+            for f in &files {
+                std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).unwrap();
+            }
+        };
+        mode(0o000);
+        if std::fs::read(&files[0]).is_ok() {
+            mode(0o644);
+            return; // running as root: permissions don't apply
+        }
+        let err = s.service.create(
+            SnapshotRequest {
+                game: &s.game,
+                flavor: "_classic_beta_",
+                trigger: Trigger::GameExit,
+                label: None,
+                scope: SnapshotScope::Full {
+                    include_addons: false,
+                },
+                game_running: false,
+            },
+            &mut |_, _| {},
+        );
+        mode(0o644);
+        assert!(matches!(err, Err(AppError::Io(m)) if m.contains("none of the game files")));
+        assert!(s.service.list().unwrap().is_empty());
     }
 
     #[cfg(any(windows, unix))]
