@@ -49,12 +49,15 @@ impl Db {
     /// set, so the backup store rebuilds its index before it prunes anything,
     /// and `restored_from_copy` names the copy's date if one was used.
     pub fn open(path: &Path) -> AppResult<Self> {
-        backup_before_migrating(path)?;
+        // `false`: copying it showed the db is corrupt, so don't migrate it.
+        let sound = backup_before_migrating(path)?;
+        let first = sound.then(|| Self::open_and_migrate(path));
         let mut quarantined = false;
         let mut restored = None;
-        let conn = match Self::open_and_migrate(path) {
-            Ok(conn) => conn,
-            Err(e) if is_corruption(&e) => {
+        let conn = match first {
+            Some(Ok(conn)) => conn,
+            Some(Err(e)) if !is_corruption(&e) => return Err(migration_error(e)),
+            _ => {
                 quarantine(path)?;
                 quarantined = true;
                 restored = copies::restore_newest(path, LATEST_VERSION);
@@ -70,7 +73,6 @@ impl Db {
                     Err(e) => return Err(migration_error(e)),
                 }
             }
-            Err(e) => return Err(migration_error(e)),
         };
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -161,28 +163,32 @@ fn migration_error(e: rusqlite_migration::Error) -> AppError {
 
 /// Before migrating an existing db (schema older than this build's), takes a
 /// copy of it as it is, so irreplaceable history survives a migration that
-/// goes wrong. If the copy can't be made, the migration doesn't run: the app
-/// shows its startup error instead of risking the only copy. A file that
-/// can't even be read is left to `open`'s corruption handling.
-fn backup_before_migrating(path: &Path) -> AppResult<()> {
+/// goes wrong. If the copy can't be made (disk full, permissions), the
+/// migration doesn't run: the app shows its startup error instead of risking
+/// the only copy.
+///
+/// Returns `false` if copying showed the db is corrupt (a readable header
+/// over damaged pages): `open` then quarantines and restores it rather than
+/// migrating it. A file that can't even be read is left to `open` too.
+fn backup_before_migrating(path: &Path) -> AppResult<bool> {
     if !path.exists() {
-        return Ok(());
+        return Ok(true);
     }
     let Ok(conn) = Connection::open(path) else {
-        return Ok(());
+        return Ok(true);
     };
     let Ok(version) = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)) else {
-        return Ok(());
+        return Ok(true);
     };
     if version == 0 || version >= LATEST_VERSION {
-        return Ok(());
+        return Ok(true);
     }
-    copies::take_pre_migration(&conn, &copies::dir_for(path), version).map_err(|e| {
+    let copy = copies::take_pre_migration(&conn, &copies::dir_for(path), version).map_err(|e| {
         AppError::Db(format!(
             "couldn't back up the database before upgrading it, so it wasn't upgraded: {e}"
         ))
     })?;
-    Ok(())
+    Ok(copy.is_some())
 }
 
 /// Moves a broken db (and its WAL/SHM side files) out of the way, keeping it
@@ -430,6 +436,48 @@ mod tests {
             1,
             "no copy when up to date"
         );
+    }
+
+    /// #41 review: an older db with a readable header but a damaged page is
+    /// quarantined (and the app starts), not a startup failure from the
+    /// pre-migration copy.
+    #[test]
+    fn a_damaged_older_db_is_quarantined_not_fatal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("buddy.db");
+        let mut conn = Connection::open(&path).unwrap();
+        Migrations::from_slice(&MIGRATION_LIST[..3])
+            .to_latest(&mut conn)
+            .unwrap();
+        // Enough rows to span several pages.
+        for i in 0..400 {
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+                (format!("k{i}"), "x".repeat(200)),
+            )
+            .unwrap();
+        }
+        let page: usize = conn
+            .query_row("PRAGMA page_size", [], |r| r.get::<_, i64>(0))
+            .unwrap() as usize;
+        drop(conn);
+        // Zero the last page (holding the rows just inserted, so every full
+        // read hits it), leaving the header (page 1) intact.
+        let mut bytes = std::fs::read(&path).unwrap();
+        let pages = bytes.len() / page;
+        assert!(pages > 4);
+        bytes[(pages - 1) * page..].fill(0);
+        std::fs::write(&path, bytes).unwrap();
+
+        let db = Db::open(&path).expect("starts instead of failing");
+        assert_eq!(tables(&db).len(), 16);
+        assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
+        let quarantined = std::fs::read_dir(tmp.path()).unwrap().flatten().any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("buddy.db.corrupt-")
+        });
+        assert!(quarantined, "the damaged file is kept as evidence");
     }
 
     /// #41 review: two quarantines in the same second keep both files.

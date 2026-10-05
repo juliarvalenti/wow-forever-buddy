@@ -80,7 +80,12 @@ pub fn take_daily(db: &Db, dir: &Path, today: NaiveDate) -> AppResult<Option<Pat
     }
     let tmp = dir.join(format!(".{}.wfb-tmp", file_name(today)));
     let _ = std::fs::remove_file(&tmp);
-    db.with_conn(|c| vacuum_into(c, &tmp))?;
+    if !db.with_conn(|c| vacuum_into(c, &tmp))? {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(AppError::Db(
+            "the database reads as damaged; no copy taken today".into(),
+        ));
+    }
     std::fs::rename(&tmp, &target)?;
     for (_, old) in list(dir).into_iter().skip(KEEP) {
         let _ = std::fs::remove_file(old);
@@ -92,18 +97,25 @@ pub fn take_daily(db: &Db, dir: &Path, today: NaiveDate) -> AppResult<Option<Pat
 /// the latest), a copy of it as it is: `pre-migration-v<from>-<stamp>.db`,
 /// keeping the newest 3. Not a daily copy, so restore never picks it on its
 /// own; it's there to recover by hand if a migration ever goes wrong.
+///
+/// Returns `None` if the db itself turns out to be corrupt while copying
+/// (a readable header over damaged pages): there's nothing sound to copy,
+/// and the caller quarantines it instead. Any other failure is an error.
 pub fn take_pre_migration(
     conn: &rusqlite::Connection,
     dir: &Path,
     from_version: i64,
-) -> AppResult<PathBuf> {
+) -> AppResult<Option<PathBuf>> {
     std::fs::create_dir_all(dir)?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3f");
     let name = format!("{PRE_MIGRATION}v{from_version}-{stamp}{SUFFIX}");
     let target = dir.join(&name);
     let tmp = dir.join(format!(".{name}.wfb-tmp"));
     let _ = std::fs::remove_file(&tmp);
-    vacuum_into(conn, &tmp)?;
+    if !vacuum_into(conn, &tmp)? {
+        let _ = std::fs::remove_file(&tmp);
+        return Ok(None);
+    }
     std::fs::rename(&tmp, &target)?;
     let mut old: Vec<PathBuf> = std::fs::read_dir(dir)?
         .flatten()
@@ -118,17 +130,30 @@ pub fn take_pre_migration(
     for path in old.into_iter().take(excess) {
         let _ = std::fs::remove_file(path);
     }
-    Ok(target)
+    Ok(Some(target))
 }
 
-/// `VACUUM INTO` a temp file, flushed to disk.
-fn vacuum_into(conn: &rusqlite::Connection, tmp: &Path) -> AppResult<()> {
+/// `VACUUM INTO` a temp file, flushed to disk. `Ok(false)`: the source db
+/// is corrupt (SQLite said so while reading it).
+fn vacuum_into(conn: &rusqlite::Connection, tmp: &Path) -> AppResult<bool> {
     let tmp_str = tmp
         .to_str()
         .ok_or_else(|| AppError::Io(format!("db copy path isn't UTF-8: {}", tmp.display())))?;
-    conn.execute("VACUUM INTO ?1", [tmp_str])?;
+    match conn.execute("VACUUM INTO ?1", [tmp_str]) {
+        Ok(_) => {}
+        Err(e) if is_corrupt(&e) => return Ok(false),
+        Err(e) => return Err(e.into()),
+    }
     std::fs::File::open(tmp)?.sync_all()?;
-    Ok(())
+    Ok(true)
+}
+
+/// SQLite reported the database as corrupt or not a database.
+pub fn is_corrupt(e: &rusqlite::Error) -> bool {
+    matches!(
+        e.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+    )
 }
 
 /// Puts the newest copy that opens cleanly in place at `db_path` (which the
