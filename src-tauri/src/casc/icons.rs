@@ -1,16 +1,22 @@
-//! Icons as PNGs in the app's own data folder, keyed by build and
-//! FileDataID: `<cache>/<build key>/<id>.png`. A patch changes the build key,
-//! so a stale icon is never served; a hit needs only `.build.info` read.
+//! Icons as PNGs in the app's own data folder, keyed by product, build and
+//! FileDataID: `<cache>/<product>/<build key>/<id>.png`. A patch changes the
+//! build key, so a stale icon is never served; a hit needs only
+//! `.build.info` read. Each product (Forever, Classic, ...) keeps its own.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::{blp, config, BuildInfo, Casc, CascError, CascResult};
 
-pub fn cache_path(cache: &Path, build: &BuildInfo, id: u32) -> PathBuf {
+/// The folder one build's icons live in.
+pub fn build_dir(cache: &Path, build: &BuildInfo) -> PathBuf {
     cache
+        .join(&build.product)
         .join(config::hex(&build.build_key))
-        .join(format!("{id}.png"))
+}
+
+pub fn cache_path(cache: &Path, build: &BuildInfo, id: u32) -> PathBuf {
+    build_dir(cache, build).join(format!("{id}.png"))
 }
 
 pub struct IconCache {

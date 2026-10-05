@@ -7,6 +7,9 @@ use super::{CascError, CascResult, Key};
 /// The installed build for one product, from `.build.info`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuildInfo {
+    /// e.g. `wow_classic_beta`: lowercase letters, digits and `_` only
+    /// (checked by `flavor_product`), so it's safe as a folder name.
+    pub product: String,
     pub build_key: Key,
     /// e.g. `1.60.1.70205`.
     pub version: String,
@@ -38,18 +41,28 @@ pub fn build_info(text: &str, product: &str) -> CascResult<BuildInfo> {
             .and_then(|k| hex_key(k))
             .ok_or(CascError::Bad(".build.info"))?;
         let version = row.get(version_col).unwrap_or(&"").trim().to_string();
-        return Ok(BuildInfo { build_key, version });
+        return Ok(BuildInfo {
+            product: product.to_string(),
+            build_key,
+            version,
+        });
     }
     Err(CascError::Missing(format!("{product} in .build.info")))
 }
 
 /// The product a flavor folder belongs to: the value row of `.flavor.info`
-/// (`Product Flavor!STRING:0` then e.g. `wow_classic_beta`).
+/// (`Product Flavor!STRING:0` then e.g. `wow_classic_beta`). Anything but a
+/// short `[a-z0-9_]` name is refused: it names the icon cache's folder.
 pub fn flavor_product(text: &str) -> Option<String> {
     text.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .nth(1)
+        .filter(|p| {
+            (1..=64).contains(&p.len())
+                && p.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        })
         .map(str::to_string)
 }
 
@@ -113,6 +126,11 @@ mod tests {
         let text = "Product Flavor!STRING:0\nwow_classic_beta\n";
         assert_eq!(flavor_product(text).as_deref(), Some("wow_classic_beta"));
         assert_eq!(flavor_product("Product Flavor!STRING:0\n"), None);
+        // It becomes a folder name, so nothing path-like gets through.
+        for bad in ["../../evil", "wow\\x", "Wow", "a b", "C:"] {
+            let text = format!("Product Flavor!STRING:0\n{bad}\n");
+            assert_eq!(flavor_product(&text), None, "{bad}");
+        }
     }
 
     #[test]

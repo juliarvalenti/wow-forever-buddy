@@ -12,17 +12,77 @@ const ICON_CKEY: Key = [0x03; 16];
 const ICON_EKEY: Key = [0x13; 16];
 const LOCKED_CKEY: Key = [0x04; 16];
 const LOCKED_EKEY: Key = [0x14; 16];
+const STREAMED_CKEY: Key = [0x05; 16];
+const STREAMED_EKEY: Key = [0x15; 16];
 const BUILD_KEY: &str = "0123456789abcdef0123456789abcdef";
 
-/// An icon that reads, and one whose chunk is encrypted.
+/// An icon that reads, one whose chunk is encrypted, and one that's in the
+/// build but not downloaded yet (until `stream_in`).
 pub(crate) const ICON: u32 = 136_235;
 pub(crate) const LOCKED: u32 = 136_236;
+pub(crate) const STREAMED: u32 = 136_237;
 
 /// A built install; the app's icon tests use it too.
 pub(crate) struct Install {
     _tmp: tempfile::TempDir,
     pub flavor: PathBuf,
     pub data: PathBuf,
+    entries: BTreeMap<usize, Vec<(Key, idx::Location)>>,
+}
+
+impl Install {
+    /// What Battle.net does when the game first needs a streamed file: it's
+    /// appended to an archive, and its bucket's index gets a new version.
+    pub(crate) fn stream_in(&mut self) {
+        let data_dir = self.data.join("data");
+        let path = data_dir.join("data.000");
+        let mut archive = std::fs::read(&path).unwrap();
+        let blte = blte::tests::encode(&[(b'Z', &icon_blp())]);
+        let loc = append(&mut archive, STREAMED_EKEY, blte);
+        std::fs::write(&path, archive).unwrap();
+        let bucket = idx::bucket(&STREAMED_EKEY);
+        let entries = self.entries.entry(bucket).or_default();
+        entries.push((STREAMED_EKEY, loc));
+        std::fs::write(
+            data_dir.join(format!("{bucket:02x}00000003.idx")),
+            idx::tests::build(bucket as u8, entries),
+        )
+        .unwrap();
+    }
+}
+
+impl Install {
+    /// Breaks ICON's BLTE magic in the archive, leaving everything else
+    /// (encoding, root) readable: damaged data, as opposed to absent.
+    pub(crate) fn damage_icon(&self) {
+        let path = self.data.join("data").join("data.000");
+        let mut archive = std::fs::read(&path).unwrap();
+        let mut reversed = ICON_EKEY;
+        reversed.reverse();
+        let at = archive
+            .windows(16)
+            .position(|w| w == reversed)
+            .expect("ICON's header");
+        archive[at + ARCHIVE_HEADER] = b'X';
+        std::fs::write(&path, archive).unwrap();
+    }
+}
+
+/// Adds one file (30-byte header, then its BLTE) to an archive.
+fn append(archive: &mut Vec<u8>, ekey: Key, blte: Vec<u8>) -> idx::Location {
+    let size = (ARCHIVE_HEADER + blte.len()) as u32;
+    let loc = idx::Location {
+        archive: 0,
+        offset: archive.len() as u64,
+        size,
+    };
+    let mut reversed = ekey;
+    reversed.reverse();
+    archive.extend(reversed);
+    archive.extend(size.to_le_bytes());
+    archive.extend([0; 10]);
+    archive.extend(blte);
+    loc
 }
 
 fn icon_blp() -> Vec<u8> {
@@ -65,8 +125,17 @@ pub(crate) fn install() -> Install {
         (ROOT_CKEY, ROOT_EKEY),
         (ICON_CKEY, ICON_EKEY),
         (LOCKED_CKEY, LOCKED_EKEY),
+        (STREAMED_CKEY, STREAMED_EKEY),
     ]]);
-    let root = root::tests::build(&[(0xFFFF_FFFF, 0, &[(ICON, ICON_CKEY), (LOCKED, LOCKED_CKEY)])]);
+    let root = root::tests::build(&[(
+        0xFFFF_FFFF,
+        0,
+        &[
+            (ICON, ICON_CKEY),
+            (LOCKED, LOCKED_CKEY),
+            (STREAMED, STREAMED_CKEY),
+        ],
+    )]);
     let files: [(Key, Vec<u8>); 4] = [
         (ENC_EKEY, blte::tests::encode(&[(b'Z', &encoding)])),
         (ROOT_EKEY, blte::tests::encode(&[(b'N', &root)])),
@@ -80,18 +149,7 @@ pub(crate) fn install() -> Install {
     let mut archive = Vec::new();
     let mut by_bucket: BTreeMap<usize, Vec<(Key, idx::Location)>> = BTreeMap::new();
     for (ekey, blte) in files {
-        let size = (ARCHIVE_HEADER + blte.len()) as u32;
-        let loc = idx::Location {
-            archive: 0,
-            offset: archive.len() as u64,
-            size,
-        };
-        let mut reversed = ekey;
-        reversed.reverse();
-        archive.extend(reversed);
-        archive.extend(size.to_le_bytes());
-        archive.extend([0; 10]);
-        archive.extend(blte);
+        let loc = append(&mut archive, ekey, blte);
         by_bucket
             .entry(idx::bucket(&ekey))
             .or_default()
@@ -100,8 +158,8 @@ pub(crate) fn install() -> Install {
     let data_dir = data.join("data");
     std::fs::create_dir_all(&data_dir).unwrap();
     std::fs::write(data_dir.join("data.000"), archive).unwrap();
-    for (bucket, entries) in by_bucket {
-        let idx = idx::tests::build(bucket as u8, &entries);
+    for (bucket, entries) in &by_bucket {
+        let idx = idx::tests::build(*bucket as u8, entries);
         // An older, empty version alongside, which must be ignored.
         std::fs::write(data_dir.join(format!("{bucket:02x}00000001.idx")), b"").unwrap();
         std::fs::write(data_dir.join(format!("{bucket:02x}00000002.idx")), idx).unwrap();
@@ -110,6 +168,7 @@ pub(crate) fn install() -> Install {
         _tmp: tmp,
         flavor,
         data,
+        entries: by_bucket,
     }
 }
 
@@ -139,7 +198,7 @@ fn reads_an_icon_through_the_whole_chain_and_caches_it() {
     let cache = IconCache::new(cache_dir.path());
     let out = cache.fill(&casc, &[ICON]);
     let path = out[0].1.as_ref().unwrap();
-    assert!(path.ends_with(format!("{BUILD_KEY}/{ICON}.png")));
+    assert!(path.ends_with(format!("wow_classic_beta/{BUILD_KEY}/{ICON}.png")));
     let png = std::fs::read(path).unwrap();
     assert!(png.starts_with(b"\x89PNG"));
 
@@ -169,6 +228,32 @@ fn each_icon_fails_on_its_own() {
         .unwrap()
         .is_dir());
     assert!(!cache_path(cache_dir.path(), &build, LOCKED).exists());
+}
+
+#[test]
+fn a_streamed_file_is_not_local_until_the_index_has_it() {
+    let mut game = install();
+    let cache_dir = tempfile::tempdir().unwrap();
+    let casc = Casc::open(&game.flavor).unwrap();
+    let out = IconCache::new(cache_dir.path()).fill(&casc, &[STREAMED]);
+    assert!(matches!(out[0].1, Err(CascError::NotLocal)));
+    assert!(!out[0].1.as_ref().unwrap_err().is_broken());
+
+    let before = index_set(&game.flavor).unwrap();
+    assert_eq!(before, casc.index_set());
+    game.stream_in();
+    let after = index_set(&game.flavor).unwrap();
+    assert_ne!(before, after, "a new index version is a new set");
+
+    // The storage opened before still can't see it; a fresh one can.
+    let ckey = casc.ckeys(&[STREAMED].into())[&STREAMED];
+    assert!(matches!(casc.by_ckey(&ckey), Err(CascError::NotLocal)));
+    let fresh = Casc::open(&game.flavor).unwrap();
+    assert!(
+        IconCache::new(cache_dir.path()).fill(&fresh, &[STREAMED])[0]
+            .1
+            .is_ok()
+    );
 }
 
 #[test]

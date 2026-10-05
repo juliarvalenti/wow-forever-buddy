@@ -29,7 +29,7 @@ use std::sync::OnceLock;
 use crate::fsx::read::{open_shared, safe_read};
 
 pub use config::BuildInfo;
-pub use icons::{cache_path, IconCache};
+pub use icons::{build_dir, cache_path, IconCache};
 
 /// A 16-byte content or encoding key.
 pub type Key = [u8; 16];
@@ -52,8 +52,23 @@ pub enum CascError {
     Encrypted,
     #[error("not found: {0}")]
     Missing(String),
+    /// In the build but not on this PC yet: Battle.net streams files the
+    /// game hasn't needed, and the local index gains them when it does.
+    #[error("not downloaded yet (not in the local index)")]
+    NotLocal,
     #[error(transparent)]
     Io(#[from] std::io::Error),
+}
+
+impl CascError {
+    /// The data itself couldn't be read (damaged, unreadable or oversized),
+    /// as opposed to a file that's legitimately absent or locked.
+    pub fn is_broken(&self) -> bool {
+        matches!(
+            self,
+            CascError::Bad(_) | CascError::TooBig | CascError::Io(_)
+        )
+    }
 }
 
 pub type CascResult<T> = Result<T, CascError>;
@@ -85,6 +100,18 @@ pub fn build_of(flavor_dir: &Path) -> CascResult<BuildInfo> {
     config::build_info(&read_text(&game_root.join(".build.info"))?, &product)
 }
 
+/// The newest local index file per bucket. Their names carry a version, so
+/// this changes whenever Battle.net adds files to the storage: the moment a
+/// `NotLocal` file may have arrived, and an open `Casc` is out of date.
+pub fn index_set(flavor_dir: &Path) -> CascResult<Vec<PathBuf>> {
+    let data_dir = flavor_dir
+        .parent()
+        .ok_or_else(|| CascError::Missing("WoW root".into()))?
+        .join("Data")
+        .join("data");
+    Ok(idx::newest(&data_dir)?.into_iter().flatten().collect())
+}
+
 impl Casc {
     pub fn open(flavor_dir: &Path) -> CascResult<Casc> {
         let build = build_of(flavor_dir)?;
@@ -113,6 +140,11 @@ impl Casc {
         })
     }
 
+    /// The local index files this was opened with (see `index_set`).
+    pub fn index_set(&self) -> Vec<PathBuf> {
+        self.store.indexes.iter().flatten().cloned().collect()
+    }
+
     /// Content keys for the FileDataIDs that exist in this build.
     pub fn ckeys(&self, ids: &HashSet<u32>) -> HashMap<u32, Key> {
         self.root.ckeys(ids)
@@ -130,6 +162,9 @@ impl Casc {
 impl Store {
     fn read(&self, ekey: &Key, cap: usize) -> CascResult<Vec<u8>> {
         let b = idx::bucket(ekey);
+        if self.indexes[b].is_none() {
+            return Err(CascError::NotLocal); // nothing in that bucket yet
+        }
         let entries = self.buckets[b].get_or_init(|| {
             let path = self.indexes[b].as_ref()?;
             idx::parse(&safe_read(path).ok()?).ok()
@@ -140,7 +175,7 @@ impl Store {
             .ok_or(CascError::Bad("local index"))?
             .get(&prefix)
             .copied()
-            .ok_or_else(|| CascError::Missing("file in local index".into()))?;
+            .ok_or(CascError::NotLocal)?;
         let size = loc.size as usize;
         if size < ARCHIVE_HEADER || size - ARCHIVE_HEADER > cap.saturating_add(4096) {
             return Err(CascError::TooBig);
