@@ -300,7 +300,6 @@ Only the `Slot` kind is built in v0.4. The other two are listed here so the queu
 2. **T-TIP:** the tooltip index generator (§5, with the size test and the too-large state) and the addon's read-only tooltip hook. Sync follows G1.
 3. **B3:** the Dashboard "Sent to the game" panel and its states (plus "too large to send").
 4. **B4:** the while-running exception (§3), after G1 shows that `/reload` re-reads slots.
-
 5. **Later:** the checklist slot and `/fb` frame (§5a), with cooldowns, in its own addon release.
 
 B1 to B3 ship "written when WoW closes, picked up next login" on their own, which is security's safe default.
