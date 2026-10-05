@@ -72,6 +72,9 @@ pub struct Tally {
     /// Only when the level didn't change: across a level the client's XP
     /// numbers restart, and the addon doesn't record the old maximum.
     pub xp: Option<f64>,
+    /// XP from quest rewards, which is known even across a level-up (the
+    /// tally shows it when `xp` isn't).
+    pub quest_xp: f64,
     /// Items looted (not bought or taken from mail).
     pub loot: u32,
     pub deaths: u32,
@@ -601,6 +604,12 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
                 .zip(row.end_money)
                 .map(|(s, e)| (e - s) as f64),
             xp,
+            quest_xp: events
+                .iter()
+                .filter(|e| e.kind == "quest")
+                .filter_map(|e| int(&e.data, "xp"))
+                .filter(|x| *x > 0)
+                .sum::<i64>() as f64,
             loot,
             deaths,
             repairs: repairs as f64,
@@ -637,7 +646,7 @@ pub fn set_note(db: &Db, flavor: &str, id: u32, note: &str) -> AppResult<()> {
         )?)
     })?;
     if changed == 0 {
-        return Err(AppError::Io(format!("no adventure {id}")));
+        return Err(AppError::NotFound(format!("adventure {id}")));
     }
     Ok(())
 }
@@ -762,6 +771,7 @@ pub(crate) mod tests {
         assert_eq!(a.travelled, ["Eastern Plaguelands", "Stratholme"]);
         assert_eq!(a.tally.gold, Some(312.0 * G as f64));
         assert_eq!(a.tally.xp, None, "levelled, so XP can't be summed");
+        assert_eq!(a.tally.quest_xp, 38_400.0, "but quest XP is known");
         assert_eq!(
             (a.tally.loot, a.tally.deaths, a.tally.repairs),
             (41, 1, 60_000.0)
@@ -936,7 +946,10 @@ pub(crate) mod tests {
         set_note(&db, FLAVOR, id, "   ").unwrap();
         assert_eq!(note(&db), None);
         assert!(
-            set_note(&db, "_retail_", id, "x").is_err(),
+            matches!(
+                set_note(&db, "_retail_", id, "x"),
+                Err(AppError::NotFound(_))
+            ),
             "not this flavor's"
         );
     }

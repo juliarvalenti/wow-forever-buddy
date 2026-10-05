@@ -212,7 +212,12 @@ function Shell() {
           <Ledger onOpenDashboard={() => setScreen("dashboard")} onOpenAdventure={openAdventure} />
         )}
         {current === "adventures" && (
-          <Adventure id={adventureId} onOpen={openAdventure} onOpenDashboard={() => setScreen("dashboard")} />
+          <Adventure
+            id={adventureId}
+            onOpen={openAdventure}
+            onOpenDashboard={() => setScreen("dashboard")}
+            onOpenJournal={() => setScreen("ledger")}
+          />
         )}
         {current === "game" && <GameFolder install={install} />}
       </main>

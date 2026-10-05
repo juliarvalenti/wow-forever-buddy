@@ -350,7 +350,7 @@ export function installMockIpc(): void {
       level_end: 60,
       last_zone: "Eastern Plaguelands",
       travelled: ["Eastern Plaguelands", "Stratholme"],
-      tally: { gold: 3_124_000, xp: null, loot: 47, deaths: 1, repairs: 180_000 },
+      tally: { gold: 3_124_000, xp: null, quest_xp: 148_210, loot: 47, deaths: 1, repairs: 180_000 },
       money: [
         { at: t(0), money: 18_280_000 },
         { at: t(40), money: 18_910_000 },

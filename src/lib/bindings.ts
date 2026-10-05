@@ -1172,6 +1172,11 @@ export type Tally = {
 	 *  numbers restart, and the addon doesn't record the old maximum.
 	 */
 	xp: number | null,
+	/**
+	 *  XP from quest rewards, which is known even across a level-up (the
+	 *  tally shows it when `xp` isn't).
+	 */
+	quest_xp: number | null,
 	/**  Items looted (not bought or taken from mail). */
 	loot: number,
 	deaths: number,

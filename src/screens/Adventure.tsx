@@ -59,6 +59,36 @@ function useAdventure(id: number | null) {
   return { adventure, error, reload: load };
 }
 
+/** Which label wins when two crowd each other: a ding over a death over a
+ *  boss over a quest. */
+const PRIORITY: Record<string, number> = { level: 4, death: 3, encounter: 2, quest: 1 };
+
+/** The chart markers' short labels, as in the mock: "died", the boss's first
+ *  word ("Baron"), "ding", "quest". Labels closer than 34px are merged:
+ *  quests into "quests", anything else keeps the more important one. */
+function markerLabels(a: AdventureData, x: (t: number) => number): { x: number; text: string }[] {
+  const out: { x: number; text: string; kind: string }[] = [];
+  for (const m of a.markers) {
+    const mx = x(new Date(m.at).getTime());
+    const text =
+      m.kind === "death"
+        ? "died"
+        : m.kind === "level"
+          ? "ding"
+          : m.kind === "quest"
+            ? "quest"
+            : (m.label.replace(/^Defeated /, "").split(" ")[0] ?? "boss");
+    const last = out[out.length - 1];
+    if (last && mx - last.x < 34) {
+      if (last.kind === "quest" && m.kind === "quest") last.text = "quests";
+      else if ((PRIORITY[m.kind] ?? 0) > (PRIORITY[last.kind] ?? 0)) Object.assign(last, { x: mx, text, kind: m.kind });
+      continue;
+    }
+    out.push({ x: mx, text, kind: m.kind });
+  }
+  return out;
+}
+
 /** Gold through the evening, with deaths, bosses, dings and quests marked. */
 function MoneyChart({ a }: { a: AdventureData }) {
   const svg = useRef<SVGSVGElement>(null);
@@ -72,7 +102,8 @@ function MoneyChart({ a }: { a: AdventureData }) {
   }, []);
   const pts = a.money.map((p) => ({ t: new Date(p.at).getTime(), g: (p.money ?? 0) / 10_000 }));
   if (pts.length < 2) return null;
-  const H = 92, L = 38, R = 8, T = 6, B = 16;
+  // T leaves room for the marker labels above the plot.
+  const H = 104, L = 38, R = 8, T = 18, B = 16;
   const t0 = pts[0].t, t1 = Math.max(pts[pts.length - 1].t, t0 + 1);
   const lo = Math.min(...pts.map((p) => p.g)), hi = Math.max(...pts.map((p) => p.g));
   const pad = Math.max(1, (hi - lo) * 0.15);
@@ -112,6 +143,13 @@ function MoneyChart({ a }: { a: AdventureData }) {
           </line>
         );
       })}
+      <g className="ev">
+        {markerLabels(a, x).map((l) => (
+          <text key={l.x} x={l.x} y={T - 5} textAnchor="middle">
+            {l.text}
+          </text>
+        ))}
+      </g>
       <path d={d} fill="none" stroke="#3a2616" strokeWidth={2} />
     </svg>
   );
@@ -182,10 +220,12 @@ export function Adventure({
   id,
   onOpen,
   onOpenDashboard,
+  onOpenJournal,
 }: {
   id: number | null;
   onOpen: (id: number) => void;
   onOpenDashboard: () => void;
+  onOpenJournal: () => void;
 }) {
   const { adventure: a, error, reload } = useAdventure(id);
 
@@ -224,6 +264,13 @@ export function Adventure({
 
   return (
     <Page>
+      <p className="d-crumb">
+        {/* The list of adventures is the Ledger's journal. */}
+        <button onClick={onOpenJournal} title="All adventures, in the Ledger's journal">
+          Adventures
+        </button>{" "}
+        › {a.name} · {shortDay(a.login)}
+      </p>
       <PageHeader
         title={a.title}
         lede={`${longDay(a.login)} · ${clock(a.login)}${a.logout ? ` – ${clock(a.logout)}` : ""} · written from your login and logout snapshots`}
@@ -284,12 +331,18 @@ export function Adventure({
                   {a.tally.gold != null ? gold(a.tally.gold, true) : ""}
                 </div>
               </div>
-              {a.tally.xp != null && (
+              {a.tally.xp != null ? (
                 <div>
                   <div className="k">Experience</div>
                   <div className="v">+{a.tally.xp.toLocaleString()}</div>
                 </div>
-              )}
+              ) : (a.tally.quest_xp ?? 0) > 0 ? (
+                // Across a level-up only the quest rewards are known.
+                <div>
+                  <div className="k">Quest XP</div>
+                  <div className="v">+{(a.tally.quest_xp ?? 0).toLocaleString()}</div>
+                </div>
+              ) : null}
               <div>
                 <div className="k">Loot</div>
                 <div className="v">
