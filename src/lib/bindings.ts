@@ -191,7 +191,12 @@ export type AddonTarget = { kind: "Account"; account: string } | { kind: "Charac
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
  */
-export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
+export type AppError = 
+/**
+ *  What's blocking, e.g. "WowB.exe is running", so a false positive (a
+ *  tool that looks like the game) is diagnosable.
+ */
+{ kind: "GameRunning"; detail: string } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
 	file: string,
 	line: number,
 	col: number,
@@ -595,6 +600,11 @@ export type RestorePlan = {
 	 *  cleared; players do this on purpose (e.g. to pin Config.wtf).
 	 */
 	read_only: string[],
+	/**
+	 *  Files (or folders) in the selection that the snapshot couldn't read
+	 *  at the time: not in this backup, so left as they are, never deleted.
+	 */
+	not_backed_up: string[],
 	/**  "keybindings, macros and 41 addon settings". */
 	summary: string,
 };

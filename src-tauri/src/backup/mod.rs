@@ -637,7 +637,12 @@ fn collect_targets(
                                 .unwrap_or_else(|_| p.to_string_lossy().into_owned())
                         })
                         .unwrap_or_default(),
-                    reason: e.to_string(),
+                    reason: match e {
+                        AppError::PathEscape(_) => {
+                            "a link to outside the game folder (not followed)".into()
+                        }
+                        e => e.to_string(),
+                    },
                 }),
                 Err((_, e)) => return Err(e),
             }

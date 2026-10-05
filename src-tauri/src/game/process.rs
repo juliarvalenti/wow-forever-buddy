@@ -5,8 +5,10 @@
 //!   install's game. Exe paths are canonicalized before comparing with the
 //!   install root, so a game launched through a junction, `subst` drive or
 //!   other alias still matches.
-//! - **Write gate** (`is_running_now`): fails closed. Anything the display
-//!   rule matches, plus any process with a WoW exe name wherever it lives.
+//! - **Write gate** (`blocking_now`): fails closed. Anything the display
+//!   rule matches, plus any process with a WoW client name (the flavor
+//!   table, Blizzard's naming pattern, or a name from settings) wherever it
+//!   lives.
 //!   A second WoW install blocks our writes while it runs, which is the safe
 //!   direction. A process list that doesn't even include this app means
 //!   enumeration failed: that's "unknown", and it blocks writes too.
@@ -43,19 +45,28 @@ pub fn is_wow_exe(name: &str) -> bool {
         || name.eq_ignore_ascii_case(MAC_APP_NAME)
 }
 
-/// `wow*.exe` programs that aren't the game: addon managers, and this app
-/// itself (`wow-forever-buddy.exe`, Cargo package = mainBinaryName).
-const NOT_THE_GAME: &[&str] = &["wowup", "wowup-cf", "wowmatrix", env!("CARGO_PKG_NAME")];
-
-/// Any other `wow*.exe` (a new flavor, a renamed build). Only the write gate
-/// uses this, so an unknown name blocks writes (safe) without being shown as
-/// "WoW is running" or starting a game-exit backup when it closes.
+/// Blizzard's client naming pattern, `^wow(classic)?[a-z]?(-64|-arm64)?\.exe$`
+/// (case-insensitive): `Wow.exe`, `WowB-arm64.exe`, `WowClassicT.exe`, …,
+/// so a flavor the table doesn't know yet still counts. Tools that merely
+/// start with "wow" (WowUp, WowUp-CF, this app's `wow-forever-buddy.exe`)
+/// don't fit it, so no denylist is needed; a renamed build goes in settings
+/// (`process_names_extra`). Only the write gate uses this, so an unknown
+/// name blocks writes (safe) without being shown as "WoW is running" or
+/// starting a game-exit backup when it closes.
 fn looks_like_wow(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    let Some(stem) = lower.strip_suffix(".exe") else {
+    let Some(rest) = lower
+        .strip_suffix(".exe")
+        .and_then(|s| s.strip_prefix("wow"))
+    else {
         return false;
     };
-    stem.starts_with("wow") && !NOT_THE_GAME.contains(&stem)
+    let rest = rest.strip_prefix("classic").unwrap_or(rest);
+    let rest = rest
+        .strip_suffix("-arm64")
+        .or_else(|| rest.strip_suffix("-64"))
+        .unwrap_or(rest);
+    rest.is_empty() || (rest.len() == 1 && rest.as_bytes()[0].is_ascii_lowercase())
 }
 
 /// The write gate's answer.
@@ -67,6 +78,24 @@ pub enum GameCheck {
     /// nobody knows. Writes are blocked; automatic backups still run, flagged
     /// as taken while the game may be running.
     Unknown,
+}
+
+/// Why writes are blocked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Blocker {
+    /// This process (exe name) counts as WoW.
+    Process(String),
+    /// The process list couldn't be read.
+    Unknown,
+}
+
+impl std::fmt::Display for Blocker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Blocker::Process(name) => write!(f, "{name} is running"),
+            Blocker::Unknown => f.write_str("can't tell which programs are running"),
+        }
+    }
 }
 
 /// One running process, as the OS reports it.
@@ -233,21 +262,31 @@ impl GameWatcher {
     /// Asks the OS right now (never the cached status), counting any WoW
     /// exe wherever it runs from.
     pub fn check_now(&self, target: &ProbeTarget) -> GameCheck {
-        let list = self.probe.processes();
-        if !includes_self(&list) {
-            return GameCheck::Unknown;
-        }
-        let matcher = Matcher::new(target);
-        if list.iter().any(|p| matcher.blocks_writes(p)) {
-            GameCheck::Running
-        } else {
-            GameCheck::NotRunning
+        match self.blocking_now(target) {
+            None => GameCheck::NotRunning,
+            Some(Blocker::Process(_)) => GameCheck::Running,
+            Some(Blocker::Unknown) => GameCheck::Unknown,
         }
     }
 
-    /// For the write gate: fails closed, so "unknown" counts as running.
+    /// What blocks writes right now, if anything, so the error can name it
+    /// ("WowB.exe is running") and a false positive is diagnosable.
+    pub fn blocking_now(&self, target: &ProbeTarget) -> Option<Blocker> {
+        let list = self.probe.processes();
+        if !includes_self(&list) {
+            return Some(Blocker::Unknown);
+        }
+        let matcher = Matcher::new(target);
+        list.iter()
+            .find(|p| matcher.blocks_writes(p))
+            .map(|p| Blocker::Process(p.name.clone()))
+    }
+
+    /// Fails closed, so "unknown" counts as running. (The gate itself uses
+    /// `blocking_now`, to name the blocker.)
+    #[cfg(test)]
     pub fn is_running_now(&self, target: &ProbeTarget) -> bool {
-        self.check_now(target) != GameCheck::NotRunning
+        self.blocking_now(target).is_some()
     }
 
     /// One poll for the displayed status: updates it and returns a
@@ -503,12 +542,12 @@ mod tests {
     }
 
     /// R2: one exe list (the flavor table, arm64 included) for the display;
-    /// any other wow*.exe blocks writes only; addon managers and this app's
-    /// own `wow-forever-buddy.exe` are never the game.
+    /// the client naming pattern blocks writes only; addon managers and this
+    /// app's own `wow-forever-buddy.exe` are never the game.
     #[test]
     fn wow_exe_names_come_from_the_flavor_table() {
         for name in known_exe_names() {
-            assert!(is_wow_exe(name), "{name}");
+            assert!(is_wow_exe(name) && looks_like_wow(name), "{name}");
         }
         for name in [
             "WowT-arm64.exe",
@@ -517,7 +556,8 @@ mod tests {
         ] {
             assert!(is_wow_exe(name), "{name}");
         }
-        for name in ["wowclassicb.EXE", "WowForever.exe"] {
+        // Flavors the table doesn't know yet still fit the pattern.
+        for name in ["wowclassicb.EXE", "WowX-64.exe", "WowClassicZ-arm64.exe"] {
             assert!(
                 !is_wow_exe(name) && looks_like_wow(name),
                 "{name}: gate only"
@@ -530,27 +570,47 @@ mod tests {
             "WowUp.exe",
             "WowUp-CF.exe",
             "WowMatrix.exe",
+            "WowForever.exe", // a renamed build goes in process_names_extra
+            "WowAB.exe",
+            "Wow-32.exe",
             "Battle.net.exe",
             "explorer.exe",
-            "wowsers.txt",
+            "wow.txt",
         ] {
             assert!(!is_wow_exe(name) && !looks_like_wow(name), "{name}");
         }
     }
 
-    /// #27 review: an unknown wow*.exe blocks writes but isn't shown as
-    /// "WoW is running" (so its exit doesn't start a game-exit backup), and
-    /// WowUp blocks nothing.
+    /// #27 review: a pattern name the table doesn't know blocks writes but
+    /// isn't shown as "WoW is running" (so its exit doesn't start a
+    /// game-exit backup); WowUp blocks nothing; any exe under the install
+    /// root blocks; and the blocker is named.
     #[test]
-    fn wildcard_names_only_affect_the_gate() {
+    fn pattern_names_only_affect_the_gate() {
         let t = target(Path::new("/Games/World of Warcraft"));
-        let w = watcher_with(vec![proc(5, "WowForever.exe", None)]);
+        let w = watcher_with(vec![proc(5, "WowX.exe", None)]);
         assert_eq!(w.poll(&t), None, "not displayed as running");
-        assert!(w.is_running_now(&t), "but writes are blocked");
+        let blocker = w.blocking_now(&t).expect("writes are blocked");
+        assert_eq!(blocker, Blocker::Process("WowX.exe".into()));
+        assert_eq!(blocker.to_string(), "WowX.exe is running");
 
-        let w = watcher_with(vec![proc(6, "WowUp-CF.exe", None)]);
+        let w = watcher_with(vec![
+            proc(
+                6,
+                "WowUp-CF.exe",
+                Some(PathBuf::from("/Apps/WowUp/WowUp-CF.exe")),
+            ),
+            proc(7, "WowUp.exe", None),
+        ]);
         assert_eq!(w.poll(&t), None);
-        assert!(!w.is_running_now(&t));
+        assert!(!w.is_running_now(&t), "addon managers never block");
+
+        let tool = PathBuf::from("/Games/World of Warcraft/Tools/Anything.exe");
+        let w = watcher_with(vec![proc(8, "Anything.exe", Some(tool))]);
+        assert!(
+            w.is_running_now(&t),
+            "anything under the install root blocks"
+        );
     }
 
     /// R2: this app never blocks its own writes, even installed under the
