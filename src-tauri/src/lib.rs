@@ -5,6 +5,7 @@ mod ah;
 mod applog;
 mod backup;
 mod bridge;
+pub mod casc;
 mod characters;
 mod commands;
 mod config;

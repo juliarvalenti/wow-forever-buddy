@@ -51,6 +51,10 @@ zip = { version = "8", default-features = false, features = ["deflate-flate2-zli
 # Auctionator's price database (F5): modern clients store each realm's prices
 # as a CBOR string (C_EncodingUtil.SerializeCBOR) inside its SavedVariables.
 ciborium = "0.2"
+# Item icons from the game's CASC storage: BLTE chunks are zlib, icons are
+# re-encoded as PNG. Both were already in the tree (zip, tauri).
+flate2 = "1"
+png = "0.18"
 
 [dev-dependencies]
 full_moon = "3"
