@@ -43,7 +43,7 @@ pub fn export_zip(
     forbidden: &[PathBuf],
     progress: &mut dyn FnMut(u32, u32),
 ) -> AppResult<ExportReport> {
-    let dest = check_destination(dest, forbidden)?;
+    let dest = check_destination(dest, forbidden, "zip")?;
     let manifest = backups.manifest(id)?;
     let total = manifest.files.len() as u32;
 
@@ -90,10 +90,11 @@ pub fn export_zip(
     })
 }
 
-/// `dest` as it will be written: absolute, ending in `.zip`, in a folder
+/// `dest` as it will be written: absolute, ending in `.<ext>`, in a folder
 /// that exists and isn't inside a forbidden one (compared after resolving
-/// links, so an alias of the game folder can't sneak by).
-fn check_destination(dest: &Path, forbidden: &[PathBuf]) -> AppResult<PathBuf> {
+/// links, so an alias of the game folder can't sneak by). Also used by the
+/// Ledger's CSV export.
+pub fn check_destination(dest: &Path, forbidden: &[PathBuf], ext: &str) -> AppResult<PathBuf> {
     let bad = |why: &str| AppError::BadDestination(format!("{why}: {}", dest.display()));
     if !dest.is_absolute() {
         return Err(bad("not an absolute path"));
@@ -105,12 +106,12 @@ fn check_destination(dest: &Path, forbidden: &[PathBuf]) -> AppResult<PathBuf> {
         return Err(bad("the folder doesn't exist"));
     }
     let mut dest = dest.to_path_buf();
-    let is_zip = Path::new(name)
+    let has_ext = Path::new(name)
         .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("zip"));
-    if !is_zip {
+        .is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    if !has_ext {
         let mut name = name.to_os_string();
-        name.push(".zip");
+        name.push(format!(".{ext}"));
         dest.set_file_name(name);
     }
     if dest.is_dir() {
