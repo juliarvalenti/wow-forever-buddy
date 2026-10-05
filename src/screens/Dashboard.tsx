@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, FolderOpen, RefreshCw } from "lucide-react";
-import { Icon, type IconName } from "@/components/d/Icon";
+import { Check, Clock, FolderOpen, RefreshCw, Scale, ScrollText, Shield, ShoppingBag, TrendingUp } from "lucide-react";
 import {
   commands,
   type GameStatus,
@@ -18,7 +17,7 @@ import {
   Panel,
   PanelBody,
   PanelHeader,
-  Parchment,
+  Pill,
   PrimaryButton,
   Tile,
 } from "@/components/d";
@@ -76,11 +75,11 @@ function SessionWho({ s }: { s: PlaySession }) {
   );
 }
 
-const UNLOCKS: { icon: IconName; title: string; text: string }[] = [
-  { icon: "trend", title: "Gold over time", text: "Per character and account-wide." },
-  { icon: "bag", title: "Satchels & gear", text: "Search every alt's bags and bank." },
-  { icon: "scroll", title: "Adventures", text: "Gold, XP and loot for each session." },
-  { icon: "scale", title: "AH prices", text: "From your own in-game scans." },
+const UNLOCKS = [
+  { icon: TrendingUp, title: "Gold over time", text: "Per character and account-wide." },
+  { icon: ShoppingBag, title: "Satchels & gear", text: "Search every alt's bags and bank." },
+  { icon: ScrollText, title: "Adventures", text: "Gold, XP and loot for each session." },
+  { icon: Scale, title: "AH prices", text: "From your own in-game scans." },
 ];
 
 /** Home screen. v0.1 has no addon, so it shows what the app knows without
@@ -243,72 +242,75 @@ export function Dashboard({
       </section>
 
       <section className="d-cols">
-        <Parchment title="Your ledger is blank" meta="one small addon away" tilt ruled className="invite">
-          <p className="intro">
-            Your backups and play sessions are already being kept. To fill this page with gold,
-            gear and what happened in each session, Forever Buddy needs its companion addon, which
-            notes down each character when you log out.
-          </p>
-          <div className="unlocks">
-            {UNLOCKS.map(({ icon, title, text }) => (
-              <div key={title}>
-                <Icon name={icon} />
-                <b>{title}</b>
-                <span>{text}</span>
-              </div>
-            ))}
-          </div>
-          <div className="trust">
-            <Icon name="shield" className="sm" />
-            <span>
+        <Panel>
+          <PanelHeader title="Your ledger is blank">
+            <span className="d-grow" />
+            <span className="d-dim">one small addon away</span>
+          </PanelHeader>
+          <PanelBody>
+            <p className="d-muted">
+              Your backups and play sessions are already being kept. To fill this page with gold,
+              gear and what happened in each session, Forever Buddy needs its companion addon,
+              which notes down each character when you log out.
+            </p>
+            <div className="d-unlocks">
+              {UNLOCKS.map(({ icon: Icon, title, text }) => (
+                <div key={title}>
+                  <Icon size={16} aria-hidden />
+                  <b>{title}</b>
+                  <span>{text}</span>
+                </div>
+              ))}
+            </div>
+            <p className="d-dim" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <Shield size={13} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
               The addon only writes to its own SavedVariables file. No network, and nothing else
               in your UI is touched.
-            </span>
-          </div>
-          <ol className="steps">
-            <li>
-              <div>
-                <div className="st">Install ForeverBuddy</div>
-                <div className="sd">
-                  The companion addon arrives with the next update of Forever Buddy. Backups
-                  already work in the meantime.
-                </div>
-                <div className="acts">
-                  <span className="pill soon-pill">
-                    <Icon name="clock" className="sm" />
-                    Coming in the next update
-                  </span>
-                </div>
-              </div>
-            </li>
-            <li>
-              <div>
-                <div className="st">Log in once on each character</div>
-                <div className="sd">
-                  Or type <span className="mono">/reload</span>. Each one is ticked off here as
-                  it's noted.
-                </div>
-                {names.length > 0 && (
-                  <div className="visits">
-                    {names.slice(0, 12).map((n) => (
-                      <span key={n}>{n}</span>
-                    ))}
-                    {names.length > 12 && <span>+{names.length - 12} more</span>}
+            </p>
+            <ol className="d-steps">
+              <li>
+                <div>
+                  <div className="st">Install ForeverBuddy</div>
+                  <div className="sd">
+                    The companion addon arrives with the next update of Forever Buddy. Backups
+                    already work in the meantime.
                   </div>
-                )}
-              </div>
-            </li>
-            <li>
-              <div>
-                <div className="st">Your ledger fills in</div>
-                <div className="sd">
-                  Gold, gear and the session journal appear after each logout. History starts
-                  from today.
+                  <div style={{ marginTop: 8 }}>
+                    <Pill kind="auto">
+                      <Clock size={12} aria-hidden /> Coming in the next update
+                    </Pill>
+                  </div>
                 </div>
-              </div>
-            </li>
-          </ol>
-        </Parchment>
+              </li>
+              <li>
+                <div>
+                  <div className="st">Log in once on each character</div>
+                  <div className="sd">
+                    Or type <span className="d-mono">/reload</span>. Each one is ticked off here
+                    as it's noted.
+                  </div>
+                  {names.length > 0 && (
+                    <div className="d-chips">
+                      {names.slice(0, 12).map((n) => (
+                        <span key={n}>{n}</span>
+                      ))}
+                      {names.length > 12 && <span>+{names.length - 12} more</span>}
+                    </div>
+                  )}
+                </div>
+              </li>
+              <li>
+                <div>
+                  <div className="st">Your ledger fills in</div>
+                  <div className="sd">
+                    Gold, gear and the session journal appear after each logout. History starts
+                    from today.
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </PanelBody>
+        </Panel>
 
         <div className="d-stack">
           <Panel>

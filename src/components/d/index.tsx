@@ -49,27 +49,6 @@ export function PanelBody({ children }: Children) {
   return <div className="d-panel-body">{children}</div>;
 }
 
-/** Parchment: only for records (the ledger, session recaps). Mock classes:
- *  article.parchment(.tilt) > .ph (h2 + .meta) + .pb(.ruled). */
-export function Parchment({
-  title,
-  meta,
-  tilt,
-  ruled,
-  className,
-  children,
-}: Children & { title: ReactNode; meta?: ReactNode; tilt?: boolean; ruled?: boolean; className?: string }) {
-  return (
-    <article className={["parchment", tilt && "tilt", className].filter(Boolean).join(" ")}>
-      <div className="ph">
-        <h2>{title}</h2>
-        {meta && <span className="meta">{meta}</span>}
-      </div>
-      <div className={ruled ? "pb ruled" : "pb"}>{children}</div>
-    </article>
-  );
-}
-
 export function Tile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
     <div className="d-tile">
