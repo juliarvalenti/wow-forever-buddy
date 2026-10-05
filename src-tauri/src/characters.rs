@@ -69,6 +69,8 @@ pub struct ItemRow {
     /// 0 poor … 5 legendary, when known.
     pub quality: Option<u8>,
     pub ilvl: Option<u32>,
+    /// Its icon's FileDataID, for `icon://` (see `icons`).
+    pub icon: Option<u32>,
     pub count: u32,
     /// When this character last looted one (RFC 3339), if the journal has
     /// it, and the zone it was in. Never a source (IMPLEMENTING.md §7).
@@ -329,7 +331,7 @@ fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<
              AND json_extract(e.data, '$.how') IS NULL
          )
          SELECT i.container, i.slot, i.item_id, i.link, i.count, it.name, it.quality, it.ilvl,
-                l.at, l.zone
+                l.at, l.zone, it.icon_file_id
          FROM char_items i
          LEFT JOIN items it ON it.item_id = i.item_id
          LEFT JOIN loot l ON l.item_id = i.item_id AND l.n = 1
@@ -352,6 +354,7 @@ fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<
                     .and_then(|q| u8::try_from(q).ok())
                     .or_else(|| link_quality(&link)),
                 ilvl: opt_u32(r.get(7)?),
+                icon: opt_u32(r.get(10)?),
                 count: r.get::<_, i64>(4)? as u32,
                 looted_at: r.get::<_, Option<i64>>(8)?.map(iso),
                 looted_in: r.get(9)?,
@@ -510,6 +513,7 @@ pub struct SearchHit {
     pub name: String,
     pub quality: Option<u8>,
     pub ilvl: Option<u32>,
+    pub icon: Option<u32>,
     /// Summed over every stack of it in that place.
     pub count: u32,
     /// Bank and mail: when that place was last seen (RFC 3339), for "As of
@@ -615,7 +619,8 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
         db.with_conn(|c| {
             let mut stmt = c.prepare(
                 "SELECT c.id, c.name, c.surname, c.class, i.location, i.item_id, max(i.link),
-                        sum(i.count), it.name, it.quality, it.ilvl, max(i.as_of)
+                        sum(i.count), it.name, it.quality, it.ilvl, max(i.as_of),
+                        it.icon_file_id
                  FROM char_items i
                  JOIN characters c ON c.id = i.character_id
                  LEFT JOIN items it ON it.item_id = i.item_id
@@ -649,6 +654,7 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
                         .and_then(|q| u8::try_from(q).ok())
                         .or_else(|| link_quality(&link)),
                     ilvl: opt_u32(r.get(10)?),
+                    icon: opt_u32(r.get(12)?),
                     count: u32::try_from(r.get::<_, i64>(7)?).unwrap_or(u32::MAX),
                     as_of,
                 })

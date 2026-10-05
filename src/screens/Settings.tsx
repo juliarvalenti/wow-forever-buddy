@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, KeyRound, Lock } from "lucide-react";
-import type { AhStatus, AppInfo, IntegrationId, StorageInfo } from "@/lib/bindings";
+import type { AhStatus, AppInfo, IconCacheStatus, IntegrationId, StorageInfo } from "@/lib/bindings";
 import { commands, events } from "@/lib/bindings";
 import {
   Button,
@@ -179,6 +179,7 @@ export function Settings({
               </div>
             </div>
             <AhNote status={ah} />
+            <GameDataCache />
           </Panel>
 
           <Panel>
@@ -436,6 +437,71 @@ function SwitchRow({
       <div className="ctl">
         <Switch checked={checked} onChange={onChange} label={title} disabled={disabled} />
       </div>
+    </div>
+  );
+}
+
+/** F8: item icons read from the game's own files, cached on this PC. Rebuild
+ *  reads every known item's icon again; Clear empties it, and icons are read
+ *  again as they're shown. */
+function GameDataCache() {
+  const [status, setStatus] = useState<IconCacheStatus | null>(null);
+  const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  const refresh = () => commands.iconsCacheStatus().then(setStatus, (e) => setResult(errorText(e)));
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const run = async (what: "rebuild" | "clear") => {
+    setBusy(what);
+    setResult(null);
+    try {
+      if (what === "rebuild") {
+        const r = await commands.iconsCacheRebuild();
+        setResult(
+          `Read ${plural(r.read, "icon", "icons")}.` +
+            (r.failed ? ` ${plural(r.failed, "icon", "icons")} couldn't be read and show a letter instead.` : ""),
+        );
+      } else {
+        await commands.iconsCacheClear();
+        setResult("Cleared. Icons are read again as they're shown.");
+      }
+    } catch (e) {
+      setResult(errorText(e));
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  };
+
+  return (
+    <div className="st-set full">
+      <div className="t">Game data cache</div>
+      <div className="d">
+        {status?.build
+          ? `Item icons read from your own game files (version ${status.build}) and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch.`
+          : "Item icons are read from your WoW install once the game folder is set. Until then, items show a letter."}
+      </div>
+      <div className="ctl" style={{ marginTop: 6 }}>
+        <span className="d-dim">
+          {status ? `${plural(status.files, "icon", "icons")} · ${bytes(status.bytes)}` : "…"}
+        </span>
+        <span className="d-grow" />
+        <Button onClick={() => run("rebuild")} disabled={busy != null || !status?.build}>
+          {busy === "rebuild" ? "Rebuilding…" : "Rebuild"}
+        </Button>
+        <Button variant="ghost" onClick={() => run("clear")} disabled={busy != null || !status?.files}>
+          {busy === "clear" ? "Clearing…" : "Clear"}
+        </Button>
+      </div>
+      {status?.unreadable && (
+        <div className="d" style={{ marginTop: 6, color: "var(--warn)" }}>
+          Couldn't read the game's art files, so items show letters instead. Nothing else is affected.
+        </div>
+      )}
+      {result && <div className="d" style={{ marginTop: 6 }}>{result}</div>}
     </div>
   );
 }

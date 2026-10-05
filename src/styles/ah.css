@@ -12,7 +12,7 @@
 .ah-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 
 .ah-ico { width: 24px; height: 24px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 12px "Marcellus", Georgia, serif; overflow: hidden;
-  background: linear-gradient(135deg, #3a3631, #141311); border: 1px solid currentColor; box-shadow: inset 0 0 0 1px #000, inset 0 0 8px rgba(0, 0, 0, .6); }
+  background: linear-gradient(135deg, #3a3631, #141311); border: 1px solid currentColor; }
 .ah-ico b { color: #e8dfd0; text-shadow: 0 1px 0 #000; }
 .ah-ico.lg { width: 36px; height: 36px; font-size: 13px; }
 

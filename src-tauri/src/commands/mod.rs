@@ -9,6 +9,7 @@ pub mod app;
 pub mod backup;
 pub mod characters;
 pub mod game;
+pub mod icons;
 pub mod ingest;
 pub mod install;
 pub mod ledger;

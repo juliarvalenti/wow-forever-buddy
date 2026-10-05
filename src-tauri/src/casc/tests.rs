@@ -14,13 +14,15 @@ const LOCKED_CKEY: Key = [0x04; 16];
 const LOCKED_EKEY: Key = [0x14; 16];
 const BUILD_KEY: &str = "0123456789abcdef0123456789abcdef";
 
-const ICON: u32 = 136_235;
-const LOCKED: u32 = 136_236;
+/// An icon that reads, and one whose chunk is encrypted.
+pub(crate) const ICON: u32 = 136_235;
+pub(crate) const LOCKED: u32 = 136_236;
 
-struct Install {
+/// A built install; the app's icon tests use it too.
+pub(crate) struct Install {
     _tmp: tempfile::TempDir,
-    flavor: PathBuf,
-    data: PathBuf,
+    pub flavor: PathBuf,
+    pub data: PathBuf,
 }
 
 fn icon_blp() -> Vec<u8> {
@@ -28,7 +30,7 @@ fn icon_blp() -> Vec<u8> {
     blp::tests::build(2, 0, 0, 4, 4, &[], &[0x00, 0xF8, 0, 0, 0, 0, 0, 0])
 }
 
-fn install() -> Install {
+pub(crate) fn install() -> Install {
     let tmp = tempfile::tempdir().unwrap();
     let flavor = tmp.path().join("_classic_beta_");
     let data = tmp.path().join("Data");

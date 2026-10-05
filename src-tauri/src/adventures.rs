@@ -113,6 +113,9 @@ pub struct ItemLine {
     pub item_id: u32,
     pub name: String,
     pub quality: Option<u32>,
+    /// Its icon's FileDataID, for `icon://`.
+    #[serde(default)]
+    pub icon: Option<u32>,
     pub count: u32,
     /// sold | used | mailed for what was spent; bought | mail for a gain
     /// that didn't drop; `None` for loot.
@@ -208,16 +211,17 @@ pub fn load_events(db: &Db, adventure: i64) -> AppResult<Vec<Event>> {
     })
 }
 
-/// An item's name and quality, as ingest stored them.
-type ItemInfo = (Option<String>, Option<i64>);
+/// An item's name, quality and icon, as ingest stored them.
+type ItemInfo = (Option<String>, Option<i64>, Option<i64>);
 
 fn item_info(db: &Db, ids: &[i64]) -> AppResult<HashMap<i64, ItemInfo>> {
     db.with_conn(|c| {
-        let mut stmt = c.prepare("SELECT name, quality FROM items WHERE item_id = ?1")?;
+        let mut stmt =
+            c.prepare("SELECT name, quality, icon_file_id FROM items WHERE item_id = ?1")?;
         let mut out = HashMap::new();
         for id in ids {
             if let Some(info) = stmt
-                .query_row([id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .query_row([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .optional()?
             {
                 out.insert(*id, info);
@@ -367,6 +371,12 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
             .unwrap_or_else(|| format!("Item {id}"))
     };
     let item_quality = |id: i64| items.get(&id).and_then(|i| i.1);
+    let item_icon = |id: i64| {
+        items
+            .get(&id)
+            .and_then(|i| i.2)
+            .and_then(|i| u32::try_from(i).ok())
+    };
     // What the character wears now, for "equipped" in place of a worth (F5c).
     let worn: std::collections::HashSet<i64> = db.with_conn(|c| {
         let mut stmt = c.prepare(
@@ -574,6 +584,7 @@ pub fn adventure(db: &Db, flavor: &str, id: u32) -> AppResult<Option<Adventure>>
                 item_id: item as u32,
                 name: item_name(item),
                 quality: item_quality(item).map(|q| q as u32),
+                icon: item_icon(item),
                 count,
                 how,
                 equipped: worn.contains(&item),

@@ -31,6 +31,7 @@ import {
   Record as Parchment,
   Segmented,
   Switch,
+  ItemIcon,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
@@ -403,6 +404,7 @@ function Results({
                     <span className="ch-item">
                       <span className={`ch-ico sm ${q}`} aria-hidden>
                         <b>{h.name.slice(0, 1)}</b>
+                        <ItemIcon id={h.icon} />
                       </span>
                       <span className={q}>{h.name}</span>
                     </span>
@@ -621,6 +623,7 @@ function Slot({ item, label, slot }: { item: ItemRow; label?: string; slot?: str
     >
       <span className={`ch-ico ${q}`} aria-hidden>
         <b>{item.name.slice(0, 1)}</b>
+        <ItemIcon id={item.icon} />
       </span>
       <div className="t">
         <div className={q}>{item.name}</div>

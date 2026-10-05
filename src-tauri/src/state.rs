@@ -11,6 +11,7 @@ use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
 use crate::fsx::relpath::GameRoot;
 use crate::game::gate::{MutationTarget, WriteGate};
 use crate::game::process::{GameWatcher, ProbeTarget, ProcessProbe, SysinfoProbe};
+use crate::icons::Icons;
 use crate::secrets::{KeyringStore, SecretStore};
 
 /// The store's own folder inside a backup location the user picked.
@@ -24,6 +25,8 @@ pub struct AppCore {
     pub db: Db,
     pub secrets: Arc<dyn SecretStore>,
     pub game: Arc<GameWatcher>,
+    /// Item icons from the game's data, for `icon://` (F8).
+    pub icons: Icons,
     /// Opened on demand (see `backups()`), so a backup drive that isn't
     /// plugged in never stops the app from starting.
     backups: Mutex<Option<Arc<BackupService>>>,
@@ -69,12 +72,14 @@ impl AppCore {
 
         let settings = SettingsStore::load(paths.settings_file())?;
         let db = Db::open(&paths.db_file())?;
+        let icons = Icons::start(paths.icon_cache_dir(), paths.log_dir.clone());
         let core = Self {
             paths,
             settings,
             db,
             secrets,
             game: Arc::new(GameWatcher::new(probe)),
+            icons,
             backups: Mutex::new(None),
             jobs: Mutex::new(()),
         };
@@ -230,6 +235,13 @@ impl AppCore {
 
     /// The configured game folder, validated now. Until T5 lands this reads
     /// the install choice from settings; T5 switches it to the active install.
+    /// The chosen flavor folder, for reading the game's data (icons): unlike
+    /// `active_game`, nothing under WTF is involved, so no link checks.
+    pub fn flavor_dir(&self) -> Option<PathBuf> {
+        let choice = self.settings.get().install?;
+        Some(choice.root.join(&choice.flavor))
+    }
+
     pub fn active_game(&self) -> AppResult<ActiveGame> {
         let choice = self.settings.get().install.ok_or(AppError::NoInstall)?;
         // Re-validates the saved install, and refuses if a linked folder (a

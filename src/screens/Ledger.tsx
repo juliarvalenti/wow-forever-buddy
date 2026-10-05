@@ -19,6 +19,7 @@ import {
   Record,
   Segmented,
   Tile,
+  ItemIcon,
 } from "@/components/d";
 import { Clock } from "lucide-react";
 import { useCharacters } from "@/hooks/useCharacters";
@@ -368,6 +369,7 @@ function JournalRow({
             <span className="d-loot">
               <span className={`d-ico d-q${note.quality}`}>
                 <b>{note.text.charAt(0)}</b>
+                <ItemIcon id={note.icon} />
               </span>
               <span className={`d-q${note.quality}`}>{note.text}</span>
             </span>
