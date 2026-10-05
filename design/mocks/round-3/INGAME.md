@@ -77,10 +77,10 @@ The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
 - **Alt-aware tooltip (D2, `ingame-d2.html`):**
   - Appended to the game's own item tooltip with `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, …)`, read-only and `pcall`-guarded. Use no tooltip of our own.
   - **Compact, the default:** two lines after a gap.
-    - First: "Your alts: Coinpurse 340 bank · Velyra 60 bank", with the line in gold and names in class colour. Show at most three names, then "+3 more".
-    - Second: "≈ 1g 12s each at your last scan · plan needs 20". Each part only when known.
+    - First: "Your alts: Coinpurse 340 bank · Velyra 60 bank", with the line in gold and names in class colour. Show at most three names, then "+3 more". Each alt's place is its largest bucket (bank, bags, mail or worn). The current character is never in this line.
+    - Second: "~1g 12s each at your last scan · plan needs 20". Each part only when known. Use "~", not "≈": the game's fonts likely lack that glyph.
     - Then a small blue-grey "Shift for details".
-  - **Shift:** a gold "Forever Buddy" head, then one row per character ("Coinpurse · 340 · bank, 2 Oct"), "All characters 440", "Last scan ≈ 1g 12s each · 3 days ago", and "Blacksmithing plan needs 20 more". Show at most eight rows, then "+2 more".
+  - **Shift:** a gold "Forever Buddy" head, then the current character first ("Thrandor · 40 · on you", the live count), then one row per alt ("Coinpurse · 340 · bank, 2 Oct"), "All characters 440", "Last scan ~1g 12s each · 3 days ago", and "Blacksmithing plan needs 20 more". Show at most eight rows, then "+2 more".
   - **Equippable items:** the compact line can instead say "Upgrade for Kaelor (+9 item level, once level 58)". This uses item level only, never stats we can't read.
   - **Add nothing** when only the current character has the item, or nobody does. Never show an empty head.
   - **Stale data:** a count older than 7 days turns grey, with "(as of 21 Sep)". A price older than 7 days adds "· scan 12 days ago".
