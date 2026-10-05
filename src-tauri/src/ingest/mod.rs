@@ -388,9 +388,26 @@ mod tests {
         assert_eq!(count(&db, "SELECT end_level FROM adventures"), 13);
         assert_eq!(
             count(&db, "SELECT count(*) FROM gold_points"),
-            3,
-            "three money events"
+            4,
+            "three money events and the snapshot"
         );
+        // V2's snapshot sections.
+        assert_eq!(count(&db, "SELECT money FROM char_snapshots"), 25545);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT count(*) FROM char_items WHERE location = 'bag'"
+            ),
+            2
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT item_id FROM char_items WHERE location = 'equipped' AND slot = 16"
+            ),
+            25
+        );
+        assert_eq!(count(&db, "SELECT count(*) FROM professions"), 3);
     }
 
     #[test]
