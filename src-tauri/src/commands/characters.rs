@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::characters::{self, CharacterSheet, CharactersOverview, SearchResults};
+use crate::characters::{self, AltLockout, CharacterSheet, CharactersOverview, SearchResults};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -45,4 +45,30 @@ pub fn characters_search(state: State<'_, AppState>, query: String) -> AppResult
 #[specta::specta]
 pub fn character_detail(state: State<'_, AppState>, id: u32) -> AppResult<CharacterSheet> {
     characters::sheet(&state.core.db, id)
+}
+
+/// Raid and dungeon saves across the active flavor's characters that haven't
+/// reset yet, soonest first (the Dashboard's "Lockouts this week"). Empty
+/// before a game folder is set.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn lockouts_list(state: State<'_, AppState>) -> AppResult<Vec<AltLockout>> {
+    match state.core.active_game() {
+        Ok(game) => {
+            characters::lockouts(&state.core.db, &game.flavor, chrono::Utc::now().timestamp())
+        }
+        Err(AppError::NoInstall) => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Marks or unmarks a character as a bank alt (its card's "Bank" tag).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn character_set_bank_alt(
+    state: State<'_, AppState>,
+    id: u32,
+    bank_alt: bool,
+) -> AppResult<()> {
+    characters::set_bank_alt(&state.core.db, id, bank_alt)
 }

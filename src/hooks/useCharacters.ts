@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  type AltLockout,
   commands,
   events,
   type CharacterSheet,
@@ -104,5 +105,18 @@ export function useCharacterSheet(id: number | null) {
   useEvent(events.ingestCompleted, (e) => {
     if (id != null && e.characters.includes(id)) load();
   });
-  return { sheet, error };
+  return { sheet, error, reload: load };
+}
+
+/** Saves across every character that haven't reset (the Dashboard's
+ *  "Lockouts this week"), followed as new notes are read. */
+export function useLockouts() {
+  const [lockouts, setLockouts] = useState<AltLockout[] | null>(null);
+  const refresh = useCallback(() => {
+    commands.lockoutsList().then(setLockouts, () => setLockouts(null));
+  }, []);
+  useEffect(refresh, [refresh]);
+  useEvent(events.ingestCompleted, refresh);
+  useEvent(events.installChanged, refresh);
+  return lockouts;
 }

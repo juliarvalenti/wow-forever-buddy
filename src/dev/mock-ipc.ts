@@ -11,6 +11,7 @@ import type {
   AddonsList,
   AddonStatus,
   Adventure,
+  AltLockout,
   CategoryNode,
   CharacterCard,
   CharacterSheet,
@@ -120,8 +121,26 @@ export function installMockIpc(): void {
     bag_size: null,
     mail: 0,
     bank_items: 0,
+    bank_alt: bankAlts.has(id),
     ...extra,
   });
+  // F3: Coinpurse is the bank alt, and this week's saves (resets ahead).
+  const bankAlts = new Set<number>([1]);
+  const save = (id: number, name: string, raid: boolean, minsAhead: number, difficulty = "Normal"): AltLockout => {
+    const a = alts.find((x) => x[0] === id)!;
+    return {
+      character_id: id,
+      character: a[1],
+      class: a[3],
+      lockout: { name, difficulty, raid, reset_at: iso(-minsAhead) },
+    };
+  };
+  const saves: AltLockout[] = [
+    save(4, "Scholomance", false, 60 * 17 + 20),
+    save(2, "Molten Core", true, 60 * 52),
+    save(3, "Molten Core", true, 60 * 52),
+    save(2, "Onyxia's Lair", true, 60 * 24 * 4 + 60 * 6),
+  ];
 
   const flavor = {
     id: "_classic_beta_",
@@ -726,6 +745,12 @@ export function installMockIpc(): void {
         characters: noAddon ? [] : characters,
       };
     },
+    lockouts_list: (): AltLockout[] => (noAddon ? [] : saves),
+    character_set_bank_alt: ({ id, bankAlt }) => {
+      if (bankAlt) bankAlts.add(id as number);
+      else bankAlts.delete(id as number);
+      return null;
+    },
     character_detail: ({ id }): CharacterSheet => {
       const row = alts.find((a) => a[0] === id) ?? alts[1];
       const c = card(...row);
@@ -776,6 +801,9 @@ export function installMockIpc(): void {
           { name: "Blacksmithing", skill: 300, max: 300 },
           { name: "Mining", skill: 285, max: 300 },
         ],
+        lockouts: saves.filter((a) => a.character_id === c.id).map((a) => a.lockout),
+        // Read at the last login; Kaelor's never have been.
+        lockouts_as_of: c.id === 7 ? null : c.last_seen,
         gold_30d: [46, 44, 45, 38, 40, 34, 36, 28, 31, 24, 26, 18, 20, 8].map((y, i) => ({
           at: iso(60 * 24 * (28 - i * 2)),
           money: (2140 - y * 14) * 10000,
@@ -807,6 +835,8 @@ export function installMockIpc(): void {
           quality,
           ilvl: 50,
           count,
+          // Velyra's bank visit is 12 days old, so its Where shows ember.
+          as_of: location === "bag" ? null : iso(60 * 24 * (character_id === 3 ? 12 : 2)),
         }));
       return {
         hits,

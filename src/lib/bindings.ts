@@ -241,6 +241,14 @@ export const commands = {
 	 *  filters. Nothing before a game folder is set.
 	 */
 	charactersSearch: (query: string) => __TAURI_INVOKE<SearchResults>("characters_search", { query }),
+	/**
+	 *  Raid and dungeon saves across the active flavor's characters that haven't
+	 *  reset yet, soonest first (the Dashboard's "Lockouts this week"). Empty
+	 *  before a game folder is set.
+	 */
+	lockoutsList: () => __TAURI_INVOKE<AltLockout[]>("lockouts_list"),
+	/**  Marks or unmarks a character as a bank alt (its card's "Bank" tag). */
+	characterSetBankAlt: (id: number, bankAlt: boolean) => __TAURI_INVOKE<null>("character_set_bank_alt", { id, bankAlt }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -457,6 +465,15 @@ export type AdventureLink = {
 	login: string,
 };
 
+/**  A save on any character, for the Dashboard's "Lockouts this week". */
+export type AltLockout = {
+	character_id: number,
+	character: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	lockout: Lockout,
+};
+
 /**
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
@@ -655,6 +672,8 @@ export type CharacterCard = {
 	bag_size: number | null,
 	mail: number,
 	bank_items: number,
+	/**  Marked by the user as a bank alt (F3): a "Bank" tag on the card. */
+	bank_alt: boolean,
 };
 
 export type CharacterNode = {
@@ -698,6 +717,13 @@ export type CharacterSheet = {
 	bank: Visited,
 	mail: MailView,
 	professions: ProfessionRow[],
+	/**  Saves that haven't reset, soonest reset first. */
+	lockouts: Lockout[],
+	/**
+	 *  The login the saves were read at (RFC 3339); `None` if they never
+	 *  have been, as opposed to read and none found.
+	 */
+	lockouts_as_of: string | null,
 	/**  The last 30 days of gold, oldest first. */
 	gold_30d: GoldPoint[],
 };
@@ -1018,6 +1044,17 @@ export type LinkedFolder = {
 	target: string,
 };
 
+/**  A raid or dungeon save that hasn't reset yet (F3). */
+export type Lockout = {
+	/**  The instance, as the game names it ("Molten Core"). */
+	name: string,
+	/**  "Normal", "Heroic", … as the game gives it; may be empty. */
+	difficulty: string,
+	raid: boolean,
+	/**  When the save resets (RFC 3339), if the game said. */
+	reset_at: string | null,
+};
+
 export type LookedIn = {
 	source: CandidateSource,
 	path: string,
@@ -1259,6 +1296,11 @@ export type SearchHit = {
 	ilvl: number | null,
 	/**  Summed over every stack of it in that place. */
 	count: number,
+	/**
+	 *  Bank and mail: when that place was last seen (RFC 3339), for "As of
+	 *  your last bank visit". Satchels are as of the last logout: `None`.
+	 */
+	as_of: string | null,
 };
 
 export type SearchResults = {

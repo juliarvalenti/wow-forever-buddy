@@ -58,6 +58,22 @@ export function span(ms: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
+/** A lockout's time to reset (IMPLEMENTING.md §8): "resets in 14 h" under a
+ *  day, "2 days" otherwise. No minutes: it's as of a login, not live. */
+export function resetsIn(iso: string, now = Date.now()): string {
+  const h = Math.ceil((new Date(iso).getTime() - now) / 3_600_000);
+  if (h <= 1) return "resets within the hour";
+  if (h < 24) return `resets in ${h} h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "1 day" : `${d} days`;
+}
+
+/** "Resets Tuesday 6 October, 09:00", a lockout row's tooltip. */
+export function resetDay(iso: string): string {
+  const d = new Date(iso);
+  return `Resets ${d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}, ${clock(d)}`;
+}
+
 function clock(d: Date): string {
   // "1:45 AM", not "01:45 AM".
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });

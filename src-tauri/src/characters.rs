@@ -1,5 +1,5 @@
 //! The Characters screen and the character sheet (v0.2 V7): what ingest put
-//! in the db, shaped for the UI. Read-only.
+//! in the db, shaped for the UI. Read-only, except the user's bank-alt tag (F3).
 //!
 //! Money and durations are f64 and times RFC 3339 strings, because specta
 //! won't send i64 to TypeScript. Item names come from the `items` table when
@@ -46,6 +46,8 @@ pub struct CharacterCard {
     pub bag_size: Option<u32>,
     pub mail: u32,
     pub bank_items: u32,
+    /// Marked by the user as a bank alt (F3): a "Bank" tag on the card.
+    pub bank_alt: bool,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -115,6 +117,28 @@ pub struct ProfessionRow {
     pub max: Option<u32>,
 }
 
+/// A raid or dungeon save that hasn't reset yet (F3).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct Lockout {
+    /// The instance, as the game names it ("Molten Core").
+    pub name: String,
+    /// "Normal", "Heroic", … as the game gives it; may be empty.
+    pub difficulty: String,
+    pub raid: bool,
+    /// When the save resets (RFC 3339), if the game said.
+    pub reset_at: Option<String>,
+}
+
+/// A save on any character, for the Dashboard's "Lockouts this week".
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct AltLockout {
+    pub character_id: u32,
+    pub character: String,
+    /// File token, lowercase, for the class colour.
+    pub class: Option<String>,
+    pub lockout: Lockout,
+}
+
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct GoldPoint {
     pub at: String,
@@ -129,6 +153,11 @@ pub struct CharacterSheet {
     pub bank: Visited,
     pub mail: MailView,
     pub professions: Vec<ProfessionRow>,
+    /// Saves that haven't reset, soonest reset first.
+    pub lockouts: Vec<Lockout>,
+    /// The login the saves were read at (RFC 3339); `None` if they never
+    /// have been, as opposed to read and none found.
+    pub lockouts_as_of: Option<String>,
     /// The last 30 days of gold, oldest first.
     pub gold_30d: Vec<GoldPoint>,
 }
@@ -172,7 +201,7 @@ const CARD_SQL: &str = "
            (SELECT count(*) FROM char_mail m WHERE m.character_id = c.id),
            (SELECT coalesce(sum(count), 0) FROM char_items i
              WHERE i.character_id = c.id AND i.location = 'bank'),
-           c.account, c.group_dir, c.char_dir
+           c.account, c.group_dir, c.char_dir, c.bank_alt
     FROM characters c
     LEFT JOIN char_snapshots s
       ON s.character_id = c.id
@@ -205,6 +234,58 @@ fn card(r: &Row<'_>) -> rusqlite::Result<CharacterCard> {
         bag_size: opt_u32(r.get(18)?),
         mail: r.get::<_, i64>(19)? as u32,
         bank_items: r.get::<_, i64>(20)? as u32,
+        bank_alt: r.get::<_, i64>(24)? != 0,
+    })
+}
+
+/// Saves still in force at `now`: a reset time in the future, or no reset
+/// time but seen within the last week (a weekly save can't outlast that).
+const LOCKOUT_LIVE: &str = "(l.reset_at > ?2 OR (l.reset_at IS NULL AND l.as_of > ?2 - 7 * 86400))";
+
+fn lockout(r: &Row<'_>, at: usize) -> rusqlite::Result<Lockout> {
+    Ok(Lockout {
+        name: r.get(at)?,
+        difficulty: r.get(at + 1)?,
+        raid: r.get::<_, i64>(at + 2)? != 0,
+        reset_at: r.get::<_, Option<i64>>(at + 3)?.map(iso),
+    })
+}
+
+/// Every live save across `flavor`'s characters, soonest reset first.
+pub fn lockouts(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<AltLockout>> {
+    db.with_conn(|c| {
+        let mut stmt = c.prepare(&format!(
+            "SELECT c.id, c.name, c.class, l.name, l.difficulty, l.raid, l.reset_at
+             FROM lockouts l JOIN characters c ON c.id = l.character_id
+             WHERE c.flavor = ?1 AND {LOCKOUT_LIVE}
+             ORDER BY l.reset_at IS NULL, l.reset_at, l.name, c.name"
+        ))?;
+        let rows = stmt
+            .query_map(params![flavor, now], |r| {
+                Ok(AltLockout {
+                    character_id: r.get::<_, i64>(0)? as u32,
+                    character: r.get(1)?,
+                    class: r.get::<_, Option<String>>(2)?.map(|c| c.to_lowercase()),
+                    lockout: lockout(r, 3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+/// Marks or unmarks a character as a bank alt (F3). Only this column: the
+/// addon's data is untouched, and ingest never writes it.
+pub fn set_bank_alt(db: &Db, id: u32, bank_alt: bool) -> AppResult<()> {
+    db.with_conn(|c| {
+        let n = c.execute(
+            "UPDATE characters SET bank_alt = ?2 WHERE id = ?1",
+            params![i64::from(id), i64::from(bank_alt)],
+        )?;
+        if n == 0 {
+            return Err(AppError::NotFound(format!("character {id}")));
+        }
+        Ok(())
     })
 }
 
@@ -368,7 +449,23 @@ pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        let since = chrono::Utc::now().timestamp() - 30 * 86_400;
+        let now = chrono::Utc::now().timestamp();
+        let mut stmt = c.prepare(&format!(
+            "SELECT l.name, l.difficulty, l.raid, l.reset_at FROM lockouts l
+             WHERE l.character_id = ?1 AND {LOCKOUT_LIVE}
+             ORDER BY l.reset_at IS NULL, l.reset_at, l.name"
+        ))?;
+        let lockouts = stmt
+            .query_map(params![id, now], |r| lockout(r, 0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        // The addon reads saves at every login and puts them in the
+        // snapshot, so the newest snapshot dates them (IMPLEMENTING.md §8).
+        let lockouts_as_of: Option<i64> = c.query_row(
+            "SELECT max(at) FROM char_snapshots WHERE character_id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        let since = now - 30 * 86_400;
         let mut stmt = c.prepare(
             "SELECT at, money FROM gold_points WHERE character_id = ?1 AND at >= ?2 ORDER BY at",
         )?;
@@ -392,6 +489,8 @@ pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
                 messages,
             },
             professions,
+            lockouts,
+            lockouts_as_of: lockouts_as_of.map(iso),
             gold_30d,
             card,
         })
@@ -413,6 +512,9 @@ pub struct SearchHit {
     pub ilvl: Option<u32>,
     /// Summed over every stack of it in that place.
     pub count: u32,
+    /// Bank and mail: when that place was last seen (RFC 3339), for "As of
+    /// your last bank visit". Satchels are as of the last logout: `None`.
+    pub as_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -513,7 +615,7 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
         db.with_conn(|c| {
             let mut stmt = c.prepare(
                 "SELECT c.id, c.name, c.surname, c.class, i.location, i.item_id, max(i.link),
-                        sum(i.count), it.name, it.quality, it.ilvl
+                        sum(i.count), it.name, it.quality, it.ilvl, max(i.as_of)
                  FROM char_items i
                  JOIN characters c ON c.id = i.character_id
                  LEFT JOIN items it ON it.item_id = i.item_id
@@ -525,6 +627,11 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
                 let surname: Option<String> = r.get(2)?;
                 let first: String = r.get(1)?;
                 let quality: Option<i64> = r.get(9)?;
+                let location: String = r.get(4)?;
+                let as_of = match location.as_str() {
+                    "bank" | "mail" => r.get::<_, Option<i64>>(11)?.map(iso),
+                    _ => None,
+                };
                 Ok(SearchHit {
                     character_id: r.get::<_, i64>(0)? as u32,
                     character: match surname {
@@ -532,7 +639,7 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
                         None => first,
                     },
                     class: r.get::<_, Option<String>>(3)?.map(|c| c.to_lowercase()),
-                    location: r.get(4)?,
+                    location,
                     item_id: r.get::<_, i64>(5)? as u32,
                     name: r
                         .get::<_, Option<String>>(8)?
@@ -543,6 +650,7 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
                         .or_else(|| link_quality(&link)),
                     ilvl: opt_u32(r.get(10)?),
                     count: u32::try_from(r.get::<_, i64>(7)?).unwrap_or(u32::MAX),
+                    as_of,
                 })
             })?;
             for hit in rows {
@@ -606,12 +714,17 @@ mod tests {
     mail = {{ at = {at}, items = {{ {{ sender = "Someone", subject = "Hi", money = 50,
                                      items = {{ {{ link = "|Hitem:858:|h[Potion]|h", count = 2 }} }} }} }} }},
     professions = {{ {{ name = "Tailoring", skill = 150, max = 225 }} }},
+    lockouts = {{ {{ name = "Molten Core", difficulty = "Normal", reset_at = {mc}, raid = true }},
+                 {{ name = "The Deadmines", difficulty = "Normal", reset_at = {dm} }} }},
   }},
   items = {{ [2589] = {{ name = "Linen Cloth", quality = 1, ilvl = 5 }} }},
   sessions = {{}},
 }}
 "#,
-            bank = at - 100
+            bank = at - 100,
+            // Molten Core resets in three days; the Deadmines already has.
+            mc = at + 3 * 86_400,
+            dm = at - 10,
         )
     }
 
@@ -655,6 +768,59 @@ mod tests {
         assert_eq!(s.mail.messages[0].items[0].item_id, 858);
         assert_eq!(s.professions[0].name, "Tailoring");
         assert_eq!(s.gold_30d.len(), 1);
+        let names: Vec<_> = s.lockouts.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Molten Core"], "the reset Deadmines save is gone");
+        assert_eq!(s.lockouts_as_of.as_deref(), Some(iso(now - 600).as_str()));
+        assert!(s.lockouts[0].raid && s.lockouts[0].reset_at.is_some());
+        assert!(!c.bank_alt);
+    }
+
+    /// F3: the Dashboard's saves across alts, live ones only, soonest first.
+    #[test]
+    fn lockouts_across_alts() {
+        let db = Db::open_in_memory().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        ingest_text(&db, "Ellygie-Vargur", &full(now - 600, 1));
+        let brannic = full(now - 86_400, 1).replace(
+            r#"name = "Ellygie", surname = "Vargur""#,
+            r#"name = "Brannic""#,
+        );
+        ingest_text(&db, "Brannic", &brannic);
+
+        let all = lockouts(&db, "_classic_beta_", now).unwrap();
+        assert_eq!(all.len(), 2, "one live Molten Core save each: {all:?}");
+        assert!(all.iter().all(|a| a.lockout.name == "Molten Core"));
+        assert!(
+            all[0].lockout.reset_at <= all[1].lockout.reset_at,
+            "soonest reset first"
+        );
+        assert_eq!(all[0].class.as_deref(), Some("mage"));
+        assert!(lockouts(&db, "_classic_", now).unwrap().is_empty());
+        // A week later both have reset.
+        assert!(lockouts(&db, "_classic_beta_", now + 7 * 86_400)
+            .unwrap()
+            .is_empty());
+    }
+
+    /// F3: the bank-alt tag is the user's: it survives the next ingest.
+    #[test]
+    fn the_bank_alt_tag_sticks() {
+        let db = Db::open_in_memory().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        ingest_text(&db, "Ellygie-Vargur", &full(now - 600, 1));
+        let id = overview(&db, "_classic_beta_").unwrap().characters[0].id;
+
+        set_bank_alt(&db, id, true).unwrap();
+        ingest_text(&db, "Ellygie-Vargur", &full(now - 60, 2));
+        let c = &overview(&db, "_classic_beta_").unwrap().characters[0];
+        assert!(c.bank_alt && c.money == 2.0, "tag kept, data updated");
+
+        set_bank_alt(&db, id, false).unwrap();
+        assert!(!overview(&db, "_classic_beta_").unwrap().characters[0].bank_alt);
+        assert!(matches!(
+            set_bank_alt(&db, 999, true),
+            Err(AppError::NotFound(_))
+        ));
     }
 
     /// The real addon's output (generated by tools/addon-test), so the
@@ -786,12 +952,18 @@ mod tests {
                 .len(),
             0
         );
-        // The bank, as of the last visit.
+        // The bank, as of the last visit (snapshot.lua's bank.at); satchels
+        // carry no visit time.
         let rune = search(&db, "_classic_beta_", "rune").unwrap();
         assert_eq!(
             (rune.hits[0].location.as_str(), rune.hits[0].count),
             ("bank", 20)
         );
+        assert_eq!(
+            rune.hits[0].as_of.as_deref(),
+            Some(iso(1790964600).as_str())
+        );
+        assert_eq!(r.hits[0].as_of, None, "Ellygie's satchels");
     }
 
     #[test]
