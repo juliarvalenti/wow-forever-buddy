@@ -153,7 +153,8 @@ Generated whenever its inputs change (after each ingest, at the weekly reset, on
 
 - The in-game frame shows times relative to now (`GetServerTime()`), so "resets Tue" stays right however old the file is. Past `resetsAt` rows show as clear, and past `readyAt` as ready.
 - **Cooldowns are not in the db yet.** Addon 0.4.0 records profession cooldowns at logout (`C_TradeSkillUI.GetRecipeCooldown` for known cooldown recipes, `C_Spell.GetSpellCooldown` for transmutes), stored as `char_cooldowns (character_id, spell_id, name, ready_at, as_of)` in migration 008. Cooldowns are secret in combat under Midnight's rules, but logout is never in combat. Probe run 4 records both calls; if neither returns real data, the checklist ships with Raids and Mail and the Cooldowns section is left out (never shown empty).
-- **The frame:** `/fb` toggles it, small and in the game's own dialog look (mock right side). It opens itself at most once per week per character, at login, when something is due.
+- **The frame:** `/fb` toggles it, small and in the game's own dialog look (mock right side). It **never opens by itself** (INGAME.md §3, #86). At login, and only when the app delivered a stamp this character hasn't seen, the addon prints one chat line: "Forever Buddy: this week's checklist is ready. /fb to open." The addon compartment tooltip shows "This week: 4 to do". An opt-in popup can come later if players ask.
+- **If `/reload` doesn't re-read a changed slot** (probe run 4), the frame says "Updates arrive at your next login" and the app says "Your characters will see it at their next login." (INGAME.md §5).
 
 ---
 
