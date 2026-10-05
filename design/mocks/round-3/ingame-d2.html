@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game: tooltips and quest plan · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* D2: alt-aware tooltip lines + quest planner tracker and waypoints, in the INGAME.md style
+     (Blizzard templates and fonts only, nothing of D). Rules: INGAME.md §8 and §9. */
+  :root { --gold: #ffd100; --white: #f1ece0; --grey: #8f8a7c; --dim: #a9a291; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: var(--white); font: 13px/1.4 "Friz Quadrata TT", Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; color: #d8cfc0; margin-bottom: 4px; }
+  h2 { font: 600 14px -apple-system, "Geist", sans-serif; color: #d8cfc0; margin: 22px 0 10px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 8px; }
+  .lede a { color: #ffb15c; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .tile { display: grid; gap: 6px; align-content: start; }
+  .tile > p { font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+  .tile > p b { color: #d8cfc0; font-weight: 600; }
+  .world { position: relative; height: 330px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+  .world.tall { height: 400px; }
+
+  /* GameTooltip stand-in */
+  .tt { position: absolute; left: 16px; top: 16px; width: 290px; padding: 8px 10px 9px; font-size: 12px; line-height: 1.4; color: #fff;
+    background: rgba(6,10,28,.95); border-radius: 4px; box-shadow: 0 0 0 1px #6c7a9a, 0 4px 14px rgba(0,0,0,.6); }
+  .tt .n { font-size: 13.5px; } .tt .y { color: var(--gold); } .tt .g { color: #1eff00; }
+  .tt .q1 { color: #fff; } .tt .q2 { color: #1eff00; } .tt .q3 { color: #0070dd; } .tt .q4 { color: #a335ee; }
+  .tt .gap { height: 7px; }
+  .tt .fb { color: var(--gold); }
+  .tt .kv { display: flex; justify-content: space-between; gap: 10px; }
+  .tt .kv span:last-child { white-space: nowrap; }
+  .tt .sm { font-size: 10.5px; color: var(--dim); margin-top: 2px; }
+  .tt .shift { font-size: 10.5px; color: #6f86b0; margin-top: 2px; }
+  .pal { color: #f48cba; } .dru { color: #ff7c0a; } .war { color: #c69b6d; } .hun { color: #aad372; } .mag { color: #3fc7eb; } .pri { color: #f0ebe0; } .rog { color: #fff468; }
+  .coin { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 1px 0 2px; vertical-align: 0; }
+  .cg { background: #e9c45a; } .cs { background: #c3c7cc; } .cc { background: #c27a47; }
+
+  /* tracker (ObjectiveTracker style, own movable frame) */
+  .trk { position: absolute; right: 14px; top: 14px; width: 252px; font-size: 12px; }
+  .trk .hd { display: flex; align-items: baseline; gap: 6px; color: var(--gold); font-size: 13px; padding-bottom: 3px; border-bottom: 1px solid rgba(255,209,0,.25); margin-bottom: 4px; }
+  .trk .hd small { margin-left: auto; color: var(--dim); font-size: 11px; }
+  .stop { display: grid; grid-template-columns: 18px minmax(0, 1fr) 20px; gap: 4px; align-items: start; padding: 3px 0; }
+  .stop .no { color: var(--gold); text-align: right; font-size: 11.5px; }
+  .stop .t { color: var(--gold); }
+  .stop .o { color: var(--white); font-size: 11.5px; }
+  .stop.done .t, .stop.done .o, .stop.done .no { color: var(--grey); }
+  .stop.now { background: linear-gradient(90deg, rgba(255,209,0,.08), transparent); box-shadow: inset 2px 0 0 var(--gold); }
+  .wp { width: 18px; height: 18px; border-radius: 3px; display: grid; place-items: center; font: 11px sans-serif; color: var(--gold);
+    background: linear-gradient(180deg, #3a3631, #1e1c19); box-shadow: inset 0 0 0 1px #8a7a55; }
+  .wp.off { color: #6a6358; box-shadow: inset 0 0 0 1px #4a4540; }
+  .wp.on { background: linear-gradient(180deg, #9a2314, #4a0d07); box-shadow: inset 0 0 0 1px #c9a23a; }
+  .trk .ft { margin-top: 6px; font-size: 10.5px; color: var(--dim); }
+
+  /* world map stand-in */
+  .map { position: absolute; inset: 10px; border-radius: 4px; background: linear-gradient(160deg, #6b6550 0%, #4f5a3e 40%, #3d4a36 100%);
+    box-shadow: inset 0 0 0 2px #2a2418, inset 0 0 40px rgba(0,0,0,.5); }
+  .map .ttl { position: absolute; left: 12px; top: 8px; font-size: 14px; color: var(--gold); text-shadow: 0 1px 2px #000; }
+  .pin { position: absolute; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 11px Georgia, serif; color: #2a1a00;
+    background: radial-gradient(circle at 35% 30%, #fff1a8, #ffd100 45%, #a37a00); box-shadow: 0 0 0 1.5px #3a2a00, 0 2px 4px rgba(0,0,0,.6); }
+  .pin.done { filter: grayscale(1) brightness(.7); }
+  .pin.now { box-shadow: 0 0 0 2px #fff, 0 0 10px #ffd100; }
+  .me { position: absolute; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 14px solid #fff; filter: drop-shadow(0 1px 1px #000); }
+  .qmark { position: absolute; font: 700 16px Georgia, serif; color: #ffd100; text-shadow: 0 1px 2px #000; }
+
+  /* super-tracked waypoint (the game's own arrow + distance) */
+  .arrow { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); text-align: center; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; }
+  .arrow .a { width: 0; height: 0; margin: 0 auto 4px; border-left: 12px solid transparent; border-right: 12px solid transparent; border-bottom: 22px solid #ffd100; filter: drop-shadow(0 1px 2px #000); }
+  .gtip { position: absolute; width: 210px; padding: 7px 9px; font-size: 11.5px; color: #fff; background: rgba(6,10,28,.95); border-radius: 3px; box-shadow: 0 0 0 1px #6c7a9a; }
+  .gtip i { color: var(--gold); font-style: normal; display: block; }
+  .chat { position: absolute; left: 12px; bottom: 12px; width: 330px; padding: 6px 8px; background: rgba(0,0,0,.35); border-radius: 3px; font-size: 12.5px; line-height: 1.5; }
+  .chat .gold { color: var(--gold); }
+</style>
+</head>
+<body>
+<h1>In-game: alt-aware tooltips and the quest plan</h1>
+<p class="lede">D2 mocks, in the <a href="INGAME.md">INGAME.md</a> style: Blizzard templates and fonts only. Tooltips ride on the Bridge's first data slot (an item index). The quest plan waits on Q-SPIKE, so its content is illustrative.</p>
+
+<h2>Alt-aware tooltip lines</h2>
+<section class="grid" id="tips"></section>
+
+<h2>Quest plan: tracker and waypoints</h2>
+<section class="grid" id="quests"></section>
+
+<script>
+  const C = (g, s, c) => `${g ? `${g}<span class="coin cg"></span>` : ''}${s ? ` ${s}<span class="coin cs"></span>` : ''}${c ? ` ${c}<span class="coin cc"></span>` : ''}`;
+  const base = (n, q, lines, sell) => `<div class="n q${q}">${n}</div>${lines.join('<br>')}${sell ? `<br>Sell Price: ${sell}` : ''}`;
+  const RUNE = base('Runecloth', 1, ['Max Stack: 20', '<span class="y">Used to make Runecloth armor and bags.</span>'], C(0, 20));
+  const TIPS = [
+    ['Compact (default)', 'Two lines after a gap: who has it, then the price and any plan. Names come from the game\'s cache; the slot only carries ids and counts.',
+      `${RUNE}<div class="gap"></div><div class="fb">Your alts: <span class="war">Coinpurse</span> 340 bank · <span class="dru">Velyra</span> 60 bank</div>
+       <div>≈ ${C(1, 12)} each at your last scan · <span class="y">plan needs 20</span></div><div class="shift">Shift for details</div>`],
+    ['Holding Shift', 'One row per alt with where and as of when, then the totals. Still the game\'s own tooltip, only longer.',
+      `${RUNE}<div class="gap"></div><div class="fb">Forever Buddy</div>
+       <div class="kv"><span class="war">Coinpurse</span><span>340 · bank, 2 Oct</span></div>
+       <div class="kv"><span class="dru">Velyra</span><span>60 · bank, 3 Oct</span></div>
+       <div class="kv"><span class="pal">Thrandor</span><span>40 · bags, now</span></div>
+       <div class="kv"><span style="color:var(--dim)">All characters</span><span>440</span></div>
+       <div class="kv"><span>Last scan</span><span>≈ ${C(1, 12)} each · 3 days ago</span></div>
+       <div class="kv"><span>Blacksmithing plan</span><span class="y">needs 20 more</span></div>`],
+    ['Many alts', 'At most three names in the compact line, then a count; Shift shows up to eight rows and "+2 more".',
+      `${base('Thorium Bar', 1, ['Max Stack: 20'], C(0, 6))}<div class="gap"></div>
+       <div class="fb">Your alts: <span class="pal">Thrandor</span> 64 · <span class="war">Coinpurse</span> 40 bank · <span class="hun">Brannic</span> 12 <span style="color:var(--dim)">+3 more</span></div>
+       <div>≈ ${C(2, 15)} each at your last scan</div><div class="shift">Shift for details</div>`],
+    ['Gear: who could use it', 'For an equippable item, the compact line can say which of your characters it\'s an upgrade for (by item level only; never stats we can\'t read).',
+      `${base('Truestrike Shoulders', 3, ['Binds when picked up', '<span style="display:flex;justify-content:space-between"><span>Shoulder</span><span>Leather</span></span>', '129 Armor', '+24 Agility', '+11 Stamina', '<span class="g">Equip: Improves your chance to hit by 2%.</span>', 'Requires Level 58'], C(2, 31, 40))}
+       <div class="gap"></div><div class="fb">Upgrade for <span class="rog">Kaelor</span> <span style="color:var(--dim)">(+9 item level, once level 58)</span></div>`],
+    ['Nothing to add', 'If only the character you\'re on has it, or nobody does, add nothing: no empty "Forever Buddy" head.',
+      `${base('Major Healing Potion', 1, ['Max Stack: 5', '<span class="g">Use: Restores 1050 to 1750 health.</span>'], C(0, 10))}`],
+    ['Out of date', 'Past 7 days since an alt\'s data, its count turns grey with the date; the price line says how old the scan is.',
+      `${RUNE}<div class="gap"></div><div class="fb">Your alts: <span class="war">Coinpurse</span> 340 bank · <span style="color:var(--dim)">Velyra 60 (as of 21 Sep)</span></div>
+       <div>≈ ${C(1, 12)} each <span style="color:var(--dim)">· scan 12 days ago</span></div><div class="shift">Shift for details</div>`],
+  ];
+  document.getElementById('tips').innerHTML = TIPS.map(([t, d, html]) =>
+    `<div class="tile"><p><b>${t}.</b> ${d}</p><div class="world"><div class="tt">${html}</div></div></div>`).join('');
+
+  const STOPS = (now, outZone) => [
+    [1, 'Turn in: The Archivist', 'Duke Nicholas Zverenhoff · Light\'s Hope', 'done'],
+    [2, 'Pick up: Dead Man\'s Plea', 'Anthion Harmon · Stratholme gate', now === 2 ? 'now' : 'done'],
+    [3, 'Stratholme: Ysida Harmon', 'Rescue her before the Baron', now === 3 ? 'now' : now > 3 ? 'done' : ''],
+    [4, 'Turn in: Dead Man\'s Plea', 'Anthion Harmon', ''],
+    [5, 'Hearth to Light\'s Hope', '3 turn-ins waiting', ''],
+  ].map(([n, t, o, s]) => `<div class="stop ${s}"><span class="no">${n}</span><span><div class="t">${t}</div><div class="o">${o}</div></span>
+      <span class="wp ${s === 'done' ? 'off' : outZone && n > 2 ? 'off' : s === 'now' ? 'on' : ''}" title="Set a waypoint">→</span></div>`).join('');
+  const tracker = (now, extra = '', outZone) => `<div class="trk"><div class="hd">Tonight's plan<small>Eastern Plaguelands</small></div>${STOPS(now, outZone)}
+      <div class="ft">From Forever Buddy · 21:04 · ${now - 1} of 5 done</div></div>${extra}`;
+  const Q = [
+    ['The tracker', 'Its own small movable frame in the objective tracker\'s style: numbered stops, the current one marked, done ones grey. Never injected into Blizzard\'s tracker.', 'tall',
+      tracker(3)],
+    ['Setting a waypoint', 'The → on a stop sets the game\'s own waypoint on a click (one at a time; TomTom instead, if installed). The game draws the arrow and distance.', 'tall',
+      tracker(3, '<div class="arrow" style="left:28%"><div class="a"></div>Stratholme gate<br><span style="color:#ffd100">240 yd</span></div><div class="gtip" style="right:24px;top:190px"><i>Set a waypoint</i>To Stratholme gate. Click the map pin to track it.</div>')],
+    ['Out of the zone', 'Stops in another zone keep their order, but their → is off with the reason on hover.', 'tall',
+      tracker(3, '<div class="gtip" style="right:24px;top:170px"><i>Set a waypoint</i><span style="color:#a9a291">Go to Eastern Plaguelands first.</span></div>', true)],
+    ['World map pins', 'Numbered pins for the plan on the world map (a map data provider, like Questie\'s). The current stop glows; done stops grey out.', 'tall',
+      '<div class="map"><div class="ttl">Eastern Plaguelands</div>' +
+      '<div class="pin done" style="left:72%;top:58%">1</div><div class="pin done" style="left:22%;top:22%">2</div><div class="pin now" style="left:26%;top:16%">3</div>' +
+      '<div class="pin" style="left:18%;top:28%">4</div><div class="pin" style="left:76%;top:62%">5</div><div class="me" style="left:40%;top:40%"></div>' +
+      '<div class="gtip" style="left:34%;top:20%"><i>3 · Stratholme: Ysida Harmon</i>Tonight\'s plan · Forever Buddy<br><span style="color:#a9a291">Click to set a waypoint</span></div></div>'],
+    ['With Questie installed', 'Questie keeps its own givers and objectives; we only add the order (numbers on its icons\' spots, no second icon).', 'tall',
+      '<div class="map"><div class="ttl">Eastern Plaguelands</div>' +
+      '<div class="qmark" style="left:21%;top:20%">!</div><div class="pin now" style="left:24.5%;top:14%;width:16px;height:16px;font-size:9px">3</div>' +
+      '<div class="qmark" style="left:71%;top:56%">?</div><div class="pin" style="left:74%;top:50%;width:16px;height:16px;font-size:9px">5</div><div class="me" style="left:40%;top:40%"></div></div>'],
+    ['Plan arrived', 'One chat line at login when a new plan has arrived, like the checklist.', '',
+      '<div class="chat"><span class="gold">Forever Buddy:</span> tonight\'s plan is ready, 5 stops in Eastern Plaguelands. /fb plan to show it.</div>'],
+  ];
+  document.getElementById('quests').innerHTML = Q.map(([t, d, cls, html]) =>
+    `<div class="tile"><p><b>${t}.</b> ${d}</p><div class="world ${cls}">${html}</div></div>`).join('');
+</script>
+</body>
+</html>
