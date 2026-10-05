@@ -32,6 +32,8 @@ export const commands = {
 	/**
 	 *  Refused for a snapshot an interrupted restore still needs, and while the
 	 *  restore journal is unreadable (then nobody can tell which those are).
+	 *  Runs as a job, so it can't race a restore that's starting from the same
+	 *  snapshot before its journal is written; it waits behind a running backup.
 	 */
 	backupDelete: (id: string) => __TAURI_INVOKE<null>("backup_delete", { id }),
 	/**

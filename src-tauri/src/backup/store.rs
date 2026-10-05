@@ -107,7 +107,12 @@ impl BlobStore {
             let name = entry.file_name().to_string_lossy();
             // Only ever delete files shaped like ours (`ab/<62 hex>`): a
             // stray file someone put under objects/ isn't ours to remove.
-            let hex = |s: &str, len| s.len() == len && s.bytes().all(|b| b.is_ascii_hexdigit());
+            // Lowercase only, exactly as `hash` writes them.
+            let hex = |s: &str, len| {
+                s.len() == len
+                    && s.bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            };
             if !hex(&prefix, 2) || !hex(&name, 62) {
                 continue;
             }
@@ -204,6 +209,7 @@ mod tests {
             objects.join("photos").join("a".repeat(62)),
             objects.join("ab").join("a".repeat(61)),
             objects.join("zz").join("a".repeat(62)),
+            objects.join("AB").join("A".repeat(62)), // our hashes are lowercase
         ];
         for p in &strays {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();

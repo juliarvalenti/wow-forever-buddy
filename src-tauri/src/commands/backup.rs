@@ -99,10 +99,13 @@ pub fn backup_get(state: State<'_, AppState>, id: String) -> AppResult<SnapshotD
 
 /// Refused for a snapshot an interrupted restore still needs, and while the
 /// restore journal is unreadable (then nobody can tell which those are).
+/// Runs as a job, so it can't race a restore that's starting from the same
+/// snapshot before its journal is written; it waits behind a running backup.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn backup_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let core = &state.core;
+    let _job = core.jobs.lock().expect("job lock poisoned");
     let held = journal::held_snapshots(&core.paths.local_data_dir)?;
     core.backups()?.delete(&id, &held)
 }

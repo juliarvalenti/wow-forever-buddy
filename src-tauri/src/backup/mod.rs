@@ -506,7 +506,24 @@ impl BackupService {
     /// index can drift, e.g. a crash between writing one and the other). A
     /// protected one is kept and its index row corrected.
     fn prune_one(&self, id: &str, report: &mut PruneReport) -> AppResult<()> {
-        let manifest = self.manifests.read(id)?;
+        let manifest = match self.manifests.read(id) {
+            Ok(m) => m,
+            // An index row whose manifest is gone (deleted by hand, or a crash
+            // between removing the file and the row): drop the stale row and
+            // carry on, rather than stopping every prune after it.
+            Err(AppError::NotFound(_)) => {
+                self.db.with_conn(|c| {
+                    c.execute("DELETE FROM snapshots WHERE id = ?1", [id])?;
+                    Ok(())
+                })?;
+                report.pruned.push(id.to_string());
+                return Ok(());
+            }
+            // A manifest that can't be read: never delete what can't be read
+            // (it might say pinned). Skip it; GC refuses and reports it.
+            Err(AppError::BackupCorrupt { .. }) => return Ok(()),
+            Err(e) => return Err(e),
+        };
         if manifest.pinned || manifest.trigger.kind() == SnapshotKind::Manual {
             return self.index(&manifest);
         }
@@ -1491,6 +1508,70 @@ mod tests {
             .into_iter()
             .find(|x| x.id == old.id);
         assert!(row.expect("still listed").pinned, "index corrected");
+    }
+
+    /// #35 review: an index row whose manifest is gone doesn't stop the
+    /// prune: the stale row is dropped and the rest of the prune runs.
+    #[test]
+    fn prune_drops_index_rows_without_a_manifest() {
+        let s = setup();
+        let ghost = changed_auto(&s, 1);
+        let old = changed_auto(&s, 2);
+        backdate(&s, &ghost.id, 24 * 400);
+        backdate(&s, &old.id, 24 * 400);
+        let file = s
+            .backups_dir
+            .join("snapshots")
+            .join(format!("{}.json", ghost.id));
+        std::fs::remove_file(file).unwrap();
+
+        let report = s
+            .service
+            .prune(
+                chrono::Utc::now(),
+                &retention::POLICY,
+                Gc::Now,
+                &HashSet::new(),
+            )
+            .unwrap();
+        assert!(report.pruned.contains(&ghost.id), "stale row dropped");
+        assert!(report.pruned.contains(&old.id), "and the prune carried on");
+        assert!(s.service.list().unwrap().is_empty());
+    }
+
+    /// #35 review: a corrupt manifest is skipped by the time rules (never
+    /// deleted: it might say pinned), and the other expirations still happen.
+    #[test]
+    fn prune_skips_a_corrupt_manifest_and_carries_on() {
+        let s = setup();
+        let broken = changed_auto(&s, 1);
+        let old = changed_auto(&s, 2);
+        backdate(&s, &broken.id, 24 * 400);
+        backdate(&s, &old.id, 24 * 400);
+        let file = s
+            .backups_dir
+            .join("snapshots")
+            .join(format!("{}.json", broken.id));
+        std::fs::write(&file, b"{ damaged").unwrap();
+
+        // GC then refuses because of it (and reports it), but only after the
+        // time rules ran.
+        let _ = s.service.prune(
+            chrono::Utc::now(),
+            &retention::POLICY,
+            Gc::Throttled,
+            &HashSet::new(),
+        );
+        let left: Vec<String> = s
+            .service
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|x| x.id)
+            .collect();
+        assert!(!left.contains(&old.id), "the prune carried on");
+        assert!(left.contains(&broken.id), "the unreadable one is kept");
+        assert!(file.exists());
     }
 
     /// H1: a damaged manifest blocks cleanup (safely), and says so on the
