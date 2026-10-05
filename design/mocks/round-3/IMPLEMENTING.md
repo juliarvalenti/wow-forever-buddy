@@ -221,3 +221,24 @@ The side panel's "Enabled for" list becomes editable. Everything else in §9 sta
 - **Refused characters:** if a character's settings folder is a link, its row shows "linked folder" with a link icon instead of a switch. The tooltip reads "Velyra's settings folder is a link to another place, so Forever Buddy won't write there. Change it in-game." The same treatment applies to any character the write gate refuses for a reason known in advance.
 - **The note** under the panel becomes "Changes are written to each character's AddOns.txt when you apply them. A safety snapshot is taken first, so you can undo." While WoW runs, hide it, since the callout says enough.
 - **The table** keeps showing the saved state. Its diamonds update only after Apply succeeds.
+
+## 12. F7: Macros, read-only (`macros-readonly.html`)
+This is the first cut of `macros.html` (the v0.6 sketch). **Nothing on this screen writes.** That means no editing, icon picker, library, "New macro" or copy-to-character. The sidebar's "Macros · soon" becomes a normal entry. This screen has no bronze primary.
+- **Header:** "Macros", with the lede "From each character's macros-cache.txt, as of their last logout". It has no actions.
+- **Toolbar:**
+  - A `Segmented` "Account 18 · Character 11", followed by the character (class dot and name in class colour) with a ghost "Change" that lists the WTF roster (older folders excluded, W1b).
+  - Meta on the right: "18 account macros · 11 for Thrandor". Don't show slot limits until the flavour's limits are confirmed.
+- **List (left):**
+  - One row per macro, in the file's order: a letter tile, the name, and the character count on the right.
+  - The count turns warn colour at 230 and above, and red above 255.
+  - The selected row gets the ember left edge.
+- **Viewer (right):**
+  - The header shows the name, with the meta "character macro · as of logout, 3 Oct" (or "account macro"), using the file's modified date.
+  - Below that: the tile, the name, "Thrandor · slot 1", and a stone **Copy** that puts the body on the clipboard. Afterwards show "✓ Copied" in green for about 2 s.
+  - The body sits in the dark code block, selectable, with light tinting: `#showtooltip`/`#show` in tan, `/commands` in ember, `[conditions]` in blue, and the rest plain. Tokenize it simply and render it as React text, never as HTML.
+  - Count bar: "231 / 255", with "24 left" in warn colour at 230 and above. Above 255, use red and "7 over: WoW cuts it off at 255".
+  - Note: "Editing macros and copying them to other characters come later, with a safety snapshot first. For now, Copy puts the text on your clipboard to paste in-game."
+- **Icons:** the file gives an icon id or name, but there's no icon media yet (row 20), so use the first letter of the macro's name. The `INV_MISC_QUESTIONMARK` default is a letter too.
+- **Empty states:**
+  - With no macros-cache.txt for the character: "No macros for Thrandor yet. WoW writes them when you log out."
+  - With an empty account list: "No account macros yet."
