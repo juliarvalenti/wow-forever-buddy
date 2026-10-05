@@ -10,7 +10,8 @@
 //!
 //! Gap-fill: the file keeps only the last 10 sessions, but every game-exit
 //! backup holds that logout's copy. At start, every full backup snapshot
-//! newer than `meta.last_replayed_snapshot` is replayed, oldest first,
+//! newer than that flavor's `meta.last_replayed_snapshot:<flavor>` is
+//! replayed, oldest first,
 //! through the same idempotent apply. That's also how a db restored from a
 //! daily copy (V5) catches up: the copy carries its own marker.
 //!
@@ -36,8 +37,12 @@ use file::Status;
 const FILE_NAME: &str = "ForeverBuddy.lua";
 /// A file must be this still before it's read (core-fs §3).
 const SETTLE: Duration = Duration::from_secs(2);
-/// Meta key: the newest backup snapshot gap-fill has replayed.
-pub const LAST_REPLAYED: &str = "last_replayed_snapshot";
+/// Meta key: the newest backup snapshot gap-fill has replayed, per flavor
+/// (`last_replayed_snapshot:<flavor>`): replay is per flavor, so one marker
+/// shared across flavors would skip the other flavor's older backups.
+pub fn last_replayed_key(flavor: &str) -> String {
+    format!("last_replayed_snapshot:{flavor}")
+}
 
 /// Emitted after a scan or replay that changed characters' data.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
@@ -206,14 +211,16 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
     Ok(applied)
 }
 
-/// Gap-fill: replays every full backup snapshot of `flavor` newer than
-/// `meta.last_replayed_snapshot`, oldest first, through the same apply.
-/// Holds the job lock, so a prune can't remove a snapshot mid-read. A
-/// missing or damaged copy of one file just skips that file.
+/// Gap-fill: replays every full backup snapshot of `flavor` newer than that
+/// flavor's marker, oldest first, through the same apply. Holds the job
+/// lock, so a prune can't remove a snapshot mid-read. A missing or damaged
+/// copy of one file skips that file; a manifest that can't be read skips
+/// that snapshot (logged), so it can't stall every later replay.
 pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
     let _job = core.jobs.lock().expect("job lock poisoned");
     let store = core.backups()?;
-    let last = core.db.get_meta(LAST_REPLAYED)?.unwrap_or_default();
+    let key = last_replayed_key(flavor);
+    let last = core.db.get_meta(&key)?.unwrap_or_default();
     // Snapshot ids are ULIDs, which sort by time.
     let mut pending: Vec<String> = store
         .list()?
@@ -225,7 +232,17 @@ pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
     pending.sort();
     let mut applied = Vec::new();
     for id in pending {
-        let manifest = store.manifest(&id)?;
+        let manifest = match store.manifest(&id) {
+            Ok(m) => m,
+            Err(e) => {
+                crate::applog::append(
+                    &core.paths.log_dir,
+                    &format!("ingest replay skipped snapshot {id}: {e}"),
+                );
+                core.db.set_meta(&key, &id)?;
+                continue;
+            }
+        };
         for f in &manifest.files {
             let Some(target) = target_for(flavor, &f.path) else {
                 continue;
@@ -239,7 +256,7 @@ pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
                 }
             }
         }
-        core.db.set_meta(LAST_REPLAYED, &id)?;
+        core.db.set_meta(&key, &id)?;
     }
     Ok(applied)
 }
@@ -502,6 +519,45 @@ mod tests {
         assert_eq!(note, "my note");
     }
 
+    /// A newer file without bank or mail (not visited this session) keeps
+    /// the stored bank and mail rather than emptying them.
+    #[test]
+    fn an_absent_bank_keeps_the_stored_bank() {
+        let db = Db::open_in_memory().unwrap();
+        let t = target("Ellygie-Vargur");
+        let file = |at: i64, extra: &str| {
+            format!(
+                r#"ForeverBuddyDB = {{
+  _meta = {{ schema = 1, written = {at}, counts = {{ sessions = 0, events = 0, items = 0, bag_items = 0 }} }},
+  character = {{ name = "Ellygie", surname = "Vargur", level = 20 }},
+  snapshot = {{ at = {at}, money = 5, {extra} }},
+}}
+"#
+            )
+        };
+        let visited = r#"
+    bank = { at = 1000, tabs = { [-1] = { items = { [1] = { link = "|Hitem:2589:|h[Linen Cloth]|h", count = 20 } } } } },
+    mail = { at = 1000, items = { [1] = { sender = "Thrandor", subject = "cloth", money = 0, cod = 0, items = { [1] = { link = "|Hitem:2589:|h[Linen Cloth]|h", count = 5 } } } } },"#;
+        ingest_bytes(&db, &t, file(1000, visited).as_bytes()).unwrap();
+        ingest_bytes(&db, &t, file(2000, "").as_bytes()).unwrap();
+
+        assert_eq!(
+            count(
+                &db,
+                "SELECT count(*) FROM char_items WHERE location = 'bank'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT count(*) FROM char_items WHERE location = 'mail'"
+            ),
+            1
+        );
+        assert_eq!(count(&db, "SELECT count(*) FROM char_mail"), 1);
+    }
+
     fn write(dir: &Path, rel: &str, bytes: &[u8]) {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -544,12 +600,8 @@ mod tests {
         );
     }
 
-    /// Gap-fill: a full backup's copy of the file is replayed once, then the
-    /// marker stops it being replayed again.
-    #[test]
-    fn backups_are_replayed_once() {
-        use crate::backup::manifest::Trigger;
-        use crate::backup::{SnapshotRequest, SnapshotScope};
+    /// An app core over a copy of the fixture game folder.
+    fn backup_core() -> (tempfile::TempDir, std::path::PathBuf, AppCore) {
         use crate::config::paths::AppPaths;
         use crate::game::process::fake::FakeProbe;
         use crate::secrets::MemoryStore;
@@ -562,14 +614,23 @@ mod tests {
             Arc::new(FakeProbe::default()),
         )
         .unwrap();
-        crate::install::set(&core.settings, &root, Some("_classic_beta_")).unwrap();
-        let flavor_dir = root.join("_classic_beta_");
+        (dir, root, core)
+    }
+
+    /// Writes the adventure file into `flavor` and takes a full backup of it.
+    fn full_backup(core: &AppCore, root: &Path, flavor: &str) -> String {
+        use crate::backup::manifest::Trigger;
+        use crate::backup::{SnapshotRequest, SnapshotScope};
+
         write(
-            &flavor_dir,
+            &root.join(flavor),
             "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
             &fixture("adventure.lua"),
         );
+        crate::install::set(&core.settings, root, Some(flavor)).unwrap();
         let game = core.active_game().unwrap();
+        // ULIDs only sort by time across milliseconds.
+        std::thread::sleep(std::time::Duration::from_millis(2));
         core.backups()
             .unwrap()
             .create(
@@ -585,19 +646,66 @@ mod tests {
                 },
                 &mut |_, _| {},
             )
-            .unwrap();
+            .unwrap()
+            .expect("a new snapshot")
+            .id
+    }
+
+    /// Gap-fill: a full backup's copy of the file is replayed once, then the
+    /// marker stops it being replayed again.
+    #[test]
+    fn backups_are_replayed_once() {
+        let (_dir, root, core) = backup_core();
+        full_backup(&core, &root, "_classic_beta_");
 
         let ids = replay_backups(&core, "_classic_beta_").unwrap();
         assert_eq!(ids.len(), 1);
         assert_eq!(count(&core.db, "SELECT count(*) FROM adventures"), 1);
-        assert!(core.db.get_meta(LAST_REPLAYED).unwrap().is_some());
+        assert!(core
+            .db
+            .get_meta(&last_replayed_key("_classic_beta_"))
+            .unwrap()
+            .is_some());
         assert!(
             replay_backups(&core, "_classic_beta_").unwrap().is_empty(),
             "marker: once"
         );
         // Another flavor's backups aren't replayed into this one.
-        core.db.set_meta(LAST_REPLAYED, "").unwrap();
         assert!(replay_backups(&core, "_retail_").unwrap().is_empty());
+    }
+
+    /// The marker is per flavor: replaying one flavor's newer backups
+    /// doesn't skip another flavor's older ones.
+    #[test]
+    fn each_flavor_keeps_its_own_replay_marker() {
+        let (_dir, root, core) = backup_core();
+        let older = full_backup(&core, &root, "_retail_");
+        let newer = full_backup(&core, &root, "_classic_beta_");
+        assert!(older < newer);
+
+        assert_eq!(replay_backups(&core, "_classic_beta_").unwrap().len(), 1);
+        assert_eq!(replay_backups(&core, "_retail_").unwrap().len(), 1);
+        assert_eq!(
+            count(&core.db, "SELECT count(DISTINCT flavor) FROM characters"),
+            2
+        );
+    }
+
+    /// A snapshot whose manifest can't be read is skipped, not a stop for
+    /// every later replay.
+    #[test]
+    fn an_unreadable_manifest_is_skipped() {
+        let (_dir, root, core) = backup_core();
+        let bad = full_backup(&core, &root, "_classic_beta_");
+        full_backup(&core, &root, "_classic_beta_");
+        let manifest = core
+            .backups_dir()
+            .join("snapshots")
+            .join(format!("{bad}.json"));
+        std::fs::write(&manifest, b"{ not json").unwrap();
+
+        assert_eq!(replay_backups(&core, "_classic_beta_").unwrap().len(), 1);
+        assert_eq!(count(&core.db, "SELECT count(*) FROM adventures"), 1);
     }
 
     #[test]

@@ -1,0 +1,370 @@
+//! The ForeverBuddy companion addon (spec v0.2-addon §3): bundled into the
+//! app, installed into `Interface/AddOns/ForeverBuddy/` through the write
+//! gate, and removed the same way.
+//!
+//! Only the bundled files are ever written or deleted, by name. Removal
+//! deletes those files and then the folder only if it's empty; a folder that
+//! is a link to somewhere else is refused by the gate's path check rather
+//! than followed. The SavedVariables are the player's data and stay.
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::AppResult;
+use crate::fsx::read::safe_read;
+use crate::fsx::relpath::{GameRoot, RelPath};
+use crate::game::gate::{MutationTarget, WriteGate};
+use crate::sessions;
+
+/// Where the addon lives, relative to the flavor folder.
+pub const FOLDER: &str = "Interface/AddOns/ForeverBuddy";
+const NAME: &str = "ForeverBuddy";
+const TOC: &str = "ForeverBuddy.toc";
+
+/// The bundled files, written in this order. The TOC goes last: until it's
+/// there WoW doesn't see the folder, so a half-finished install is ignored.
+const FILES: [(&str, &[u8]); 2] = [
+    (
+        "ForeverBuddy.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
+    ),
+    (
+        TOC,
+        include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.toc"),
+    ),
+];
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct AddonStatus {
+    /// From the installed TOC; `None` when it isn't installed (or has no
+    /// TOC, which WoW treats the same).
+    pub installed_version: Option<String>,
+    /// The version this app carries.
+    pub bundled_version: String,
+    /// Installed, and older than the bundled one.
+    pub update_available: bool,
+    /// Character folders where it's enabled. A new addon is enabled
+    /// unless a character's `AddOns.txt` says otherwise.
+    pub enabled_on: Vec<String>,
+    /// Character folders whose `AddOns.txt` turns it off. Reported, never
+    /// changed by the app.
+    pub disabled_on: Vec<String>,
+}
+
+fn rel(file: &str) -> RelPath {
+    RelPath::new(&format!("{FOLDER}/{file}")).expect("constant paths are valid")
+}
+
+/// `## Version: 0.2.0` from a TOC.
+fn toc_version(toc: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(toc).lines().find_map(|line| {
+        let (key, value) = line.strip_prefix("##")?.split_once(':')?;
+        key.trim()
+            .eq_ignore_ascii_case("Version")
+            .then(|| value.trim().to_string())
+            .filter(|v| !v.is_empty())
+    })
+}
+
+pub fn bundled_version() -> String {
+    toc_version(FILES[1].1).expect("the bundled TOC has a version")
+}
+
+/// "0.2.0" < "0.10.0": numeric parts compared in order, anything that isn't
+/// a number counted as 0.
+fn version_key(v: &str) -> Vec<u64> {
+    v.split('.')
+        .map(|p| p.trim().parse().unwrap_or(0))
+        .collect()
+}
+
+/// "ForeverBuddy: disabled" in a character's `AddOns.txt`. The name matches
+/// case-insensitively; no line means enabled (WoW's default for a new addon).
+fn disabled_in(addons_txt: &[u8]) -> bool {
+    String::from_utf8_lossy(addons_txt).lines().any(|line| {
+        line.split_once(':').is_some_and(|(name, state)| {
+            name.trim().eq_ignore_ascii_case(NAME) && state.trim().eq_ignore_ascii_case("disabled")
+        })
+    })
+}
+
+pub fn status(game: &GameRoot) -> AppResult<AddonStatus> {
+    let installed_version = rel(TOC)
+        .resolve(game)
+        .ok()
+        .and_then(|path| safe_read(&path).ok())
+        .and_then(|toc| toc_version(&toc));
+    let bundled_version = bundled_version();
+    let update_available = installed_version
+        .as_deref()
+        .is_some_and(|v| version_key(v) < version_key(&bundled_version));
+
+    let (mut enabled_on, mut disabled_on) = (Vec::new(), Vec::new());
+    let wtf = game.base.join("WTF");
+    for c in sessions::wtf_characters(&wtf) {
+        if c.older {
+            continue;
+        }
+        let r = &c.character;
+        let txt = wtf
+            .join("Account")
+            .join(&r.account)
+            .join(&r.realm)
+            .join(&r.name)
+            .join("AddOns.txt");
+        if read_if_there(&txt).is_some_and(|t| disabled_in(&t)) {
+            disabled_on.push(r.name.clone());
+        } else {
+            enabled_on.push(r.name.clone());
+        }
+    }
+    enabled_on.sort();
+    disabled_on.sort();
+    Ok(AddonStatus {
+        installed_version,
+        bundled_version,
+        update_available,
+        enabled_on,
+        disabled_on,
+    })
+}
+
+fn read_if_there(path: &Path) -> Option<Vec<u8>> {
+    path.is_file().then(|| safe_read(path).ok()).flatten()
+}
+
+/// Installs or updates the addon: every bundled file through the write gate
+/// (refused while WoW runs, with a safety snapshot first), the TOC last.
+pub fn install(gate: &WriteGate, target: &MutationTarget) -> AppResult<()> {
+    let paths: Vec<RelPath> = FILES.iter().map(|(name, _)| rel(name)).collect();
+    let guard = gate.begin(
+        "addon_install",
+        target,
+        &paths,
+        "Before installing the ForeverBuddy addon",
+    )?;
+    for (path, (_, bytes)) in paths.iter().zip(FILES) {
+        guard.write(path, bytes)?;
+    }
+    guard.commit()
+}
+
+/// Removes the addon: the bundled files (the TOC first, so WoW stops loading
+/// it even if the rest fails), then the folder if nothing else is in it.
+/// Returns false if the folder stayed because it holds other files.
+pub fn remove(gate: &WriteGate, target: &MutationTarget) -> AppResult<bool> {
+    let paths: Vec<RelPath> = FILES.iter().rev().map(|(name, _)| rel(name)).collect();
+    let guard = gate.begin(
+        "addon_remove",
+        target,
+        &paths,
+        "Before removing the ForeverBuddy addon",
+    )?;
+    for path in &paths {
+        guard.remove(path)?;
+    }
+    let emptied = guard.remove_empty_dir(&RelPath::new(FOLDER)?)?;
+    guard.commit()?;
+    Ok(emptied)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+    use crate::error::AppError;
+    use crate::game::gate::PreWriteSnapshot;
+    use crate::game::process::fake::FakeProbe;
+    use crate::game::process::{GameWatcher, ProbeTarget};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Snapshots(Mutex<Vec<String>>);
+
+    impl PreWriteSnapshot for Snapshots {
+        fn snapshot_before_write(
+            &self,
+            _game: &GameRoot,
+            op: &str,
+            _paths: &[RelPath],
+            _label: &str,
+        ) -> AppResult<String> {
+            self.0.lock().unwrap().push(op.to_string());
+            Ok("snap".into())
+        }
+    }
+
+    struct Setup {
+        _dir: tempfile::TempDir,
+        flavor: PathBuf,
+        probe: Arc<FakeProbe>,
+        snapshots: Arc<Snapshots>,
+        gate: WriteGate,
+        target: MutationTarget,
+    }
+
+    fn setup() -> Setup {
+        let dir = tempfile::tempdir().unwrap();
+        let flavor = dir.path().join("_classic_beta_");
+        let account = flavor.join("WTF/Account/ACCOUNT1");
+        for (folder, addons_txt) in [
+            (
+                "70/Ellygie-Vargur",
+                Some("Details: enabled\nForeverBuddy: enabled\n"),
+            ),
+            ("70/Brannic", Some("foreverbuddy: disabled\n")),
+            ("70/Sela", None),
+            (
+                "Classic Beta PvP 2/Ellygie",
+                Some("ForeverBuddy: disabled\n"),
+            ),
+        ] {
+            std::fs::create_dir_all(account.join(folder)).unwrap();
+            if let Some(txt) = addons_txt {
+                std::fs::write(account.join(folder).join("AddOns.txt"), txt).unwrap();
+            }
+        }
+        std::fs::create_dir_all(flavor.join("Interface/AddOns")).unwrap();
+        let probe = Arc::new(FakeProbe::default());
+        let snapshots = Arc::new(Snapshots::default());
+        let gate = WriteGate::new(
+            Arc::new(GameWatcher::new(probe.clone())),
+            snapshots.clone(),
+            Db::open_in_memory().unwrap(),
+        );
+        let target = MutationTarget {
+            game: GameRoot::new(&flavor).unwrap(),
+            probe: ProbeTarget::default(),
+        };
+        Setup {
+            _dir: dir,
+            flavor,
+            probe,
+            snapshots,
+            gate,
+            target,
+        }
+    }
+
+    #[test]
+    fn reads_versions_from_tocs() {
+        assert_eq!(bundled_version(), "0.2.0");
+        assert_eq!(
+            toc_version(b"## Interface: 16001\r\n##Version:  0.1.9 \r\n"),
+            Some("0.1.9".into())
+        );
+        assert_eq!(toc_version(b"## Title: x\n"), None);
+        assert!(version_key("0.2.0") < version_key("0.10.0"));
+        assert!(version_key("0.2") < version_key("0.2.1"));
+    }
+
+    #[test]
+    fn status_before_and_after_install() {
+        let t = setup();
+        let before = status(&t.target.game).unwrap();
+        assert_eq!(before.installed_version, None);
+        assert!(!before.update_available);
+        // No line or "enabled" is on; "disabled" (any case) is off. The older
+        // settings folder isn't a character and isn't listed.
+        assert_eq!(before.enabled_on, ["Ellygie-Vargur", "Sela"]);
+        assert_eq!(before.disabled_on, ["Brannic"]);
+
+        install(&t.gate, &t.target).unwrap();
+        let after = status(&t.target.game).unwrap();
+        assert_eq!(after.installed_version.as_deref(), Some("0.2.0"));
+        assert!(!after.update_available);
+        for (name, bytes) in FILES {
+            let path = t.flavor.join(FOLDER).join(name);
+            assert_eq!(std::fs::read(path).unwrap(), bytes, "{name}");
+        }
+        assert_eq!(*t.snapshots.0.lock().unwrap(), ["addon_install"]);
+    }
+
+    #[test]
+    fn an_older_install_is_updated() {
+        let t = setup();
+        let dir = t.flavor.join(FOLDER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(TOC), "## Version: 0.1.0\n").unwrap();
+        std::fs::write(dir.join("ForeverBuddy.lua"), "-- old").unwrap();
+        assert!(status(&t.target.game).unwrap().update_available);
+
+        install(&t.gate, &t.target).unwrap();
+        let s = status(&t.target.game).unwrap();
+        assert_eq!(s.installed_version.as_deref(), Some("0.2.0"));
+        assert!(!s.update_available);
+    }
+
+    #[test]
+    fn refused_while_wow_runs() {
+        let t = setup();
+        t.probe.set_running(true);
+        assert!(matches!(
+            install(&t.gate, &t.target),
+            Err(AppError::GameRunning(_))
+        ));
+        assert!(!t.flavor.join(FOLDER).exists(), "nothing written");
+        assert!(matches!(
+            remove(&t.gate, &t.target),
+            Err(AppError::GameRunning(_))
+        ));
+    }
+
+    #[test]
+    fn remove_deletes_the_addon_and_keeps_saved_variables() {
+        let t = setup();
+        install(&t.gate, &t.target).unwrap();
+        let sv = t
+            .flavor
+            .join("WTF/Account/ACCOUNT1/70/Sela/SavedVariables/ForeverBuddy.lua");
+        std::fs::create_dir_all(sv.parent().unwrap()).unwrap();
+        std::fs::write(&sv, "ForeverBuddyDB = {}\n").unwrap();
+
+        assert!(remove(&t.gate, &t.target).unwrap());
+        assert!(!t.flavor.join(FOLDER).exists());
+        assert!(sv.exists(), "the player's data stays");
+        assert_eq!(status(&t.target.game).unwrap().installed_version, None);
+    }
+
+    #[test]
+    fn remove_leaves_other_files_and_their_folder() {
+        let t = setup();
+        install(&t.gate, &t.target).unwrap();
+        let mine = t.flavor.join(FOLDER).join("notes.txt");
+        std::fs::write(&mine, "the player's").unwrap();
+
+        assert!(!remove(&t.gate, &t.target).unwrap(), "folder kept");
+        assert!(mine.exists());
+        assert!(!t.flavor.join(FOLDER).join(TOC).exists());
+    }
+
+    /// Security blocker for V4: an addon folder that's a link (junction) to
+    /// somewhere else is never followed, so files there can't be deleted.
+    #[test]
+    fn remove_never_follows_a_linked_folder_out() {
+        let t = setup();
+        let elsewhere = t._dir.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        for (name, _) in FILES {
+            std::fs::write(elsewhere.join(name), "not the game's").unwrap();
+        }
+        crate::test_support::link_dir(&elsewhere, &t.flavor.join(FOLDER));
+
+        assert!(matches!(
+            remove(&t.gate, &t.target),
+            Err(AppError::PathEscape(_))
+        ));
+        assert!(matches!(
+            install(&t.gate, &t.target),
+            Err(AppError::PathEscape(_))
+        ));
+        for (name, _) in FILES {
+            assert_eq!(
+                std::fs::read_to_string(elsewhere.join(name)).unwrap(),
+                "not the game's"
+            );
+        }
+    }
+}

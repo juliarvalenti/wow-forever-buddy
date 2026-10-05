@@ -1,3 +1,4 @@
+mod addon;
 mod applog;
 mod backup;
 mod characters;
@@ -36,6 +37,9 @@ const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/lib/bin
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
+            commands::addon::addon_status,
+            commands::addon::addon_install,
+            commands::addon::addon_remove,
             commands::app::app_info,
             commands::backup::backup_auto_status,
             commands::backup::backup_create,
