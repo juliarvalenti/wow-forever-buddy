@@ -472,8 +472,10 @@ local function questsDone()
     end
     local out = {}
     for _, id in ipairs(ids) do
-        if type(id) == "number" and not isSecret(id) then
-            out[#out + 1] = id
+        -- arg(): a secret id is dropped and counted in secret_hits.
+        local v = arg(id)
+        if type(v) == "number" then
+            out[#out + 1] = v
         end
     end
     table.sort(out)
