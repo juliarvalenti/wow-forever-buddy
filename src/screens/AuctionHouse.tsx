@@ -68,17 +68,19 @@ export function AuctionHouse() {
         <>
           {status && <ScanBar status={status} />}
           {watch.error && <Callout tone="bad">{watch.error}</Callout>}
+          {/* Worth selling takes the Sales ledger's place under Price history,
+              keeping the mock's two columns; the Watchlist stands alone. */}
           <section className="ah-cols">
-            <PriceHistory
-              itemId={shown}
-              onPick={setPicked}
-              watched={(watch.items ?? []).some((w) => w.item_id === shown)}
-              onWatch={(id, on) => watch.setWatched(id, on)}
-            />
             <div className="d-stack">
-              <Watchlist items={watch.items} shown={shown} onPick={setPicked} />
+              <PriceHistory
+                itemId={shown}
+                onPick={setPicked}
+                watched={(watch.items ?? []).some((w) => w.item_id === shown)}
+                onWatch={(id, on) => watch.setWatched(id, on)}
+              />
               <WorthSelling rows={selling} onPick={setPicked} />
             </div>
+            <Watchlist items={watch.items} shown={shown} onPick={setPicked} />
           </section>
         </>
       )}
@@ -262,10 +264,8 @@ function ItemHistory({
       <div className="ah-head">
         <div className="nm">
           <ItemIcon item={item} lg />
-          <div className={quality(item)}>
-            {nameOf(item)}
-            <small>Item {item.item_id}</small>
-          </div>
+          {/* The mock's class line ("Trade goods") waits for item classes. */}
+          <div className={quality(item)}>{nameOf(item)}</div>
           <button
             className="ah-star"
             aria-pressed={watched}
