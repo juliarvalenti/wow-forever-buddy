@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::backup::BackupService;
 use crate::config::paths::AppPaths;
-use crate::config::settings::SettingsStore;
+use crate::config::settings::{Settings, SettingsPatch, SettingsStore};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::fsx::atomic::{sweep_temp_files, sweep_temp_files_shallow};
@@ -132,6 +132,28 @@ impl AppCore {
         crate::install::set(&self.settings, path, flavor)
     }
 
+    /// A settings change from the UI. Moving the backup store is refused
+    /// with `RestorePending` while an interrupted restore waits (or its
+    /// journal can't be read): Roll back and Finish look for their snapshots
+    /// in the store, and a new, empty one would leave them nothing to restore
+    /// from. A store move also runs as a job, so no backup or restore is
+    /// writing to the old one as it changes.
+    pub fn update_settings(&self, patch: SettingsPatch) -> AppResult<Settings> {
+        let moves_store = patch
+            .backup
+            .as_ref()
+            .and_then(|b| b.location.as_ref())
+            .is_some_and(|to| *to != self.settings.get().backup.location);
+        if !moves_store {
+            return self.settings.apply_patch(patch);
+        }
+        let _job = self.jobs.lock().expect("job lock poisoned");
+        if crate::backup::journal::read(&self.paths.local_data_dir).map_or(true, |j| j.is_some()) {
+            return Err(AppError::RestorePending);
+        }
+        self.settings.apply_patch(patch)
+    }
+
     /// Startup's install resolution (`install::resolve_on_startup`), which
     /// may also sweep temp files, as a job for the same reason.
     pub fn resolve_install_on_startup(&self) -> Option<crate::install::layout::Install> {
@@ -211,6 +233,49 @@ mod tests {
         assert!(core.paths.log_dir.is_dir());
         assert!(core.paths.settings_file().is_file());
         assert!(core.paths.db_file().is_file());
+    }
+
+    /// While a restore journal waits, the backup store can't move (Roll back
+    /// and Finish need their snapshots); every other setting still changes.
+    #[test]
+    fn the_store_stays_put_while_a_restore_is_pending() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = AppCore::with_secrets(
+            AppPaths::under(tmp.path()),
+            Arc::new(crate::secrets::MemoryStore::default()),
+        )
+        .unwrap();
+        let patch = |v: serde_json::Value| -> SettingsPatch { serde_json::from_value(v).unwrap() };
+        let elsewhere = tmp.path().join("elsewhere");
+        let journal = core
+            .paths
+            .local_data_dir
+            .join(crate::backup::journal::FILE_NAME);
+        // Unreadable counts as pending too, as it does for a new restore.
+        std::fs::write(&journal, b"{ cut off").unwrap();
+
+        let err = core
+            .update_settings(patch(
+                serde_json::json!({ "backup": { "location": elsewhere } }),
+            ))
+            .unwrap_err();
+        assert!(matches!(err, AppError::RestorePending), "{err}");
+        assert_eq!(core.settings.get().backup.location, None, "unchanged");
+        // Not a move: allowed.
+        core.update_settings(patch(
+            serde_json::json!({ "backup": { "location": null, "schedule_hours": 6 } }),
+        ))
+        .unwrap();
+        assert_eq!(core.settings.get().backup.schedule_hours, 6);
+
+        // Once the restore is dealt with, the store can move.
+        std::fs::remove_file(&journal).unwrap();
+        let s = core
+            .update_settings(patch(
+                serde_json::json!({ "backup": { "location": elsewhere } }),
+            ))
+            .unwrap();
+        assert_eq!(s.backup.location, Some(elsewhere));
     }
 
     #[test]
