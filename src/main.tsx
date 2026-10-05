@@ -6,6 +6,7 @@ import "./styles/d.css";
 import "./styles/characters.css";
 import "./styles/addons.css";
 import "./styles/settings.css";
+import "./styles/ah.css";
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

@@ -1,0 +1,103 @@
+/* Auction House (design/mocks/round-3/ah.html, F5). Market data you scanned
+   is stone. The mock's Sales ledger (parchment) waits for mail invoices. */
+
+.ah-scanbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; margin-bottom: 12px; border-radius: var(--r); font-size: 12.5px; color: #e9d7bd;
+  background: linear-gradient(90deg, rgba(255, 122, 46, .11), rgba(255, 122, 46, .02) 60%); box-shadow: inset 0 0 0 1px rgba(255, 140, 60, .22), inset 0 2px 6px rgba(0, 0, 0, .4); }
+.ah-scanbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.ah-scanbar .dot.stale { background: var(--ember-2); box-shadow: 0 0 0 3px rgba(255, 122, 46, .15); }
+.ah-scanbar b { color: #fff0dc; font-weight: 600; }
+.ah-scanbar .sep { color: var(--soot); }
+.ah-scanbar .how { margin-left: auto; color: var(--ash); font-size: 11.5px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+.ah-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+
+.ah-ico { width: 24px; height: 24px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 12px "Marcellus", Georgia, serif; overflow: hidden;
+  background: linear-gradient(135deg, #3a3631, #141311); border: 1px solid currentColor; box-shadow: inset 0 0 0 1px #000, inset 0 0 8px rgba(0, 0, 0, .6); }
+.ah-ico b { color: #e8dfd0; text-shadow: 0 1px 0 #000; }
+.ah-ico.lg { width: 36px; height: 36px; font-size: 13px; }
+
+/* price history */
+.ah-pick { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 14px 0; }
+.ah-pick .d-field { flex: 1; max-width: 320px; }
+.ah-pick .d-seg { margin-left: auto; }
+.ah-found { position: absolute; z-index: 5; top: 46px; left: 14px; width: 320px; max-height: 260px; overflow: auto; list-style: none; margin: 0; padding: 4px 0; border-radius: var(--r);
+  background: linear-gradient(180deg, #34312d, #22201d); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, .08), 0 8px 18px rgba(0, 0, 0, .6); }
+.ah-found button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 10px; border: 0; background: none; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.ah-found button:hover, .ah-found button:focus-visible { background: rgba(255, 255, 255, .06); outline: 0; }
+.ah-found .p { margin-left: auto; color: var(--ash); }
+.ah-head { display: flex; align-items: flex-end; gap: 18px; padding: 12px 14px 4px; }
+.ah-head .nm { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; min-width: 0; }
+.ah-head .nm small { display: block; font-size: 11px; font-weight: 400; color: var(--soot); }
+.ah-fig { display: flex; flex-direction: column; }
+.ah-fig .k { font-size: 12px; font-weight: 500; color: var(--soot); }
+.ah-fig .v { font-size: 17px; font-weight: 600; color: var(--chalk-hi); }
+.ah-verdict { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.ah-verdict small { font-size: 11px; color: var(--soot); }
+.ah-star { border: 0; background: none; padding: 2px; color: var(--soot); cursor: pointer; display: inline-grid; }
+.ah-star[aria-pressed="true"] { color: var(--ember-2); }
+
+.ah-chartwrap { position: relative; padding: 4px 14px 6px; }
+.ah-chart { display: block; width: 100%; height: 190px; }
+.ah-chart .grid line { stroke: rgba(255, 255, 255, .06); }
+.ah-chart .axis text { fill: var(--soot); font: 10.5px "Geist", sans-serif; }
+.ah-chart .lmin { fill: none; stroke: #c9772a; stroke-width: 2; stroke-linejoin: round; }
+.ah-chart .lmed { fill: none; stroke: #5a8bd4; stroke-width: 2; stroke-dasharray: 5 4; stroke-linejoin: round; }
+.ah-chart .dmin { fill: #c9772a; stroke: #23211e; stroke-width: 2; }
+.ah-chart .lab { font: 600 11px "Geist", sans-serif; fill: var(--chalk); }
+.ah-chart .lab tspan.m { fill: var(--ash); font-weight: 400; }
+.ah-chart .xh { stroke: rgba(255, 255, 255, .25); stroke-width: 1; }
+.ah-legend { display: flex; gap: 16px; font-size: 11.5px; color: var(--ash); padding: 0 14px; }
+.ah-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ah-legend i { width: 16px; height: 0; border-top: 2px solid #c9772a; display: inline-block; }
+.ah-legend i.med { border-top: 2px dashed #5a8bd4; }
+.ah-legend .dotk { width: 8px; height: 8px; border-radius: 50%; background: var(--ash); }
+.ah-foot { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px 12px; font-size: 11.5px; color: var(--soot); }
+.ah-foot b { color: var(--ash); font-weight: 500; }
+.ah-tip { position: absolute; pointer-events: none; padding: 6px 9px; border-radius: 4px; font-size: 11.5px; line-height: 1.45; color: var(--chalk-hi); white-space: nowrap;
+  background: linear-gradient(180deg, #34312d, #22201d); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, .08), 0 6px 14px rgba(0, 0, 0, .6); }
+.ah-tip .d { color: var(--ash); }
+.ah-tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+/* watchlist */
+.ah-watch { list-style: none; margin: 0; padding: 0; }
+.ah-watch li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 54px auto; gap: 9px; align-items: center; padding: 7px 14px; cursor: pointer; }
+.ah-watch li + li { border-top: 1px solid rgba(0, 0, 0, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+.ah-watch li:hover { background: rgba(255, 255, 255, .03); }
+.ah-watch li.on { background: rgba(255, 177, 92, .06); box-shadow: inset 2px 0 0 var(--ember-2); }
+.ah-watch .wn { min-width: 0; font-size: 12.5px; }
+.ah-watch .wn div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ah-watch .wn small { display: block; font-size: 10.5px; color: var(--soot); white-space: nowrap; }
+.ah-watch .wn small.old { color: var(--warn); }
+.ah-watch svg.sp { width: 54px; height: 20px; fill: none; stroke: var(--ash); stroke-width: 1.4; }
+.ah-watch .wp { text-align: right; font-size: 12.5px; white-space: nowrap; color: var(--chalk-hi); }
+.ah-watch .wp small { display: block; font-size: 10.5px; color: var(--soot); }
+.ah-watch .wp small.cheap { color: var(--ok); }
+
+/* worth selling */
+.ah-sugg { list-style: none; margin: 0; padding: 0; }
+.ah-sugg li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 14px; cursor: pointer; }
+.ah-sugg li + li { border-top: 1px solid rgba(0, 0, 0, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+.ah-sugg li:hover { background: rgba(255, 255, 255, .03); }
+.ah-sugg .sn { min-width: 0; font-size: 12.5px; }
+.ah-sugg .sn small { display: block; font-size: 11px; color: var(--soot); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ah-sugg .sv { text-align: right; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--chalk-hi); }
+.ah-sugg .sv small { display: block; font-size: 10.5px; font-weight: 500; margin-top: 1px; }
+.ah-conf { display: inline-flex; align-items: center; gap: 2px; }
+.ah-conf i { width: 4px; height: 9px; border-radius: 1px; background: rgba(255, 255, 255, .12); display: inline-block; }
+.ah-conf i:last-of-type { margin-right: 4px; }
+.ah-conf.sure i { background: var(--ok); } .ah-conf.fair i:nth-child(-n+2) { background: var(--ash); } .ah-conf.rough i:first-child { background: var(--warn); }
+.ah-conf.sure { color: var(--ok); } .ah-conf.fair { color: var(--ash); } .ah-conf.rough { color: var(--warn); }
+.ah-sugg li.hedge .sv { color: var(--ash); font-weight: 500; font-style: italic; }
+.ah-sugg li.hedge .sn > div { color: var(--ash); }
+.ah-sugg .why { grid-column: 2 / span 2; font-size: 11px; color: var(--warn); display: flex; align-items: center; gap: 5px; }
+.ah-sugg-foot { padding: 9px 14px 12px; font-size: 11.5px; color: var(--soot); border-top: 1px solid rgba(0, 0, 0, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+
+@media (max-width: 1100px) {
+  .ah-cols { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+  .ah-scanbar .how { display: none; }
+  .ah-head { gap: 12px; flex-wrap: wrap; }
+  .ah-fig .v { font-size: 15px; }
+  .ah-watch li { grid-template-columns: 24px minmax(0, 1fr) auto; }
+  .ah-watch svg.sp { display: none; }
+  .ah-chart { height: 170px; }
+}

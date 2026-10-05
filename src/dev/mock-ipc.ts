@@ -12,6 +12,8 @@ import type {
   AddonsList,
   AddonStatus,
   Adventure,
+  AhHistory,
+  AhStatus,
   AltLockout,
   CategoryNode,
   CharacterCard,
@@ -25,6 +27,7 @@ import type {
   RestorePlan,
   SearchResults,
   SecretStatus,
+  Sellable,
   SnapshotDetail,
   SnapshotKind,
   SnapshotSummary,
@@ -63,6 +66,8 @@ export const SCENARIOS = [
   "settings-pending", // moving is refused: an interrupted restore waits
   "addons-empty", // F4: no addons in Interface/AddOns yet (the Addons screen works in every scenario)
   "addons-linked", // F6: Velyra's settings folder is a link, so her row can't be switched
+  "ah", // F5: ah.html's market (any scenario has it; this one opens on it in shots)
+  "ah-empty", // the AH before Auctionator has saved any prices
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -141,6 +146,54 @@ export function installMockIpc(): void {
       lockout: { name, difficulty, raid, reset_at: iso(-minsAhead) },
     };
   };
+  // F5: the round-3 ah.html items. id: [name, quality, price g, median g,
+  // sightings, last seen days ago, listed].
+  const ahItems: Record<number, { name: string | null; q: number; p: number; med: number; n: number; ago: number; listed: number }> = {
+    12360: { name: "Arcanite Bar", q: 2, p: 36.4, med: 41.1, n: 12, ago: 3, listed: 84 },
+    14047: { name: "Runecloth", q: 1, p: 1.12, med: 1.08, n: 31, ago: 3, listed: 900 },
+    13468: { name: "Black Lotus", q: 2, p: 82, med: 75, n: 4, ago: 3, listed: 2 },
+    13446: { name: "Major Healing Potion", q: 1, p: 1.85, med: 1.89, n: 18, ago: 3, listed: 140 },
+    13510: { name: "Flask of the Titans", q: 1, p: 64, med: 62, n: 6, ago: 12, listed: 9 },
+    12808: { name: "Essence of Undeath", q: 1, p: 3.4, med: 3.3, n: 8, ago: 3, listed: 60 },
+    12811: { name: "Righteous Orb", q: 2, p: 4, med: 4.2, n: 5, ago: 12, listed: 11 },
+  };
+  const dayAgo = (d: number) => new Date(now - d * 86_400_000).toISOString().slice(0, 10);
+  const watched = [12360, 14047, 13468, 13446, 13510];
+  // Arcanite's scans over 30 days (ah.html's S array): [days ago, lowest g].
+  const arcaniteScans: [number, number][] = [
+    [29, 44], [27, 43.5], [24, 45], [22, 42], [20, 41], [17, 40.5], [15, 42.6], [12, 39.8], [10, 38.4], [8, 39.5], [6, 37.9], [3, 36.4],
+  ];
+  const ahPoints = (id: number) => {
+    const it = ahItems[id];
+    const scans: [number, number][] =
+      id === 12360
+        ? arcaniteScans
+        : Array.from({ length: Math.min(it.n, 12) }, (_, k) => [it.ago + (Math.min(it.n, 12) - 1 - k) * 2, it.med * (0.92 + ((k * 37) % 17) / 100)]);
+    return scans.map(([d, g]) => ({ day: dayAgo(d), low: Math.round(g * 10_000), high: Math.round(g * 10_600), available: it.listed }));
+  };
+  const ahItem = (id: number) => {
+    const it = ahItems[id];
+    return {
+      item_id: id,
+      name: it.name,
+      quality: it.q,
+      price: Math.round(it.p * 10_000),
+      last_seen: dayAgo(it.ago),
+      sightings: it.n,
+      median: Math.round(it.med * 10_000),
+      recent: ahPoints(id).map((p) => p.low),
+      listed: it.listed,
+    };
+  };
+  type Held = [number, string, string, string, number];
+  const sellable = (id: number, count: number, held: Held[], confidence: Sellable["confidence"], caution: string | null = null): Sellable => ({
+    item: ahItem(id),
+    count,
+    holdings: held.map(([character_id, character, cls, location, n]) => ({ character_id, character, class: cls, location, count: n })),
+    value: Math.round(ahItems[id].p * 10_000 * count),
+    confidence,
+    caution,
+  });
   const saves: AltLockout[] = [
     save(4, "Scholomance", false, 60 * 17 + 20),
     save(2, "Molten Core", true, 60 * 52),
@@ -914,6 +967,34 @@ export function installMockIpc(): void {
     adventure_get: ({ id }) =>
       s === "adventure-empty" || noAddon ? null : adventureFor((id as number | null) ?? 1),
     adventure_set_note: () => null,
+    // F5: ah.html's market; `ah-empty` before Auctionator has saved prices.
+    ah_status: (): AhStatus =>
+      s === "ah-empty"
+        ? { has_prices: false, market: null, items: 0, last_scan_at: null, newest_day: null }
+        : { has_prices: true, market: "Forever", items: 4812, last_scan_at: iso(60 * 24 * 3 + 30), newest_day: dayAgo(3) },
+    ah_search: ({ query }) =>
+      Object.keys(ahItems)
+        .map(Number)
+        .filter((id) => ahItems[id].name!.toLowerCase().includes(String(query).toLowerCase()))
+        .map(ahItem),
+    ah_history: ({ itemId }): AhHistory => ({ item: ahItem(itemId as number), points: ahPoints(itemId as number) }),
+    ah_watchlist: () => (s === "ah-empty" ? [] : watched.map(ahItem)),
+    ah_set_watched: ({ itemId, watched: on }) => {
+      const id = itemId as number;
+      if (on && !watched.includes(id)) watched.push(id);
+      if (!on) watched.splice(watched.indexOf(id), 1);
+      return null;
+    },
+    ah_worth_selling: (): Sellable[] =>
+      s === "ah-empty"
+        ? []
+        : [
+            sellable(12360, 24, [[1, "Coinpurse", "warrior", "bank", 24]], "sure"),
+            sellable(14047, 452, [[1, "Coinpurse", "warrior", "bank", 340], [3, "Velyra", "druid", "bank", 60], [4, "Brannic", "hunter", "bag", 40], [2, "Thrandor", "paladin", "bag", 12]], "sure"),
+            sellable(13468, 1, [[3, "Velyra", "druid", "bank", 1]], "rough", "few"),
+            sellable(12808, 18, [[2, "Thrandor", "paladin", "bag", 18]], "fair"),
+            sellable(12811, 14, [[2, "Thrandor", "paladin", "bank", 14]], "rough", "stale"),
+          ],
   };
 
   mockWindows("main");
