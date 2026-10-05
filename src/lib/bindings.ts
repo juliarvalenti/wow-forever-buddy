@@ -80,6 +80,23 @@ export const commands = {
 	 */
 	ledgerExportCsv: (range: LedgerRange, kind: LedgerExport, dest: string) => __TAURI_INVOKE<string>("ledger_export_csv", { range, kind, dest }),
 	/**
+	 *  The scan bar: whether there are prices, how many, and when Auctionator
+	 *  last scanned.
+	 */
+	ahStatus: () => __TAURI_INVOKE<AhStatus>("ah_status"),
+	/**  Priced items whose name contains `query` (or with that item id). */
+	ahSearch: (query: string) => __TAURI_INVOKE<AhItem[]>("ah_search", { query }),
+	/**  One item's price history over the last `days` (all of it with `None`). */
+	ahHistory: (itemId: number, days: number | null) => __TAURI_INVOKE<AhHistory>("ah_history", { itemId, days }),
+	ahWatchlist: () => __TAURI_INVOKE<AhItem[]>("ah_watchlist"),
+	/**
+	 *  Adds an item to the watchlist, or removes it. The app's own list: never
+	 *  written to the game.
+	 */
+	ahSetWatched: (itemId: number, watched: boolean) => __TAURI_INVOKE<null>("ah_set_watched", { itemId, watched }),
+	/**  What the alts carry that's worth at least `min_value` copper. */
+	ahWorthSelling: (minValue: number | null) => __TAURI_INVOKE<Sellable[]>("ah_worth_selling", { minValue }),
+	/**
 	 *  The latest automatic backup failure, if no automatic backup has
 	 *  succeeded since. The UI asks on start, since a failure can happen before
 	 *  it's listening.
@@ -293,6 +310,7 @@ export const events = {
 	ingestCompleted: makeEvent<IngestCompleted>("ingest-completed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 	moveProgress: makeEvent<MoveProgress>("move-progress"),
+	pricesUpdated: makeEvent<PricesUpdated>("prices-updated"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
 	sessionsChanged: makeEvent<SessionsChanged>("sessions-changed"),
@@ -380,6 +398,53 @@ export type AdventureLink = {
 	id: number,
 	name: string,
 	login: string,
+};
+
+export type AhHistory = {
+	item: AhItem,
+	/**  Oldest first; only days a scan saw it. */
+	points: AhPoint[],
+};
+
+/**  One item with its price, for lists (search, watchlist, worth selling). */
+export type AhItem = {
+	item_id: number,
+	/**
+	 *  From the items our addon has seen; `None` for an item no character
+	 *  has carried (the UI says "Item 12345").
+	 */
+	name: string | null,
+	quality: number | null,
+	/**  The last lowest buyout (copper). */
+	price: number | null,
+	/**  The day it was last seen (YYYY-MM-DD). */
+	last_seen: string,
+	/**  Days seen in the last 30. */
+	sightings: number,
+	/**  The median of the daily lows over the last 30 days. */
+	median: number | null,
+};
+
+/**  One day on the price chart. */
+export type AhPoint = {
+	day: string,
+	low: number | null,
+	high: number | null,
+	available: number | null,
+};
+
+/**  The scan bar: when Auctionator last scanned, and how many prices there are. */
+export type AhStatus = {
+	/**  Whether an `Auctionator.lua` with prices has been read at all. */
+	has_prices: boolean,
+	/**  Auctionator's realm root for the market shown ("Forever"). */
+	market: string | null,
+	/**  Items with a price. */
+	items: number,
+	/**  The newest of the last full or incremental scan (RFC 3339). */
+	last_scan_at: string | null,
+	/**  The newest day any price was seen (YYYY-MM-DD). */
+	newest_day: string | null,
 };
 
 /**  A save on any character, for the Dashboard's "Lockouts this week". */
@@ -662,6 +727,9 @@ export type Chart = {
 	account: (number | null)[],
 };
 
+/**  How sure a price is, from how often and how lately it was seen. */
+export type Confidence = "sure" | "fair" | "rough";
+
 /**
  *  What `install_detect` returns: every install found, plus every place we
  *  looked, so onboarding's "not found" state can say where.
@@ -751,6 +819,16 @@ export type GameStatusChanged = GameStatus;
 export type GoldPoint = {
 	at: string,
 	money: number | null,
+};
+
+/**  Where some of an item is, for "Coinpurse · bank". */
+export type Holding = {
+	character_id: number,
+	character: string,
+	class: string | null,
+	/**  `bag`, `bank` or `mail`. */
+	location: string,
+	count: number,
 };
 
 /**  Emitted after a scan or replay that changed characters' data. */
@@ -1067,6 +1145,12 @@ export type PlaySession = {
 	crashed: boolean,
 };
 
+/**  Emitted after new prices were read. */
+export type PricesUpdated = {
+	/**  Items with a price now. */
+	items: number,
+};
+
 export type ProfessionRow = {
 	name: string,
 	skill: number | null,
@@ -1235,6 +1319,21 @@ export type SecretStatus = {
 	is_set: boolean,
 	/**  Why the store couldn't be read for this id. Never contains the value. */
 	error: string | null,
+};
+
+export type Sellable = {
+	item: AhItem,
+	count: number,
+	/**  Most first. */
+	holdings: Holding[],
+	/**  count × price (copper). */
+	value: number | null,
+	confidence: Confidence,
+	/**
+	 *  Why a price is rough: "few" (under 5 sightings) or "stale" (not seen
+	 *  for over a week).
+	 */
+	caution: string | null,
 };
 
 export type Series = {

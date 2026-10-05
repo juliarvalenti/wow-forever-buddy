@@ -48,6 +48,9 @@ zstd = "0.14"
 ulid = "3"
 # "Export snapshot as .zip" (spec §5). Deflate only: plain zips any OS opens.
 zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "chrono"] }
+# Auctionator's price database (F5): modern clients store each realm's prices
+# as a CBOR string (C_EncodingUtil.SerializeCBOR) inside its SavedVariables.
+ciborium = "0.2"
 
 [dev-dependencies]
 full_moon = "3"

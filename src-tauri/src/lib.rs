@@ -1,5 +1,6 @@
 mod addon;
 mod adventures;
+mod ah;
 mod applog;
 mod backup;
 mod characters;
@@ -47,6 +48,12 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_info,
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
+            commands::ah::ah_status,
+            commands::ah::ah_search,
+            commands::ah::ah_history,
+            commands::ah::ah_watchlist,
+            commands::ah::ah_set_watched,
+            commands::ah::ah_worth_selling,
             commands::backup::backup_auto_status,
             commands::backup::backup_create,
             commands::backup::backup_delete,
@@ -96,6 +103,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::restore::RestoreCompleted,
             commands::game::GameStatusChanged,
             sessions::SessionsChanged,
+            ah::PricesUpdated,
             ingest::IngestCompleted
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
@@ -245,6 +253,18 @@ fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Jo
                 characters: changed.into_iter().map(|id| id as u32).collect(),
             }
             .emit(&h);
+        }
+        // Auctionator's prices (F5), on the same triggers.
+        if let Ok(game) = core.active_game() {
+            match ah::scan(&core.db, &game.flavor, &game.root.base) {
+                Ok(Some(items)) => {
+                    let _ = ah::PricesUpdated { items }.emit(&h);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    applog::append(&core.paths.log_dir, &format!("auction prices failed: {e}"))
+                }
+            }
         }
     })
 }

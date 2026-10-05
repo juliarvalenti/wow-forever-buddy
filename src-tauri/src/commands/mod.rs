@@ -3,6 +3,7 @@
 
 pub mod addon;
 pub mod adventures;
+pub mod ah;
 pub mod app;
 pub mod backup;
 pub mod characters;
