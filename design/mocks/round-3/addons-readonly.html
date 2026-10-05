@@ -39,6 +39,18 @@
   .note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; line-height: 1.45; }
   .note svg { flex-shrink: 0; margin-top: 1px; }
   .note.warn { color: var(--warn); }
+  /* F6: toggles (?state=edit | staged | applied | running | linked) */
+  .secrow { display: flex; align-items: baseline; }
+  .secrow #allon { margin-left: auto; }
+  .who li .switch { margin-left: auto; transform: scale(.85); transform-origin: right center; }
+  .who li .switch.locked { opacity: .4; cursor: not-allowed; }
+  .who li .chg { font-size: 11px; color: var(--ember-2); margin-left: auto; }
+  .who li .chg + .switch { margin-left: 8px; }
+  .who li .lk { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--soot); cursor: help; }
+  .applybar { display: flex; align-items: center; gap: 8px; }
+  .applybar .n { font-size: 12px; color: var(--ash); margin-right: auto; }
+  .done { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ok); }
+  .done .grow { flex: 1; color: var(--chalk); }
   @media (max-width: 1100px) {
     .split { grid-template-columns: minmax(0, 1fr) 250px; }
     th.auth, td.auth { display: none; }
@@ -53,6 +65,8 @@
       <button class="btn"><i data-i="folder"></i>Open AddOns folder</button>
     </div>
   </header>
+
+  <div class="callout" id="running" style="display:none"><i data-i="lock"></i><span class="grow"><b>WoW is running, so addon changes are locked.</b> WoW rewrites each character's AddOns.txt when it closes, so changes wait until then.</span><span class="live"></span></div>
 
   <div class="toolbar">
     <label class="field"><i data-i="search" class="sm" style="color:var(--soot)"></i><input placeholder="Filter addons…"></label>
@@ -80,16 +94,11 @@
           <span>Folder</span><code title="C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\Questie">…\AddOns\Questie</code>
         </div>
         <div>
-          <div class="sec">Enabled for</div>
-          <ul class="who">
-            <li class="off c-paladin"><span class="cdot"></span><span class="cc">Thrandor</span><span class="st">off</span></li>
-            <li class="off c-druid"><span class="cdot"></span><span class="cc">Velyra</span><span class="st">off</span></li>
-            <li class="c-hunter"><span class="cdot"></span><span class="cc">Brannic</span><span class="st">on</span></li>
-            <li class="c-mage"><span class="cdot"></span><span class="cc">Fizzwick</span><span class="st">on</span></li>
-            <li class="c-priest"><span class="cdot"></span><span class="cc">Sela</span><span class="st">on</span></li>
-          </ul>
+          <div class="sec secrow">Enabled for<span id="allon"></span></div>
+          <ul class="who" id="who"></ul>
         </div>
-        <div class="note"><i data-i="file" class="sm"></i><span>Toggling addons comes later, with a safety snapshot first. For now, change them in-game from the AddOns button on the character screen.</span></div>
+        <div id="foot"></div>
+        <div class="note" id="note"></div>
       </div>
     </div>
   </div>
@@ -110,6 +119,34 @@
   ];
   const CLS = ['paladin', 'druid', 'hunter', 'mage', 'priest'];
   const NAMES = ['Thrandor', 'Velyra', 'Brannic', 'Fizzwick', 'Sela'];
+
+  // F6 side-panel states. No ?state: read-only (F4). edit: switches. staged: Thrandor turned on,
+  // not yet written. applied: written, with Undo. running: locked. linked: Velyra's folder is a link.
+  const state = new URLSearchParams(location.search).get('state');
+  const qOn = [0, 0, 1, 1, 1];
+  if (state === 'running') document.getElementById('running').style.display = '';
+  document.body.dataset.wow = state && state !== 'running' ? 'closed' : 'running';
+  const on = state === 'staged' || state === 'applied' ? [1, 0, 1, 1, 1] : qOn;
+  // icon() comes from _shell.js, which runs after this script.
+  addEventListener('DOMContentLoaded', () => {
+  document.getElementById('who').innerHTML = NAMES.map((n, k) => {
+    const changed = state === 'staged' && on[k] !== qOn[k];
+    let ctl = `<span class="st">${on[k] ? 'on' : 'off'}</span>`;
+    if (state === 'linked' && k === 1) ctl = `<span class="lk" title="Velyra's settings folder is a link to another place, so Forever Buddy won't write there. Change it in-game.">${icon('link', 'sm')}linked folder</span>`;
+    else if (state === 'running') ctl = `<span class="switch locked ${on[k] ? 'on' : ''}" title="Close WoW first"></span>`;
+    else if (state) ctl = `${changed ? '<span class="chg">changed</span>' : ''}<span class="switch ${on[k] ? 'on' : ''}"></span>`;
+    return `<li class="${on[k] ? '' : 'off'} c-${CLS[k]}"><span class="cdot"></span><span class="cc">${n}</span>${ctl}</li>`;
+  }).join('');
+  if (state === 'edit' || state === 'staged') document.getElementById('allon').innerHTML = '<a class="link" href="#">On for everyone</a>';
+  document.getElementById('foot').innerHTML =
+    state === 'staged' ? '<div class="applybar"><span class="n">1 change</span><button class="btn ghost">Discard</button><button class="primary">Apply</button></div>'
+    : state === 'applied' ? `<div class="done">${icon('check', 'sm')}<span class="grow">Questie is on for Thrandor. A safety snapshot was taken first.</span><button class="btn ghost">Undo</button></div>`
+    : '';
+  document.getElementById('note').innerHTML = !state
+    ? `${icon('file', 'sm')}<span>Toggling addons comes later, with a safety snapshot first. For now, change them in-game from the AddOns button on the character screen.</span>`
+    : state === 'running' ? ''
+    : `${icon('file', 'sm')}<span>Changes are written to each character's AddOns.txt when you apply them. A safety snapshot is taken first, so you can undo.</span>`;
+  });
   document.getElementById('rows').innerHTML = A.map((a, i) => {
     const on = a[4].reduce((n, x) => n + x, 0);
     const label = on === a[4].length ? 'all' : on === 0 ? 'none' : `${on} of ${a[4].length}`;
