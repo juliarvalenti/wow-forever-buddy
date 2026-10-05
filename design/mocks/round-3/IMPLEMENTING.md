@@ -242,3 +242,25 @@ This is the first cut of `macros.html` (the v0.6 sketch). **Nothing on this scre
 - **Empty states:**
   - With no macros-cache.txt for the character: "No macros for Thrandor yet. WoW writes them when you log out."
   - With an empty account list: "No account macros yet."
+
+## 13. F8: real item icons (`icons.html`)
+Icons come from the player's own game files and replace the letter tiles in the **same frame**, so nothing moves when they arrive.
+- **One frame, everywhere:**
+  - A rounded box (3 px radius) with a 1.5 px border in the item's quality colour and a 1 px black inner ring. 56 px and larger use a 2 px border.
+  - The art fills it, scaled up so about 7% is cropped on each side. Blizzard's icons have a dark rim baked in, and without the crop it doubles our border.
+  - This replaces `.d-ico`, `.ch-ico` and the mocks' `.ico` in one component, with a `size` prop of 18, 24, 36 or 56 px.
+- **Quality colours:**
+  - On stone (bright): poor `#6f6a62`, common `#5d5852` (deliberately dim, since a white border on every common item is noise), uncommon `#58d23c`, rare `#4f95ff`, epic `#b86cf0`, legendary `#ff8000`.
+  - On parchment: the inked palette we already use for names (common `#8c7b62`, uncommon `#23710f`, rare `#1a4f9c`, epic `#6b2a9a`, legendary `#a85400`), plus a 1-2 px shadow so the art sits on the page.
+- **Stack counts:** only where a count belongs on the icon (bag grids), in white bottom right with a black outline. In lists, the count stays in its own column as now.
+- **Loading and failure:** show the letter tile until the icon is ready, then swap the art in. No shimmer, spinner or fade longer than about 120 ms. A missing or undecodable icon stays a letter tile, with no error at the item.
+- **Where:** every letter-tile spot: the sheet's gear and bags, Characters search results, the Ledger journal's "Of note", the recap's Gained / Spent and timeline, the AH (watchlist, Worth selling, Price history), and the Dashboard's Last adventure.
+- **Settings › Game › Game data cache:**
+  - One row: "Game data cache", described as "Item icons read from your own game files and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch."
+  - Controls: a stone **Rebuild** and a ghost **Clear**. Clear needs no confirm, since it rebuilds on its own.
+  - Under the row, a small details block:
+    - **ok:** Status "Up to date" (green), Icons "1,284 · 18.4 MB", Game build, and Read from "…\World of Warcraft\Data (read only)", with the full path in the tooltip.
+    - **building:** a live dot with "Reading icons from your game · 412 of 1,284" and a meter. Rebuild and Clear are disabled. Add "(new since last time)" after the build if a patch triggered it.
+    - **failed:** one warn line (amber, not red): "Couldn't read the game's art files, so items show letters instead. Nothing else is affected. Details". Details opens the log entry.
+    - **empty:** "Not built yet. Icons are read the first time you open a screen with items."
+- **Never redistributed:** no icons in exports, screenshots for sharing, release assets, or the shots harness (it keeps the letter tiles).
