@@ -689,7 +689,7 @@ mod tests {
         assert_eq!(s.professions.len(), 3);
     }
 
-    /// The tooltip's "Looted <date> · <zone>": from the journal's `gain`
+    /// The tooltip's "Gained <date> · <zone>": from the journal's `gain`
     /// events, never for items bought or mailed. Both files are the addon's.
     #[test]
     fn items_know_when_and_where_they_were_looted() {
