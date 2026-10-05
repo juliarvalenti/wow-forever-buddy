@@ -427,7 +427,7 @@ export function Backups({
   /** A list filter to apply (e.g. "Open Backups" on the safety copies). */
   show?: Filter | null;
 }) {
-  const { list, storage, error, progress, failed, backUpNow } = useBackups();
+  const { list, storage, error, progress, failed, autoFailed, backUpNow } = useBackups();
   const [filter, setFilter] = useState<Filter>(show ?? "all");
   const [selected, setSelected] = useState<string | null>(select ?? null);
   const [scope, setScope] = useState<Scope>("characters");
@@ -509,6 +509,16 @@ export function Backups({
           <Button onClick={() => backUpNow()}>Retry</Button>
         </Callout>
       ) : null}
+      {autoFailed && !failed && (
+        <Callout tone="bad">
+          <span>
+            <b>The last automatic backup didn't finish</b> ({AUTO_NOTE[autoFailed.trigger]?.toLowerCase() ?? "automatic"},{" "}
+            {when(autoFailed.at)}). {autoFailed.error}
+          </span>
+          <span className="d-grow" />
+          <Button onClick={() => backUpNow()}>Back up now</Button>
+        </Callout>
+      )}
       {error && <Callout tone="bad">{error}</Callout>}
 
       {storage && (
@@ -600,6 +610,15 @@ export function Backups({
                     {detail.summary.game_running ? "Taken while WoW ran" : "Taken when WoW was closed"} ·{" "}
                     {bytes(detail.summary.total_bytes)} · {plural(detail.summary.file_count, "file", "files")}
                   </p>
+                  {detail.skipped.length > 0 && (
+                    <Callout tone="ember">
+                      <span>
+                        <b>{plural(detail.skipped.length, "file was", "files were")} left out</b> because{" "}
+                        {detail.skipped.length === 1 ? "it" : "they"} couldn't be read:{" "}
+                        {detail.skipped.map((f) => f.path).join(", ")}
+                      </span>
+                    </Callout>
+                  )}
                   <Segmented<Scope>
                     value={scope}
                     onChange={setScope}

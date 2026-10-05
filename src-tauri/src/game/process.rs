@@ -314,8 +314,7 @@ pub mod fake {
     impl FakeProbe {
         /// Simulates a failed enumeration: an empty list, without this app.
         pub fn set_blind(&self, blind: bool) {
-            self.blind
-                .store(blind, std::sync::atomic::Ordering::SeqCst);
+            self.blind.store(blind, std::sync::atomic::Ordering::SeqCst);
         }
 
         /// Shorthand: a WoW process with an unreadable path (matches by name).

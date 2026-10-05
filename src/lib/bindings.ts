@@ -8,6 +8,18 @@ export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
+	 *  The latest automatic backup failure, if no automatic backup has
+	 *  succeeded since. The UI asks on start, since a failure can happen before
+	 *  it's listening.
+	 */
+	backupAutoStatus: () => __TAURI_INVOKE<{
+	/**  RFC 3339, UTC. */
+	at: string,
+	trigger: Trigger,
+	/**  The error, as shown to the user. */
+	error: string,
+} | null>("backup_auto_status"),
+	/**
 	 *  "Back up now": a full manual snapshot. Allowed while WoW runs, and then
 	 *  flagged as taken mid-session. Waits if another backup or restore is running.
 	 */
@@ -135,6 +147,7 @@ export const commands = {
 /** Events */
 export const events = {
 	backupCreated: makeEvent<BackupCreated>("backup-created"),
+	backupFailed: makeEvent<BackupFailed>("backup-failed"),
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	exportProgress: makeEvent<ExportProgress>("export-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
@@ -212,8 +225,27 @@ export type AppPaths = {
 	log_dir: string,
 };
 
+/**
+ *  An automatic backup that failed, for the Backups screen (R1): nobody is
+ *  watching when one runs, so the failure is kept until a later automatic
+ *  backup succeeds, and the UI asks for it on start.
+ */
+export type AutoBackupFailure = {
+	/**  RFC 3339, UTC. */
+	at: string,
+	trigger: Trigger,
+	/**  The error, as shown to the user. */
+	error: string,
+};
+
 /**  Emitted when a snapshot has been written. */
 export type BackupCreated = SnapshotSummary;
+
+/**
+ *  Emitted when an automatic backup fails (R1). The same failure stays
+ *  available from `backup_auto_status` until an automatic backup succeeds.
+ */
+export type BackupFailed = AutoBackupFailure;
 
 export type BackupPatch = BackupPatch_Serialize | BackupPatch_Deserialize;
 
@@ -658,12 +690,24 @@ export type SettingsPatch_Serialize = {
 	ui: { [key in string]: string | null } | null,
 };
 
+/**  A file a full snapshot left out, and why. */
+export type SkippedFile = {
+	/**
+	 *  Relative to the flavor folder when it could be expressed that way;
+	 *  otherwise the path as the OS reported it.
+	 */
+	path: string,
+	reason: string,
+};
+
 export type SnapshotDetail = {
 	summary: SnapshotSummary,
 	accounts: AccountNode[],
 	addons: AddonNode[],
 	/**  Files outside `WTF/Account` (e.g. `WTF/Config.wtf`, AddOns folders). */
 	other: Totals,
+	/**  Files the snapshot couldn't capture and left out (R1). */
+	skipped: SkippedFile[],
 };
 
 export type SnapshotKind = "Manual" | "Auto" | "Safety";

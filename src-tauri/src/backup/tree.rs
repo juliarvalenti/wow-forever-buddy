@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::backup::manifest::{Manifest, SnapshotSummary};
+use crate::backup::manifest::{Manifest, SkippedFile, SnapshotSummary};
 
 /// What a file in a character (or account) folder is for. The restore panel
 /// lets you pick these per character.
@@ -92,6 +92,8 @@ pub struct SnapshotDetail {
     pub addons: Vec<AddonNode>,
     /// Files outside `WTF/Account` (e.g. `WTF/Config.wtf`, AddOns folders).
     pub other: Totals,
+    /// Files the snapshot couldn't capture and left out (R1).
+    pub skipped: Vec<SkippedFile>,
 }
 
 #[derive(Default)]
@@ -161,6 +163,7 @@ pub fn detail(manifest: &Manifest) -> SnapshotDetail {
 
     SnapshotDetail {
         summary: manifest.summary(),
+        skipped: manifest.skipped.clone(),
         accounts: accounts
             .into_iter()
             .map(|(name, a)| AccountNode {

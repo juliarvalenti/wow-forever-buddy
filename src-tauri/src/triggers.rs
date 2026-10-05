@@ -14,11 +14,13 @@ use std::sync::MutexGuard;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
+use crate::applog;
 use crate::backup::manifest::{Scope, SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
 use crate::backup::{journal, Gc, SnapshotRequest, SnapshotScope};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::game::process::GameCheck;
 use crate::state::AppCore;
 
@@ -31,11 +33,34 @@ pub const SCHEDULE_TICK: Duration = Duration::from_secs(60);
 /// Meta key: when an automatic backup last ran (written or skipped), so a
 /// skipped run doesn't stay "due" and re-run every tick.
 const LAST_AUTO_ATTEMPT: &str = "last_auto_attempt";
+/// Meta key: the latest automatic backup failure (JSON), until one succeeds.
+const LAST_AUTO_FAILURE: &str = "last_auto_failure";
+
+/// An automatic backup that failed, for the Backups screen (R1): nobody is
+/// watching when one runs, so the failure is kept until a later automatic
+/// backup succeeds, and the UI asks for it on start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct AutoBackupFailure {
+    /// RFC 3339, UTC.
+    pub at: String,
+    pub trigger: Trigger,
+    /// The error, as shown to the user.
+    pub error: String,
+}
+
+/// The automatic backup failure still standing, if any.
+pub fn last_failure(core: &AppCore) -> AppResult<Option<AutoBackupFailure>> {
+    Ok(core
+        .db
+        .get_meta(LAST_AUTO_FAILURE)?
+        .and_then(|json| serde_json::from_str(&json).ok()))
+}
 
 /// Takes an automatic full snapshot, then prunes if one was written.
 /// Returns `None` if it was skipped: WoW is running, or nothing changed
 /// since the last full snapshot. `on_created` runs for a new snapshot (the
-/// app emits `backup-created`).
+/// app emits `backup-created`). A failure is logged and kept for the UI
+/// (`last_failure`) before it's returned.
 pub fn run_auto(
     core: &AppCore,
     trigger: Trigger,
@@ -63,10 +88,47 @@ pub fn run_auto_locked(
         GameCheck::Unknown => true,
         GameCheck::NotRunning => false,
     };
+    let created = match snapshot(core, trigger, game_running) {
+        Ok(created) => {
+            core.db.with_conn(|c| {
+                c.execute("DELETE FROM meta WHERE key = ?1", [LAST_AUTO_FAILURE])?;
+                Ok(())
+            })?;
+            created
+        }
+        // Not set up yet (first run): nothing to back up, nothing wrong.
+        Err(AppError::NoInstall) => return Err(AppError::NoInstall),
+        Err(e) => {
+            record_failure(core, trigger, &e);
+            return Err(e);
+        }
+    };
+    if let Some(summary) = &created {
+        on_created(summary);
+        // Spec §5: prune after each *new* snapshot; GC itself is hourly.
+        // Never while an unreadable restore journal hides which snapshots a
+        // roll back needs: skip until the user resolves it. The backup itself
+        // succeeded, so a pruning error is only logged.
+        if let Ok(held) = journal::held_snapshots(&core.paths.local_data_dir) {
+            let pruned = core
+                .backups()
+                .and_then(|store| store.prune(Utc::now(), &POLICY, Gc::Throttled, &held));
+            if let Err(e) = pruned {
+                applog::append(&core.paths.log_dir, &format!("prune failed: {e}"));
+            }
+        }
+    }
+    Ok(created)
+}
+
+fn snapshot(
+    core: &AppCore,
+    trigger: Trigger,
+    game_running: bool,
+) -> AppResult<Option<SnapshotSummary>> {
     let game = core.active_game()?;
-    let store = core.backups()?;
     let include_addons = core.settings.get().backup.include_addons;
-    let created = store.create(
+    core.backups()?.create(
         SnapshotRequest {
             game: &game.root,
             flavor: &game.flavor,
@@ -76,17 +138,21 @@ pub fn run_auto_locked(
             game_running,
         },
         &mut |_, _| {},
-    )?;
-    if let Some(summary) = &created {
-        on_created(summary);
-        // Spec §5: prune after each *new* snapshot; GC itself is hourly.
-        // Never while an unreadable restore journal hides which snapshots a
-        // roll back needs: skip until the user resolves it.
-        if let Ok(held) = journal::held_snapshots(&core.paths.local_data_dir) {
-            store.prune(Utc::now(), &POLICY, Gc::Throttled, &held)?;
-        }
-    }
-    Ok(created)
+    )
+}
+
+fn record_failure(core: &AppCore, trigger: Trigger, e: &AppError) {
+    let failure = AutoBackupFailure {
+        at: Utc::now().to_rfc3339(),
+        trigger,
+        error: e.to_string(),
+    };
+    applog::append(
+        &core.paths.log_dir,
+        &format!("automatic backup ({}) failed: {e}", trigger.as_str()),
+    );
+    let json = serde_json::to_string(&failure).expect("failure serializes");
+    let _ = core.db.set_meta(LAST_AUTO_FAILURE, &json);
 }
 
 /// The game-exit backup. Takes the job lock *before* waiting for WTF to
@@ -241,6 +307,30 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(s.core.backups().unwrap().list().unwrap().is_empty());
+    }
+
+    /// R1: a failed automatic backup is logged and kept for the UI until an
+    /// automatic backup succeeds; "not set up yet" isn't a failure.
+    #[test]
+    fn failures_are_logged_and_kept_until_a_success() {
+        let s = setup();
+        assert_eq!(last_failure(&s.core).unwrap(), None);
+
+        // The game folder goes away (say the drive was unplugged).
+        let parked = s.flavor.with_file_name("parked");
+        std::fs::rename(&s.flavor, &parked).unwrap();
+        let result = run_auto(&s.core, Trigger::Scheduled, &|_| {});
+        std::fs::rename(&parked, &s.flavor).unwrap();
+        assert!(result.is_err());
+
+        let failure = last_failure(&s.core).unwrap().expect("kept");
+        assert_eq!(failure.trigger, Trigger::Scheduled);
+        assert!(!failure.error.is_empty());
+        let log = std::fs::read_to_string(s.core.paths.log_dir.join("buddy.log")).unwrap();
+        assert!(log.contains("automatic backup (scheduled) failed"));
+
+        run_auto(&s.core, Trigger::Scheduled, &|_| {}).unwrap();
+        assert_eq!(last_failure(&s.core).unwrap(), None, "cleared by a success");
     }
 
     /// R2: when the process list fails ("unknown"), automatic backups still
