@@ -1,7 +1,9 @@
 # Publishing a GitHub release builds the Windows app and attaches it to that
-# release: an installer (*-setup.exe) and a portable .exe you can run directly.
-# "Run workflow" on the Actions tab builds the same thing as a downloadable
-# workflow artifact, without touching any release.
+# release: an installer (*-setup.exe), a portable .exe you can run directly,
+# and the ForeverBuddy addon on its own (ForeverBuddy-<addon version>.zip, to
+# unzip into Interface/AddOns). "Run workflow" on the Actions tab builds the
+# same things as downloadable workflow artifacts, without touching any
+# release.
 name: Release
 
 on:
@@ -45,3 +47,33 @@ jobs:
           releaseId: ${{ github.event.release.id }}
           uploadPlainBinary: true
           uploadWorkflowArtifacts: true
+
+      # The addon the app bundles, as a zip whose root is the ForeverBuddy
+      # folder, named for the version in its TOC. 7-Zip (on the runner) writes
+      # forward-slash entry names, which every unzipper reads as folders.
+      - name: Zip the ForeverBuddy addon
+        id: addon
+        shell: pwsh
+        run: |
+          $toc = Get-Content src-tauri/resources/addon/ForeverBuddy/ForeverBuddy.toc
+          $version = ($toc | Select-String '^## Version:\s*(\S+)').Matches[0].Groups[1].Value
+          if (-not $version) { throw "No '## Version:' line in ForeverBuddy.toc" }
+          $zip = "ForeverBuddy-$version.zip"
+          Push-Location src-tauri/resources/addon
+          7z a -tzip "$env:GITHUB_WORKSPACE/$zip" ForeverBuddy
+          if ($LASTEXITCODE -ne 0) { throw "7z failed" }
+          Pop-Location
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Attach the addon to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          ZIP: ${{ steps.addon.outputs.zip }}
+        run: gh release upload "$env:TAG" "$env:ZIP" --clobber
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.addon.outputs.zip }}
+          path: ${{ steps.addon.outputs.zip }}
