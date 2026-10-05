@@ -19,6 +19,7 @@ import type {
   LedgerRange,
   PlaySession,
   RestorePlan,
+  SearchResults,
   SecretStatus,
   SnapshotDetail,
   SnapshotKind,
@@ -720,6 +721,39 @@ export function installMockIpc(): void {
           at: iso(60 * 24 * (28 - i * 2)),
           money: (2140 - y * 14) * 10000,
         })),
+      };
+    },
+    // F2: the characters-search mock's Runecloth rows, plus a few others to
+    // find. Every word must be in the name, like the backend.
+    characters_search: ({ query }): SearchResults => {
+      const words = String(query).toLowerCase().split(/\s+/).filter((w) => w && !w.startsWith("ilvl"));
+      const stock: [number, string, string, string, string, number, number][] = [
+        [1, "Coinpurse", "warrior", "bank", "Runecloth", 1, 340],
+        [3, "Velyra Duskmane", "druid", "bank", "Runecloth", 1, 60],
+        [2, "Thrandor", "paladin", "bag", "Runecloth", 1, 40],
+        [6, "Sela", "priest", "bag", "Runecloth", 1, 12],
+        [1, "Coinpurse", "warrior", "bank", "Arcanite Bar", 2, 12],
+        [2, "Thrandor", "paladin", "bag", "Major Healing Potion", 1, 12],
+        [3, "Velyra Duskmane", "druid", "mail", "Major Healing Potion", 1, 5],
+      ];
+      const hits = stock
+        .filter(([, , , , name]) => words.every((w) => name.toLowerCase().includes(w)))
+        .map(([character_id, character, cls, location, name, quality, count], i) => ({
+          character_id,
+          character,
+          class: cls,
+          location,
+          item_id: 14000 + i,
+          name,
+          quality,
+          ilvl: 50,
+          count,
+        }));
+      return {
+        hits,
+        total: hits.reduce((n, h) => n + h.count, 0),
+        characters: [...new Set(hits.map((h) => h.character_id))],
+        more: false,
       };
     },
     characters_list: () =>

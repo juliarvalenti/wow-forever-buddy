@@ -4,6 +4,7 @@ import {
   events,
   type CharacterSheet,
   type CharactersOverview,
+  type SearchResults,
   type WtfCharacter,
 } from "@/lib/bindings";
 import { errorText } from "@/lib/format";
@@ -27,6 +28,39 @@ export function useCharacters() {
   useEvent(events.ingestCompleted, refresh);
   useEvent(events.installChanged, refresh);
   return { overview, error, refresh };
+}
+
+/** The search box (F2): results for `query`, a moment after typing stops,
+ *  and again when new notes are read. `null` while the query is empty. A
+ *  reply for an older query is dropped. */
+export function useItemSearch(query: string) {
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEvent(events.ingestCompleted, () => setTick((n) => n + 1));
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults(null);
+      setError(null);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      commands.charactersSearch(query).then(
+        (r) => {
+          if (!live) return;
+          setResults(r);
+          setError(null);
+        },
+        (e) => live && setError(errorText(e)),
+      );
+    }, 150);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [query, tick]);
+  return { results, error };
 }
 
 /** The characters found in the WTF folder (older settings folders left
