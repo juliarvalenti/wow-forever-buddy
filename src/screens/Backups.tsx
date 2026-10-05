@@ -514,45 +514,45 @@ export function Backups({
       )}
       {error && <Callout tone="bad">{error}</Callout>}
 
-      {storage && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 520 }}>
-          {/* Verbatim from the backend: it's generated from the real policy. */}
-          <p className="d-muted">{storage.retention_summary}</p>
-          {storage.budget_bytes != null && storage.used_bytes != null && (
-            <>
-              <Meter
-                fraction={storage.used_bytes / storage.budget_bytes}
-                over={storage.over_budget}
-              />
-              <p className="d-dim">
-                {bytes(storage.used_bytes)} of {bytes(storage.budget_bytes)}
-                {storage.over_budget &&
-                  ". Over budget: only manual, pinned and the newest few backups are left."}
-              </p>
-            </>
-          )}
-          {storage.cleanup_blocked && (
-            <Callout tone="ember">
-              <span>
-                <b>Old backups aren't being cleaned up</b> because one backup's record is damaged, so
-                it isn't safe to tell which stored files are still needed. Your backups are untouched.{" "}
-                <span className="d-dim">({storage.cleanup_blocked})</span>
+      <div className="d-toolbar">
+        <Segmented<Filter>
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: `All ${counts.all}` },
+            { value: "Auto", label: `Auto ${counts.Auto}` },
+            { value: "Manual", label: `Manual ${counts.Manual}` },
+            { value: "Safety", label: `Safety ${counts.Safety}` },
+          ]}
+        />
+        {storage && (
+          <div className="d-storage">
+            {/* Verbatim from the backend: it's generated from the real policy. */}
+            <span className="retention">{storage.retention_summary}</span>
+            {storage.budget_bytes != null && storage.used_bytes != null && (
+              <span className="usage">
+                <b>{bytes(storage.used_bytes)}</b> of {bytes(storage.budget_bytes)}
+                <Meter
+                  fraction={storage.used_bytes / storage.budget_bytes}
+                  over={storage.over_budget}
+                />
               </span>
-            </Callout>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+      </div>
+      {storage?.over_budget && (
+        <p className="d-dim">Over budget: only manual, pinned and the newest few backups are left.</p>
       )}
-
-      <Segmented<Filter>
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: "all", label: `All ${counts.all}` },
-          { value: "Auto", label: `Auto ${counts.Auto}` },
-          { value: "Manual", label: `Manual ${counts.Manual}` },
-          { value: "Safety", label: `Safety ${counts.Safety}` },
-        ]}
-      />
+      {storage?.cleanup_blocked && (
+        <Callout tone="ember">
+          <span>
+            <b>Old backups aren't being cleaned up</b> because one backup's record is damaged, so
+            it isn't safe to tell which stored files are still needed. Your backups are untouched.{" "}
+            <span className="d-dim">({storage.cleanup_blocked})</span>
+          </span>
+        </Callout>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: selected ? "minmax(0, 1fr) 360px" : "1fr", gap: 16 }}>
         <Panel>

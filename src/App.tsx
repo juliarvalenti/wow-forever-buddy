@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Archive, FolderOpen, Home, Shield } from "lucide-react";
 import { commands, type StartupFailure } from "@/lib/bindings";
 import { LiveDot, StatusDot } from "@/components/d";
 import { useGameStatus } from "@/hooks/useGameStatus";
@@ -48,10 +49,10 @@ function Shell() {
     return () => clearInterval(t);
   }, []);
 
-  const nav: { id: Screen; label: string }[] = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "backups", label: "Backups" },
-    { id: "game", label: "Game folder" },
+  const nav: { id: Screen; label: string; icon: typeof Home }[] = [
+    { id: "dashboard", label: "Dashboard", icon: Home },
+    { id: "backups", label: "Backups", icon: Archive },
+    { id: "game", label: "Game folder", icon: FolderOpen },
   ];
   const folderOk = install.state.kind === "ok";
   // The saved folder went missing (drive unplugged, folder moved). Backups
@@ -63,15 +64,25 @@ function Shell() {
   return (
     <div className="d-app">
       <aside className="d-side">
-        <div className="d-brand">Forever Buddy</div>
+        <div className="d-brand">
+          <span className="mark" aria-hidden>
+            <Shield size={18} />
+          </span>
+          <span className="bt">
+            <span className="name" style={{ display: "block" }}>Forever Buddy</span>
+            <span className="sub">for WoW: Forever</span>
+          </span>
+        </div>
         <nav className="d-nav">
-          {nav.map((n) => (
+          {nav.map(({ id, label, icon: Icon }) => (
             <button
-              key={n.id}
-              aria-current={current === n.id ? "page" : undefined}
-              onClick={() => setScreen(n.id)}
+              key={id}
+              title={label}
+              aria-current={current === id ? "page" : undefined}
+              onClick={() => setScreen(id)}
             >
-              {n.label}
+              <Icon size={16} aria-hidden />
+              <span className="lbl">{label}</span>
             </button>
           ))}
         </nav>
@@ -90,7 +101,10 @@ function Shell() {
               </span>
             </div>
           ) : (
-            <div className="d-status-row d-dim">WoW isn't running</div>
+            <div className="d-status-row d-dim">
+              <StatusDot muted />
+              <span>WoW isn't running</span>
+            </div>
           )}
           <div className="d-status-row">
             {folderOk ? <StatusDot /> : <LiveDot />}

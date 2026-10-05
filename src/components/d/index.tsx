@@ -36,6 +36,17 @@ export function Panel({ children, className }: Children & { className?: string }
   return <section className={`d-panel ${className ?? ""}`}>{children}</section>;
 }
 
+/** Parchment: only for records (the ledger, session recaps). Takes the same
+ *  PanelHeader/PanelBody inside. `ruled` adds ledger lines and the red margin;
+ *  `tilt` is for the one hero page on a screen. */
+export function Record({
+  children,
+  ruled,
+  tilt,
+}: Children & { ruled?: boolean; tilt?: boolean }) {
+  return <section className={`d-panel d-record${ruled ? " ruled" : ""}${tilt ? " tilt" : ""}`}>{children}</section>;
+}
+
 export function PanelHeader({ title, children }: Children & { title: ReactNode }) {
   return (
     <div className="d-panel-head">
@@ -191,9 +202,9 @@ export function LiveDot() {
   return <span className="d-live" aria-hidden />;
 }
 
-/** Green: OK. */
-export function StatusDot() {
-  return <span className="d-okdot" aria-hidden />;
+/** Green: OK. `muted`: grey, a neutral state such as "WoW isn't running". */
+export function StatusDot({ muted }: { muted?: boolean }) {
+  return <span className={`d-okdot${muted ? " muted" : ""}`} aria-hidden />;
 }
 
 export function Meter({ fraction, over }: { fraction: number; over?: boolean }) {

@@ -18,6 +18,7 @@ import {
   PanelBody,
   PanelHeader,
   Pill,
+  Record,
   PrimaryButton,
   Tile,
 } from "@/components/d";
@@ -242,7 +243,7 @@ export function Dashboard({
       </section>
 
       <section className="d-cols">
-        <Panel>
+        <Record ruled tilt>
           <PanelHeader title="Your ledger is blank">
             <span className="d-grow" />
             <span className="d-dim">one small addon away</span>
@@ -310,7 +311,7 @@ export function Dashboard({
               </li>
             </ol>
           </PanelBody>
-        </Panel>
+        </Record>
 
         <div className="d-stack">
           <Panel>

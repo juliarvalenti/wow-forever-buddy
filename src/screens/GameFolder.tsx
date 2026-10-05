@@ -11,6 +11,7 @@ import {
   PanelHeader,
   Pill,
   PrimaryButton,
+  Record,
   StatusDot,
 } from "@/components/d";
 import { errorText, plural } from "@/lib/format";
@@ -33,8 +34,8 @@ function roster(f: Flavor): string {
 function FlavorLine({ f, active }: { f: Flavor; active: boolean }) {
   const exe = f.exe ? f.exe.split(/[\\/]/).pop() : null;
   return (
-    <li style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "4px 0" }}>
-      <b style={{ color: active ? "var(--chalk-hi)" : undefined }}>{f.label}</b>
+    <li className={active ? "active" : undefined}>
+      <b>{f.label}</b>
       <span className="d-mono d-dim">{f.id}</span>
       <span className="d-muted">
         {[f.version, exe ?? "settings only", roster(f)].filter(Boolean).join(" · ")}
@@ -51,7 +52,7 @@ function FlavorLine({ f, active }: { f: Flavor; active: boolean }) {
 
 function InstallSummary({ install }: { install: Install }) {
   return (
-    <ul>
+    <ul className="d-flavors">
       {install.flavors.map((f) => (
         <FlavorLine key={f.id} f={f} active={f.id === install.active} />
       ))}
@@ -101,6 +102,92 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
     state.kind !== "ok" &&
     ((report != null && report.candidates.length === 0) || (detectError != null && !detecting));
   const looking = detecting || (state.kind === "none" && !report && !detectError);
+
+  // First run: a letter on parchment (onboarding.html), with the actions inside it.
+  if (state.kind === "none") {
+    return (
+      <Page>
+        <div className="d-letter-wrap">
+          <Record>
+            <div className="d-letter">
+              <h1>Well met.</h1>
+              <p className="d-muted">
+                Forever Buddy keeps your WoW: Forever settings backed up, and later keeps a ledger
+                of your characters. First, let's find the game.
+              </p>
+
+              {looking && !report && (
+                <p className="d-letter-status">
+                  <LiveDot /> Looking for World of Warcraft…
+                </p>
+              )}
+              {detectError && !detecting && (
+                <p className="d-letter-bad">
+                  Looking for the game didn't work, but you can still choose the folder yourself.{" "}
+                  <span className="d-dim">({detectError})</span>
+                </p>
+              )}
+              {error && <p className="d-letter-bad">{error}</p>}
+
+              {report?.candidates.map((c) => (
+                <div key={c.install.root} className="d-found">
+                  <div className="d-letter-label">Found World of Warcraft</div>
+                  <div className="d-found-path">
+                    <span className="d-mono">{c.install.root}</span>
+                    <span className="d-grow" />
+                    <span className="d-dim">{SOURCE[c.source]}</span>
+                  </div>
+                  <InstallSummary install={c.install} />
+                  <div className="d-letter-acts">
+                    <PrimaryButton onClick={() => use(c.install.root, c.install.active)}>
+                      Use this folder
+                    </PrimaryButton>
+                    <Button variant="ghost" onClick={chooseFolder}>
+                      Choose another folder…
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {notFound && (
+                <div className="d-found">
+                  <div className="d-letter-head">We couldn't find World of Warcraft</div>
+                  <p className="d-muted">That's fine; point us at it and we'll take it from there.</p>
+                  {looked.length > 0 && (
+                    <p className="d-dim">
+                      Looked in:{" "}
+                      {looked
+                        .slice(0, 4)
+                        .map((l) => l.path)
+                        .join(", ")}
+                      {looked.length > 4 && ` and ${looked.length - 4} more`}.
+                    </p>
+                  )}
+                  <div className="d-hints">
+                    <div><span className="d-mono">World of Warcraft\</span>the main folder</div>
+                    <div><span className="d-mono">_classic_beta_\</span>the Forever folder</div>
+                    <div><span className="d-mono">WTF\</span>even just this works</div>
+                  </div>
+                  <div className="d-letter-acts">
+                    <PrimaryButton onClick={chooseFolder}>Choose folder…</PrimaryButton>
+                    <Button variant="ghost" onClick={detect} disabled={detecting}>
+                      {detecting ? "Looking…" : "Look again"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="d-letter-note">We only read here. Nothing is changed until you ask.</p>
+            </div>
+          </Record>
+          <p className="d-dim d-letter-after">
+            Next, Forever Buddy takes a first backup of your settings, before anything else happens.
+          </p>
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page>
       <PageHeader

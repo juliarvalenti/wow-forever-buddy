@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands, type StartupFailure } from "@/lib/bindings";
-import { Button, Panel, PanelBody, PrimaryButton } from "@/components/d";
+import { Check } from "lucide-react";
+import { Button, Panel, PanelBody, PanelHeader, PrimaryButton } from "@/components/d";
 import { errorText } from "@/lib/format";
 
 const TITLES: Record<StartupFailure["problem"], string> = {
@@ -50,14 +51,15 @@ export function StartupError({ failure }: { failure: StartupFailure }) {
     <div className="d-center">
       <div style={{ width: "min(620px, 100%)" }}>
         <Panel>
+          <PanelHeader title="Something stopped Forever Buddy from starting" />
           <PanelBody>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <h1 className="d-display" style={{ fontSize: 24, color: "var(--chalk-hi)" }}>
+              <h1 className="d-display" style={{ fontSize: 26, lineHeight: 1.15, color: "#d8cfc0" }}>
                 {TITLES[failure.problem]}
               </h1>
-              <p>{WHY[failure.problem]}</p>
-              <p>
-                <b>Your backups and your game files are untouched.</b>
+              <p style={{ fontSize: 13.5, lineHeight: 1.55 }}>{WHY[failure.problem]}</p>
+              <p style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--ok)" }}>
+                <Check size={14} aria-hidden /> Your backups and your game files are untouched.
               </p>
               <ul className="d-files d-mono">
                 {files.map((f) => (
