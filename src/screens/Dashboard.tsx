@@ -40,6 +40,7 @@ import { useCharacters } from "@/hooks/useCharacters";
 import { useLedger } from "@/hooks/useLedger";
 import { Coins } from "@/screens/Characters";
 import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
+import { Coins as TileCoins } from "@/screens/Ledger";
 import type { useInstall } from "@/hooks/useInstall";
 import { thisWeek, useSessions } from "@/hooks/useSessions";
 import {
@@ -204,9 +205,6 @@ export function Dashboard({
   const updating = addon.status?.update_available === true;
   const installLabel = updating ? "Update addon" : "Install addon";
   const installWhy = `Close WoW first. ${updating ? "Updating" : "Installing"} writes to your game folder.`;
-  // While step 1 offers the addon, its button is the page's one bronze.
-  const addonOffered = addon.status != null && !addonCurrent;
-  const BackUpButton = addonOffered ? Button : PrimaryButton;
   // With the addon's data (V9, dashboard.html): account gold, the last
   // adventure and the roster with gold. Without it, the v0.1 state stays.
   const { overview } = useCharacters();
@@ -227,6 +225,92 @@ export function Dashboard({
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
   const lastEnded = sessions?.find((s) => s.ended_at);
+
+  // The setup card (step 1 offers the addon) gives way to Last adventure.
+  const setupShown = !(withAddon && lastAdventure);
+  // While step 1 offers the addon, its button is the page's one bronze.
+  const addonOffered = setupShown && addon.status != null && !addonCurrent;
+  const BackUpButton = addonOffered ? Button : PrimaryButton;
+  /** Install or update the addon, or why not now. Bronze in step 1; stone
+   *  on the Game folder row, where "Back up now" is the screen's bronze. */
+  const addonAction = (primary: boolean) => (
+    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      {folderMissing != null ? (
+        <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
+      ) : running || game?.unknown ? (
+        <>
+          <LockedAction why={installWhy}>{installLabel}</LockedAction>
+          <span className="sd">
+            <LiveDot /> {installWhy}
+          </span>
+        </>
+      ) : primary ? (
+        <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
+          {addon.busy ? "Installing…" : installLabel}
+        </PrimaryButton>
+      ) : (
+        <Button onClick={addon.install} disabled={addon.busy || !addon.status}>
+          {addon.busy ? "Installing…" : installLabel}
+        </Button>
+      )}
+    </div>
+  );
+
+  // With the setup card gone, the Game folder row carries the action (V4's
+  // update path stays reachable once there's addon data).
+  const rowAction = (
+    <div style={{ gridColumn: 2 }}>
+      {addonAction(false)}
+      {addon.error && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--bad)" }}>{addon.error}</p>}
+    </div>
+  );
+
+  // With addon data the roster comes first (it's the payoff, and the Ledger
+  // journal covers sessions); without, v0.1's order.
+  const recentSessions = (
+    <Panel>
+      <PanelHeader title="Recent sessions">
+        <span className="d-grow" />
+        <span className="d-dim">from the game process</span>
+      </PanelHeader>
+      {sessions && shownSessions.length === 0 ? (
+        <PanelBody>
+          <p className="d-muted">
+            Sessions appear here after you play. Forever Buddy notes when WoW starts and stops.
+          </p>
+        </PanelBody>
+      ) : (
+        <ul className="d-rows">
+          {shownSessions.slice(0, 5).map((s) => (
+            // With the addon, a session opens its (first) adventure.
+            <li
+              key={s.id}
+              className={s.adventures.length > 0 ? "d-open" : undefined}
+              title={s.adventures.length > 0 ? "Open this adventure" : undefined}
+              onClick={s.adventures.length > 0 ? () => onOpenAdventure(s.adventures[0]) : undefined}
+            >
+              <span className="main">
+                {!s.ended_at && <LiveDot />}
+                {sessionWhen(s.started_at, s.ended_at)}
+              </span>
+              <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
+                {span(sessionMs(s))}
+              </span>
+              <SessionWho s={s} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {sessions && sessions.length > 0 && (
+        <div className="d-panel-foot">
+          {week.ms > 0
+            ? `This week: ${span(week.ms)}${week.characters > 0 ? ` across ${plural(week.characters, "character", "characters")}` : ""}. `
+            : "This week: none yet. "}
+          The character is the one whose settings changed during the session.
+        </div>
+      )}
+    </Panel>
+  );
 
   const rescan = () => {
     install.refresh();
@@ -296,7 +380,7 @@ export function Dashboard({
         {withAddon && (
           <Tile
             label="Account gold"
-            value={<Coins copper={overview?.gold ?? 0} />}
+            value={<TileCoins copper={overview?.gold ?? 0} />}
             corner={ledger && <Spark values={ledger.chart.account} />}
             sub={
               ledger && (ledger.tiles.this_week ?? 0) !== 0
@@ -431,24 +515,7 @@ export function Dashboard({
                             </>
                           )}
                   </div>
-                  {!addonCurrent && (
-                    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      {folderMissing != null ? (
-                        <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
-                      ) : running || game?.unknown ? (
-                        <>
-                          <LockedAction why={installWhy}>{installLabel}</LockedAction>
-                          <span className="sd">
-                            <LiveDot /> {installWhy}
-                          </span>
-                        </>
-                      ) : (
-                        <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
-                          {addon.busy ? "Installing…" : installLabel}
-                        </PrimaryButton>
-                      )}
-                    </div>
-                  )}
+                  {!addonCurrent && addonAction(true)}
                   {addon.error && (
                     <p className="d-letter-bad" style={{ marginTop: 8 }}>
                       {addon.error}
@@ -554,60 +621,20 @@ export function Dashboard({
                   <LiveDot />
                   <span className="main">ForeverBuddy addon v{addon.status.installed_version}</span>
                   <span className="sub">Update available: v{addon.status.bundled_version}</span>
+                  {!setupShown && rowAction}
                 </li>
               ) : (
                 <li>
                   <LiveDot />
                   <span className="main">ForeverBuddy addon not installed</span>
                   <span className="sub">Needed for gold, gear and session details</span>
+                  {!setupShown && rowAction}
                 </li>
               )}
             </ul>
           </Panel>
 
-          <Panel>
-            <PanelHeader title="Recent sessions">
-              <span className="d-grow" />
-              <span className="d-dim">from the game process</span>
-            </PanelHeader>
-            {sessions && shownSessions.length === 0 ? (
-              <PanelBody>
-                <p className="d-muted">
-                  Sessions appear here after you play. Forever Buddy notes when WoW starts and
-                  stops.
-                </p>
-              </PanelBody>
-            ) : (
-              <ul className="d-rows">
-                {shownSessions.slice(0, 5).map((s) => (
-                  // With the addon, a session opens its (first) adventure.
-                  <li
-                    key={s.id}
-                    className={s.adventures.length > 0 ? "d-open" : undefined}
-                    title={s.adventures.length > 0 ? "Open this adventure" : undefined}
-                    onClick={s.adventures.length > 0 ? () => onOpenAdventure(s.adventures[0]) : undefined}
-                  >
-                    <span className="main">
-                      {!s.ended_at && <LiveDot />}
-                      {sessionWhen(s.started_at, s.ended_at)}
-                    </span>
-                    <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
-                      {span(sessionMs(s))}
-                    </span>
-                    <SessionWho s={s} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {sessions && sessions.length > 0 && (
-              <div className="d-panel-foot">
-                {week.ms > 0
-                  ? `This week: ${span(week.ms)}${week.characters > 0 ? ` across ${plural(week.characters, "character", "characters")}` : ""}. `
-                  : "This week: none yet. "}
-                The character is the one whose settings changed during the session.
-              </div>
-            )}
-          </Panel>
+          {!withAddon && recentSessions}
 
           <Panel>
             <PanelHeader title="Characters">
@@ -680,6 +707,8 @@ export function Dashboard({
               </ul>
             )}
           </Panel>
+
+          {withAddon && recentSessions}
         </div>
       </section>
     </Page>

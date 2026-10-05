@@ -42,8 +42,9 @@ function shortDate(day: string | Date): string {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-/** "6,812 47 09" in coins, for the Account gold tile. */
-function Coins({ copper }: { copper: number }) {
+/** "6,812 47 09" in coins, for the Account gold tile (here and on the
+ *  Dashboard). */
+export function Coins({ copper }: { copper: number }) {
   const [g, s, c] = coins(copper);
   return (
     <span className="d-coins">

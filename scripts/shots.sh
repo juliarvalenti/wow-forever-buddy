@@ -26,6 +26,7 @@ CONFIRM="click:Thrandor;click:css=.d-main button >> text=Restore >> nth=-1;wait:
 SCENARIOS=(
   "dashboard|noaddon||dashboard-noaddon"
   "dashboard-addon|dashboard||dashboard"
+  "dashboard-addon-update|addon-update||dashboard"
   "dashboard-missing|dashboard-missing||dashboard-folder-missing"
   "dashboard-recover|recover||dashboard-recover"
   "dashboard-recover-unreadable|recover-unreadable-no-safety||dashboard-recover-unreadable"
