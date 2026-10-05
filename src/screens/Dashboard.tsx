@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type AddonStatus,
+  type CharacterCard,
   commands,
   type GameStatus,
   type PlaySession,
@@ -105,6 +106,30 @@ function shortPath(p: string): string {
   return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : p;
 }
 
+/** The Account gold tile's sparkline: one point per day of the week, days
+ *  before the first reading left out. Nothing for fewer than two points. */
+function Spark({ values }: { values: (number | null)[] }) {
+  const ys = values.filter((v): v is number => v != null);
+  if (ys.length < 2) return null;
+  const lo = Math.min(...ys);
+  const hi = Math.max(...ys);
+  const pts = ys.map((v, i) => {
+    const x = (i / (ys.length - 1)) * 74;
+    const y = hi === lo ? 12 : 21 - ((v - lo) / (hi - lo)) * 18;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg className="d-spark" viewBox="0 0 74 24" aria-hidden>
+      <polyline points={pts.join(" ")} />
+    </svg>
+  );
+}
+
+/** Rested XP caps at a level and a half. */
+function fullyRested(c: CharacterCard): boolean {
+  return c.rested != null && c.xp_max != null && c.xp_max > 0 && c.rested >= c.xp_max * 1.5 * 0.99;
+}
+
 /** Shorter sessions are hidden from the list (still counted in the week). */
 const SHORT_MS = 2 * 60_000;
 
@@ -189,7 +214,15 @@ export function Dashboard({
   const { ledger } = useLedger("week");
   const lastAdventure = useLastAdventure();
   const byGold = [...(overview?.characters ?? [])].sort((a, b) => (b.money ?? 0) - (a.money ?? 0));
-  const topLevel = Math.max(0, ...(overview?.characters ?? []).map((c) => c.level ?? 0));
+  const chars = overview?.characters ?? [];
+  const topLevel = Math.max(0, ...chars.map((c) => c.level ?? 0));
+  const atTop = chars.filter((c) => c.level === topLevel).length;
+  const rested = chars.filter(fullyRested).length;
+  // The newest logout the addon saw; RFC 3339 UTC strings sort as times.
+  const lastPlayed = chars.reduce<CharacterCard | null>(
+    (best, c) => (best == null || c.last_seen > best.last_seen ? c : best),
+    null,
+  );
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -264,6 +297,7 @@ export function Dashboard({
           <Tile
             label="Account gold"
             value={<Coins copper={overview?.gold ?? 0} />}
+            corner={ledger && <Spark values={ledger.chart.account} />}
             sub={
               ledger && (ledger.tiles.this_week ?? 0) !== 0
                 ? `${gold(ledger.tiles.this_week ?? 0, true)} this week`
@@ -297,19 +331,28 @@ export function Dashboard({
             game?.unknown
               ? "Can't read the process list right now"
               : running
-              ? [flavor?.exe?.split(/[\\/]/).pop(), game?.since && `${duration(game.since)} this session`]
-                  .filter(Boolean)
-                  .join(" · ")
+              ? withAddon
+                ? [game?.since && `${duration(game.since)} so far`, lastPlayed && `last played ${lastPlayed.name}`]
+                    .filter(Boolean)
+                    .join(" · ")
+                : [flavor?.exe?.split(/[\\/]/).pop(), game?.since && `${duration(game.since)} this session`]
+                    .filter(Boolean)
+                    .join(" · ")
               : lastEnded?.ended_at
-                ? `Last played ${ago(lastEnded.ended_at)}`
+                ? `Last played ${ago(lastEnded.ended_at)}${withAddon && lastPlayed ? ` · ${lastPlayed.name}` : ""}`
                 : "Sessions are noted while the app is open."
           }
         />
         {withAddon ? (
           <Tile
             label="Characters"
-            value={overview?.characters.length ?? "…"}
-            sub={topLevel > 0 ? `highest level ${topLevel}` : "From your WTF folder"}
+            value={
+              <>
+                {chars.length}
+                {topLevel > 0 && <small>· {atTop} at {topLevel}</small>}
+              </>
+            }
+            sub={rested > 0 ? `${rested} fully rested` : "Seen by the addon"}
           />
         ) : (
           <Tile
@@ -579,19 +622,21 @@ export function Dashboard({
             </PanelHeader>
             {withAddon ? (
               // dashboard.html: richest first, in class colour, gold and level.
-              <ul className="d-rows">
+              <ul className="d-rows d-roster">
                 {byGold.slice(0, 5).map((c) => (
-                  <li key={c.id} className="d-open" onClick={onOpenCharacters}>
-                    <span className="main">
-                      {/* The row's own colour wins over .ch-cc, so set the class colour here. */}
-                      <span style={{ color: c.class ? `var(--c-${c.class})` : undefined }}>
-                        {c.surname ? `${c.name} ${c.surname}` : c.name}
-                      </span>
-                      {c.level != null && <small className="d-dim"> {c.level}</small>}
-                    </span>
+                  <li
+                    key={c.id}
+                    className="d-open"
+                    onClick={onOpenCharacters}
+                    style={{ "--cc": c.class ? `var(--c-${c.class})` : undefined } as React.CSSProperties}
+                  >
+                    <span className="d-cdot" aria-hidden />
+                    <span className="cc">{c.surname ? `${c.name} ${c.surname}` : c.name}</span>
+                    <span />
                     <span className="side">
                       <Coins copper={c.money} silver={false} />
                     </span>
+                    <span className="lv">{c.level ?? ""}</span>
                   </li>
                 ))}
               </ul>

@@ -13,10 +13,11 @@ import {
   SquareTerminal,
   Users,
 } from "lucide-react";
-import { commands, type StartupFailure } from "@/lib/bindings";
+import { type CharacterCard, commands, type StartupFailure } from "@/lib/bindings";
 import { LiveDot, StatusDot } from "@/components/d";
 import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
+import { useCharacters } from "@/hooks/useCharacters";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
@@ -63,6 +64,12 @@ function Shell() {
   const install = useInstall();
   const recovery = useRecovery();
   const snapshots = useSnapshotCount();
+  // With the addon's data: who logged out last (RFC 3339 UTC sorts as time).
+  const { overview } = useCharacters();
+  const lastPlayed = overview?.characters.reduce<CharacterCard | null>(
+    (best, c) => (best == null || c.last_seen > best.last_seen ? c : best),
+    null,
+  )?.name;
   const [screen, setScreen] = useState<Screen>("dashboard");
   // The adventure on show; null is the newest. The sidebar opens the newest.
   const [adventureId, setAdventureId] = useState<number | null>(null);
@@ -94,7 +101,7 @@ function Shell() {
   const nav: NavRow[] = [
     { group: "Overview" },
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "characters", label: "Characters", icon: Users },
+    { id: "characters", label: "Characters", icon: Users, n: overview?.characters.length || null },
     { id: "ledger", label: "Ledger", icon: Coins },
     { id: "adventures", label: "Adventures", icon: ScrollText },
     { soon: "Auction House", icon: Scale },
@@ -165,6 +172,11 @@ function Shell() {
             <div className="d-status-row d-dim">
               <StatusDot muted />
               <span>WoW isn't running</span>
+            </div>
+          )}
+          {lastPlayed && (
+            <div className="d-status-row d-status-last d-dim">
+              <span>Last played {lastPlayed}</span>
             </div>
           )}
           <div className="d-status-row">
