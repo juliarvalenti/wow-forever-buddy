@@ -22,7 +22,7 @@ const WITHHELD =
 const MULTI_WORD: Record<string, string> = { DEATHKNIGHT: "Death Knight", DEMONHUNTER: "Demon Hunter" };
 
 /** "PALADIN" → "Paladin"; "NightElf" → "Night Elf". */
-function label(token: string | null): string {
+export function label(token: string | null): string {
   if (!token) return "";
   if (MULTI_WORD[token]) return MULTI_WORD[token];
   const spaced = token.replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -155,7 +155,7 @@ function MoneyChart({ a }: { a: AdventureData }) {
   );
 }
 
-function ItemName({ i }: { i: ItemLine }) {
+export function ItemName({ i }: { i: ItemLine }) {
   const q = i.quality;
   return (
     <span className="d-loot">

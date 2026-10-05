@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type AddonStatus,
+  type CharacterCard,
   commands,
   type GameStatus,
   type PlaySession,
@@ -35,6 +36,11 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
+import { useCharacters } from "@/hooks/useCharacters";
+import { useLedger } from "@/hooks/useLedger";
+import { Coins } from "@/screens/Characters";
+import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
+import { Coins as TileCoins } from "@/screens/Ledger";
 import type { useInstall } from "@/hooks/useInstall";
 import { thisWeek, useSessions } from "@/hooks/useSessions";
 import {
@@ -45,6 +51,7 @@ import {
   OLDER_FOLDERS_WHY,
   duration,
   errorText,
+  gold,
   longDate,
   plural,
   sessionWhen,
@@ -100,6 +107,30 @@ function shortPath(p: string): string {
   return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : p;
 }
 
+/** The Account gold tile's sparkline: one point per day of the week, days
+ *  before the first reading left out. Nothing for fewer than two points. */
+function Spark({ values }: { values: (number | null)[] }) {
+  const ys = values.filter((v): v is number => v != null);
+  if (ys.length < 2) return null;
+  const lo = Math.min(...ys);
+  const hi = Math.max(...ys);
+  const pts = ys.map((v, i) => {
+    const x = (i / (ys.length - 1)) * 74;
+    const y = hi === lo ? 12 : 21 - ((v - lo) / (hi - lo)) * 18;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg className="d-spark" viewBox="0 0 74 24" aria-hidden>
+      <polyline points={pts.join(" ")} />
+    </svg>
+  );
+}
+
+/** Rested XP caps at a level and a half. */
+function fullyRested(c: CharacterCard): boolean {
+  return c.rested != null && c.xp_max != null && c.xp_max > 0 && c.rested >= c.xp_max * 1.5 * 0.99;
+}
+
 /** Shorter sessions are hidden from the list (still counted in the week). */
 const SHORT_MS = 2 * 60_000;
 
@@ -141,6 +172,7 @@ export function Dashboard({
   onOpenBackups,
   onCheckFolder,
   onOpenAdventure,
+  onOpenCharacters,
 }: {
   game: GameStatus | null;
   install: ReturnType<typeof useInstall>;
@@ -149,6 +181,7 @@ export function Dashboard({
   onOpenBackups: () => void;
   onCheckFolder: () => void;
   onOpenAdventure: (id: number) => void;
+  onOpenCharacters: () => void;
 }) {
   const { list, storage, progress, failed, backUpNow, refresh: refreshBackups } = useBackups();
   const { sessions, characters, refresh: refreshSessions } = useSessions();
@@ -172,13 +205,112 @@ export function Dashboard({
   const updating = addon.status?.update_available === true;
   const installLabel = updating ? "Update addon" : "Install addon";
   const installWhy = `Close WoW first. ${updating ? "Updating" : "Installing"} writes to your game folder.`;
-  // While step 1 offers the addon, its button is the page's one bronze.
-  const addonOffered = addon.status != null && !addonCurrent;
-  const BackUpButton = addonOffered ? Button : PrimaryButton;
+  // With the addon's data (V9, dashboard.html): account gold, the last
+  // adventure and the roster with gold. Without it, the v0.1 state stays.
+  const { overview } = useCharacters();
+  const withAddon = (overview?.characters.length ?? 0) > 0;
+  const { ledger } = useLedger("week");
+  const lastAdventure = useLastAdventure();
+  const byGold = [...(overview?.characters ?? [])].sort((a, b) => (b.money ?? 0) - (a.money ?? 0));
+  const chars = overview?.characters ?? [];
+  const topLevel = Math.max(0, ...chars.map((c) => c.level ?? 0));
+  const atTop = chars.filter((c) => c.level === topLevel).length;
+  const rested = chars.filter(fullyRested).length;
+  // The newest logout the addon saw; RFC 3339 UTC strings sort as times.
+  const lastPlayed = chars.reduce<CharacterCard | null>(
+    (best, c) => (best == null || c.last_seen > best.last_seen ? c : best),
+    null,
+  );
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
   const lastEnded = sessions?.find((s) => s.ended_at);
+
+  // The setup card (step 1 offers the addon) gives way to Last adventure.
+  const setupShown = !(withAddon && lastAdventure);
+  // While step 1 offers the addon, its button is the page's one bronze.
+  const addonOffered = setupShown && addon.status != null && !addonCurrent;
+  const BackUpButton = addonOffered ? Button : PrimaryButton;
+  /** Install or update the addon, or why not now. Bronze in step 1; stone
+   *  on the Game folder row, where "Back up now" is the screen's bronze. */
+  const addonAction = (primary: boolean) => (
+    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      {folderMissing != null ? (
+        <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
+      ) : running || game?.unknown ? (
+        <>
+          <LockedAction why={installWhy}>{installLabel}</LockedAction>
+          <span className="sd">
+            <LiveDot /> {installWhy}
+          </span>
+        </>
+      ) : primary ? (
+        <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
+          {addon.busy ? "Installing…" : installLabel}
+        </PrimaryButton>
+      ) : (
+        <Button onClick={addon.install} disabled={addon.busy || !addon.status}>
+          {addon.busy ? "Installing…" : installLabel}
+        </Button>
+      )}
+    </div>
+  );
+
+  // With the setup card gone, the Game folder row carries the action (V4's
+  // update path stays reachable once there's addon data).
+  const rowAction = (
+    <div style={{ gridColumn: 2 }}>
+      {addonAction(false)}
+      {addon.error && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--bad)" }}>{addon.error}</p>}
+    </div>
+  );
+
+  // With addon data the roster comes first (it's the payoff, and the Ledger
+  // journal covers sessions); without, v0.1's order.
+  const recentSessions = (
+    <Panel>
+      <PanelHeader title="Recent sessions">
+        <span className="d-grow" />
+        <span className="d-dim">from the game process</span>
+      </PanelHeader>
+      {sessions && shownSessions.length === 0 ? (
+        <PanelBody>
+          <p className="d-muted">
+            Sessions appear here after you play. Forever Buddy notes when WoW starts and stops.
+          </p>
+        </PanelBody>
+      ) : (
+        <ul className="d-rows">
+          {shownSessions.slice(0, 5).map((s) => (
+            // With the addon, a session opens its (first) adventure.
+            <li
+              key={s.id}
+              className={s.adventures.length > 0 ? "d-open" : undefined}
+              title={s.adventures.length > 0 ? "Open this adventure" : undefined}
+              onClick={s.adventures.length > 0 ? () => onOpenAdventure(s.adventures[0]) : undefined}
+            >
+              <span className="main">
+                {!s.ended_at && <LiveDot />}
+                {sessionWhen(s.started_at, s.ended_at)}
+              </span>
+              <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
+                {span(sessionMs(s))}
+              </span>
+              <SessionWho s={s} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {sessions && sessions.length > 0 && (
+        <div className="d-panel-foot">
+          {week.ms > 0
+            ? `This week: ${span(week.ms)}${week.characters > 0 ? ` across ${plural(week.characters, "character", "characters")}` : ""}. `
+            : "This week: none yet. "}
+          The character is the one whose settings changed during the session.
+        </div>
+      )}
+    </Panel>
+  );
 
   const rescan = () => {
     install.refresh();
@@ -198,7 +330,9 @@ export function Dashboard({
         lede={[
           longDate(),
           flavor?.label,
-          counted && plural(counted.length, "character found", "characters found"),
+          withAddon
+            ? plural(overview?.characters.length ?? 0, "character", "characters")
+            : counted && plural(counted.length, "character found", "characters found"),
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -243,6 +377,18 @@ export function Dashboard({
       {openError && <Callout tone="bad">{openError}</Callout>}
 
       <section className="d-strip">
+        {withAddon && (
+          <Tile
+            label="Account gold"
+            value={<TileCoins copper={overview?.gold ?? 0} />}
+            corner={ledger && <Spark values={ledger.chart.account} />}
+            sub={
+              ledger && (ledger.tiles.this_week ?? 0) !== 0
+                ? `${gold(ledger.tiles.this_week ?? 0, true)} this week`
+                : `across ${plural(overview?.characters.length ?? 0, "character", "characters")}`
+            }
+          />
+        )}
         <Tile
           label="Last backup"
           value={last ? ago(last.created_at) : list ? "None yet" : "…"}
@@ -269,37 +415,59 @@ export function Dashboard({
             game?.unknown
               ? "Can't read the process list right now"
               : running
-              ? [flavor?.exe?.split(/[\\/]/).pop(), game?.since && `${duration(game.since)} this session`]
-                  .filter(Boolean)
-                  .join(" · ")
+              ? withAddon
+                ? [game?.since && `${duration(game.since)} so far`, lastPlayed && `last played ${lastPlayed.name}`]
+                    .filter(Boolean)
+                    .join(" · ")
+                : [flavor?.exe?.split(/[\\/]/).pop(), game?.since && `${duration(game.since)} this session`]
+                    .filter(Boolean)
+                    .join(" · ")
               : lastEnded?.ended_at
-                ? `Last played ${ago(lastEnded.ended_at)}`
+                ? `Last played ${ago(lastEnded.ended_at)}${withAddon && lastPlayed ? ` · ${lastPlayed.name}` : ""}`
                 : "Sessions are noted while the app is open."
           }
         />
-        <Tile
-          label="Characters found"
-          value={counted?.length ?? "…"}
-          sub="From your WTF folder"
-        />
-        <Tile
-          label="Backups"
-          value={
-            <>
-              {list?.length ?? "…"} <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
-            </>
-          }
-          sub={
-            storage?.used_bytes != null
-              ? storage.budget_bytes != null
-                ? `${bytes(storage.used_bytes)} of ${bytes(storage.budget_bytes)} budget`
-                : `${bytes(storage.used_bytes)} used`
-              : undefined
-          }
-        />
+        {withAddon ? (
+          <Tile
+            label="Characters"
+            value={
+              <>
+                {chars.length}
+                {topLevel > 0 && <small>· {atTop} at {topLevel}</small>}
+              </>
+            }
+            sub={rested > 0 ? `${rested} fully rested` : "Seen by the addon"}
+          />
+        ) : (
+          <Tile
+            label="Characters found"
+            value={counted?.length ?? "…"}
+            sub="From your WTF folder"
+          />
+        )}
+        {!withAddon && (
+          <Tile
+            label="Backups"
+            value={
+              <>
+                {list?.length ?? "…"} <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
+              </>
+            }
+            sub={
+              storage?.used_bytes != null
+                ? storage.budget_bytes != null
+                  ? `${bytes(storage.used_bytes)} of ${bytes(storage.budget_bytes)} budget`
+                  : `${bytes(storage.used_bytes)} used`
+                : undefined
+            }
+          />
+        )}
       </section>
 
       <section className="d-cols">
+        {withAddon && lastAdventure ? (
+          <LastAdventure a={lastAdventure} onOpen={onOpenAdventure} />
+        ) : (
         <Record ruled tilt>
           <PanelHeader title="Your ledger is blank">
             <span className="d-grow" />
@@ -347,24 +515,7 @@ export function Dashboard({
                             </>
                           )}
                   </div>
-                  {!addonCurrent && (
-                    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      {folderMissing != null ? (
-                        <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
-                      ) : running || game?.unknown ? (
-                        <>
-                          <LockedAction why={installWhy}>{installLabel}</LockedAction>
-                          <span className="sd">
-                            <LiveDot /> {installWhy}
-                          </span>
-                        </>
-                      ) : (
-                        <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
-                          {addon.busy ? "Installing…" : installLabel}
-                        </PrimaryButton>
-                      )}
-                    </div>
-                  )}
+                  {!addonCurrent && addonAction(true)}
                   {addon.error && (
                     <p className="d-letter-bad" style={{ marginTop: 8 }}>
                       {addon.error}
@@ -401,6 +552,7 @@ export function Dashboard({
             </ol>
           </PanelBody>
         </Record>
+        )}
 
         <div className="d-stack">
           <Panel>
@@ -469,67 +621,53 @@ export function Dashboard({
                   <LiveDot />
                   <span className="main">ForeverBuddy addon v{addon.status.installed_version}</span>
                   <span className="sub">Update available: v{addon.status.bundled_version}</span>
+                  {!setupShown && rowAction}
                 </li>
               ) : (
                 <li>
                   <LiveDot />
                   <span className="main">ForeverBuddy addon not installed</span>
                   <span className="sub">Needed for gold, gear and session details</span>
+                  {!setupShown && rowAction}
                 </li>
               )}
             </ul>
           </Panel>
 
-          <Panel>
-            <PanelHeader title="Recent sessions">
-              <span className="d-grow" />
-              <span className="d-dim">from the game process</span>
-            </PanelHeader>
-            {sessions && shownSessions.length === 0 ? (
-              <PanelBody>
-                <p className="d-muted">
-                  Sessions appear here after you play. Forever Buddy notes when WoW starts and
-                  stops.
-                </p>
-              </PanelBody>
-            ) : (
-              <ul className="d-rows">
-                {shownSessions.slice(0, 5).map((s) => (
-                  // With the addon, a session opens its (first) adventure.
-                  <li
-                    key={s.id}
-                    className={s.adventures.length > 0 ? "d-open" : undefined}
-                    title={s.adventures.length > 0 ? "Open this adventure" : undefined}
-                    onClick={s.adventures.length > 0 ? () => onOpenAdventure(s.adventures[0]) : undefined}
-                  >
-                    <span className="main">
-                      {!s.ended_at && <LiveDot />}
-                      {sessionWhen(s.started_at, s.ended_at)}
-                    </span>
-                    <span className="side" style={{ color: "var(--chalk-hi)", fontWeight: 600 }}>
-                      {span(sessionMs(s))}
-                    </span>
-                    <SessionWho s={s} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {sessions && sessions.length > 0 && (
-              <div className="d-panel-foot">
-                {week.ms > 0
-                  ? `This week: ${span(week.ms)}${week.characters > 0 ? ` across ${plural(week.characters, "character", "characters")}` : ""}. `
-                  : "This week: none yet. "}
-                The character is the one whose settings changed during the session.
-              </div>
-            )}
-          </Panel>
+          {!withAddon && recentSessions}
 
           <Panel>
             <PanelHeader title="Characters">
               <span className="d-grow" />
-              <span className="d-dim">from WTF folders</span>
+              {withAddon ? (
+                <button className="d-link" style={{ whiteSpace: "nowrap" }} onClick={onOpenCharacters}>
+                  All <ChevronRight size={12} aria-hidden style={{ display: "inline", verticalAlign: "-2px" }} />
+                </button>
+              ) : (
+                <span className="d-dim">from WTF folders</span>
+              )}
             </PanelHeader>
-            {characters && characters.length === 0 ? (
+            {withAddon ? (
+              // dashboard.html: richest first, in class colour, gold and level.
+              <ul className="d-rows d-roster">
+                {byGold.slice(0, 5).map((c) => (
+                  <li
+                    key={c.id}
+                    className="d-open"
+                    onClick={onOpenCharacters}
+                    style={{ "--cc": c.class ? `var(--c-${c.class})` : undefined } as React.CSSProperties}
+                  >
+                    <span className="d-cdot" aria-hidden />
+                    <span className="cc">{c.surname ? `${c.name} ${c.surname}` : c.name}</span>
+                    <span />
+                    <span className="side">
+                      <Coins copper={c.money} silver={false} />
+                    </span>
+                    <span className="lv">{c.level ?? ""}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : characters && characters.length === 0 ? (
               <PanelBody>
                 <p className="d-muted">No character folders yet. They appear after you log in once.</p>
               </PanelBody>
@@ -569,6 +707,8 @@ export function Dashboard({
               </ul>
             )}
           </Panel>
+
+          {withAddon && recentSessions}
         </div>
       </section>
     </Page>

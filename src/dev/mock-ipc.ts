@@ -28,7 +28,8 @@ import type {
 
 /** The scenarios, for `scripts/shots.sh` and anyone poking around. */
 export const SCENARIOS = [
-  "dashboard", // WoW running, sessions, characters
+  "dashboard", // WoW running, sessions, characters, the addon's data (V9's Dashboard)
+  "noaddon", // the same before the addon has written anything (v0.1's Dashboard)
   "idle", // WoW not running
   "no-sessions",
   "dashboard-missing", // the saved game folder is gone
@@ -58,7 +59,9 @@ export function installMockIpc(): void {
   const s = new URLSearchParams(location.search).get("mock") ?? "dashboard";
   const now = Date.now();
   const iso = (minsAgo: number) => new Date(now - minsAgo * 60000).toISOString();
-  const running = s === "dashboard" || s === "dashboard-missing";
+  const running = s === "dashboard" || s === "noaddon" || s === "dashboard-missing";
+  // No ForeverBuddy data yet: the v0.1 screens.
+  const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -312,7 +315,11 @@ export function installMockIpc(): void {
   // The default dashboard has WoW running, so Install is locked.
   const addon: AddonStatus = {
     installed_version:
-      s === "addon-installed" || s === "characters" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
+      s === "addon-installed" || s === "characters" || s === "dashboard"
+        ? "0.2.0"
+        : s === "addon-update"
+          ? "0.1.0"
+          : null,
     bundled_version: "0.2.0",
     update_available: s === "addon-update",
     enabled_on: ["Brannic", "Coinpurse", "Fizzwick", "Kaelor", "Sela", "Thrandor"],
@@ -573,7 +580,7 @@ export function installMockIpc(): void {
       return {
         gold: characters.reduce((n, c) => n + (c.money ?? 0), 0),
         items: 1284,
-        characters: s === "characters-empty" ? [] : characters,
+        characters: noAddon ? [] : characters,
       };
     },
     character_detail: ({ id }): CharacterSheet => {
@@ -668,7 +675,8 @@ export function installMockIpc(): void {
             session(6, 60 * 47, 60 * 47 - 125, who("Velyra-Duskmane")),
           ],
     // V9: session.html's evening, condensed; `adventure-empty` has none.
-    adventure_get: ({ id }) => (s === "adventure-empty" ? null : adventureFor((id as number | null) ?? 1)),
+    adventure_get: ({ id }) =>
+      s === "adventure-empty" || noAddon ? null : adventureFor((id as number | null) ?? 1),
     adventure_set_note: () => null,
   };
 

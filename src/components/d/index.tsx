@@ -60,9 +60,21 @@ export function PanelBody({ children }: Children) {
   return <div className="d-panel-body">{children}</div>;
 }
 
-export function Tile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+export function Tile({
+  label,
+  value,
+  sub,
+  corner,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  /** Top right, e.g. a sparkline; hidden below 1100px. */
+  corner?: ReactNode;
+}) {
   return (
     <div className="d-tile">
+      {corner}
       <div className="k">{label}</div>
       <div className="v">{value}</div>
       {sub && <div className="s">{sub}</div>}
