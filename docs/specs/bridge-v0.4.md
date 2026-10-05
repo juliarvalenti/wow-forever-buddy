@@ -1,8 +1,8 @@
-# Spec: Bridge v0.4, app → addon data slots, in-game Sync, weekly checklist
+# Spec: Bridge v0.4, app → addon data slots, in-game Sync, alt-aware tooltips
 
-Status: **draft, reload route pending probe run 4** · Author: @coder2 · 2026-10-05
+Status: **draft, reload route pending probe run 4** · Author: @coder2 · 2026-10-05 (rev 2: tooltips are the first slot, Julia's pick)
 
-Today data flows one way: the addon writes SavedVariables at logout or `/reload`, and the app ingests them. The bridge adds the other half. The app writes generated data files into **our own addon folder**, the addon loads them at login or `/reload`, and a Sync click in game does both halves in one reload. The first thing sent over it is a **weekly checklist** (raids, expiring mail, cooldowns) for every character, which the game alone can't show because it only knows the character you're on.
+Today data flows one way: the addon writes SavedVariables at logout or `/reload`, and the app ingests them. The bridge adds the other half. The app writes generated data files into **our own addon folder**, the addon loads them at login or `/reload`, and a Sync click in game does both halves in one reload. The first thing sent over it is a **tooltip index**: hover any item in game and see which alts hold it, where, and what it last sold for (§5). The game alone can't show that, because it only knows the character you're on. The **weekly checklist** (§5a) follows as the next slot.
 
 Builds on `docs/specs/core-fs.md` (write gate, `RelPath`, `atomic_replace`, `sv`) and `docs/specs/v0.2-addon.md` (the ForeverBuddy addon and ingest). Mocks: `design/mocks/round-3/bridge.html` (#83). Probe: `tools/probe-addon` v3, run 4 (#84).
 
@@ -17,9 +17,9 @@ Builds on `docs/specs/core-fs.md` (write gate, `RelPath`, `atomic_replace`, `sv`
 | Data slots: fixed files, schema, data-only writer with a runtime check | More slots (shopping list, quest plan) | Any path chosen by the UI or an agent |
 | The while-running write exception for those slots only (§3) | Agents staging slot content through the change queue (§7) | Live data mid-session (impossible, matrix fact 4) |
 | Delivery receipts in the addon's SavedVariables | Quest planner (§6, after its go/no-go) | Automatic reloads |
-| In-game Sync on a click (§4) and `/fb` checklist frame | | |
+| In-game Sync on a click (§4) | The weekly checklist slot and `/fb` frame (§5a) | |
+| The tooltip index slots and the read-only tooltip hook (§5) | Profession cooldowns (for the checklist) | |
 | App: "Sent to the game" panel on the Dashboard | | |
-| Addon 0.4.0: captures profession cooldowns | | |
 
 ---
 
@@ -32,28 +32,29 @@ A slot is one Lua file in `Interface/AddOns/ForeverBuddy/Data/`, listed in the T
 ```
 ## SavedVariablesPerCharacter: ForeverBuddyDB
 
-Data/Checklist.lua
+Data/Tooltip1.lua
+Data/Tooltip2.lua
 ForeverBuddy.lua
 ```
 
-- **v0.4 has one slot, `Checklist`.** The list is a Rust constant (`bridge::SLOTS`); each entry is a name, a `RelPath`, a global name and a schema version.
+- **Addon 0.4.0 has two slots, `Tooltip1` and `Tooltip2`:** the tooltip index, split in two by item id (§5). The list is a Rust constant (`bridge::SLOTS`); each entry is a name, a `RelPath`, a global name and a schema version. `Checklist` joins in a later addon release.
 - **WoW reads the TOC once, at client start.** A changed slot shows after `/reload`; a new slot needs an addon update and a full restart. So slots are added only with an addon release, never at runtime.
-- **The bundled slot files are stubs** (`ForeverBuddyData_Checklist = nil`). `addon::install` writes them like any bundled file (WoW closed, behind the gate), then the bridge regenerates every slot in the same guard, so an update never leaves the game an empty checklist.
+- **The bundled slot files are stubs** (`ForeverBuddyData_Tooltip1 = nil`). `addon::install` writes them like any bundled file (WoW closed, behind the gate), then the bridge regenerates every slot in the same guard, so an update never leaves the game an empty index.
 
 ### Shape
 
 Each file sets exactly one global, `ForeverBuddyData_<Slot>`, to one table:
 
 ```lua
-ForeverBuddyData_Checklist = {
+ForeverBuddyData_Tooltip1 = {
 	["schema"] = 1,
 	["stamp"] = 1759698240,      -- when the app generated it (unix s); the delivery receipt echoes it
 	["app"] = "0.4.0",
-	["characters"] = { ... },     -- slot-specific body, §5
+	...                           -- slot-specific body, §5
 }
 ```
 
-- The addon reads only `schema` values it knows. An unknown one gets a single line in the frame ("This checklist is from a newer Forever Buddy. Update the addon from the app."), never a Lua error.
+- The addon reads only `schema` values it knows. An unknown one shows a single quiet line where the data would be ("From a newer Forever Buddy. Update the addon from the app."), never a Lua error.
 - Strings are display text only. The addon never passes a slot value to `RunScript`, `loadstring`, a macro, a slash command, a secure attribute or a frame name.
 - **No markup from a slot.** `SetText` interprets WoW escape codes, so a slot string with `|Hitem:…|h[Fake Epic]|h`, `|T…|t` or `|c` could fake an item link, embed a texture or recolour text. The addon passes every slot string through one helper, `plain(s)`, that doubles each `|` to `||` before any `SetText` or tooltip line. The colours and icons the frame needs come from our own Lua (class colour from the `class` token), never from slot text. The escaping happens in the addon, at display, so the slot keeps the raw string and the check covers every producer, the app's and agents'.
 
@@ -127,7 +128,74 @@ The "how to" line uses the route the probe picked: "press Sync on the Forever Bu
 
 ---
 
-## 5. The weekly checklist (first slot)
+## 5. Alt-aware tooltips: the tooltip index (first slots)
+
+Hover an item anywhere in game and the tooltip adds which alts hold it, where, and its last scan price (INGAME.md §8, `ingame.html`):
+
+```
+Forever Buddy
+Coinpurse                 340 · bank
+Velyra                     60 · bags
+All alts                   400
+Last scan            ≈ 1g 12s each
+As of each alt's last logout · scan 3 days ago
+```
+
+### What the app sends
+
+**Ids and counts only.** The only strings from our side are the account's own character names and class tokens, in a small header. Item names come from the game's own cache (the tooltip is already showing the item), so no item text is ever sent.
+
+```lua
+ForeverBuddyData_Tooltip1 = {
+	["schema"] = 1,
+	["stamp"] = 1759698240,
+	["app"] = "0.4.0",
+	["scanAt"] = 1759437240,          -- last Auctionator scan (unix s), absent without prices
+	["alts"] = {                       -- index → character; same list in both slots
+		{ ["name"] = "Coinpurse", ["surname"] = "", ["class"] = "WARRIOR", ["seen"] = 1759530000, ["bank"] = 1759530000, ["mail"] = 1759100000 },
+		...
+	},
+	["items"] = {                      -- this slot's half: item ids with id % 2 == 0 (Tooltip1) or 1 (Tooltip2)
+		[12360] = { 36400, 1, 0, 24, 0, 0, 3, 2, 0, 0, 0 },
+		...
+	},
+}
+```
+
+- An `items` entry is a flat list: the AH price in copper (`0` if none), then for each alt holding it, five numbers: the alt's index in `alts`, then its count in bags, bank, mail and equipped. A flat list of numbers is both the smallest shape `sv::write_globals` emits and the simplest to read in Lua.
+- `seen`, `bank` and `mail` in `alts` are when that alt's bags, bank and mailbox were last read (its last logout, last bank visit, last mailbox visit). Shift shows them per alt.
+- Sources: `char_items` grouped by `(item_id, character, location)`; prices from `ah_latest` for the current market, only when `ah_status.has_prices` (F5d). Every character the app knows for this flavor is included, across WTF accounts, since the AddOns folder is shared by them all.
+
+### Size, against the 1 MB cap
+
+Measured shape: each number is one line (tabs, digits, comma, newline), about 7 bytes. An (item, alt) pair is five numbers, about 35 bytes; each item adds about 30 bytes of its own (key, braces, price).
+
+| Account | Pairs | Items | Estimate (both slots) |
+|---|---|---|---|
+| Typical: 7 alts, ~150 distinct items each | ~1,000 | ~700 | ~60 KB |
+| Large: 20 alts, full bags, bank and mail, ~250 distinct items each | ~5,000 | ~3,000 | ~265 KB |
+| Extreme: 50 alts, ~400 distinct items each | ~20,000 | ~6,000 | ~880 KB |
+
+The large account fits one slot with room to spare, but the extreme one would land near 1 MB. Since slots are fixed in the TOC and adding one later costs an addon update and a restart, **addon 0.4.0 ships two slots now**, split by item id parity, so each half carries about half the pairs: about 440 KB per slot even for the extreme account. B1 includes a test that generates the large and extreme accounts, prints the measured sizes, and asserts each slot stays under 512 KB (large) and under the 1 MB cap (extreme), so the estimate is checked, not assumed.
+
+**Over the cap: refuse and report, never truncate.** If either half would exceed 1 MB, neither is written as data. Instead each slot gets a header-only file with `["tooLarge"] = true` and no `items`. The tooltip shows one quiet grey line, "Alt data too large to send", and the app's panel shows the slot as "too large to send". A truncated index would show wrong counts, which is worse than none.
+
+### The addon side
+
+- **Read-only hook:** `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, fn)`, adding lines with `AddLine` / `AddDoubleLine` on the game's own tooltip. It never creates a tooltip of its own and never calls anything protected.
+- **Guarded:** the whole callback runs in `pcall`. Any error drops our lines for that tooltip and is counted in `ForeverBuddyDB` (shape only), never shown as a Lua error.
+- **Not in combat-only or unit tooltips:** item tooltips only, and nothing added while `InCombatLockdown()`, so we never touch secret values.
+- **Current character:** its row is left out of the index lookup (matched on name and surname) and replaced by the live count from `C_Item.GetItemCount(id, true)` (bags and bank), so it's never stale.
+- **At most 6 alt rows,** then "+N more". Names are passed through `plain()` and coloured from `RAID_CLASS_COLORS[class]`.
+- **Lookup** is `slots[(id % 2) + 1].items[id]`, a table read per hover. Nothing is precomputed at load beyond checking `schema`.
+
+### Generation
+
+Generated after each ingest that changed items, after an AH price update, and after an addon install, and written only when the bytes differ from the last write. Before any write, both halves go through §2's checks (re-parse, cap) together.
+
+---
+
+## 5a. The weekly checklist (next slot, after tooltips)
 
 Generated whenever its inputs change (after each ingest, at the weekly reset, on a lockout or bank-alt edit), and written when the content differs from the last write.
 
@@ -149,10 +217,10 @@ Generated whenever its inputs change (after each ingest, at the weekly reset, on
 |---|---|---|
 | Raids | `lockouts_list` (F3), the `LOCKOUT_LIVE` filter | "saved" or "resets Tue" from `reset_at` |
 | Mail | `char_mail.days_left` + `as_of` | expiring within 3 days; counts only, no senders or subjects |
-| Cooldowns | **new in addon 0.4.0** | see below |
+| Cooldowns | **new in the checklist's addon release** | see below |
 
 - The in-game frame shows times relative to now (`GetServerTime()`), so "resets Tue" stays right however old the file is. Past `resetsAt` rows show as clear, and past `readyAt` as ready.
-- **Cooldowns are not in the db yet.** Addon 0.4.0 records profession cooldowns at logout (`C_TradeSkillUI.GetRecipeCooldown` for known cooldown recipes, `C_Spell.GetSpellCooldown` for transmutes), stored as `char_cooldowns (character_id, spell_id, name, ready_at, as_of)` in migration 008. Cooldowns are secret in combat under Midnight's rules, but logout is never in combat. Probe run 4 doesn't cover these calls, so addon 0.4.0 checks them itself: each is `pcall`-wrapped, and a missing, secret or nil result records nothing. Julia's first logout with 0.4.0 settles it. If neither returns real data, the checklist ships with Raids and Mail and the Cooldowns section is left out (never shown empty).
+- **Cooldowns are not in the db yet.** The checklist's addon release records profession cooldowns at logout (`C_TradeSkillUI.GetRecipeCooldown` for known cooldown recipes, `C_Spell.GetSpellCooldown` for transmutes), stored as `char_cooldowns (character_id, spell_id, name, ready_at, as_of)` in its own migration. Cooldowns are secret in combat under Midnight's rules, but logout is never in combat. Probe run 4 doesn't cover these calls, so that release checks them itself: each is `pcall`-wrapped, and a missing, secret or nil result records nothing. Julia's first logout with it settles it. If neither returns real data, the checklist ships with Raids and Mail and the Cooldowns section is left out (never shown empty).
 - **The frame:** `/fb` toggles it, small and in the game's own dialog look (mock right side). It **never opens by itself** (INGAME.md §3, #86). At login, and only when the app delivered a stamp this character hasn't seen, the addon prints one chat line: "Forever Buddy: this week's checklist is ready. /fb to open." The addon compartment tooltip shows "This week: 4 to do". An opt-in popup can come later if players ask.
 - **If `/reload` doesn't re-read a changed slot** (probe run 4), the frame says "Updates arrive at your next login" and the app says "Your characters will see it at their next login." (INGAME.md §5).
 
@@ -171,7 +239,7 @@ The planner the PM described (plan levels in the app, an in-game step list) need
 
 **Recommendation: no-go for a v0.4 planner, go for groundwork.**
 
-- **Now:** addon 0.4.0 records accepted and completed quest IDs (no text) into the session log. That's cheap, has no licensing question, and gives the app "what have I done" per character.
+- **Now (with Q-SPIKE, @coder):** the next addon release records accepted and completed quest IDs (no text) into the session log. That's cheap, has no licensing question, and gives the app "what have I done" per character.
 - **Before any planner:** (a) Julia or the PM asks the Questie maintainers about the license, or we choose to read the user's installed QuestieDB at runtime instead of shipping its data; (b) sample QuestieDB's latest release against wago's QuestV2 IDs for the new zones. If coverage is under roughly 80% there, the planner waits.
 - **Never:** Wowhead scraping.
 - **Reading the user's Questie install: read it, never run it** (security). Questie's data ships as addon code, not SavedVariables, so it's usable only if the coverage sample shows it can be pulled out with a data-only parse: `sv` table constructors and string literals, or the release build's CBOR blocks (we already decode CBOR for Auctionator, F5). If it needs a Lua interpreter to evaluate, it's a no-go. We never embed a Lua VM to run third-party addon code. Reads follow the usual rules: read-only, `safe_read`, and a size cap.
@@ -208,7 +276,7 @@ Apply rules (@coder's notes on #87):
 - **Undo.** Gated kinds undo from the Apply's snapshot (F6's `undo`). `Slot` has no undo: the generator rewrites it from the db.
 - **Queue storage.** Staged changes persist in migration 009 (@coder): id, kind, JSON body, producer (`app` or `agent:<name>`), created_at, status (`staged`, `applied`, `discarded`, `conflict`).
 
-- **Two producers.** The app's own generators (the checklist) apply `Slot` changes directly. Agents (MCP tools) only **stage** changes into @coder's queue, and the player approves them in the F6 stage/apply bar. An agent never writes a file.
+- **Two producers.** The app's own generators (the tooltip index, later the checklist) apply `Slot` changes directly. Agents (MCP tools) only **stage** changes into @coder's queue, and the player approves them in the F6 stage/apply bar. An agent never writes a file.
 - **Ownership.** @coder owns the queue, approval and apply side. I own the slot writer (§2), the SavedVariables edit-in-place writer, the ElvUI codec, and the read-only MCP tools (characters, lockouts, prices, the checklist).
 - **Per-kind rules** come from the kind, not the producer: `Slot` follows §3; `SvEdit` and `Profile` keep today's gate (WoW closed, safety snapshot, restore journal).
 - **Agent text in a slot** is just a string under the same runtime check and cap. It never becomes a macro, a secure attribute or a path.
@@ -222,14 +290,17 @@ Only the `Slot` kind is built in v0.4. The other two are listed here so the queu
 | Gate | Needs | Blocks |
 |---|---|---|
 | G1 | Probe run 4: the reload route, and whether `/reload` re-reads a changed slot | §4's button; §3 (needed only if the re-read works) |
-| G2 | First logout with addon 0.4.0: cooldown APIs return data (not in probe run 4) | Cooldowns in the checklist |
+| G2 | First logout with the checklist's addon release: cooldown APIs return data (not in probe run 4) | Cooldowns in the checklist |
 | G3 | Questie license answer + coverage sample | Any quest planner |
 
 **Build order:**
 
 1. **B1:** migration 008, `bridge::SLOTS`, `write_slots` with the runtime check, cap, link refusal and tests. Slot writes only while WoW is closed, and a test pins that (a write while running is refused), so the while-running path can't land before G1.
-2. **B2:** addon 0.4.0: the slot stub, the `/fb` frame, receipts, cooldowns, quest IDs. Sync follows G1. Receipts add `bridge` to `ForeverBuddyDB`, so the TOC Version and `VERSION` bump together, the harness fixtures are regenerated, and V6's decoder gets a fixture test for the new key. If `_meta.schema` changes, `SCHEMAS` in `ingest/file.rs` changes in the same PR.
-3. **B3:** the Dashboard "Sent to the game" panel and its four states.
+   B1 also covers addon 0.4.0's slot loading: the two `Tooltip` stubs in the TOC, the `schema` check, `plain()`, and receipts. Receipts add `bridge` to `ForeverBuddyDB`, so the TOC Version and `VERSION` bump together, the harness fixtures are regenerated, and V6's decoder gets a fixture test for the new key. If `_meta.schema` changes, `SCHEMAS` in `ingest/file.rs` changes in the same PR.
+2. **T-TIP:** the tooltip index generator (§5, with the size test and the too-large state) and the addon's read-only tooltip hook. Sync follows G1.
+3. **B3:** the Dashboard "Sent to the game" panel and its states (plus "too large to send").
 4. **B4:** the while-running exception (§3), after G1 shows that `/reload` re-reads slots.
+
+5. **Later:** the checklist slot and `/fb` frame (§5a), with cooldowns, in its own addon release.
 
 B1 to B3 ship "written when WoW closes, picked up next login" on their own, which is security's safe default.
