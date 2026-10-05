@@ -339,8 +339,9 @@ mod tests {
         let db = Db::open(&path).unwrap();
         db.with_conn(|c| {
             c.execute(
-                "INSERT INTO characters (flavor, account, realm, name, first_seen, last_seen)
-                 VALUES ('_classic_beta_', 'ACCOUNT1', 'Ashenvale', 'Thrandor', 1, 2)",
+                "INSERT INTO characters
+                   (flavor, account, group_dir, char_dir, name, first_seen, last_seen)
+                 VALUES ('_classic_beta_', 'ACCOUNT1', '70', 'Thrandor', 'Thrandor', 1, 2)",
                 [],
             )?;
             Ok(())
@@ -366,26 +367,25 @@ mod tests {
         assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
     }
 
-    /// Migration 004: the same character name in two flavors are two rows,
-    /// and deleting a character takes its data with it.
+    /// Migration 004: a character is its folder, per flavor (the same folders
+    /// in two flavors are two rows), and deleting a character takes its data
+    /// with it.
     #[test]
-    fn characters_are_per_flavor_and_cascade() {
+    fn characters_are_per_folder_and_flavor_and_cascade() {
         let db = Db::open_in_memory().unwrap();
         db.with_conn(|c| {
             c.execute_batch("PRAGMA foreign_keys = ON")?;
+            let insert = "INSERT INTO characters
+                  (flavor, account, group_dir, char_dir, name, surname, first_seen, last_seen)
+                VALUES (?1, 'A', '70', ?2, 'Ellygie', ?3, 1, 1)";
             for flavor in ["_classic_beta_", "_classic_"] {
-                c.execute(
-                    "INSERT INTO characters (flavor, account, realm, name, first_seen, last_seen)
-                     VALUES (?1, 'A', 'R', 'Thrandor', 1, 1)",
-                    [flavor],
-                )?;
+                c.execute(insert, (flavor, "Ellygie-Vargur", "Vargur"))?;
             }
-            let dup = c.execute(
-                "INSERT INTO characters (flavor, account, realm, name, first_seen, last_seen)
-                 VALUES ('_classic_', 'A', 'R', 'Thrandor', 1, 1)",
-                [],
-            );
-            assert!(dup.is_err(), "unique per flavor");
+            // Same name without the surname is a different folder, so a
+            // different character.
+            c.execute(insert, ("_classic_", "Ellygie", None::<&str>))?;
+            let dup = c.execute(insert, ("_classic_", "Ellygie-Vargur", "Vargur"));
+            assert!(dup.is_err(), "unique per flavor and folder");
             c.execute(
                 "INSERT INTO gold_points (character_id, at, money) VALUES (1, 10, 500)",
                 [],

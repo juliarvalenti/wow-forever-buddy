@@ -144,7 +144,12 @@ fn vacuum_into(conn: &rusqlite::Connection, tmp: &Path) -> AppResult<bool> {
         Err(e) if is_corrupt(&e) => return Ok(false),
         Err(e) => return Err(e.into()),
     }
-    std::fs::File::open(tmp)?.sync_all()?;
+    // Write access: on Windows, flushing (FlushFileBuffers) a handle opened
+    // read-only fails with "Access is denied".
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(tmp)?
+        .sync_all()?;
     Ok(true)
 }
 

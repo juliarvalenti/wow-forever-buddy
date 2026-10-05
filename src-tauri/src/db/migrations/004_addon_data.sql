@@ -7,14 +7,22 @@
 -- logout, event `t`) are INTEGER Unix seconds, exactly as the addon wrote
 -- them. Times the app records itself are TEXT RFC 3339, UTC, like v0.1.
 
--- One row per character per flavor: the same account/realm/name can exist in
--- two flavors (Classic and Forever), and their data must not mix.
+-- One row per character folder: WTF/Account/<account>/<group_dir>/<char_dir>.
+-- Identity is the raw folder names, never split or reinterpreted (probe run 1):
+-- `group_dir` is an opaque group id on Forever ("70") or the realm on the
+-- legacy layout, and `char_dir` is the full name, first plus optional
+-- surname ("Ellygie-Vargur"). Name, surname and realm for display come from
+-- the addon (UnitName's two returns, GetRealmName), stored separately. Per
+-- flavor, so the same folders under Classic and Forever never mix.
 CREATE TABLE characters (
     id          INTEGER PRIMARY KEY,
     flavor      TEXT NOT NULL,             -- folder name, e.g. _classic_beta_
     account     TEXT NOT NULL,             -- WTF/Account/<account>
-    realm       TEXT NOT NULL,
-    name        TEXT NOT NULL,
+    group_dir   TEXT NOT NULL,             -- the folder between account and character
+    char_dir    TEXT NOT NULL,             -- the character's own folder
+    name        TEXT NOT NULL,             -- UnitName('player'), first return
+    surname     TEXT,                      -- UnitName's second return, if any
+    realm       TEXT,                      -- GetRealmName()
     guid        TEXT,
     class       TEXT,                      -- file token, e.g. WARRIOR
     race        TEXT,
@@ -25,7 +33,7 @@ CREATE TABLE characters (
     guild_rank  TEXT,
     first_seen  INTEGER NOT NULL,          -- earliest snapshot `at`
     last_seen   INTEGER NOT NULL,          -- latest snapshot `at`
-    UNIQUE (flavor, account, realm, name)
+    UNIQUE (flavor, account, group_dir, char_dir)
 ) STRICT;
 
 -- The character at each logout (or /reload). Same `at` = already ingested.
