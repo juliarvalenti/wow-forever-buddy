@@ -481,7 +481,7 @@ function GameDataCache() {
       <div className="t">Game data cache</div>
       <div className="d">
         {status?.build
-          ? `Item icons, read from your WoW install (version ${status.build}) and kept on this PC.`
+          ? `Item icons read from your own game files (version ${status.build}) and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch.`
           : "Item icons are read from your WoW install once the game folder is set. Until then, items show a letter."}
       </div>
       <div className="ctl" style={{ marginTop: 6 }}>
@@ -496,6 +496,11 @@ function GameDataCache() {
           {busy === "clear" ? "Clearing…" : "Clear"}
         </Button>
       </div>
+      {status?.unreadable && (
+        <div className="d" style={{ marginTop: 6, color: "var(--warn)" }}>
+          Couldn't read the game's art files, so items show letters instead. Nothing else is affected.
+        </div>
+      )}
       {result && <div className="d" style={{ marginTop: 6 }}>{result}</div>}
     </div>
   );

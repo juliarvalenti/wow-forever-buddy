@@ -10,6 +10,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -33,6 +34,9 @@ pub struct IconCacheStatus {
     /// The game build icons come from ("1.60.1.70205"); `None` when the
     /// game's data can't be read (no install, or not a CASC install).
     pub build: Option<String>,
+    /// This build's art files couldn't be read: the storage wouldn't open,
+    /// or every icon tried failed and none is cached. Items show letters.
+    pub unreadable: bool,
 }
 
 /// What a rebuild read.
@@ -61,6 +65,7 @@ enum Job {
 pub struct Icons {
     dir: PathBuf,
     tx: Sender<Job>,
+    health: Arc<Mutex<Health>>,
 }
 
 impl Icons {
@@ -74,13 +79,16 @@ impl Icons {
             open: None,
             open_failed: None,
             failed: HashSet::new(),
+            read: 0,
             build: None,
+            health: Arc::default(),
         };
+        let health = worker.health.clone();
         std::thread::Builder::new()
             .name("icons".into())
             .spawn(move || worker.run(rx))
             .expect("spawn the icons thread");
-        Icons { dir, tx }
+        Icons { dir, tx, health }
     }
 
     pub fn get(&self, flavor: PathBuf, id: u32, reply: Reply) {
@@ -129,12 +137,18 @@ impl Icons {
                 bytes += entry.metadata().map_or(0, |m| m.len());
             }
         }
+        let build = flavor.and_then(|f| casc::build_of(f).ok());
+        let unreadable = build.as_ref().is_some_and(|b| {
+            self.health.lock().is_ok_and(|h| {
+                h.build.as_ref() == Some(b)
+                    && (h.open_failed || (h.read == 0 && h.failed > 0 && files == 0))
+            })
+        });
         IconCacheStatus {
             files,
             bytes: bytes as f64,
-            build: flavor
-                .and_then(|f| casc::build_of(f).ok())
-                .map(|b| b.version),
+            build: build.map(|b| b.version),
+            unreadable,
         }
     }
 }
@@ -163,7 +177,19 @@ struct Worker {
     /// Icons that failed for `build`: not tried again until the build
     /// changes or the cache is cleared.
     failed: HashSet<u32>,
+    /// Icons read for `build` since it was first seen (or the last clear).
+    read: u32,
     build: Option<BuildInfo>,
+    health: Arc<Mutex<Health>>,
+}
+
+/// The worker's last word on how reading is going, for `status`.
+#[derive(Default)]
+struct Health {
+    build: Option<BuildInfo>,
+    open_failed: bool,
+    read: u32,
+    failed: u32,
 }
 
 impl Worker {
@@ -200,6 +226,8 @@ impl Worker {
     fn clear(&mut self) -> std::io::Result<()> {
         self.failed.clear();
         self.open_failed = None;
+        self.read = 0;
+        self.publish();
         match std::fs::remove_dir_all(&self.dir) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -269,7 +297,24 @@ impl Worker {
                 None => fill.failed = wanted.len() as u32,
             }
         }
+        self.read += fill.read;
+        self.publish();
         finish(jobs, Some((&cache, &build)), &fill);
+    }
+
+    /// What Settings needs to say "couldn't read the game's art files".
+    fn publish(&self) {
+        if let Ok(mut health) = self.health.lock() {
+            *health = Health {
+                build: self.build.clone(),
+                open_failed: self
+                    .open_failed
+                    .as_ref()
+                    .is_some_and(|(b, _)| Some(b) == self.build.as_ref()),
+                read: self.read,
+                failed: self.failed.len() as u32,
+            };
+        }
     }
 
     /// A new build: forget what failed for the old one and delete its icons.
@@ -278,6 +323,7 @@ impl Worker {
             return;
         }
         self.failed.clear();
+        self.read = 0;
         self.open = None;
         let keep = casc::cache_path(&self.dir, build, 0)
             .parent()
@@ -377,6 +423,8 @@ mod tests {
         assert_eq!(status.files, 1);
         assert!(status.bytes > 0.0);
         assert_eq!(status.build.as_deref(), Some("1.60.1.70205"));
+        // Some icons failing isn't "couldn't read the game's art files".
+        assert!(!status.unreadable);
 
         // A cached icon is served without the archive.
         std::fs::remove_file(game.data.join("data").join("data.000")).unwrap();
@@ -389,9 +437,18 @@ mod tests {
         let icons = Icons::start(tmp.path().join("icons"), tmp.path().to_path_buf());
         assert_eq!(get(&icons, &tmp.path().join("_classic_beta_"), ICON), None);
 
+        assert!(
+            !icons.status(None).unreadable,
+            "no install isn't a read failure"
+        );
+
         let game = install();
         std::fs::remove_dir_all(game.data.join("data")).unwrap();
         assert_eq!(get(&icons, &game.flavor, ICON), None);
+        assert!(icons.status(Some(&game.flavor)).unreadable);
+        // Clear (or Rebuild) forgets it, so the next try can succeed.
+        icons.clear().unwrap();
+        assert!(!icons.status(Some(&game.flavor)).unreadable);
         assert!(std::fs::read_to_string(tmp.path().join("buddy.log"))
             .unwrap()
             .contains("icons: couldn't read the game's data"));

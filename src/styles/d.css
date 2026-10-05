@@ -436,11 +436,17 @@
   background: radial-gradient(circle at 38% 32%, #c43a2e, var(--wax) 50%, #5a0c09 85%); box-shadow: 0 1px 0 #3a0705, inset 0 1px 1px rgba(255,160,140,.4); }
 .d-loot { display: inline-flex; align-items: center; gap: 7px; }
 .d-ico { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; display: grid; place-items: center; font: 400 9.5px "Marcellus", Georgia, serif;
-  background: rgba(255,255,255,.25); border: 1.5px solid currentColor; box-shadow: inset 0 0 6px rgba(90,55,20,.25); }
+  background: rgba(255,255,255,.25); border: 1.5px solid currentColor; }
 .d-ico b { color: var(--ink); }
+/* Item tiles, letter or icon (IMPLEMENTING §13), framed the same everywhere:
+   a 1px black inner ring, a soft shadow on parchment, and on stone a dim
+   border for common and poor items (currentColor would make them glow). */
+.d-ico, .ch-ico, .ah-ico { position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,.85); }
+.d-record .d-ico, .d-record .ch-ico { box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), 0 1px 2px rgba(58,38,22,.35); }
+.ah-ico.ch-q1, .ch-results .ch-ico.ch-q1 { border-color: #5d5852; }
+.ah-ico.ch-q0, .ch-results .ch-ico.ch-q0 { border-color: #6f6a62; }
 /* a real item icon over its letter tile (ItemIcon, F8). Scaled up a touch to
    crop the dark edge the game bakes in, so the quality border shows. */
-.d-ico, .ch-ico, .ah-ico { position: relative; overflow: hidden; }
 .d-icon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); }
 /* a row that opens something (a journal entry, a session's adventure) */
 .d-open { cursor: pointer; }

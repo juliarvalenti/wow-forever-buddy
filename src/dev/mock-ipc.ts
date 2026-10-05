@@ -611,7 +611,12 @@ export function installMockIpc(): void {
     install_set: () => install,
     // F8: icons don't load outside the app (no icon://), so screens show
     // their letter tiles; Settings shows a cache as if they had.
-    icons_cache_status: () => ({ files: iconFiles, bytes: iconFiles * 9_800, build: "1.60.1.70205" }),
+    icons_cache_status: () => ({
+      files: iconFiles,
+      bytes: iconFiles * 9_800,
+      build: "1.60.1.70205",
+      unreadable: s === "settings-nocache",
+    }),
     icons_cache_rebuild: () => {
       iconFiles = 412;
       return { read: 410, failed: 2 };

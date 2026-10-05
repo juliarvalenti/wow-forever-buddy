@@ -1061,6 +1061,11 @@ export type IconCacheStatus = {
 	 *  game's data can't be read (no install, or not a CASC install).
 	 */
 	build: string | null,
+	/**
+	 *  This build's art files couldn't be read: the storage wouldn't open,
+	 *  or every icon tried failed and none is cached. Items show letters.
+	 */
+	unreadable: boolean,
 };
 
 /**  What a rebuild read. */
