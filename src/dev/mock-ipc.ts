@@ -71,7 +71,8 @@ export const SCENARIOS = [
   "addons-linked", // F6: Velyra's settings folder is a link, so her row can't be switched
   "macros-empty", // F7: no macros-cache.txt anywhere yet (the Macros screen works in every scenario)
   "ah", // F5: ah.html's market (any scenario has it; this one opens on it in shots)
-  "ah-empty", // the AH before Auctionator has saved any prices
+  "ah-empty", // no Auctionator prices yet: the AH is hidden, Settings says why (F5d)
+  "ah-unreadable", // an Auctionator file this version can't read: hidden, Settings says so
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -84,6 +85,8 @@ export function installMockIpc(): void {
   const running = s === "dashboard" || s === "noaddon" || s === "dashboard-missing";
   // No ForeverBuddy data yet: the v0.1 screens.
   const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
+  // No Auctionator prices on this machine: no AH screen, no worth (F5d).
+  const noPrices = s === "ah-empty" || s === "ah-unreadable";
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -1018,11 +1021,26 @@ export function installMockIpc(): void {
     adventure_get: ({ id }) =>
       s === "adventure-empty" || noAddon ? null : adventureFor((id as number | null) ?? 1),
     adventure_set_note: () => null,
-    // F5: ah.html's market; `ah-empty` before Auctionator has saved prices.
+    // F5: ah.html's market; `ah-empty` before Auctionator has saved prices,
+    // `ah-unreadable` with a file this version can't read (F5d hides the AH).
     ah_status: (): AhStatus =>
-      s === "ah-empty"
-        ? { has_prices: false, market: null, items: 0, last_scan_at: null, newest_day: null }
-        : { has_prices: true, market: "Forever", items: 4812, last_scan_at: iso(60 * 24 * 3 + 30), newest_day: dayAgo(3) },
+      noPrices
+        ? {
+            has_prices: false,
+            market: null,
+            items: 0,
+            last_scan_at: null,
+            newest_day: null,
+            file: s === "ah-empty" ? "none" : "unreadable",
+          }
+        : {
+            has_prices: true,
+            market: "Forever",
+            items: 4812,
+            last_scan_at: iso(60 * 24 * 3 + 30),
+            newest_day: dayAgo(3),
+            file: "read",
+          },
     ah_search: ({ query }) =>
       Object.keys(ahItems)
         .map(Number)
@@ -1049,7 +1067,7 @@ export function installMockIpc(): void {
     // F5c: gold.html's net worth (goods 2,618g, 611 of 1,284 items priced);
     // `ledger-empty` and the no-addon scenarios have no prices.
     ah_goods_worth: (): GoodsWorth =>
-      noAddon || s === "ledger-empty"
+      noAddon || noPrices || s === "ledger-empty"
         ? { value: 0, items: 0, priced: 0, by_character: [], top: [], as_of: null }
         : {
             value: 26_180_000,
@@ -1083,7 +1101,7 @@ export function installMockIpc(): void {
           },
     // A price for most items asked about (the recap's "≈ worth" cells).
     ah_prices: ({ itemIds }) =>
-      noAddon ? [] : (itemIds as number[]).filter((id) => id % 5 !== 0).map((id) => [id, 2_000 + (id % 97) * 1_100]),
+      noAddon || noPrices ? [] : (itemIds as number[]).filter((id) => id % 5 !== 0).map((id) => [id, 2_000 + (id % 97) * 1_100]),
   };
 
   mockWindows("main");

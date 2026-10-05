@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, KeyRound, Lock } from "lucide-react";
-import type { AppInfo, IntegrationId, StorageInfo } from "@/lib/bindings";
+import type { AhStatus, AppInfo, IntegrationId, StorageInfo } from "@/lib/bindings";
 import { commands, events } from "@/lib/bindings";
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   PrimaryButton,
   Switch,
 } from "@/components/d";
+import { useAhStatus } from "@/hooks/useAh";
 import { useBackups } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
@@ -91,6 +92,30 @@ const SERVICES: Service[] = [
   },
 ];
 
+/** F5d: where the Auction House screen comes from, and why it's hidden
+ *  until an Auctionator file has given prices on this machine. */
+function AhNote({ status }: { status: AhStatus | null }) {
+  if (!status) return null;
+  return (
+    <div className="st-set full">
+      <div className="t">Auction House prices</div>
+      <div className="d">
+        {status.has_prices ? (
+          <>
+            <span className="ok">✓</span> From Auctionator · {plural(status.items, "price", "prices")}
+          </>
+        ) : status.file === "unreadable" ? (
+          "Auctionator's saved prices are in a format this version can't read yet, so the Auction House screen and net worth stay hidden."
+        ) : status.file === "read" ? (
+          "Auctionator hasn't saved any prices yet. Scan at the Auction House in-game, then log out, and the Auction House screen and net worth appear."
+        ) : (
+          "The Auction House screen and net worth appear once Auctionator has saved prices. Install Auctionator, scan at the Auction House in-game, then log out."
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Settings({
   install,
   onOpenGameFolder,
@@ -102,6 +127,7 @@ export function Settings({
   const { storage, refresh: refreshBackups } = useBackups();
   const info = useAppInfo();
   const secrets = useSecrets();
+  const ah = useAhStatus();
 
   const active = install.state.kind === "ok" ? install.state.install : null;
   const flavor = active?.flavors.find((f) => f.id === active.active);
@@ -152,6 +178,7 @@ export function Settings({
                 )}
               </div>
             </div>
+            <AhNote status={ah} />
           </Panel>
 
           <Panel>
