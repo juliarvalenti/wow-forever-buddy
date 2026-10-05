@@ -9,7 +9,9 @@ lua5.1 tools/addon-test/run.lua --check   # what CI runs: fail if a fixture is s
 
 On macOS, `brew install luajit` and run it with `luajit` instead (Homebrew has no Lua 5.1; LuaJIT is the same language).
 
-- `wow.lua`: the fake client. It covers the APIs the addon calls, frames and events, the clock, `C_Timer`, secret values, and SavedVariables kept as text. Any API can be made secret, throwing or missing, and `RegisterEvent` can refuse named events.
+- `wow.lua`: the fake client. It covers the APIs the addon calls, frames and events, the clock, `C_Timer`, secret values, and SavedVariables kept as text.
+  - It also models a small game world (money, XP, zone, bags, gear, repair cost). Helpers such as `loot`, `sell`, `die`, `turnIn` and `bank` change that world and fire the events the client would.
+  - Any API can be made secret, throwing or missing. `RegisterEvent` can refuse named events, and chosen events can deliver secret arguments.
 - `serialize.lua`: writes a table the way the client writes SavedVariables, with keys sorted.
 - `run.lua`: the scenarios. Each one checks the file the addon wrote, including `_meta.counts` against its own recount. Scenarios that return a file save it as `<scenario>.lua`.
 

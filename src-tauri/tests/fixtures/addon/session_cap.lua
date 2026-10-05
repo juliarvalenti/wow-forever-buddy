@@ -32,6 +32,12 @@ ForeverBuddyDB = {
 			["id"] = 1791144000,
 			["login"] = 1791144000,
 			["logout"] = 1791147600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [1]
 		{
 			["events"] = {
@@ -39,6 +45,12 @@ ForeverBuddyDB = {
 			["id"] = 1791234000,
 			["login"] = 1791234000,
 			["logout"] = 1791237600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [2]
 		{
 			["events"] = {
@@ -46,6 +58,12 @@ ForeverBuddyDB = {
 			["id"] = 1791324000,
 			["login"] = 1791324000,
 			["logout"] = 1791327600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [3]
 		{
 			["events"] = {
@@ -53,6 +71,12 @@ ForeverBuddyDB = {
 			["id"] = 1791414000,
 			["login"] = 1791414000,
 			["logout"] = 1791417600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [4]
 		{
 			["events"] = {
@@ -60,6 +84,12 @@ ForeverBuddyDB = {
 			["id"] = 1791504000,
 			["login"] = 1791504000,
 			["logout"] = 1791507600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [5]
 		{
 			["events"] = {
@@ -67,6 +97,12 @@ ForeverBuddyDB = {
 			["id"] = 1791594000,
 			["login"] = 1791594000,
 			["logout"] = 1791597600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [6]
 		{
 			["events"] = {
@@ -74,6 +110,12 @@ ForeverBuddyDB = {
 			["id"] = 1791684000,
 			["login"] = 1791684000,
 			["logout"] = 1791687600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [7]
 		{
 			["events"] = {
@@ -81,6 +123,12 @@ ForeverBuddyDB = {
 			["id"] = 1791774000,
 			["login"] = 1791774000,
 			["logout"] = 1791777600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [8]
 		{
 			["events"] = {
@@ -88,6 +136,12 @@ ForeverBuddyDB = {
 			["id"] = 1791864000,
 			["login"] = 1791864000,
 			["logout"] = 1791867600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [9]
 		{
 			["events"] = {
@@ -95,6 +149,12 @@ ForeverBuddyDB = {
 			["id"] = 1791954000,
 			["login"] = 1791954000,
 			["logout"] = 1791957600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [10]
 	},
 	["snapshot"] = {

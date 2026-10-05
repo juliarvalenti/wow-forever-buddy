@@ -5,7 +5,7 @@ ForeverBuddyDB = {
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 0,
-			["events"] = 0,
+			["events"] = 2,
 			["items"] = 0,
 			["sessions"] = 1,
 		},
@@ -28,10 +28,28 @@ ForeverBuddyDB = {
 	["sessions"] = {
 		{
 			["events"] = {
+				{
+					["count"] = 2,
+					["item"] = 2589,
+					["kind"] = "gain",
+					["t"] = 1790965800,
+				}, -- [1]
+				{
+					["count"] = 1,
+					["item"] = 14047,
+					["kind"] = "gain",
+					["t"] = 1790967600,
+				}, -- [2]
 			},
 			["id"] = 1790964000,
 			["login"] = 1790964000,
 			["logout"] = 1790967600,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [1]
 	},
 	["snapshot"] = {

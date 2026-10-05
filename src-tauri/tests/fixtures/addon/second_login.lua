@@ -32,6 +32,12 @@ ForeverBuddyDB = {
 			["id"] = 1790964000,
 			["login"] = 1790964000,
 			["logout"] = 1790971200,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [1]
 		{
 			["events"] = {
@@ -39,6 +45,12 @@ ForeverBuddyDB = {
 			["id"] = 1791057600,
 			["login"] = 1791057600,
 			["logout"] = 1791061200,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [2]
 	},
 	["snapshot"] = {

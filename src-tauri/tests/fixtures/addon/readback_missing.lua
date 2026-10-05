@@ -32,6 +32,12 @@ ForeverBuddyDB = {
 			["id"] = 1791057600,
 			["login"] = 1791057600,
 			["logout"] = 1791061200,
+			["start"] = {
+				["level"] = 12,
+				["money"] = 25000,
+				["xp"] = 1200,
+				["zone"] = "Elwynn Forest",
+			},
 		}, -- [1]
 	},
 	["snapshot"] = {

@@ -103,6 +103,10 @@ scenario("first_login", function()
     eq(s.login, wow.EPOCH, "login")
     eq(s.logout, wow.EPOCH + 2 * HOUR, "logout")
     eq(#s.events, 0, "events")
+    eq(s.start.money, 25000, "start.money")
+    eq(s.start.xp, 1200, "start.xp")
+    eq(s.start.level, 12, "start.level")
+    eq(s.start.zone, "Elwynn Forest", "start.zone")
     eq(db.snapshot.at, s.logout, "snapshot.at")
     eq(db.character.name, "Thrandor", "name")
     eq(db.character.surname, "Vargur", "surname")
@@ -166,18 +170,25 @@ scenario("rejects_bad_prior", function()
     end
 end)
 
--- /reload writes the file and loads it again; it's still one session.
+-- /reload writes the file and loads it again; it's still one session, with
+-- the events from both sides of it.
 scenario("reload", function()
     local c = client()
     c.login(nil)
     c.advance(30 * MINUTE)
+    c.loot(2589, 2)
     c.reload()
     c.advance(30 * MINUTE)
+    c.loot(14047, 1)
     local text = c.logout()
     local db = file(text)
     eq(#db.sessions, 1, "sessions")
-    eq(db.sessions[1].login, wow.EPOCH, "login")
-    eq(db.sessions[1].logout, wow.EPOCH + HOUR, "logout")
+    local s = db.sessions[1]
+    eq(s.login, wow.EPOCH, "login")
+    eq(s.logout, wow.EPOCH + HOUR, "logout")
+    eq(#s.events, 2, "events")
+    eq(s.events[1].item, 2589, "before the reload")
+    eq(s.events[2].item, 14047, "after the reload")
     eq(db._meta.loaded_prior, true, "loaded_prior")
 
     -- If the reload didn't read the file back, the second half starts over.
@@ -249,6 +260,171 @@ scenario("api_failures", function()
         eq(db._meta.errors, nil, mode .. ": errors")
         eq(#db.sessions, 1, mode .. ": sessions")
     end
+end)
+
+-- In `events` below: this field must be absent.
+local NONE = {}
+
+-- Checks a session's events: `want` lists, in order, a table of the fields
+-- each event must have (other fields aren't checked; NONE means absent).
+local function events(s, want)
+    local kinds = {}
+    for i, e in ipairs(s.events) do
+        kinds[i] = e.kind
+    end
+    eq(#s.events, #want, "events (" .. table.concat(kinds, ", ") .. ")")
+    for i, fields in ipairs(want) do
+        for k, v in pairs(fields) do
+            eq(s.events[i][k], v ~= NONE and v or nil,"event " .. i .. " (" .. tostring(s.events[i].kind) .. ")." .. k)
+        end
+    end
+end
+
+-- An evening in Westfall and the Deadmines: every kind of event once.
+scenario("adventure", function()
+    local c = client()
+    local t0 = wow.EPOCH
+    c.login(nil)
+    c.advance(5 * MINUTE)
+    c.enterZone("Westfall")
+    c.enterZone("Westfall") -- the same zone again isn't a change
+    c.advance(MINUTE)
+    c.loot(2589, 3)
+    c.setMoney(25150)
+    c.advance(10)
+    c.setMoney(25200) -- within a minute: updates the last point
+    c.advance(10 * MINUTE)
+    c.die(800)
+    c.advance(MINUTE)
+    c.openMerchant()
+    c.sell(2589, 7, 70)
+    c.buy(117, 5, 125)
+    c.repairAll()
+    c.closeMerchant()
+    c.advance(MINUTE)
+    c.use(117)
+    c.advance(5 * MINUTE)
+    c.turnIn(176, 1350, 1200)
+    c.levelUp()
+    c.advance(MINUTE)
+    c.enterZone("The Deadmines", true)
+    c.advance(20 * MINUTE)
+    c.encounter(639, "Edwin VanCleef", false) -- a wipe isn't logged
+    c.encounter(639, "Edwin VanCleef", true)
+    c.advance(10 * MINUTE)
+    local text = c.logout()
+    local db = file(text)
+    local merchant = t0 + 17 * MINUTE + 10
+    events(db.sessions[1], {
+        { kind = "zone", t = t0 + 5 * MINUTE, zone = "Westfall" },
+        { kind = "gain", t = t0 + 6 * MINUTE, item = 2589, count = 3 },
+        { kind = "money", t = t0 + 6 * MINUTE, money = 25200 },
+        { kind = "death", t = t0 + 16 * MINUTE + 10, zone = "Westfall" },
+        { kind = "lose", t = merchant, item = 2589, count = 7, how = "sold" },
+        { kind = "money", t = merchant, money = 25200 + 70 - 125 - 800 },
+        { kind = "gain", item = 117, count = 5, how = "bought" },
+        { kind = "repair", cost = 800 },
+        { kind = "lose", item = 117, count = 1, how = "used" },
+        { kind = "quest", id = 176, title = "Wanted: Hogger", xp = 1350, money = 1200 },
+        { kind = "money", money = 25200 + 70 - 125 - 800 + 1200 },
+        { kind = "level", level = 13 },
+        { kind = "zone", zone = "The Deadmines", instance = true },
+        { kind = "encounter", id = 639, name = "Edwin VanCleef" },
+    })
+    eq(db.sessions[1].events[1].instance, nil, "Westfall isn't an instance")
+    eq(db.sessions[1].events[2].how, nil, "looting has no how")
+    eq(db.sessions[1].start.zone, "Elwynn Forest", "start.zone")
+    return text
+end)
+
+-- Moving things around isn't gaining or losing them: the bank, and swapping
+-- gear. The mailbox is gaining and losing, and says so.
+scenario("moves_are_not_loot", function()
+    local c = client()
+    c.login(nil)
+    c.bank({ [2589] = 4 }, { [14047] = 2 })
+    c.loot(2488, 1)
+    c.equip(16, 2488) -- the Worn Shortsword goes back to the bags
+    c.mail({ [25] = 1 }, { [14047] = 5 })
+    local db = file(c.logout())
+    events(db.sessions[1], {
+        { kind = "gain", item = 2488, count = 1 },
+        { kind = "lose", item = 25, count = 1, how = "mailed" },
+        { kind = "gain", item = 14047, count = 5, how = "mail" },
+    })
+end)
+
+-- Secret event arguments and unreadable bags: fields are left out, an
+-- encounter that can't be told a success isn't logged, and items aren't
+-- diffed at all rather than seeming to vanish.
+scenario("secret_session", function()
+    local c = client({
+        secret_args = { PLAYER_LEVEL_UP = true, QUEST_TURNED_IN = true, ENCOUNTER_END = true },
+        secret = { ["C_Container.GetContainerItemInfo"] = true },
+    })
+    c.login(nil)
+    c.advance(MINUTE)
+    c.loot(2589, 3)
+    c.turnIn(176, 1350, 1200)
+    c.levelUp()
+    c.encounter(639, "Edwin VanCleef", true)
+    c.advance(MINUTE)
+    c.use(6948)
+    local text = c.logout()
+    local db = file(text)
+    events(db.sessions[1], {
+        { kind = "quest", id = NONE, title = NONE, xp = NONE, money = NONE },
+        { kind = "money", money = 26200 },
+        { kind = "level", level = NONE },
+    })
+    if db._meta.secret_hits < 8 then
+        fail("secret_hits: expected at least 8, got " .. show(db._meta.secret_hits))
+    end
+    return text
+end)
+
+-- Bags that turn secret mid-session aren't read as everything being used up:
+-- that scan is skipped, and the next readable one catches up.
+scenario("bags_go_secret", function()
+    local c
+    c = client({
+        api = {
+            ["C_Container.GetContainerItemInfo"] = function(bag, slot)
+                local item = c.world.bags[bag] and c.world.bags[bag].slots[slot]
+                if item and c.hidden then
+                    return c.secret()
+                elseif item then
+                    return { itemID = item.id, stackCount = item.count }
+                end
+            end,
+        },
+    })
+    c.login(nil)
+    c.hidden = true
+    c.loot(2589, 1)
+    c.hidden = false
+    c.use(6948)
+    local db = file(c.logout())
+    events(db.sessions[1], {
+        { kind = "gain", item = 2589, count = 1 },
+        { kind = "lose", item = 6948, count = 1, how = "used" },
+    })
+end)
+
+-- 2,100 deaths: the newest 2,000 are kept, and the file says some went.
+scenario("event_cap", function()
+    local c = client()
+    c.login(nil)
+    for _ = 1, 2100 do
+        c.advance(1)
+        c.die()
+    end
+    local db = file(c.logout())
+    local s = db.sessions[1]
+    eq(#s.events, 2000, "events")
+    eq(s.events[1].t, wow.EPOCH + 101, "oldest kept")
+    eq(db._meta.truncated, true, "truncated")
+    eq(db._meta.counts.events, 2000, "counts.events")
 end)
 
 -- Twelve sessions: the file keeps the newest ten and says it dropped some.
