@@ -3,7 +3,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Clock,
   FolderOpen,
   RefreshCw,
   Scale,
@@ -13,6 +12,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import {
+  type AddonStatus,
   commands,
   type GameStatus,
   type PlaySession,
@@ -29,11 +29,11 @@ import {
   Panel,
   PanelBody,
   PanelHeader,
-  Pill,
   Record,
   PrimaryButton,
   Tile,
 } from "@/components/d";
+import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
 import type { useInstall } from "@/hooks/useInstall";
 import { thisWeek, useSessions } from "@/hooks/useSessions";
@@ -54,6 +54,31 @@ import {
 // Copy from design/mocks/round-3/dashboard-noaddon.html (v0.1, no addon).
 
 const MISSING_WHY = "Unlocks when the game folder is found again.";
+/** "v0.2.0 · on 7 / 7 characters". */
+function addonCount(s: AddonStatus): string {
+  const on = s.enabled_on.length;
+  const all = on + s.disabled_on.length;
+  return `v${s.installed_version} · on ${on} / ${all} ${all === 1 ? "character" : "characters"}`;
+}
+
+/** The Game folder row: the count, plus where it's turned off. */
+function addonLine(s: AddonStatus): string {
+  const off =
+    s.disabled_on.length > 0
+      ? ` · off on ${s.disabled_on.map(characterName).join(", ")}`
+      : "";
+  return addonCount(s) + off;
+}
+
+/** Step 1 once installed: the count, and what to do where it's off. The app
+ *  doesn't switch it on itself (AddOns.txt is WoW's, per character). */
+function addonStepLine(s: AddonStatus): string {
+  const off =
+    s.disabled_on.length > 0
+      ? `. Turned off on ${s.disabled_on.map(characterName).join(", ")}. Turn it on in the in-game AddOns list.`
+      : "";
+  return addonCount(s) + off;
+}
 
 const TRIGGER_NOTE: Partial<Record<SnapshotSummary["trigger"], string>> = {
   app_start: "when the app started",
@@ -140,6 +165,14 @@ export function Dashboard({
   const older = (characters ?? []).filter((c) => c.older);
   const [showOlder, setShowOlder] = useState(false);
   const names = [...new Set((counted ?? []).map((c) => characterName(c.name)))];
+  const addon = useAddon();
+  const addonCurrent = addon.status?.installed_version != null && !addon.status.update_available;
+  const updating = addon.status?.update_available === true;
+  const installLabel = updating ? "Update addon" : "Install addon";
+  const installWhy = `Close WoW first. ${updating ? "Updating" : "Installing"} writes to your game folder.`;
+  // While step 1 offers the addon, its button is the page's one bronze.
+  const addonOffered = addon.status != null && !addonCurrent;
+  const BackUpButton = addonOffered ? Button : PrimaryButton;
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -147,6 +180,7 @@ export function Dashboard({
 
   const rescan = () => {
     install.refresh();
+    addon.refresh();
     refreshBackups();
     refreshSessions();
   };
@@ -176,11 +210,12 @@ export function Dashboard({
             {folderMissing != null ? (
               <LockedAction why={MISSING_WHY}>Back up now</LockedAction>
             ) : (
-              <PrimaryButton onClick={() => backUpNow()} disabled={progress != null}>
+              // One bronze per screen: while step 1 offers the addon, that's it.
+              <BackUpButton onClick={() => backUpNow()} disabled={progress != null}>
                 {progress
                   ? `Backing up… ${progress.total > 0 ? `${progress.done} of ${progress.total}` : ""}`
                   : "Back up now"}
-              </PrimaryButton>
+              </BackUpButton>
             )}
           </>
         }
@@ -289,18 +324,50 @@ export function Dashboard({
               in your UI is touched.
             </p>
             <ol className="d-steps">
-              <li>
+              <li className={addonCurrent ? "done" : undefined}>
                 <div>
-                  <div className="st">Install ForeverBuddy</div>
+                  <div className="st">
+                    {addonCurrent
+                      ? "ForeverBuddy is installed"
+                      : updating
+                        ? "Update ForeverBuddy"
+                        : "Install ForeverBuddy"}
+                  </div>
                   <div className="sd">
-                    The companion addon arrives with the next update of Forever Buddy. Backups
-                    already work in the meantime.
+                    {addonCurrent
+                      ? addonStepLine(addon.status!)
+                      : updating
+                        ? `Version ${addon.status!.installed_version} is installed; this update brings ${addon.status!.bundled_version}.`
+                        : (
+                            <>
+                              Copies the addon into{" "}
+                              <span className="d-mono">Interface\AddOns\ForeverBuddy</span>.
+                            </>
+                          )}
                   </div>
-                  <div style={{ marginTop: 8 }}>
-                    <Pill kind="auto">
-                      <Clock size={12} aria-hidden /> Coming in the next update
-                    </Pill>
-                  </div>
+                  {!addonCurrent && (
+                    <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      {folderMissing != null ? (
+                        <LockedAction why={MISSING_WHY}>{installLabel}</LockedAction>
+                      ) : running || game?.unknown ? (
+                        <>
+                          <LockedAction why={installWhy}>{installLabel}</LockedAction>
+                          <span className="sd">
+                            <LiveDot /> {installWhy}
+                          </span>
+                        </>
+                      ) : (
+                        <PrimaryButton onClick={addon.install} disabled={addon.busy || !addon.status}>
+                          {addon.busy ? "Installing…" : installLabel}
+                        </PrimaryButton>
+                      )}
+                    </div>
+                  )}
+                  {addon.error && (
+                    <p className="d-letter-bad" style={{ marginTop: 8 }}>
+                      {addon.error}
+                    </p>
+                  )}
                 </div>
               </li>
               <li>
@@ -389,11 +456,25 @@ export function Dashboard({
                     </span>
                   </li>
                 ))}
-              <li>
-                <LiveDot />
-                <span className="main">ForeverBuddy addon not installed</span>
-                <span className="sub">Needed for gold, gear and session details</span>
-              </li>
+              {addonCurrent ? (
+                <li>
+                  <Check size={14} className="ok" aria-hidden />
+                  <span className="main">ForeverBuddy addon</span>
+                  <span className="sub">{addonLine(addon.status!)}</span>
+                </li>
+              ) : addon.status?.update_available ? (
+                <li>
+                  <LiveDot />
+                  <span className="main">ForeverBuddy addon v{addon.status.installed_version}</span>
+                  <span className="sub">Update available: v{addon.status.bundled_version}</span>
+                </li>
+              ) : (
+                <li>
+                  <LiveDot />
+                  <span className="main">ForeverBuddy addon not installed</span>
+                  <span className="sub">Needed for gold, gear and session details</span>
+                </li>
+              )}
             </ul>
           </Panel>
 

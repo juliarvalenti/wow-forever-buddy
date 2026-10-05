@@ -5,6 +5,21 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
+	/**
+	 *  Whether ForeverBuddy is installed in the active game folder, its version
+	 *  against the one this app carries, and which characters have it on.
+	 */
+	addonStatus: () => __TAURI_INVOKE<AddonStatus>("addon_status"),
+	/**
+	 *  Installs or updates the addon through the write gate: refused while WoW
+	 *  runs, with a safety snapshot first. Runs as the one backup/restore job.
+	 */
+	addonInstall: () => __TAURI_INVOKE<AddonStatus>("addon_install"),
+	/**
+	 *  Removes the addon's files (and its folder, if nothing else is in it).
+	 *  The SavedVariables stay: they're the player's data.
+	 */
+	addonRemove: () => __TAURI_INVOKE<AddonStatus>("addon_remove"),
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
@@ -202,6 +217,28 @@ export type AddonNode = {
 	name: string,
 	/**  Across every account and character. */
 	totals: Totals,
+};
+
+export type AddonStatus = {
+	/**
+	 *  From the installed TOC; `None` when it isn't installed (or has no
+	 *  TOC, which WoW treats the same).
+	 */
+	installed_version: string | null,
+	/**  The version this app carries. */
+	bundled_version: string,
+	/**  Installed, and older than the bundled one. */
+	update_available: boolean,
+	/**
+	 *  Character folders where it's enabled. A new addon is enabled
+	 *  unless a character's `AddOns.txt` says otherwise.
+	 */
+	enabled_on: string[],
+	/**
+	 *  Character folders whose `AddOns.txt` turns it off. Reported, never
+	 *  changed by the app.
+	 */
+	disabled_on: string[],
 };
 
 export type AddonTarget = { kind: "Account"; account: string } | { kind: "Character"; account: string; realm: string; character: string } | { kind: "Everywhere" };

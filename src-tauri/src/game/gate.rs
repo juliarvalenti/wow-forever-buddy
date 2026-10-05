@@ -145,6 +145,32 @@ impl MutationGuard<'_> {
         }
     }
 
+    /// Deletes the folder `dir` if it's empty, and only if it holds one of
+    /// this mutation's paths. Never recursive, and checked like any path, so
+    /// a folder that's a link to somewhere else is refused rather than
+    /// followed. Returns false if something else is still in it.
+    pub fn remove_empty_dir(&self, dir: &RelPath) -> AppResult<bool> {
+        if !self
+            .allowed
+            .iter()
+            .any(|(p, _)| p.parent().as_ref() == Some(dir))
+        {
+            return Err(AppError::PathEscape(format!(
+                "{dir} is not part of this change"
+            )));
+        }
+        if let Some(blocker) = self.gate.watcher.blocking_now(&self.target.probe) {
+            return Err(AppError::GameRunning(blocker.to_string()));
+        }
+        let target = dir.resolve(&self.target.game)?;
+        match std::fs::remove_dir(&target) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(_) if std::fs::read_dir(&target).is_ok_and(|mut d| d.next().is_some()) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn commit(mut self) -> AppResult<()> {
         self.committed = true;
         self.gate.audit_finish(self.audit_id, "committed")

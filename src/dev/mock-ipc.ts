@@ -6,6 +6,7 @@
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
+  AddonStatus,
   CategoryNode,
   RestorePlan,
   SnapshotDetail,
@@ -237,7 +238,25 @@ export function installMockIpc(): void {
   let recoveryRefused = false;
   let resolved = false;
 
+  // V4: `addon-ready` (WoW closed, not installed; Install works),
+  // `addon-installed`, `addon-update` (an older version installed).
+  // The default dashboard has WoW running, so Install is locked.
+  const addon: AddonStatus = {
+    installed_version:
+      s === "addon-installed" ? "0.2.0" : s === "addon-update" ? "0.1.0" : null,
+    bundled_version: "0.2.0",
+    update_available: s === "addon-update",
+    enabled_on: ["Brannic", "Coinpurse", "Fizzwick", "Kaelor", "Sela", "Thrandor"],
+    disabled_on: ["Velyra-Duskmane"],
+  };
+
   const handlers: Record<string, Handler> = {
+    addon_status: () => addon,
+    addon_install: () => {
+      addon.installed_version = addon.bundled_version;
+      addon.update_available = false;
+      return addon;
+    },
     startup_failure: () => (s === "startup-error" ? failure : null),
     game_status: () => ({ running, pids: running ? [4242] : [], since: running ? iso(102) : null, unknown: false }),
     install_get: () => {
