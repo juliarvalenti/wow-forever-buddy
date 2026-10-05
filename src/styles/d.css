@@ -454,6 +454,24 @@
 .d-roster .lv { text-align: right; font-size: 11.5px; color: var(--soot); }
 .d-cdot { width: 8px; height: 8px; transform: rotate(45deg); border-radius: 1px; background: var(--cc, var(--soot)); display: inline-block; }
 
+/* ---------- Ledger net worth (gold.html, F5c): an accountant's column ---------- */
+.d-upper { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.d-worth { padding: 12px 16px 14px; color: var(--ink); }
+.d-acct { width: 100%; border-collapse: collapse; font-size: 13px; }
+.d-acct td { padding: 6px 0; border-bottom: 1px solid var(--ink-hair); }
+.d-acct td:last-child { text-align: right; }
+.d-acct td small { display: block; font-size: 11px; color: var(--ink-3); }
+.d-acct tr.total td { border-bottom: 0; padding-top: 9px; font-weight: 700; font-size: 15px; }
+.d-acct tr.total td:last-child { border-top: 1.5px solid var(--ink); box-shadow: 0 3px 0 -1.5px var(--ink); padding-bottom: 6px; }
+.d-worth .split { margin-top: 12px; }
+.d-worth .split .row { display: grid; grid-template-columns: 112px 1fr 48px; gap: 8px; align-items: center; height: 22px; font-size: 11.5px; }
+.d-worth .split .row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-worth .split .num { text-align: right; color: var(--ink-2); }
+.d-worth .fresh { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
+.d-worth .fresh.old { color: var(--warn-ink); }
+.d-worth .fresh svg { margin-top: 1px; flex-shrink: 0; }
+@media (max-width: 1100px) { .d-upper { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); } }
+
 /* ---------- Adventure recap (session.html, V9) ---------- */
 .d-adv { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); color: var(--ink); }
 .d-adv > .col { padding: 14px 18px 18px; min-width: 0; }

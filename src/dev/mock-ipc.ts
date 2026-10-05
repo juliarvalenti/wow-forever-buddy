@@ -18,6 +18,7 @@ import type {
   CategoryNode,
   CharacterCard,
   CharacterSheet,
+  GoodsWorth,
   IntegrationId,
   ItemRow,
   JournalEntry,
@@ -550,14 +551,15 @@ export function installMockIpc(): void {
         line(192, "logout", "Logged out in Eastern Plaguelands", { detail: "2,140g" }),
       ],
       gained: [
-        { item_id: 16_000, name: "Truestrike Shoulders", quality: 3, count: 1, how: null },
-        { item_id: 14_047, name: "Runecloth", quality: 1, count: 40, how: null },
-        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 6, how: null },
+        // Thrandor wears the shoulders now (the recap's Worth: "equipped").
+        { item_id: 16_000, name: "Truestrike Shoulders", quality: 3, count: 1, how: null, equipped: true },
+        { item_id: 14_047, name: "Runecloth", quality: 1, count: 40, how: null, equipped: false },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 6, how: null, equipped: false },
       ],
       spent: [
-        { item_id: 13_510, name: "Flask of the Titans", quality: 1, count: 1, how: "used" },
-        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 4, how: "used" },
-        { item_id: 999, name: "Vendor junk", quality: 0, count: 22, how: "sold" },
+        { item_id: 13_510, name: "Flask of the Titans", quality: 1, count: 1, how: "used", equipped: false },
+        { item_id: 13_446, name: "Major Healing Potion", quality: 1, count: 4, how: "used", equipped: false },
+        { item_id: 999, name: "Vendor junk", quality: 0, count: 22, how: "sold", equipped: false },
       ],
       quests: [
         { title: "The Archivist", zone: "Eastern Plaguelands" },
@@ -995,6 +997,44 @@ export function installMockIpc(): void {
             sellable(12808, 18, [[2, "Thrandor", "paladin", "bag", 18]], "fair"),
             sellable(12811, 14, [[2, "Thrandor", "paladin", "bank", 14]], "rough", "stale"),
           ],
+    // F5c: gold.html's net worth (goods 2,618g, 611 of 1,284 items priced);
+    // `ledger-empty` and the no-addon scenarios have no prices.
+    ah_goods_worth: (): GoodsWorth =>
+      noAddon || s === "ledger-empty"
+        ? { value: 0, items: 0, priced: 0, by_character: [], top: [], as_of: null }
+        : {
+            value: 26_180_000,
+            items: 1284,
+            priced: 611,
+            by_character: [[1, 13_120_000], [2, 6_400_000], [3, 3_900_000], [4, 1_700_000], [5, 1_060_000]],
+            top: (
+              [
+                [12360, "Arcanite Bar", 2, 24, 9_120_000],
+                [14047, "Runecloth", 1, 452, 5_060_000],
+                [13510, "Flask of the Titans", 1, 6, 3_600_000],
+                [13468, "Black Lotus", 2, 2, 1_640_000],
+                [12808, "Essence of Undeath", 1, 18, 612_000],
+              ] as [number, string, number, number, number][]
+            ).map(([item_id, name, quality, count, value]) => ({
+              count,
+              value,
+              item: {
+                item_id,
+                name,
+                quality,
+                price: value / count,
+                last_seen: iso(60 * 24 * 3).slice(0, 10),
+                sightings: 12,
+                median: value / count,
+                recent: [],
+                listed: null,
+              },
+            })),
+            as_of: iso(60 * 24 * 3 + 30),
+          },
+    // A price for most items asked about (the recap's "≈ worth" cells).
+    ah_prices: ({ itemIds }) =>
+      noAddon ? [] : (itemIds as number[]).filter((id) => id % 5 !== 0).map((id) => [id, 2_000 + (id % 97) * 1_100]),
   };
 
   mockWindows("main");

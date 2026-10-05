@@ -11,6 +11,7 @@ import {
   Button,
   Callout,
   DataTable,
+  Meter,
   Page,
   PageHeader,
   PanelBody,
@@ -19,13 +20,16 @@ import {
   Segmented,
   Tile,
 } from "@/components/d";
+import { Clock } from "lucide-react";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useLedger } from "@/hooks/useLedger";
+import { useGoodsWorth, type Worth } from "@/hooks/useWorth";
 import { classStyle } from "@/screens/Characters";
-import { coins, errorText, gold, plural, sessionWhen, span } from "@/lib/format";
+import { ago, coins, errorText, gold, plural, sessionWhen, span } from "@/lib/format";
 
-// Copy and layout from design/mocks/round-3/gold.html, with the v0.2 rules in
-// IMPLEMENTING.md §7: three tiles, no Net worth, the chart at full width.
+// Copy and layout from design/mocks/round-3/gold.html. Net worth (the fourth
+// tile and the panel beside the chart) shows only once AH prices exist (F5c);
+// until then IMPLEMENTING.md §7's three tiles and full-width chart.
 
 const RANGES: { value: LedgerRange; label: string; days: string }[] = [
   { value: "week", label: "7 days", days: "7 days" },
@@ -48,8 +52,17 @@ function shortDate(day: string | Date): string {
 
 /** "6,812 47 09" in coins, for the Account gold tile (here and on the
  *  Dashboard). */
-export function Coins({ copper }: { copper: number }) {
+export function Coins({ copper, whole }: { copper: number; whole?: boolean }) {
   const [g, s, c] = coins(copper);
+  // `whole`: gold only, for estimates (worth at scan prices) where silver
+  // would claim a precision they don't have.
+  if (whole) {
+    return (
+      <span className="d-coins">
+        <span className="g">{Math.round(copper / 10_000).toLocaleString()}</span>
+      </span>
+    );
+  }
   return (
     <span className="d-coins">
       <span className="g">{g.toLocaleString()}</span>
@@ -246,6 +259,77 @@ function GoldTable({ chart }: { chart: Chart }) {
   );
 }
 
+/** gold.html's Net worth (F5c): gold on hand plus goods at scan prices, the
+ *  most valuable holdings, and how fresh and complete the prices are. */
+function NetWorth({ worth, gold: onHand, characters }: { worth: Worth; gold: number; characters: number }) {
+  const unpriced = worth.items - worth.priced;
+  const max = worth.top[0]?.value || 1;
+  return (
+    <Record tilt>
+      <PanelHeader title="Net worth">
+        <span className="d-grow" />
+        <span>as of today</span>
+      </PanelHeader>
+      <div className="d-worth">
+        <table className="d-acct">
+          <tbody>
+            <tr>
+              <td>
+                Gold on hand
+                <small>{plural(characters, "character", "characters")}</small>
+              </td>
+              <td>
+                <Coins copper={onHand} whole />
+              </td>
+            </tr>
+            <tr>
+              <td>
+                Goods in bags, banks &amp; mail
+                <small>
+                  {plural(worth.items, "item", "items")} · {worth.priced.toLocaleString()} priced
+                </small>
+              </td>
+              <td>
+                <Coins copper={worth.value} whole />
+              </td>
+            </tr>
+            <tr className="total">
+              <td>Net worth</td>
+              <td>
+                <Coins copper={onHand + worth.value} whole />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        {worth.top.length > 0 && (
+          <div className="split">
+            <div className="d-sechead" style={{ marginBottom: 4 }}>
+              Most valuable holdings
+            </div>
+            {worth.top.map((t) => (
+              <div key={t.item.item_id} className="row">
+                <span className={t.item.quality != null ? `d-q${t.item.quality}` : undefined}>
+                  {t.item.name ?? `Item ${t.item.item_id}`} ×{t.count.toLocaleString()}
+                </span>
+                <Meter fraction={t.value / max} />
+                <span className="num">{gold(t.value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Muted while the scan is recent; ember past a week (IMPLEMENTING.md §10). */}
+        <div className={`fresh${!worth.as_of || Date.now() - new Date(worth.as_of).getTime() > 7 * 86_400_000 ? " old" : ""}`}>
+          <Clock size={13} aria-hidden />
+          <span>
+            Prices from your AH scan{worth.as_of ? ` ${ago(worth.as_of)}` : ""}. Scan again in-game to refresh
+            {unpriced > 0 ? `; ${plural(unpriced, "item has", "items have")} no price yet.` : "."}
+          </span>
+        </div>
+      </div>
+    </Record>
+  );
+}
+
 function JournalRow({
   e,
   cls,
@@ -305,6 +389,7 @@ export function Ledger({
 }) {
   const [range, setRange] = useState<LedgerRange>("month");
   const [view, setView] = useState<"chart" | "table">("chart");
+  const worth = useGoodsWorth();
   const { ledger, error } = useLedger(range);
   // The ledger rows carry ids, not classes; the overview has each character's class.
   const { overview } = useCharacters();
@@ -370,7 +455,7 @@ export function Ledger({
         </Record>
       ) : (
         <>
-          <section className="d-strip" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+          <section className="d-strip" style={{ gridTemplateColumns: `repeat(${worth ? 4 : 3}, minmax(0, 1fr))` }}>
             <Tile
               label="Account gold"
               value={tiles ? <Coins copper={tiles.account_gold ?? 0} /> : "…"}
@@ -381,6 +466,13 @@ export function Ledger({
               value={tiles ? gold(tiles.last_30_days ?? 0, true) : "…"}
               sub={tiles && <>{gold(tiles.this_week ?? 0, true)} this week</>}
             />
+            {worth && tiles && (
+              <Tile
+                label="Net worth"
+                value={<Coins copper={(tiles.account_gold ?? 0) + worth.value} whole />}
+                sub="gold + goods at scan prices"
+              />
+            )}
             <Tile
               label="Best earner"
               value={
@@ -415,17 +507,20 @@ export function Ledger({
             <span className="d-dim">Gold is read from SavedVariables at each logout</span>
           </div>
 
-          <Record>
-            <PanelHeader title="Gold over time">
-              <span className="d-grow" />
-              <span>
-                {chart && chart.days.length > 0
-                  ? `${shortDate(chart.days[0])} – ${shortDate(chart.days[chart.days.length - 1])} · per character`
-                  : ""}
-              </span>
-            </PanelHeader>
-            {chart && chart.days.length > 0 && (view === "chart" ? <GoldChart chart={chart} /> : <GoldTable chart={chart} />)}
-          </Record>
+          <div className={worth ? "d-upper" : undefined}>
+            <Record>
+              <PanelHeader title="Gold over time">
+                <span className="d-grow" />
+                <span>
+                  {chart && chart.days.length > 0
+                    ? `${shortDate(chart.days[0])} – ${shortDate(chart.days[chart.days.length - 1])} · per character`
+                    : ""}
+                </span>
+              </PanelHeader>
+              {chart && chart.days.length > 0 && (view === "chart" ? <GoldChart chart={chart} /> : <GoldTable chart={chart} />)}
+            </Record>
+            {worth && tiles && <NetWorth worth={worth} gold={tiles.account_gold ?? 0} characters={tiles.characters} />}
+          </div>
 
           <Record ruled>
             <PanelHeader title="Journal">

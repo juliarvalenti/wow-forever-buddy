@@ -11,11 +11,12 @@ import {
   PanelHeader,
   Record,
 } from "@/components/d";
-import { errorText, gold, span } from "@/lib/format";
+import { useGoodsWorth, usePrices } from "@/hooks/useWorth";
+import { ago, errorText, gold, span } from "@/lib/format";
 import { Crest, classStyle } from "@/screens/Characters";
 
-// Copy and layout from design/mocks/round-3/session.html, with the v0.2
-// rules in IMPLEMENTING.md §7 (no "≈ worth" cells).
+// Copy and layout from design/mocks/round-3/session.html. The Gained table's
+// "≈ worth" cells show for items with an AH price (F5c), blank otherwise.
 
 const WITHHELD =
   "WoW: Forever keeps some combat details from addons, such as who killed you or which mob dropped an item, so those lines are shorter.";
@@ -266,6 +267,9 @@ export function Adventure({
   onOpenJournal: () => void;
 }) {
   const { adventure: a, error, reload } = useAdventure(id);
+  // F5c: what the gains fetch at the last AH scan (before any early return).
+  const prices = usePrices(a ? a.gained.map((i) => i.item_id) : []);
+  const scanAt = useGoodsWorth()?.as_of ?? null;
 
   if (error) {
     return (
@@ -460,21 +464,38 @@ export function Adventure({
                     <th>Item</th>
                     <th className="r">Qty</th>
                     <th />
+                    {prices.size > 0 && <th className="r">Worth</th>}
                   </tr>
                 }
               >
-                {a.gained.map((i) => (
-                  <tr key={`${i.item_id}|${i.how}`}>
-                    <td>
-                      <ItemName i={i} />
-                    </td>
-                    <td className="r">{i.count}</td>
-                    <td className="x">{i.how ? HOW[i.how] ?? i.how : ""}</td>
-                  </tr>
-                ))}
+                {a.gained.map((i) => {
+                  const each = prices.get(i.item_id);
+                  return (
+                    <tr key={`${i.item_id}|${i.how}`}>
+                      <td>
+                        <ItemName i={i} />
+                      </td>
+                      <td className="r">{i.count}</td>
+                      <td className="x">{i.how ? HOW[i.how] ?? i.how : ""}</td>
+                      {prices.size > 0 && (
+                        <td
+                          className="r"
+                          title={!i.equipped && each != null ? `${gold(each)} each at your last scan` : undefined}
+                        >
+                          {i.equipped ? "equipped" : each != null ? `≈ ${gold(each * i.count)}` : ""}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </DataTable>
             ) : (
               <p className="d-dim">Nothing new in the bags.</p>
+            )}
+            {prices.size > 0 && scanAt && (
+              <p className="d-dim" style={{ marginTop: 6, fontSize: 11.5 }}>
+                Worth from your AH scan {ago(scanAt)}.
+              </p>
             )}
 
             <div className="d-sechead">Spent &amp; lost</div>

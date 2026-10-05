@@ -139,6 +139,13 @@ export const commands = {
 	/**  What the alts carry that's worth at least `min_value` copper. */
 	ahWorthSelling: (minValue: number | null) => __TAURI_INVOKE<Sellable[]>("ah_worth_selling", { minValue }),
 	/**
+	 *  Net worth's goods (F5c): what the alts carry, valued at the last scan,
+	 *  priced items only.
+	 */
+	ahGoodsWorth: () => __TAURI_INVOKE<GoodsWorth>("ah_goods_worth"),
+	/**  The last lowest buyout of each item that has one, as `(id, copper)`. */
+	ahPrices: (itemIds: number[]) => __TAURI_INVOKE<([number, number | null])[]>("ah_prices", { itemIds }),
+	/**
 	 *  The latest automatic backup failure, if no automatic backup has
 	 *  succeeded since. The UI asks on start, since a failure can happen before
 	 *  it's listening.
@@ -945,6 +952,25 @@ export type GoldPoint = {
 	money: number | null,
 };
 
+/**
+ *  What the goods the alts carry are worth (F5c): bags, bank and mail, not
+ *  gear, at the last lowest buyout. Only priced items count; the rest is
+ *  counted apart, so a net worth never pretends to be complete.
+ */
+export type GoodsWorth = {
+	/**  Copper, across every character. */
+	value: number | null,
+	/**  Items carried, and how many of them have a price. */
+	items: number,
+	priced: number,
+	/**  Per character, `(character id, copper)`, for "Worth carried". */
+	by_character: ([number, number | null])[],
+	/**  The most valuable holdings, most first (up to five). */
+	top: Holdings[],
+	/**  The newest scan the prices come from (RFC 3339). */
+	as_of: string | null,
+};
+
 /**  Where some of an item is, for "Coinpurse · bank". */
 export type Holding = {
 	character_id: number,
@@ -953,6 +979,13 @@ export type Holding = {
 	/**  `bag`, `bank` or `mail`. */
 	location: string,
 	count: number,
+};
+
+/**  One of the most valuable holdings, for the Ledger's net worth panel. */
+export type Holdings = {
+	item: AhItem,
+	count: number,
+	value: number | null,
 };
 
 /**  Emitted after a scan or replay that changed characters' data. */
@@ -1046,6 +1079,8 @@ export type ItemLine = {
 	 *  that didn't drop; `None` for loot.
 	 */
 	how: string | null,
+	/**  The character wears one now (the recap's Worth reads "equipped"). */
+	equipped?: boolean,
 };
 
 /**  One item in a slot, ready to show. */

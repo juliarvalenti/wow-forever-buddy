@@ -618,6 +618,120 @@ pub fn worth_selling(
     })
 }
 
+/// One of the most valuable holdings, for the Ledger's net worth panel.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct Holdings {
+    pub item: AhItem,
+    pub count: u32,
+    pub value: f64,
+}
+
+/// What the goods the alts carry are worth (F5c): bags, bank and mail, not
+/// gear, at the last lowest buyout. Only priced items count; the rest is
+/// counted apart, so a net worth never pretends to be complete.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct GoodsWorth {
+    /// Copper, across every character.
+    pub value: f64,
+    /// Items carried, and how many of them have a price.
+    pub items: u32,
+    pub priced: u32,
+    /// Per character, `(character id, copper)`, for "Worth carried".
+    pub by_character: Vec<(u32, f64)>,
+    /// The most valuable holdings, most first (up to five).
+    pub top: Vec<Holdings>,
+    /// The newest scan the prices come from (RFC 3339).
+    pub as_of: Option<String>,
+}
+
+pub fn goods_worth(db: &Db, flavor: &str, today: NaiveDate) -> AppResult<GoodsWorth> {
+    db.with_conn(|c| {
+        let realm = market(c, flavor)?;
+        let mut stmt = c.prepare(
+            "SELECT i.item_id, c.id, sum(i.count), l.price
+             FROM char_items i JOIN characters c ON c.id = i.character_id
+             LEFT JOIN ah_latest l ON l.flavor = c.flavor AND l.realm = ?2
+                                  AND l.item_key = CAST(i.item_id AS TEXT)
+             WHERE c.flavor = ?1 AND i.location != 'equipped'
+             GROUP BY i.item_id, c.id",
+        )?;
+        let rows = stmt
+            .query_map(params![flavor, realm], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as u32,
+                    r.get::<_, i64>(1)? as u32,
+                    r.get::<_, i64>(2)? as u32,
+                    r.get::<_, Option<i64>>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut worth = GoodsWorth {
+            value: 0.0,
+            items: 0,
+            priced: 0,
+            by_character: Vec::new(),
+            top: Vec::new(),
+            as_of: None,
+        };
+        let mut per_char: std::collections::BTreeMap<u32, f64> = Default::default();
+        let mut per_item: std::collections::BTreeMap<u32, (u32, f64)> = Default::default();
+        for (item, character, count, price) in rows {
+            worth.items += count;
+            let Some(price) = price else { continue };
+            let value = price as f64 * f64::from(count);
+            worth.priced += count;
+            worth.value += value;
+            *per_char.entry(character).or_default() += value;
+            let e = per_item.entry(item).or_default();
+            e.0 += count;
+            e.1 += value;
+        }
+        worth.by_character = per_char.into_iter().collect();
+        let mut top: Vec<(u32, u32, f64)> = per_item.into_iter().map(|(id, (n, v))| (id, n, v)).collect();
+        top.sort_by(|a, b| b.2.total_cmp(&a.2));
+        if let Some(realm) = &realm {
+            for (id, count, value) in top.into_iter().take(5) {
+                if let Some(item) = item_row(c, flavor, realm, id, today)? {
+                    worth.top.push(Holdings { item, count, value });
+                }
+            }
+        }
+        let scan: Option<i64> = c.query_row(
+            "SELECT max(max(coalesce(replicate_at, 0), coalesce(browse_at, 0))) FROM ah_scans WHERE flavor = ?1",
+            [flavor],
+            |r| r.get(0),
+        )?;
+        worth.as_of = scan
+            .filter(|s| *s > 0)
+            .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+            .map(|d| d.to_rfc3339());
+        Ok(worth)
+    })
+}
+
+/// The last lowest buyout of each of `item_ids` that has one (the session
+/// recap's "≈ worth" cells), as `(item id, copper)`.
+pub fn prices(db: &Db, flavor: &str, item_ids: &[u32]) -> AppResult<Vec<(u32, f64)>> {
+    db.with_conn(|c| {
+        let Some(realm) = market(c, flavor)? else {
+            return Ok(Vec::new());
+        };
+        let mut stmt = c.prepare(
+            "SELECT price FROM ah_latest WHERE flavor = ?1 AND realm = ?2 AND item_key = ?3",
+        )?;
+        let mut out = Vec::new();
+        for id in item_ids {
+            if let Some(p) = stmt
+                .query_row(params![flavor, realm, plain(*id)], |r| r.get::<_, i64>(0))
+                .optional()?
+            {
+                out.push((*id, p as f64));
+            }
+        }
+        Ok(out)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::auctionator::tests::{cbor_realm, file, Day};
@@ -797,6 +911,51 @@ mod tests {
 
     #[test]
     fn worth_selling_across_alts() {
+        let db = alts_with_goods();
+        let s = worth_selling(&db, FLAVOR, 500_000.0, today()).unwrap();
+        let ids: Vec<u32> = s.iter().map(|x| x.item.item_id).collect();
+        assert_eq!(
+            ids,
+            [12360, 13468],
+            "most valuable first, Runecloth under the bar"
+        );
+        assert_eq!((s[0].count, s[0].value), (24, 24.0 * 364_000.0));
+        assert_eq!(s[0].holdings[0].location, "bank");
+        assert_eq!(s[0].confidence, Confidence::Sure);
+        assert_eq!(
+            (s[1].confidence, s[1].caution.as_deref()),
+            (Confidence::Rough, Some("few"))
+        );
+        assert_eq!(s[1].holdings[0].class.as_deref(), Some("warrior"));
+    }
+
+    /// F5c: net worth's goods, only what has a price.
+    #[test]
+    fn goods_worth_counts_priced_items_only() {
+        let db = alts_with_goods();
+        let w = goods_worth(&db, FLAVOR, today()).unwrap();
+        // Arcanite 24 × 36g40s + Lotus 82g + Runecloth 40 × 11s; the
+        // unpriced Hearthstone is counted but not valued; gear never is.
+        assert_eq!(w.value, 24.0 * 364_000.0 + 820_000.0 + 40.0 * 1100.0);
+        assert_eq!((w.items, w.priced), (24 + 1 + 40 + 1, 24 + 1 + 40));
+        assert_eq!(
+            w.by_character,
+            [(1, 24.0 * 364_000.0), (2, 820_000.0 + 44_000.0)]
+        );
+        assert_eq!(w.top[0].item.item_id, 12360);
+        assert!(w.as_of.is_some());
+        assert_eq!(
+            prices(&db, FLAVOR, &[12360, 6948]).unwrap(),
+            [(12360, 364_000.0)]
+        );
+        assert!(goods_worth(&db, "_classic_", today())
+            .unwrap()
+            .top
+            .is_empty());
+    }
+
+    /// Coinpurse and Velyra with some goods, against `market_file`'s prices.
+    fn alts_with_goods() -> Db {
         let db = Db::open_in_memory().unwrap();
         load(&db, &market_file());
         db.with_conn(|c| {
@@ -818,24 +977,11 @@ mod tests {
             item(1, "bag", 2, 12360, 4)?;
             item(2, "bank", 1, 13468, 1)?; // a Black Lotus
             item(2, "bag", 1, 14047, 40)?; // Runecloth: 44s, under the bar
+            item(2, "bag", 2, 6948, 1)?; // a Hearthstone: never on the AH
             item(2, "equipped", 1, 12360, 1)?; // gear never counts
             Ok(())
         })
         .unwrap();
-        let s = worth_selling(&db, FLAVOR, 500_000.0, today()).unwrap();
-        let ids: Vec<u32> = s.iter().map(|x| x.item.item_id).collect();
-        assert_eq!(
-            ids,
-            [12360, 13468],
-            "most valuable first, Runecloth under the bar"
-        );
-        assert_eq!((s[0].count, s[0].value), (24, 24.0 * 364_000.0));
-        assert_eq!(s[0].holdings[0].location, "bank");
-        assert_eq!(s[0].confidence, Confidence::Sure);
-        assert_eq!(
-            (s[1].confidence, s[1].caution.as_deref()),
-            (Confidence::Rough, Some("few"))
-        );
-        assert_eq!(s[1].holdings[0].class.as_deref(), Some("warrior"));
+        db
     }
 }
