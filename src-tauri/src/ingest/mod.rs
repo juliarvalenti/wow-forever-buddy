@@ -40,7 +40,7 @@ use file::Status;
 
 const FILE_NAME: &str = "ForeverBuddy.lua";
 /// A file must be this still before it's read (core-fs §3).
-const SETTLE: Duration = Duration::from_secs(2);
+pub const SETTLE: Duration = Duration::from_secs(2);
 /// Meta key: the newest backup snapshot gap-fill has replayed, per flavor
 /// (`last_replayed_snapshot:<flavor>`): replay is per flavor, so one marker
 /// shared across flavors would skip the other flavor's older backups.
@@ -351,8 +351,13 @@ impl Watcher {
     /// True when a scan is due.
     pub fn poll(&mut self, flavor_dir: &Path) -> bool {
         let mut newest: Option<SystemTime> = None;
+        // Auctionator's account-wide prices too (F5): a logout writes both.
+        let auctionator = crate::ah::files(flavor_dir)
+            .into_iter()
+            .map(|(_, rel, abs)| (rel, abs));
         let now: Vec<(String, u64, i64)> = addon_files(flavor_dir)
             .into_iter()
+            .chain(auctionator)
             .filter_map(|(rel, abs)| {
                 let meta = std::fs::metadata(&abs).ok()?;
                 newest = newest.max(meta.modified().ok());
