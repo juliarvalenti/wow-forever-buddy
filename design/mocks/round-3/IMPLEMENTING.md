@@ -80,7 +80,7 @@ Each session comes from the process watcher (start and end), and the character c
 | Running now | Ember live dot, "Today, since 19:12", the duration counting up in minutes, and "Character known after you log out". |
 | One character changed | Its name. |
 | Several changed (alt swap) | "Thrandor, Coinpurse". Above 2, "Thrandor and 2 others", with the full list in the tooltip. |
-| None changed | "Character unknown", muted italic. Never guess from last played. |
+| None changed | "No character settings changed", muted. Never guess from last played. |
 | Under 2 minutes | Hidden from the list, but counted in the weekly total. |
 | Crash or kill (no clean exit) | End time = when the process vanished, and the who line gets " · ended unexpectedly". No red. |
 | Crosses midnight | Listed under the start day: "Yesterday, 23:40 – 01:12". |
