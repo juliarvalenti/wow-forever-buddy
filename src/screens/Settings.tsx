@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, KeyRound, Lock } from "lucide-react";
 import type { AppInfo, IntegrationId, StorageInfo } from "@/lib/bindings";
@@ -295,6 +295,12 @@ function StoreLocation({
   const [moving, setMoving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   useEvent(events.moveProgress, (p) => setProgress(p));
+  // The row sits low on the page: bring the confirm, the progress or the
+  // result into view as each appears (design nit on #64).
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (confirm || moving || result) row.current?.scrollIntoView({ block: "nearest" });
+  }, [confirm, moving, result]);
 
   const target = (to: string | null) =>
     to ? join(to, STORE_FOLDER) : info ? join(info.paths.local_data_dir, "backups") : "the default folder";
@@ -329,7 +335,7 @@ function StoreLocation({
   };
 
   return (
-    <div className="st-set full">
+    <div className="st-set full" ref={row}>
       <div className="t">Store backups in</div>
       <div className="ctl">
         <PathField path={here} info={info} />
