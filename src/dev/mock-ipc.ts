@@ -330,20 +330,27 @@ export function installMockIpc(): void {
   const ledgerFor = (range: LedgerRange): Ledger => {
     const n = range === "week" ? 7 : range === "month" ? 30 : range === "quarter" ? 90 : 31;
     const day = (i: number) => new Date(now - (n - 1 - i) * 86_400_000).toISOString().slice(0, 10);
-    const walk = (a: number, b: number, seed: number) =>
+    // From `a` gold to `end` copper, ending exactly on `end` so the chart's last
+    // day, the Account gold tile and the cards all agree (as ledger.rs does).
+    const walk = (a: number, end: number, seed: number) =>
       Array.from({ length: n }, (_, i) =>
-        Math.round((a + ((b - a) * i) / Math.max(1, n - 1) + Math.sin(i * seed) * 30) * 10_000),
+        i === n - 1
+          ? end
+          : Math.round((a + ((end / 10_000 - a) * i) / Math.max(1, n - 1) + Math.sin(i * seed) * 30) * 10_000),
       );
+    const money = (id: number) => alts.find((r) => r[0] === id)![6];
     const series = [
-      { character_id: 1, name: "Coinpurse", count: 1, values: walk(2140, 2779, 1.3) },
-      { character_id: 2, name: "Thrandor Vargur", count: 1, values: walk(1650, 2140, 0.7) },
-      { character_id: 3, name: "Velyra Duskmane", count: 1, values: walk(1080, 1066, 2.1) },
-      { character_id: 4, name: "Brannic", count: 1, values: walk(300, 488, 0.4) },
-      { character_id: null, name: "3 others", count: 3, values: walk(280, 339, 1.1) },
+      { character_id: 1, name: "Coinpurse", count: 1, values: walk(2140, money(1), 1.3) },
+      { character_id: 2, name: "Thrandor Vargur", count: 1, values: walk(1650, money(2), 0.7) },
+      { character_id: 3, name: "Velyra Duskmane", count: 1, values: walk(1080, money(3), 2.1) },
+      { character_id: 4, name: "Brannic", count: 1, values: walk(300, money(4), 0.4) },
+      { character_id: null, name: "3 others", count: 3, values: walk(280, money(5) + money(6) + money(7), 1.1) },
     ];
+    const account = series[0].values.map((_, i) => series.reduce((a, s) => a + s.values[i], 0));
     const at = (minsAgo: number) => iso(minsAgo);
     const entry = (
       id: number,
+      characterId: number,
       name: string,
       startMinsAgo: number,
       mins: number,
@@ -352,7 +359,7 @@ export function installMockIpc(): void {
       level: number | null = null,
     ): JournalEntry => ({
       adventure_id: id,
-      character_id: id,
+      character_id: characterId,
       name,
       login: at(startMinsAgo),
       logout: at(startMinsAgo - mins),
@@ -364,7 +371,7 @@ export function installMockIpc(): void {
     return {
       since: iso(60 * 24 * 33),
       tiles: {
-        account_gold: 68_124_709,
+        account_gold: account[n - 1],
         characters: 7,
         last_30_days: 12_020_000,
         this_week: 4_120_000,
@@ -373,14 +380,14 @@ export function installMockIpc(): void {
       chart: {
         days: Array.from({ length: n }, (_, i) => day(i)),
         series,
-        account: series[0].values.map((_, i) => series.reduce((a, s) => a + s.values[i], 0)),
+        account,
       },
       journal: [
-        entry(1, "Thrandor Vargur", 60 * 22, 192, 312, { text: "Reached level 60", quality: null }, 60),
-        entry(2, "Coinpurse", 60 * 27, 22, 640, { text: "Arcanite Bar ×12", quality: 2 }),
-        entry(3, "Velyra Duskmane", 60 * 48, 125, -86, { text: "Stormwind City", quality: null }),
-        entry(4, "Thrandor Vargur", 60 * 51, 160, 178, { text: "Runecloth ×60", quality: 1 }),
-        entry(5, "Brannic", 60 * 74, 115, 41, { text: "Feralas · 14 quests", quality: null }, 52),
+        entry(1, 2, "Thrandor Vargur", 60 * 22, 192, 312, { text: "Reached level 60", quality: null }, 60),
+        entry(2, 1, "Coinpurse", 60 * 27, 22, 640, { text: "Arcanite Bar ×12", quality: 2 }),
+        entry(3, 3, "Velyra Duskmane", 60 * 48, 125, -86, { text: "Stormwind City", quality: null }),
+        entry(4, 2, "Thrandor Vargur", 60 * 51, 160, 178, { text: "Runecloth ×60", quality: 1 }),
+        entry(5, 4, "Brannic", 60 * 74, 115, 41, { text: "Feralas · 14 quests", quality: null }, 52),
       ],
     };
   };
