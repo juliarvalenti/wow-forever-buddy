@@ -6,11 +6,12 @@ import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
 import { Backups } from "@/screens/Backups";
+import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
-type Screen = "backups" | "game";
+type Screen = "dashboard" | "backups" | "game";
 
 /** Asks first whether the app could start; only then mounts the app, since
  *  in the failure case no other command has state to work with. */
@@ -27,7 +28,7 @@ function Shell() {
   const game = useGameStatus();
   const install = useInstall();
   const recovery = useRecovery();
-  const [screen, setScreen] = useState<Screen>("backups");
+  const [screen, setScreen] = useState<Screen>("dashboard");
   const [deferred, setDeferred] = useState(false);
   const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
   const [backupsFilter, setBackupsFilter] = useState<"Safety" | null>(null);
@@ -48,6 +49,7 @@ function Shell() {
   }, []);
 
   const nav: { id: Screen; label: string }[] = [
+    { id: "dashboard", label: "Dashboard" },
     { id: "backups", label: "Backups" },
     { id: "game", label: "Game folder" },
   ];
@@ -108,6 +110,15 @@ function Shell() {
           <div style={{ padding: "16px 24px 0" }}>
             <RecoveryBanner status={recovery.status} onReview={() => setDeferred(false)} />
           </div>
+        )}
+        {current === "dashboard" && (
+          <Dashboard
+            game={game}
+            install={install}
+            folderMissing={folderMissing}
+            onOpenBackups={() => setScreen("backups")}
+            onCheckFolder={() => setScreen("game")}
+          />
         )}
         {current === "backups" && (
           <Backups

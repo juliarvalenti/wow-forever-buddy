@@ -26,7 +26,7 @@ export function when(iso: string, now = new Date()): string {
       : days === 1
         ? "Yesterday"
         : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return `${day}, ${time}`;
 }
 
@@ -44,6 +44,40 @@ export function ago(iso: string, now = Date.now()): string {
 export function duration(sinceIso: string, now = Date.now()): string {
   const m = Math.max(0, Math.round((now - new Date(sinceIso).getTime()) / 60000));
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** "1h 42m", "2h 05m" or "22m" for a length of time. */
+export function span(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+function clock(d: Date): string {
+  // "1:45 AM", not "01:45 AM".
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** "Today", "Yesterday" or "Fri 2 Oct". */
+function dayLabel(d: Date, now: Date): string {
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(d)) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** A session's time: "Today, since 19:12" while running, else
+ *  "Yesterday, 19:40 – 22:52". */
+export function sessionWhen(startIso: string, endIso: string | null, now = new Date()): string {
+  const start = new Date(startIso);
+  if (!endIso) return `${dayLabel(start, now)}, since ${clock(start)}`;
+  return `${dayLabel(start, now)}, ${clock(start)} – ${clock(new Date(endIso))}`;
+}
+
+/** "Sunday, 4 October". */
+export function longDate(d = new Date()): string {
+  return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 }
 
 export function plural(n: number, one: string, many: string): string {

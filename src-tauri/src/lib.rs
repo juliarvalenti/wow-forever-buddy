@@ -8,12 +8,15 @@ mod fsx;
 mod game;
 mod install;
 mod secrets;
+mod sessions;
 mod startup;
 mod state;
 pub mod sv;
 #[cfg(test)]
 mod test_support;
 mod triggers;
+
+use std::sync::mpsc::Sender;
 
 use tauri::Manager;
 use tauri_specta::Event;
@@ -49,6 +52,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::restore::restore_journal_preview,
             commands::restore::restore_journal_resolve,
             commands::game::game_status,
+            commands::sessions::sessions_list,
+            commands::sessions::characters_list,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,
@@ -69,7 +74,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::ExportProgress,
             commands::restore::RestoreProgress,
             commands::restore::RestoreCompleted,
-            commands::game::GameStatusChanged
+            commands::game::GameStatusChanged,
+            sessions::SessionsChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -112,6 +118,9 @@ pub fn run() {
                 }
             };
             let game = core.game.clone();
+            // Before the watcher's first poll, which may start a new one.
+            let _ = sessions::drop_unfinished(&core.db);
+            let db = core.db.clone();
             app.manage(AppState { core });
 
             // Startup step 4 (spec §8) runs in the background; the window
@@ -131,14 +140,27 @@ pub fn run() {
             });
 
             // Spec §2: poll for WoW every 2 s and tell the UI on each change.
-            // When the game stops, the game-exit backup runs (spec §5).
+            // When the game stops, the game-exit backup runs (spec §5), and
+            // the session is recorded (T14).
             let target_handle = handle.clone();
+            let sessions = spawn_sessions(&handle, db);
             game.spawn(
                 move || target_handle.state::<AppState>().core.probe_target(),
                 move |transition, status| {
-                    let _ = commands::game::GameStatusChanged(status).emit(&handle);
-                    if transition == game::process::Transition::Stopped {
-                        spawn_game_exit_backup(&handle);
+                    let _ = commands::game::GameStatusChanged(status.clone()).emit(&handle);
+                    let now = || chrono::Utc::now().to_rfc3339();
+                    match transition {
+                        game::process::Transition::Started => {
+                            let at = status.since.unwrap_or_else(now);
+                            let _ = sessions.send(sessions::SessionEvent::Started(at));
+                        }
+                        game::process::Transition::Stopped => {
+                            let _ = sessions.send(sessions::SessionEvent::Stopped(now()));
+                            spawn_game_exit_backup(&handle);
+                        }
+                        // Listing blipped and came back with the game's state
+                        // unchanged: the session carries on.
+                        game::process::Transition::Unknown | game::process::Transition::Known => {}
                     }
                 },
             );
@@ -195,6 +217,30 @@ fn spawn_auto_backups(handle: &tauri::AppHandle) {
             );
         }
     });
+}
+
+/// The play-session worker (T14): records the watcher's starts and stops in
+/// order, off the watcher thread, and tells the UI after each change. A stop
+/// waits for WoW's exit writes before attributing characters.
+fn spawn_sessions(handle: &tauri::AppHandle, db: db::Db) -> Sender<sessions::SessionEvent> {
+    let (game_handle, change_handle) = (handle.clone(), handle.clone());
+    let (tx, _worker) = sessions::spawn_worker(
+        db,
+        move || {
+            let game = game_handle.state::<AppState>().core.active_game().ok()?;
+            Some(sessions::GameContext {
+                flavor: game.flavor,
+                dir: game.root.base,
+            })
+        },
+        |wtf| {
+            triggers::wait_until_settled(wtf, triggers::EXIT_SETTLE, triggers::EXIT_SETTLE_TIMEOUT);
+        },
+        move || {
+            let _ = sessions::SessionsChanged.emit(&change_handle);
+        },
+    );
+    tx
 }
 
 /// After WoW exits: wait for its last SavedVariables writes, then back up.

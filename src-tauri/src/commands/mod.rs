@@ -7,4 +7,5 @@ pub mod game;
 pub mod install;
 pub mod restore;
 pub mod secrets;
+pub mod sessions;
 pub mod settings;

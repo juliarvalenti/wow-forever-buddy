@@ -13,6 +13,7 @@ use crate::error::{AppError, AppResult};
 const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/001_init.sql")),
     M::up(include_str!("migrations/002_hash_cache_key.sql")),
+    M::up(include_str!("migrations/003_play_sessions.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 
@@ -182,7 +183,13 @@ mod tests {
         let db = Db::open(&path).unwrap();
         assert_eq!(
             tables(&db),
-            ["file_hash_cache", "meta", "snapshots", "write_audit"]
+            [
+                "file_hash_cache",
+                "meta",
+                "play_sessions",
+                "snapshots",
+                "write_audit"
+            ]
         );
         db.set_meta("probe", "kept").unwrap();
         drop(db);
@@ -216,7 +223,7 @@ mod tests {
         std::fs::write(&path, vec![0xAB; 8192]).unwrap();
 
         let db = Db::open(&path).unwrap();
-        assert_eq!(tables(&db).len(), 4);
+        assert_eq!(tables(&db).len(), 5);
         let quarantined = std::fs::read_dir(tmp.path())
             .unwrap()
             .filter_map(|e| e.ok())
