@@ -111,6 +111,15 @@ impl AppCore {
         Ok(service)
     }
 
+    /// Today's copy of the db (`db::copies`), if it hasn't been taken yet.
+    /// Called at startup and hourly; a failure is logged, never fatal.
+    pub fn take_daily_db_copy(&self, today: chrono::NaiveDate) {
+        let dir = crate::db::copies::dir_for(&self.paths.db_file());
+        if let Err(e) = crate::db::copies::take_daily(&self.db, &dir, today) {
+            crate::applog::append(&self.paths.log_dir, &format!("daily db copy failed: {e}"));
+        }
+    }
+
     /// Sets the game folder (`install::set`) as a job: it sweeps temp files
     /// in the WTF folder, which would break a restore that's mid-write, and
     /// switching folders under a running backup or restore is wrong anyway.
