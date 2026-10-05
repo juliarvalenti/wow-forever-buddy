@@ -23,6 +23,7 @@ import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
 import { Addons } from "@/screens/Addons";
 import { Adventure } from "@/screens/Adventure";
+import { AuctionHouse } from "@/screens/AuctionHouse";
 import { Backups } from "@/screens/Backups";
 import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
@@ -38,6 +39,7 @@ type Screen =
   | "characters"
   | "ledger"
   | "adventures"
+  | "ah"
   | "backups"
   | "game"
   | "addons"
@@ -116,7 +118,7 @@ function Shell() {
     { id: "characters", label: "Characters", icon: Users, n: overview?.characters.length || null },
     { id: "ledger", label: "Ledger", icon: Coins },
     { id: "adventures", label: "Adventures", icon: ScrollText },
-    { soon: "Auction House", icon: Scale },
+    { id: "ah", label: "Auction House", icon: Scale },
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
@@ -257,6 +259,7 @@ function Shell() {
           />
         )}
         {current === "game" && <GameFolder install={install} />}
+        {current === "ah" && <AuctionHouse />}
         {current === "settings" && (
           <SettingsScreen install={install} onOpenGameFolder={() => setScreen("game")} />
         )}

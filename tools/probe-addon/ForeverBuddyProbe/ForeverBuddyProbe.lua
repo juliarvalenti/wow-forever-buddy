@@ -12,12 +12,19 @@
 --   on request:    /fbprobe search (one item search), /fbprobe scan (full
 --                  scan; uses the account-wide 15-minute throttle)
 --
+-- Bridge v0.4 spike (probe version 3): /fbprobe reload shows two buttons that
+-- reload the UI when clicked, one a plain addon button calling ReloadUI(),
+-- one a secure button running the /reload macro, and records which route
+-- the client allows. Data.lua is a data slot the app would rewrite: each
+-- load records the `stamp` it held, so editing it while the game runs and
+-- reloading shows whether /reload re-reads a changed file.
+--
 -- Privacy: anything that can contain other players' names or text (mail,
 -- loot, death, auction house, and every event sample) is stored as shape
 -- only: numbers and booleans kept, strings replaced by "<string:LENGTH>".
 
 local ADDON_NAME = ...
-local PROBE_VERSION = 2
+local PROBE_VERSION = 3
 local MAX_SAMPLES = 5
 
 -- Sections whose strings are redacted (see the header).
@@ -395,6 +402,96 @@ local function onAddonLoaded()
         table.remove(db.loads, 1)
     end
     db.characters = db.characters or {}
+
+    -- Bridge: what the data slot held at this load.
+    db.dataStamps = db.dataStamps or {}
+    local data = ForeverBuddyProbeData
+    table.insert(db.dataStamps, { t = now(), stamp = type(data) == "table" and data.stamp or "<missing>" })
+    while #db.dataStamps > 20 do
+        table.remove(db.dataStamps, 1)
+    end
+    -- Bridge: a reload attempt still pending when we load again went through.
+    local attempts = db.reloadAttempts
+    local last = attempts and attempts[#attempts]
+    if loaded and last and last.result == "pending" then
+        last.result = "reloaded"
+        last.reloadedAt = now()
+    end
+end
+
+-- Bridge v0.4 spike: reload on a click --------------------------------------
+
+-- Each attempt is saved before reloading (a reload writes SavedVariables),
+-- so the next load can tell whether it happened.
+local function attempt(route)
+    db.reloadAttempts = db.reloadAttempts or {}
+    table.insert(db.reloadAttempts, {
+        route = route,
+        t = now(),
+        combat = InCombatLockdown and InCombatLockdown() or nil,
+        result = "pending",
+    })
+end
+
+-- Blocked calls are reported as events naming the addon and the function.
+local function blocked(event, addon, fn)
+    if addon ~= ADDON_NAME or not db or not db.reloadAttempts then
+        return
+    end
+    local last = db.reloadAttempts[#db.reloadAttempts]
+    if last and last.result == "pending" then
+        last.result = event .. ":" .. tostring(fn)
+    end
+end
+
+local reloadFrame
+local function showReloadButtons()
+    if reloadFrame then
+        reloadFrame:SetShown(not reloadFrame:IsShown())
+        return
+    end
+    if InCombatLockdown() then
+        print("ForeverBuddy Probe: leave combat first (secure buttons can't be made in combat).")
+        return
+    end
+    reloadFrame = CreateFrame("Frame", "ForeverBuddyProbeReload", UIParent, "BasicFrameTemplateWithInset")
+    reloadFrame:SetSize(260, 120)
+    reloadFrame:SetPoint("CENTER")
+    reloadFrame:SetMovable(true)
+    reloadFrame:EnableMouse(true)
+    reloadFrame:RegisterForDrag("LeftButton")
+    reloadFrame:SetScript("OnDragStart", reloadFrame.StartMoving)
+    reloadFrame:SetScript("OnDragStop", reloadFrame.StopMovingOrSizing)
+    reloadFrame.TitleText:SetText("Probe: reload routes")
+
+    -- A: a plain addon button calling ReloadUI() on the click.
+    local plain = CreateFrame("Button", nil, reloadFrame, "UIPanelButtonTemplate")
+    plain:SetSize(220, 26)
+    plain:SetPoint("TOP", 0, -32)
+    plain:SetText("A: ReloadUI()")
+    plain:SetScript("OnClick", function()
+        attempt("plain")
+        ReloadUI()
+    end)
+
+    -- B: a secure button running the /reload macro (the player's click).
+    local secure = CreateFrame("Button", nil, reloadFrame, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+    secure:SetSize(220, 26)
+    secure:SetPoint("TOP", plain, "BOTTOM", 0, -8)
+    secure:SetText("B: secure /reload")
+    -- Both edges are registered because the macro runs only on the edge the
+    -- ActionButtonUseKeyDown setting picks, and registering the other one
+    -- alone would never fire. PreClick sees both, so record only that edge:
+    -- one click, one attempt.
+    secure:RegisterForClicks("AnyUp", "AnyDown")
+    secure:SetAttribute("type", "macro")
+    secure:SetAttribute("macrotext", "/reload")
+    secure:SetScript("PreClick", function(_, _, down)
+        local onDown = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")
+        if (down and true or false) == (onDown and true or false) then
+            attempt("secure")
+        end
+    end)
 end
 
 local function onLogin()
@@ -417,6 +514,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
         end
         return
     end
+    if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
+        blocked(event, ...)
+        return
+    end
     if event == "PLAYER_LOGIN" then
         onLogin()
     end
@@ -435,6 +536,11 @@ frame:SetScript("OnEvent", function(_, event, ...)
 end)
 
 frame:RegisterEvent("ADDON_LOADED")
+for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+    if not pcall(frame.RegisterEvent, frame, event) then
+        table.insert(unknownEvents, event)
+    end
+end
 for _, event in ipairs(EVENTS) do
     if not pcall(frame.RegisterEvent, frame, event) then
         table.insert(unknownEvents, event)
@@ -444,9 +550,14 @@ end
 -- /fbprobe            summary
 -- /fbprobe scan       full auction house scan (AH must be open; throttled)
 -- /fbprobe search     one commodity search for Linen Cloth (AH must be open)
+-- /fbprobe reload     the two reload buttons (Bridge v0.4 spike)
 SLASH_FBPROBE1 = "/fbprobe"
 SlashCmdList.FBPROBE = function(msg)
     msg = (msg or ""):lower()
+    if msg == "reload" then
+        showReloadButtons()
+        return
+    end
     if not char then
         print("ForeverBuddy Probe: not logged in yet.")
         return

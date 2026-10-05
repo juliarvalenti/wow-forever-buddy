@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game addon UI · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* D1: the addon's frames inside WoW, drawn as stand-ins for Blizzard templates (INGAME.md §2).
+     Nothing here uses the app's D materials. ?skin=modern (Forever's default HUD) | classic (a Classic UI reskin addon).
+     Each tile is one state. GameFontNormal ≈ gold serif; GameFontHighlight ≈ white. */
+  :root { --gold: #ffd100; --white: #f1ece0; --grey: #8f8a7c; --dim: #a9a291; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: var(--white); font: 13px/1.4 "Friz Quadrata TT", Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; color: #d8cfc0; margin-bottom: 4px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 18px; }
+  .lede a { color: #ffb15c; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .tile { display: grid; gap: 6px; }
+  .tile > p { font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+  .tile > p b { color: #d8cfc0; font-weight: 600; }
+  .world { position: relative; height: 380px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+  .world.cave { background: radial-gradient(120% 90% at 70% 30%, #3b3346 0%, #1f1a26 50%, #0f0d12 100%); }
+
+  /* the frame: modern (Forever HUD) */
+  .gf { position: absolute; right: 14px; top: 14px; width: 292px; }
+  .modern .gf { background: rgba(10,10,12,.9); border-radius: 6px; box-shadow: 0 0 0 1px #4d4a44, 0 6px 18px rgba(0,0,0,.7); }
+  .modern .gf-h { background: linear-gradient(180deg, #2a2824, #1a1917); border-radius: 6px 6px 0 0; border-bottom: 1px solid #3a3731; }
+  /* classic (reskinned dialog) */
+  .classic .gf { background: rgba(0,0,0,.82); border-radius: 8px; box-shadow: 0 0 0 2px #8a7a55, 0 0 0 4px #2b241a, 0 0 0 5px #a8956a, 0 8px 18px rgba(0,0,0,.7); }
+  .classic .gf-h { border-bottom: 1px solid rgba(168,149,106,.45); }
+  .gf-h { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; }
+  .gf-h b { font-weight: 400; font-size: 13px; color: var(--gold); text-shadow: 0 1px 1px #000; }
+  .gf-h .x { margin-left: auto; width: 18px; height: 18px; display: grid; place-items: center; font: 13px sans-serif; color: #e2c46a; border-radius: 3px;
+    background: linear-gradient(180deg, #7a1a10, #3e0b06); box-shadow: inset 0 0 0 1px #b8913a; }
+  .gf-b { padding: 8px 10px 10px; font-size: 12px; display: grid; gap: 8px; }
+  .gf-sec { font-size: 11.5px; color: var(--gold); margin-bottom: 3px; }
+  .row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 6px; align-items: center; line-height: 1.3; }
+  .row .cb { width: 14px; height: 14px; border-radius: 2px; background: rgba(0,0,0,.6); box-shadow: inset 0 0 0 1px #8a8474; position: relative; }
+  .row .cb.on::after { content: "✓"; position: absolute; left: 1px; top: -4px; font: 700 15px sans-serif; color: var(--gold); text-shadow: 0 1px 1px #000; }
+  .row .r { font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .row.done .t { color: var(--grey); }
+  .pal { color: #f48cba; } .dru { color: #ff7c0a; } .war { color: #c69b6d; } .hun { color: #aad372; }
+  .gf-f { display: flex; align-items: center; gap: 8px; padding: 7px 10px 9px; border-top: 1px solid rgba(255,255,255,.1); font-size: 11px; color: var(--dim); }
+  .gbtn { margin-left: auto; height: 22px; padding: 0 14px; font: 12px "Friz Quadrata TT", Georgia, serif; color: var(--gold); border-radius: 3px; border: 0;
+    background: linear-gradient(180deg, #9a2314, #4a0d07); box-shadow: inset 0 0 0 1px #c9a23a, inset 0 1px 0 rgba(255,255,255,.25); }
+  .gbtn.off { color: #8a8170; background: linear-gradient(180deg, #4a4540, #26231f); box-shadow: inset 0 0 0 1px #6a6358; }
+  kbd { font: 11px ui-monospace, Menlo, monospace; color: #fff; padding: 0 4px; border-radius: 2px; box-shadow: inset 0 0 0 1px #6f6a5e; }
+  .gtip { position: absolute; width: 220px; padding: 7px 9px; font-size: 11.5px; color: #fff; background: rgba(6,10,28,.94); border-radius: 3px; box-shadow: 0 0 0 1px #6c7a9a; }
+  .gtip i { color: var(--gold); font-style: normal; display: block; }
+  .gtip .red { color: #ff4040; }
+  .stale { color: #ff9a3c; }
+
+  /* combat edge glow (the game's own red vignette stand-in) */
+  .combat::before { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 60px rgba(200,0,0,.45); pointer-events: none; }
+
+  /* compartment menu */
+  .mini { position: absolute; right: 14px; top: 14px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, #46523f, #222a20); box-shadow: 0 0 0 3px #4a4438, 0 0 0 4px #000; }
+  .comp-btn { position: absolute; right: 16px; top: 112px; width: 22px; height: 22px; border-radius: 50%; background: #2a2620; box-shadow: 0 0 0 1px #b8913a; display: grid; place-items: center; font: 12px sans-serif; color: var(--gold); }
+  .comp { position: absolute; right: 44px; top: 112px; width: 180px; background: rgba(8,8,10,.94); border-radius: 4px; box-shadow: 0 0 0 1px #5d584d; padding: 4px 0; font-size: 12px; }
+  .comp div { padding: 3px 10px; color: var(--white); }
+  .comp div.hi { background: rgba(255,209,0,.12); color: var(--gold); }
+
+  /* chat */
+  .chat { position: absolute; left: 12px; bottom: 12px; width: 330px; padding: 6px 8px; background: rgba(0,0,0,.35); border-radius: 3px; font-size: 12.5px; line-height: 1.5; }
+  .chat .sys { color: #ffff00; }
+  .chat .gold { color: var(--gold); }
+
+  /* tracker placeholder (later) */
+  .trk { position: absolute; right: 14px; top: 40px; width: 230px; font-size: 12px; }
+  .trk .hd { color: var(--gold); font-size: 12.5px; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .trk .q { color: var(--gold); margin-top: 6px; }
+  .trk .o { color: var(--white); padding-left: 10px; }
+  .trk .o.done { color: var(--grey); }
+  .tag { position: absolute; left: 12px; top: 12px; font: 11px -apple-system, "Geist", sans-serif; color: #ffb15c; background: rgba(0,0,0,.5); padding: 2px 6px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>In-game addon UI</h1>
+<p class="lede">D1 mocks for the ForeverBuddy addon, inside WoW. Rules in <a href="INGAME.md">INGAME.md</a>. Showing the <b id="skinname"></b> skin: switch with <a href="?skin=modern">?skin=modern</a> or <a href="?skin=classic">?skin=classic</a>. The app-side status is in <a href="bridge.html">bridge.html</a>.</p>
+
+<section class="grid" id="grid"></section>
+
+<script>
+  const skin = new URLSearchParams(location.search).get('skin') === 'classic' ? 'classic' : 'modern';
+  document.getElementById('skinname').textContent = skin === 'classic' ? 'Classic UI reskin' : 'Forever default (modern)';
+  const rows = (items) => items.map(([sec, list]) => `<div><div class="gf-sec">${sec}</div>${list.map(([on, t, r]) =>
+    `<div class="row ${on ? 'done' : ''}"><span class="cb ${on ? 'on' : ''}"></span><span class="t">${t}</span><span class="r">${r}</span></div>`).join('')}</div>`).join('');
+  const WEEK = [
+    ['Raids', [[1, 'Molten Core · <span class="pal">Thrandor</span>', 'saved'], [0, 'Molten Core · <span class="dru">Velyra</span>', 'resets Tue'], [0, 'Onyxia\'s Lair · <span class="dru">Velyra</span>', 'resets Wed']]],
+    ['Mail', [[0, '<span class="war">Coinpurse</span>: 3 letters expire', 'in 2 days']]],
+    ['Cooldowns', [[0, 'Transmute: Arcanite · <span class="dru">Velyra</span>', 'ready']]],
+  ];
+  const frame = (body, foot) => `<div class="gf"><div class="gf-h"><b>Forever Buddy: this week</b><span class="x">×</span></div><div class="gf-b">${body}</div><div class="gf-f">${foot}</div></div>`;
+  const T = [
+    ['The weekly checklist', 'Opened with <b>/fb</b> or the addon compartment. Facts come from the app; the ticks are its facts, not clickable to-dos.', '',
+      frame(rows(WEEK), '<span>From Forever Buddy · 21:04</span><button class="gbtn">Sync</button>')],
+    ['Hovering Sync', 'One-click Sync, <b>only if probe run 4 passes</b> (a secure button running /reload).', '',
+      frame(rows(WEEK), '<span>From Forever Buddy · 21:04</span><button class="gbtn" style="filter:brightness(1.2)">Sync</button>') +
+      '<div class="gtip" style="right:20px;top:300px"><i>Sync</i>Reloads your UI so Forever Buddy and the game swap the latest notes.<br>Not in combat.</div>'],
+    ['In combat', 'The frame stays as it was; Sync is disabled, with the reason on hover.', 'combat',
+      frame(rows(WEEK), '<span>From Forever Buddy · 21:04</span><button class="gbtn off">Sync</button>') +
+      '<div class="gtip" style="right:20px;top:300px"><i>Sync</i><span class="red">Not in combat</span></div>'],
+    ['Typed fallback', 'If the probe shows no button can reload on Forever: no button, and the footer says how.', '',
+      frame(rows(WEEK), '<span>From Forever Buddy · 21:04</span><span style="margin-left:auto">Type <kbd>/reload</kbd> to sync</span>')],
+    ['Out of date', 'Past 24 hours since the app wrote it, the footer says so.', '',
+      frame(rows(WEEK), '<span>From Forever Buddy · 2 Oct <span class="stale">· may be out of date</span></span><button class="gbtn">Sync</button>')],
+    ['Empty', 'Nothing due, or never filled in by the app.', 'cave',
+      frame('<div class="row"><span></span><span class="t" style="color:var(--dim)">Nothing to do this week.</span><span></span></div>', '<span>From Forever Buddy · 21:04</span><button class="gbtn">Sync</button>')],
+    ['Addon compartment', 'One entry in the minimap\'s addon menu (TOC AddonCompartmentFunc). No minimap button of our own.', '',
+      '<div class="mini"></div><div class="comp-btn">⚙</div><div class="comp"><div>Details!</div><div class="hi">Forever Buddy</div><div>Questie</div><div>Auctionator</div></div>' +
+      '<div class="gtip" style="right:44px;top:210px"><i>Forever Buddy</i>This week: 4 to do<br><span style="color:#a9a291">Click to open · /fb</span></div>'],
+    ['Login line', 'Once per login, and only when the app delivered something new.', 'cave',
+      '<div class="chat"><div class="sys">Welcome to World of Warcraft!</div><div><span class="gold">Forever Buddy:</span> this week\'s checklist is ready. /fb to open.</div></div>'],
+    ['Later: quest tracker', 'Placeholder until the quest-data spike. Objective-tracker style, in its own movable frame.', '',
+      '<span class="tag">later</span><div class="trk"><div class="hd"><span>Forever Buddy plan</span><span style="color:var(--dim)">−</span></div>' +
+      '<div class="q">The Archivist</div><div class="o done">- Archivist Galford slain</div><div class="o">- Return to Duke Nicholas Zverenhoff</div>' +
+      '<div class="q">Dead Man\'s Plea</div><div class="o">- Ysida Harmon rescued: 0/1</div>' +
+      '<div class="q">Next: Light\'s Hope Chapel</div><div class="o">- 3 turn-ins waiting</div></div>'],
+  ];
+  document.getElementById('grid').innerHTML = T.map(([t, d, cls, html]) =>
+    `<div class="tile"><p><b>${t}.</b> ${d}</p><div class="world ${skin} ${cls}">${html}</div></div>`).join('');
+</script>
+</body>
+</html>

@@ -2,7 +2,8 @@
 ## Title: ForeverBuddy Probe
 ## Notes: One-time data check for WoW Forever Buddy. Records which game APIs return real data. Safe to delete afterwards.
 ## Author: WoW Forever Buddy
-## Version: 2
+## Version: 3
 ## SavedVariables: ForeverBuddyProbeDB
 
+Data.lua
 ForeverBuddyProbe.lua
