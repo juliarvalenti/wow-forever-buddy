@@ -35,6 +35,10 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
+import { useCharacters } from "@/hooks/useCharacters";
+import { useLedger } from "@/hooks/useLedger";
+import { Coins } from "@/screens/Characters";
+import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
 import type { useInstall } from "@/hooks/useInstall";
 import { thisWeek, useSessions } from "@/hooks/useSessions";
 import {
@@ -45,6 +49,7 @@ import {
   OLDER_FOLDERS_WHY,
   duration,
   errorText,
+  gold,
   longDate,
   plural,
   sessionWhen,
@@ -141,6 +146,7 @@ export function Dashboard({
   onOpenBackups,
   onCheckFolder,
   onOpenAdventure,
+  onOpenCharacters,
 }: {
   game: GameStatus | null;
   install: ReturnType<typeof useInstall>;
@@ -149,6 +155,7 @@ export function Dashboard({
   onOpenBackups: () => void;
   onCheckFolder: () => void;
   onOpenAdventure: (id: number) => void;
+  onOpenCharacters: () => void;
 }) {
   const { list, storage, progress, failed, backUpNow, refresh: refreshBackups } = useBackups();
   const { sessions, characters, refresh: refreshSessions } = useSessions();
@@ -175,6 +182,14 @@ export function Dashboard({
   // While step 1 offers the addon, its button is the page's one bronze.
   const addonOffered = addon.status != null && !addonCurrent;
   const BackUpButton = addonOffered ? Button : PrimaryButton;
+  // With the addon's data (V9, dashboard.html): account gold, the last
+  // adventure and the roster with gold. Without it, the v0.1 state stays.
+  const { overview } = useCharacters();
+  const withAddon = (overview?.characters.length ?? 0) > 0;
+  const { ledger } = useLedger("week");
+  const lastAdventure = useLastAdventure();
+  const byGold = [...(overview?.characters ?? [])].sort((a, b) => (b.money ?? 0) - (a.money ?? 0));
+  const topLevel = Math.max(0, ...(overview?.characters ?? []).map((c) => c.level ?? 0));
   const week = thisWeek(sessions ?? []);
   // Launcher tests and crashes at login: counted in the week, not listed.
   const shownSessions = (sessions ?? []).filter((s) => !s.ended_at || sessionMs(s) >= SHORT_MS);
@@ -198,7 +213,9 @@ export function Dashboard({
         lede={[
           longDate(),
           flavor?.label,
-          counted && plural(counted.length, "character found", "characters found"),
+          withAddon
+            ? plural(overview?.characters.length ?? 0, "character", "characters")
+            : counted && plural(counted.length, "character found", "characters found"),
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -243,6 +260,17 @@ export function Dashboard({
       {openError && <Callout tone="bad">{openError}</Callout>}
 
       <section className="d-strip">
+        {withAddon && (
+          <Tile
+            label="Account gold"
+            value={<Coins copper={overview?.gold ?? 0} />}
+            sub={
+              ledger && (ledger.tiles.this_week ?? 0) !== 0
+                ? `${gold(ledger.tiles.this_week ?? 0, true)} this week`
+                : `across ${plural(overview?.characters.length ?? 0, "character", "characters")}`
+            }
+          />
+        )}
         <Tile
           label="Last backup"
           value={last ? ago(last.created_at) : list ? "None yet" : "…"}
@@ -277,29 +305,42 @@ export function Dashboard({
                 : "Sessions are noted while the app is open."
           }
         />
-        <Tile
-          label="Characters found"
-          value={counted?.length ?? "…"}
-          sub="From your WTF folder"
-        />
-        <Tile
-          label="Backups"
-          value={
-            <>
-              {list?.length ?? "…"} <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
-            </>
-          }
-          sub={
-            storage?.used_bytes != null
-              ? storage.budget_bytes != null
-                ? `${bytes(storage.used_bytes)} of ${bytes(storage.budget_bytes)} budget`
-                : `${bytes(storage.used_bytes)} used`
-              : undefined
-          }
-        />
+        {withAddon ? (
+          <Tile
+            label="Characters"
+            value={overview?.characters.length ?? "…"}
+            sub={topLevel > 0 ? `highest level ${topLevel}` : "From your WTF folder"}
+          />
+        ) : (
+          <Tile
+            label="Characters found"
+            value={counted?.length ?? "…"}
+            sub="From your WTF folder"
+          />
+        )}
+        {!withAddon && (
+          <Tile
+            label="Backups"
+            value={
+              <>
+                {list?.length ?? "…"} <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
+              </>
+            }
+            sub={
+              storage?.used_bytes != null
+                ? storage.budget_bytes != null
+                  ? `${bytes(storage.used_bytes)} of ${bytes(storage.budget_bytes)} budget`
+                  : `${bytes(storage.used_bytes)} used`
+                : undefined
+            }
+          />
+        )}
       </section>
 
       <section className="d-cols">
+        {withAddon && lastAdventure ? (
+          <LastAdventure a={lastAdventure} onOpen={onOpenAdventure} />
+        ) : (
         <Record ruled tilt>
           <PanelHeader title="Your ledger is blank">
             <span className="d-grow" />
@@ -401,6 +442,7 @@ export function Dashboard({
             </ol>
           </PanelBody>
         </Record>
+        )}
 
         <div className="d-stack">
           <Panel>
@@ -527,9 +569,33 @@ export function Dashboard({
           <Panel>
             <PanelHeader title="Characters">
               <span className="d-grow" />
-              <span className="d-dim">from WTF folders</span>
+              {withAddon ? (
+                <button className="d-link" style={{ whiteSpace: "nowrap" }} onClick={onOpenCharacters}>
+                  All <ChevronRight size={12} aria-hidden style={{ display: "inline", verticalAlign: "-2px" }} />
+                </button>
+              ) : (
+                <span className="d-dim">from WTF folders</span>
+              )}
             </PanelHeader>
-            {characters && characters.length === 0 ? (
+            {withAddon ? (
+              // dashboard.html: richest first, in class colour, gold and level.
+              <ul className="d-rows">
+                {byGold.slice(0, 5).map((c) => (
+                  <li key={c.id} className="d-open" onClick={onOpenCharacters}>
+                    <span className="main">
+                      {/* The row's own colour wins over .ch-cc, so set the class colour here. */}
+                      <span style={{ color: c.class ? `var(--c-${c.class})` : undefined }}>
+                        {c.surname ? `${c.name} ${c.surname}` : c.name}
+                      </span>
+                      {c.level != null && <small className="d-dim"> {c.level}</small>}
+                    </span>
+                    <span className="side">
+                      <Coins copper={c.money} silver={false} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : characters && characters.length === 0 ? (
               <PanelBody>
                 <p className="d-muted">No character folders yet. They appear after you log in once.</p>
               </PanelBody>

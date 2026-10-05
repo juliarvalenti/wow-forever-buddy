@@ -197,6 +197,7 @@ function Shell() {
             onOpenBackups={() => setScreen("backups")}
             onCheckFolder={() => setScreen("game")}
             onOpenAdventure={openAdventure}
+            onOpenCharacters={() => setScreen("characters")}
           />
         )}
         {current === "characters" && <Characters onOpenDashboard={() => setScreen("dashboard")} />}
