@@ -8,8 +8,10 @@ use serde::Serialize;
 #[derive(Debug, thiserror::Error, Serialize, specta::Type)]
 #[serde(tag = "kind", content = "detail")]
 pub enum AppError {
-    #[error("World of Warcraft is running; close it first")]
-    GameRunning,
+    /// What's blocking, e.g. "WowB.exe is running", so a false positive (a
+    /// tool that looks like the game) is diagnosable.
+    #[error("World of Warcraft is running ({0}); close it first")]
+    GameRunning(String),
     #[error("no game install configured")]
     NoInstall,
     #[error("invalid game install: {0}")]
@@ -71,8 +73,8 @@ mod tests {
 
     #[test]
     fn serializes_with_kind_tag() {
-        let unit = serde_json::to_value(AppError::GameRunning).unwrap();
-        assert_eq!(unit, serde_json::json!({ "kind": "GameRunning" }));
+        let unit = serde_json::to_value(AppError::NoInstall).unwrap();
+        assert_eq!(unit, serde_json::json!({ "kind": "NoInstall" }));
 
         let tuple = serde_json::to_value(AppError::NotFound("x".into())).unwrap();
         assert_eq!(

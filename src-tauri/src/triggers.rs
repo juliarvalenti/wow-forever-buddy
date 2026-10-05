@@ -14,11 +14,14 @@ use std::sync::MutexGuard;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
+use crate::applog;
 use crate::backup::manifest::{Scope, SnapshotSummary, Trigger};
 use crate::backup::retention::POLICY;
 use crate::backup::{journal, Gc, SnapshotRequest, SnapshotScope};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+use crate::game::process::GameCheck;
 use crate::state::AppCore;
 
 pub const APP_START_MIN_AGE: Duration = Duration::from_secs(6 * 3600);
@@ -30,11 +33,38 @@ pub const SCHEDULE_TICK: Duration = Duration::from_secs(60);
 /// Meta key: when an automatic backup last ran (written or skipped), so a
 /// skipped run doesn't stay "due" and re-run every tick.
 const LAST_AUTO_ATTEMPT: &str = "last_auto_attempt";
+/// Meta key: the latest automatic backup failure (JSON), until one succeeds.
+const LAST_AUTO_FAILURE: &str = "last_auto_failure";
+
+/// An automatic backup that failed, or that left files out, for the Backups
+/// screen (R1): nobody is watching when one runs, so it's kept until a later
+/// automatic backup captures everything, and the UI asks for it on start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct AutoBackupFailure {
+    /// RFC 3339, UTC.
+    pub at: String,
+    pub trigger: Trigger,
+    /// The error, as shown to the user.
+    pub error: String,
+    /// 0: the backup failed. Otherwise it was taken, but this many files
+    /// couldn't be read and were left out.
+    #[serde(default)]
+    pub skipped: u32,
+}
+
+/// The automatic backup failure still standing, if any.
+pub fn last_failure(core: &AppCore) -> AppResult<Option<AutoBackupFailure>> {
+    Ok(core
+        .db
+        .get_meta(LAST_AUTO_FAILURE)?
+        .and_then(|json| serde_json::from_str(&json).ok()))
+}
 
 /// Takes an automatic full snapshot, then prunes if one was written.
 /// Returns `None` if it was skipped: WoW is running, or nothing changed
 /// since the last full snapshot. `on_created` runs for a new snapshot (the
-/// app emits `backup-created`).
+/// app emits `backup-created`). A failure is logged and kept for the UI
+/// (`last_failure`) before it's returned.
 pub fn run_auto(
     core: &AppCore,
     trigger: Trigger,
@@ -52,35 +82,132 @@ pub fn run_auto_locked(
     trigger: Trigger,
     on_created: &dyn Fn(&SnapshotSummary),
 ) -> AppResult<Option<SnapshotSummary>> {
-    core.db
-        .set_meta(LAST_AUTO_ATTEMPT, &Utc::now().to_rfc3339())?;
-    if core.game.is_running_now(&core.probe_target()) {
-        return Ok(None);
+    if let Err(e) = core
+        .db
+        .set_meta(LAST_AUTO_ATTEMPT, &Utc::now().to_rfc3339())
+    {
+        record_failure(core, trigger, &e, 0);
+        return Err(e);
     }
+    // Running: wait for the game-exit backup. Unknown (the process list
+    // failed): back up anyway, flagged like a mid-session manual backup,
+    // so a broken probe can't silently stop every automatic backup.
+    let game_running = match core.game.check_now(&core.probe_target()) {
+        GameCheck::Running => return Ok(None),
+        GameCheck::Unknown => true,
+        GameCheck::NotRunning => false,
+    };
+    let created = match snapshot(core, trigger, game_running) {
+        Ok(created) => created,
+        // Not set up yet (first run): nothing to back up, nothing wrong.
+        Err(AppError::NoInstall) => return Err(AppError::NoInstall),
+        Err(e) => {
+            record_failure(core, trigger, &e, 0);
+            return Err(e);
+        }
+    };
+    match &created {
+        // A new snapshot settles it: clear, or warn while it left files out.
+        Some(summary) => {
+            let skipped = core
+                .backups()
+                .and_then(|store| store.manifest(&summary.id))
+                .map(|m| m.skipped)
+                .unwrap_or_default();
+            match skipped.first() {
+                None => clear_failure(core)?,
+                Some(first) => {
+                    let why = format!(
+                        "Couldn't read {} (first: {}: {}).",
+                        plural_files(skipped.len()),
+                        first.path,
+                        first.reason
+                    );
+                    record_failure(core, trigger, &why, skipped.len() as u32);
+                }
+            }
+        }
+        // Identical to the latest full snapshot: a standing failure is
+        // over, but a "left files out" warning still describes that snapshot.
+        None => {
+            if last_failure(core)?.is_some_and(|f| f.skipped == 0) {
+                clear_failure(core)?;
+            }
+        }
+    }
+    if let Some(summary) = &created {
+        on_created(summary);
+        // Spec §5: prune after each *new* snapshot; GC itself is hourly.
+        // Never while an unreadable restore journal hides which snapshots a
+        // roll back needs: skip until the user resolves it. The backup itself
+        // succeeded, so a pruning error is only logged.
+        if let Ok(held) = journal::held_snapshots(&core.paths.local_data_dir) {
+            let pruned = core
+                .backups()
+                .and_then(|store| store.prune(Utc::now(), &POLICY, Gc::Throttled, &held));
+            if let Err(e) = pruned {
+                applog::append(&core.paths.log_dir, &format!("prune failed: {e}"));
+            }
+        }
+    }
+    Ok(created)
+}
+
+fn snapshot(
+    core: &AppCore,
+    trigger: Trigger,
+    game_running: bool,
+) -> AppResult<Option<SnapshotSummary>> {
     let game = core.active_game()?;
-    let store = core.backups()?;
     let include_addons = core.settings.get().backup.include_addons;
-    let created = store.create(
+    core.backups()?.create(
         SnapshotRequest {
             game: &game.root,
             flavor: &game.flavor,
             trigger,
             label: None,
             scope: SnapshotScope::Full { include_addons },
-            game_running: false,
+            game_running,
         },
         &mut |_, _| {},
-    )?;
-    if let Some(summary) = &created {
-        on_created(summary);
-        // Spec §5: prune after each *new* snapshot; GC itself is hourly.
-        // Never while an unreadable restore journal hides which snapshots a
-        // roll back needs: skip until the user resolves it.
-        if let Ok(held) = journal::held_snapshots(&core.paths.local_data_dir) {
-            store.prune(Utc::now(), &POLICY, Gc::Throttled, &held)?;
-        }
+    )
+}
+
+fn plural_files(n: usize) -> String {
+    if n == 1 {
+        "1 file".into()
+    } else {
+        format!("{n} files")
     }
-    Ok(created)
+}
+
+/// Logs it and keeps it for the UI. `skipped` > 0: the backup was taken but
+/// left that many files out.
+fn record_failure(core: &AppCore, trigger: Trigger, e: &dyn std::fmt::Display, skipped: u32) {
+    let failure = AutoBackupFailure {
+        at: Utc::now().to_rfc3339(),
+        trigger,
+        error: e.to_string(),
+        skipped,
+    };
+    let what = if skipped == 0 {
+        "failed"
+    } else {
+        "left files out"
+    };
+    applog::append(
+        &core.paths.log_dir,
+        &format!("automatic backup ({}) {what}: {e}", trigger.as_str()),
+    );
+    let json = serde_json::to_string(&failure).expect("failure serializes");
+    let _ = core.db.set_meta(LAST_AUTO_FAILURE, &json);
+}
+
+fn clear_failure(core: &AppCore) -> AppResult<()> {
+    core.db.with_conn(|c| {
+        c.execute("DELETE FROM meta WHERE key = ?1", [LAST_AUTO_FAILURE])?;
+        Ok(())
+    })
 }
 
 /// The game-exit backup. Takes the job lock *before* waiting for WTF to
@@ -235,6 +362,75 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(s.core.backups().unwrap().list().unwrap().is_empty());
+    }
+
+    /// R1: a failed automatic backup is logged and kept for the UI until an
+    /// automatic backup succeeds; "not set up yet" isn't a failure.
+    #[test]
+    fn failures_are_logged_and_kept_until_a_success() {
+        let s = setup();
+        assert_eq!(last_failure(&s.core).unwrap(), None);
+
+        // The game folder goes away (say the drive was unplugged).
+        let parked = s.flavor.with_file_name("parked");
+        std::fs::rename(&s.flavor, &parked).unwrap();
+        let result = run_auto(&s.core, Trigger::Scheduled, &|_| {});
+        std::fs::rename(&parked, &s.flavor).unwrap();
+        assert!(result.is_err());
+
+        let failure = last_failure(&s.core).unwrap().expect("kept");
+        assert_eq!(failure.trigger, Trigger::Scheduled);
+        assert!(!failure.error.is_empty());
+        let log = std::fs::read_to_string(s.core.paths.log_dir.join("buddy.log")).unwrap();
+        assert!(log.contains("automatic backup (scheduled) failed"));
+
+        run_auto(&s.core, Trigger::Scheduled, &|_| {}).unwrap();
+        assert_eq!(last_failure(&s.core).unwrap(), None, "cleared by a success");
+    }
+
+    /// #27 review: an automatic backup that left files out keeps a standing
+    /// warning (not a failure) until one captures everything.
+    #[cfg(unix)]
+    #[test]
+    fn skipped_files_keep_a_warning_until_a_complete_backup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let s = setup();
+        let config = s.flavor.join("WTF/Config.wtf");
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&config).is_ok() {
+            return; // running as root
+        }
+        let made = run_auto(&s.core, Trigger::GameExit, &|_| {});
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(made.unwrap().is_some(), "taken anyway");
+        let warning = last_failure(&s.core).unwrap().expect("warning kept");
+        assert_eq!(warning.skipped, 1);
+        assert!(
+            warning.error.contains("WTF/Config.wtf"),
+            "{}",
+            warning.error
+        );
+
+        // Readable again: the next backup is complete and clears it.
+        assert!(run_auto(&s.core, Trigger::Scheduled, &|_| {})
+            .unwrap()
+            .is_some());
+        assert_eq!(last_failure(&s.core).unwrap(), None);
+    }
+
+    /// R2: when the process list fails ("unknown"), automatic backups still
+    /// run, flagged as taken while the game may be running; writes stay
+    /// blocked.
+    #[test]
+    fn unknown_game_state_still_backs_up_flagged() {
+        let s = setup();
+        s.probe.set_blind(true);
+        let created = run_auto(&s.core, Trigger::Scheduled, &|_| {})
+            .unwrap()
+            .expect("backed up");
+        assert!(created.game_running);
+        assert!(s.core.game.is_running_now(&s.core.probe_target()));
     }
 
     #[test]

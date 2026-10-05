@@ -10,6 +10,7 @@ use crate::backup::tree::SnapshotDetail;
 use crate::backup::{clean_label, PruneReport, SnapshotRequest, SnapshotScope, StorageInfo};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use crate::triggers::{self, AutoBackupFailure};
 
 /// Emitted while a backup runs.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
@@ -21,6 +22,20 @@ pub struct BackupProgress {
 /// Emitted when a snapshot has been written.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 pub struct BackupCreated(pub SnapshotSummary);
+
+/// Emitted when an automatic backup fails (R1). The same failure stays
+/// available from `backup_auto_status` until an automatic backup succeeds.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+pub struct BackupFailed(pub AutoBackupFailure);
+
+/// The latest automatic backup failure, if no automatic backup has
+/// succeeded since. The UI asks on start, since a failure can happen before
+/// it's listening.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn backup_auto_status(state: State<'_, AppState>) -> AppResult<Option<AutoBackupFailure>> {
+    triggers::last_failure(&state.core)
+}
 
 /// "Back up now": a full manual snapshot. Allowed while WoW runs, and then
 /// flagged as taken mid-session. Waits if another backup or restore is running.

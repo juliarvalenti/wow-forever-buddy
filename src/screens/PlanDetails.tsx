@@ -40,6 +40,12 @@ export function PlanDetails({
           </ul>
         </>
       )}
+      {plan.not_backed_up.length > 0 && (
+        <p className="d-muted">
+          Not in this backup (couldn't be read at the time), so left as is:{" "}
+          <span className="d-mono">{plan.not_backed_up.join(", ")}</span>
+        </p>
+      )}
       {plan.read_only.length > 0 && (
         <Callout tone="bad">
           <span>

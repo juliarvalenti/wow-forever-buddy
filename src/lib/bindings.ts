@@ -8,6 +8,23 @@ export const commands = {
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
+	 *  The latest automatic backup failure, if no automatic backup has
+	 *  succeeded since. The UI asks on start, since a failure can happen before
+	 *  it's listening.
+	 */
+	backupAutoStatus: () => __TAURI_INVOKE<{
+	/**  RFC 3339, UTC. */
+	at: string,
+	trigger: Trigger,
+	/**  The error, as shown to the user. */
+	error: string,
+	/**
+	 *  0: the backup failed. Otherwise it was taken, but this many files
+	 *  couldn't be read and were left out.
+	 */
+	skipped?: number,
+} | null>("backup_auto_status"),
+	/**
 	 *  "Back up now": a full manual snapshot. Allowed while WoW runs, and then
 	 *  flagged as taken mid-session. Waits if another backup or restore is running.
 	 */
@@ -154,6 +171,7 @@ export const commands = {
 /** Events */
 export const events = {
 	backupCreated: makeEvent<BackupCreated>("backup-created"),
+	backupFailed: makeEvent<BackupFailed>("backup-failed"),
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	exportProgress: makeEvent<ExportProgress>("export-progress"),
 	gameStatusChanged: makeEvent<GameStatusChanged>("game-status-changed"),
@@ -185,7 +203,12 @@ export type AddonTarget = { kind: "Account"; account: string } | { kind: "Charac
  *  The single error type every command returns. Serialized as
  *  `{ kind: "...", detail?: ... }` so the frontend can switch on `kind`.
  */
-export type AppError = { kind: "GameRunning" } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
+export type AppError = 
+/**
+ *  What's blocking, e.g. "WowB.exe is running", so a false positive (a
+ *  tool that looks like the game) is diagnosable.
+ */
+{ kind: "GameRunning"; detail: string } | { kind: "NoInstall" } | { kind: "InvalidInstall"; detail: string } | { kind: "InvalidSettings"; detail: string } | { kind: "PathEscape"; detail: string } | { kind: "NotFound"; detail: string } | { kind: "Io"; detail: string } | { kind: "Unstable"; detail: string } | { kind: "Parse"; detail: {
 	file: string,
 	line: number,
 	col: number,
@@ -232,8 +255,32 @@ export type AppPaths = {
 	log_dir: string,
 };
 
+/**
+ *  An automatic backup that failed, or that left files out, for the Backups
+ *  screen (R1): nobody is watching when one runs, so it's kept until a later
+ *  automatic backup captures everything, and the UI asks for it on start.
+ */
+export type AutoBackupFailure = {
+	/**  RFC 3339, UTC. */
+	at: string,
+	trigger: Trigger,
+	/**  The error, as shown to the user. */
+	error: string,
+	/**
+	 *  0: the backup failed. Otherwise it was taken, but this many files
+	 *  couldn't be read and were left out.
+	 */
+	skipped?: number,
+};
+
 /**  Emitted when a snapshot has been written. */
 export type BackupCreated = SnapshotSummary;
+
+/**
+ *  Emitted when an automatic backup fails (R1). The same failure stays
+ *  available from `backup_auto_status` until an automatic backup succeeds.
+ */
+export type BackupFailed = AutoBackupFailure;
 
 export type BackupPatch = BackupPatch_Serialize | BackupPatch_Deserialize;
 
@@ -378,6 +425,11 @@ export type GameStatus = {
 	pids: number[],
 	/**  When the game was first seen running (RFC 3339, UTC), for "session 1h 42m". */
 	since: string | null,
+	/**
+	 *  The last poll couldn't list processes, so `running` is stale. The UI
+	 *  says it can't tell; restores stay locked.
+	 */
+	unknown: boolean,
 };
 
 /**  Emitted when WoW starts or stops. */
@@ -591,6 +643,11 @@ export type RestorePlan = {
 	 *  cleared; players do this on purpose (e.g. to pin Config.wtf).
 	 */
 	read_only: string[],
+	/**
+	 *  Files (or folders) in the selection that the snapshot couldn't read
+	 *  at the time: not in this backup, so left as they are, never deleted.
+	 */
+	not_backed_up: string[],
 	/**  "keybindings, macros and 41 addon settings". */
 	summary: string,
 };
@@ -707,12 +764,24 @@ export type SettingsPatch_Serialize = {
 	ui: { [key in string]: string | null } | null,
 };
 
+/**  A file a full snapshot left out, and why. */
+export type SkippedFile = {
+	/**
+	 *  Relative to the flavor folder when it could be expressed that way;
+	 *  otherwise the path as the OS reported it.
+	 */
+	path: string,
+	reason: string,
+};
+
 export type SnapshotDetail = {
 	summary: SnapshotSummary,
 	accounts: AccountNode[],
 	addons: AddonNode[],
 	/**  Files outside `WTF/Account` (e.g. `WTF/Config.wtf`, AddOns folders). */
 	other: Totals,
+	/**  Files the snapshot couldn't capture and left out (R1). */
+	skipped: SkippedFile[],
 };
 
 export type SnapshotKind = "Manual" | "Auto" | "Safety";
