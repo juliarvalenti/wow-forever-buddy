@@ -222,12 +222,15 @@ export type AppError =
 	msg: string,
 } } | 
 /**
- *  Stored copies that can't be used. `missing` lists those of `files`
- *  whose copy is gone; the rest are there but don't match what was saved.
+ *  Stored copies that can't be used. Of `files`, `missing` lists those
+ *  whose copy is gone and `unreadable` those that couldn't be read right
+ *  now (worth retrying); the rest don't match what was saved. Both lists
+ *  hold file paths only.
  */
 { kind: "BackupCorrupt"; detail: {
 	files: string[],
 	missing: string[],
+	unreadable: string[],
 } } | 
 /**
  *  Game files marked read-only (players pin e.g. Config.wtf this way).
@@ -864,10 +867,12 @@ export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_
 export type VerifyReport = {
 	snapshot_id: string,
 	files: number,
-	/**  Files whose stored copy is missing or fails its checksum. */
+	/**  Files whose stored copy is missing, unreadable or fails its checksum. */
 	corrupt: string[],
-	/**  Those of `corrupt` whose stored copy is gone (the rest don't match). */
+	/**  Those of `corrupt` whose stored copy is gone. */
 	missing: string[],
+	/**  Those of `corrupt` whose copy couldn't be read right now (retry). */
+	unreadable: string[],
 };
 
 /**  A character found in the WTF folder. */

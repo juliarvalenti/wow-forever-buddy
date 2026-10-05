@@ -205,6 +205,7 @@ export function installMockIpc(): void {
       `${thrandor}/macros-cache.txt`,
     ],
     missing: [`${thrandor}/macros-cache.txt`],
+    unreadable: [] as string[],
   };
 
   // Scenario state that changes as you click through.
@@ -255,6 +256,7 @@ export function installMockIpc(): void {
         files: 1912,
         corrupt: bad ? damaged.files : [],
         missing: bad ? damaged.missing : [],
+        unreadable: [],
       };
     },
     backup_get: () => {

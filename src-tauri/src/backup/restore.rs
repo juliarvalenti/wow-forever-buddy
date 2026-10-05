@@ -123,10 +123,12 @@ pub struct RestoreReport {
 pub struct VerifyReport {
     pub snapshot_id: String,
     pub files: u32,
-    /// Files whose stored copy is missing or fails its checksum.
+    /// Files whose stored copy is missing, unreadable or fails its checksum.
     pub corrupt: Vec<String>,
-    /// Those of `corrupt` whose stored copy is gone (the rest don't match).
+    /// Those of `corrupt` whose stored copy is gone.
     pub missing: Vec<String>,
+    /// Those of `corrupt` whose copy couldn't be read right now (retry).
+    pub unreadable: Vec<String>,
 }
 
 /// What a restore resolves to.
@@ -178,38 +180,64 @@ pub fn plan(
 
 /// Checks every stored copy in a snapshot against its checksum.
 pub fn verify(backups: &BackupService, manifest: &Manifest) -> VerifyReport {
-    let (corrupt, missing) = corrupt_files(backups.blobs(), manifest.files.iter());
+    let found = corrupt_files(backups.blobs(), manifest.files.iter());
     VerifyReport {
         snapshot_id: manifest.id.clone(),
         files: manifest.files.len() as u32,
-        corrupt,
-        missing,
+        corrupt: found.files,
+        missing: found.missing,
+        unreadable: found.unreadable,
     }
 }
 
-/// Paths whose stored copy is missing or fails its checksum, and the subset
-/// whose copy is missing. Each blob is read once, even if several files
-/// share it.
+/// Files whose stored copy can't be used, by why. Paths only.
+#[derive(Debug, Default)]
+pub struct CorruptFiles {
+    pub files: Vec<String>,
+    pub missing: Vec<String>,
+    pub unreadable: Vec<String>,
+}
+
+impl CorruptFiles {
+    pub fn add(&mut self, path: &str, fault: BlobFault) {
+        self.files.push(path.to_string());
+        match fault {
+            BlobFault::Missing => self.missing.push(path.to_string()),
+            BlobFault::Unreadable => self.unreadable.push(path.to_string()),
+            BlobFault::Damaged => {}
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    pub fn into_error(self) -> AppError {
+        AppError::BackupCorrupt {
+            files: self.files,
+            missing: self.missing,
+            unreadable: self.unreadable,
+        }
+    }
+}
+
+/// The files whose stored copy is missing, unreadable or fails its
+/// checksum. Each blob is read once, even if several files share it.
 fn corrupt_files<'f>(
     blobs: &BlobStore,
     files: impl Iterator<Item = &'f ManifestFile>,
-) -> (Vec<String>, Vec<String>) {
+) -> CorruptFiles {
     let mut fault: HashMap<&str, Option<BlobFault>> = HashMap::new();
-    let (mut corrupt, mut missing) = (Vec::new(), Vec::new());
+    let mut found = CorruptFiles::default();
     for f in files {
-        match *fault
+        if let Some(why) = *fault
             .entry(&f.blake3)
             .or_insert_with(|| blobs.check(&f.blake3))
         {
-            None => {}
-            Some(BlobFault::Missing) => {
-                corrupt.push(f.path.clone());
-                missing.push(f.path.clone());
-            }
-            Some(BlobFault::Damaged) => corrupt.push(f.path.clone()),
+            found.add(&f.path, why);
         }
     }
-    (corrupt, missing)
+    found
 }
 
 /// How to recover an interrupted restore.
@@ -406,13 +434,9 @@ impl Restorer<'_> {
             });
         }
         // A damaged backup stops here, before anything changes.
-        let (corrupt, missing) =
-            corrupt_files(self.backups.blobs(), resolved.writes.iter().map(|(_, f)| f));
+        let corrupt = corrupt_files(self.backups.blobs(), resolved.writes.iter().map(|(_, f)| f));
         if !corrupt.is_empty() {
-            return Err(AppError::BackupCorrupt {
-                files: corrupt,
-                missing,
-            });
+            return Err(corrupt.into_error());
         }
 
         let touched: Vec<RelPath> = resolved
@@ -1256,8 +1280,8 @@ mod tests {
         assert!(report.missing.is_empty(), "there but damaged, not missing");
         let err = restore(&t, &id, &everything(), RestoreMode::Mirror).unwrap_err();
         assert!(
-            matches!(&err, AppError::BackupCorrupt { files, missing }
-                if files == &["WTF/Config.wtf"] && missing.is_empty()),
+            matches!(&err, AppError::BackupCorrupt { files, missing, unreadable }
+                if files == &["WTF/Config.wtf"] && missing.is_empty() && unreadable.is_empty()),
             "{err}"
         );
         assert_eq!(tree(&t), mutated);

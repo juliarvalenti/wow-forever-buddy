@@ -252,14 +252,17 @@ function DamagedSnapshot({
   id,
   files,
   missing,
+  unreadable,
   snapshots,
   onUse,
   onClose,
 }: {
   id: string;
   files: string[];
-  /** Those of `files` whose stored copy is gone; the rest don't match. */
+  /** Those of `files` whose stored copy is gone. */
   missing: string[];
+  /** Those of `files` that couldn't be read right now; the rest don't match. */
+  unreadable: string[];
   snapshots: SnapshotSummary[];
   onUse: (olderId: string) => void;
   onClose: () => void;
@@ -339,7 +342,9 @@ function DamagedSnapshot({
           <li key={f} title={f}>
             <FileText size={13} aria-hidden />
             {shortFile(f)}
-            <span className="h">{missing.includes(f) ? "missing" : "hash mismatch"}</span>
+            <span className="h">
+              {missing.includes(f) ? "missing" : unreadable.includes(f) ? "couldn't be read" : "hash mismatch"}
+            </span>
           </li>
         ))}
       </ul>
@@ -347,6 +352,12 @@ function DamagedSnapshot({
         <Check size={14} aria-hidden />
         <span>Nothing was changed. We stop before writing a single file.</span>
       </div>
+      {unreadable.length > 0 && (
+        <p className="d-muted">
+          {unreadable.length === files.length ? "These copies" : "Some copies"} couldn't be read
+          right now; another program (often antivirus) may be using them. Try again in a moment.
+        </p>
+      )}
       {verify && (
         <p className="d-muted">
           {verifying
@@ -427,6 +438,7 @@ function ConfirmRestore({
         id={id}
         files={run.corrupt}
         missing={run.missing ?? []}
+        unreadable={run.unreadable ?? []}
         snapshots={snapshots}
         onUse={(older) => {
           reset();

@@ -239,10 +239,8 @@ impl ManifestDir {
             std::io::ErrorKind::NotFound => AppError::NotFound(format!("snapshot {id}")),
             _ => e.into(),
         })?;
-        serde_json::from_slice(&bytes).map_err(|_| AppError::BackupCorrupt {
-            files: vec![format!("snapshots/{id}.json")],
-            missing: Vec::new(),
-        })
+        serde_json::from_slice(&bytes)
+            .map_err(|_| AppError::corrupt(format!("snapshots/{id}.json")))
     }
 
     pub fn delete(&self, id: &str) -> AppResult<()> {
@@ -265,12 +263,11 @@ impl ManifestDir {
             if path.extension().is_none_or(|e| e != "json") {
                 continue;
             }
-            let refuse = |why: &str| AppError::BackupCorrupt {
-                files: vec![format!(
+            let refuse = |why: &str| {
+                AppError::corrupt(format!(
                     "{} ({why}); not collecting garbage",
                     path.display()
-                )],
-                missing: Vec::new(),
+                ))
             };
             let bytes = std::fs::read(&path).map_err(|_| refuse("unreadable"))?;
             let value: serde_json::Value =
