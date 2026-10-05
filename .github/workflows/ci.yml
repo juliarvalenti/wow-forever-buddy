@@ -1,28 +1,18 @@
 # Checks Windows (the real target) and macOS (where development also happens).
 # Releases are built separately by release.yml.
 #
-# Kept cheap on purpose (private repo, Windows minutes bill 2x and macOS 10x):
-# - PRs run Windows only, and only when they touch the code where Windows-only
-#   bugs live (file IO, game detection, install, backup/restore) or the build.
-#   Everything else is covered by the reviewer's local macOS fmt/clippy/test.
-# - Pushes to main run Windows + macOS.
-# - A newer push cancels the run it replaces.
+# Every PR to main and every push to main runs both OSes (the repo is public,
+# so standard runners are free). Docs- and design-only changes skip CI, and a
+# newer push cancels the run it replaces.
 name: CI
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "src-tauri/src/fsx/**"
-      - "src-tauri/src/game/**"
-      - "src-tauri/src/install/**"
-      - "src-tauri/src/backup/**"
-      - "src-tauri/src/restore/**"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
-      - "src-tauri/build.rs"
-      - "src-tauri/windows-app-manifest.xml"
-      - ".github/workflows/ci.yml"
+    paths-ignore:
+      - "design/**"
+      - "docs/**"
+      - "**/*.md"
   push:
     branches: [main]
     paths-ignore:
@@ -49,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ github.event_name == 'push' && fromJSON('["windows-latest","macos-latest"]') || fromJSON('["windows-latest"]') }}
+        os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     # Actions are pinned to full commit SHAs (a tag can be moved to other
     # code); the comment says which release it is. Bump them deliberately.
