@@ -65,6 +65,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_open_folder,
             commands::app::startup_failure,
             commands::app::startup_open_data_folder,
+            commands::app::startup_retry,
         ])
         .events(tauri_specta::collect_events![
             InstallChanged,
@@ -109,65 +110,75 @@ pub fn run() {
         .setup(move |app| {
             builder.mount_events(app);
             let paths = AppPaths::resolve(app.handle())?;
-            let core = match AppCore::new(paths.clone()) {
-                Ok(core) => core,
-                // Open the window anyway and explain; nothing else starts.
+            match AppCore::new(paths.clone()) {
+                Ok(core) => {
+                    app.manage(startup::StartupSlot::default());
+                    start(app.handle(), core);
+                }
+                // Open the window anyway and explain; nothing else starts
+                // until the startup screen's retry succeeds.
                 Err(e) => {
-                    app.manage(startup::StartupFailure::new(&paths, &e));
-                    return Ok(());
+                    app.manage(startup::StartupSlot::failed(startup::StartupFailure::new(
+                        &paths, &e,
+                    )));
                 }
-            };
-            let game = core.game.clone();
-            // Before the watcher's first poll, which may start a new one.
-            let _ = sessions::drop_unfinished(&core.db);
-            let db = core.db.clone();
-            app.manage(AppState { core });
-
-            // Startup step 4 (spec §8) runs in the background; the window
-            // shows right away and hears about the result via the event.
-            // Automatic backups start after it, since they need the install.
-            let handle = app.handle().clone();
-            let install_handle = handle.clone();
-            std::thread::spawn(move || {
-                let state = install_handle.state::<AppState>();
-                if let Some(install) = state.core.resolve_install_on_startup() {
-                    let _ = InstallChanged {
-                        install: Some(install),
-                    }
-                    .emit(&install_handle);
-                }
-                spawn_auto_backups(&install_handle);
-            });
-
-            // Spec §2: poll for WoW every 2 s and tell the UI on each change.
-            // When the game stops, the game-exit backup runs (spec §5), and
-            // the session is recorded (T14).
-            let target_handle = handle.clone();
-            let sessions = spawn_sessions(&handle, db);
-            game.spawn(
-                move || target_handle.state::<AppState>().core.probe_target(),
-                move |transition, status| {
-                    let _ = commands::game::GameStatusChanged(status.clone()).emit(&handle);
-                    let now = || chrono::Utc::now().to_rfc3339();
-                    match transition {
-                        game::process::Transition::Started => {
-                            let at = status.since.unwrap_or_else(now);
-                            let _ = sessions.send(sessions::SessionEvent::Started(at));
-                        }
-                        game::process::Transition::Stopped => {
-                            let _ = sessions.send(sessions::SessionEvent::Stopped(now()));
-                            spawn_game_exit_backup(&handle);
-                        }
-                        // Listing blipped and came back with the game's state
-                        // unchanged: the session carries on.
-                        game::process::Transition::Unknown | game::process::Transition::Known => {}
-                    }
-                },
-            );
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Everything that runs once the app's data is open: at launch, or after the
+/// startup screen's retry succeeds.
+pub(crate) fn start(app: &tauri::AppHandle, core: AppCore) {
+    let game = core.game.clone();
+    // Before the watcher's first poll, which may start a new one.
+    let _ = sessions::drop_unfinished(&core.db);
+    let db = core.db.clone();
+    app.manage(AppState { core });
+
+    // Startup step 4 (spec §8) runs in the background; the window
+    // shows right away and hears about the result via the event.
+    // Automatic backups start after it, since they need the install.
+    let handle = app.clone();
+    let install_handle = handle.clone();
+    std::thread::spawn(move || {
+        let state = install_handle.state::<AppState>();
+        if let Some(install) = state.core.resolve_install_on_startup() {
+            let _ = InstallChanged {
+                install: Some(install),
+            }
+            .emit(&install_handle);
+        }
+        spawn_auto_backups(&install_handle);
+    });
+
+    // Spec §2: poll for WoW every 2 s and tell the UI on each change.
+    // When the game stops, the game-exit backup runs (spec §5), and
+    // the session is recorded (T14).
+    let target_handle = handle.clone();
+    let sessions = spawn_sessions(&handle, db);
+    game.spawn(
+        move || target_handle.state::<AppState>().core.probe_target(),
+        move |transition, status| {
+            let _ = commands::game::GameStatusChanged(status.clone()).emit(&handle);
+            let now = || chrono::Utc::now().to_rfc3339();
+            match transition {
+                game::process::Transition::Started => {
+                    let at = status.since.unwrap_or_else(now);
+                    let _ = sessions.send(sessions::SessionEvent::Started(at));
+                }
+                game::process::Transition::Stopped => {
+                    let _ = sessions.send(sessions::SessionEvent::Stopped(now()));
+                    spawn_game_exit_backup(&handle);
+                }
+                // Listing blipped and came back with the game's state
+                // unchanged: the session carries on.
+                game::process::Transition::Unknown | game::process::Transition::Known => {}
+            }
+        },
+    );
 }
 
 /// Emits `backup-created` for an automatic snapshot.

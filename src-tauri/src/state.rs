@@ -49,12 +49,32 @@ impl AppCore {
         Self::with_parts(paths, secrets, Arc::new(SysinfoProbe::new()))
     }
 
+    /// The real app with database open options: the startup screen's retry,
+    /// and its one-shot "update without a safety copy".
+    pub fn new_with(paths: AppPaths, db_opts: crate::db::OpenOptions) -> AppResult<Self> {
+        Self::with_parts_and(
+            paths,
+            Arc::new(KeyringStore::new()),
+            Arc::new(SysinfoProbe::new()),
+            db_opts,
+        )
+    }
+
     /// The one real constructor: the secret store and the process probe are
     /// the seams tests replace.
     pub fn with_parts(
         paths: AppPaths,
         secrets: Arc<dyn SecretStore>,
         probe: Arc<dyn ProcessProbe>,
+    ) -> AppResult<Self> {
+        Self::with_parts_and(paths, secrets, probe, crate::db::OpenOptions::default())
+    }
+
+    fn with_parts_and(
+        paths: AppPaths,
+        secrets: Arc<dyn SecretStore>,
+        probe: Arc<dyn ProcessProbe>,
+        db_opts: crate::db::OpenOptions,
     ) -> AppResult<Self> {
         for dir in [&paths.config_dir, &paths.local_data_dir, &paths.log_dir] {
             std::fs::create_dir_all(dir)?;
@@ -67,7 +87,7 @@ impl AppCore {
         sweep_temp_files_shallow(&paths.local_data_dir)?;
 
         let settings = SettingsStore::load(paths.settings_file())?;
-        let db = Db::open(&paths.db_file())?;
+        let db = Db::open_with(&paths.db_file(), db_opts)?;
         let core = Self {
             paths,
             settings,

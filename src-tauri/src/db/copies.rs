@@ -80,7 +80,7 @@ pub fn take_daily(db: &Db, dir: &Path, today: NaiveDate) -> AppResult<Option<Pat
     }
     let tmp = dir.join(format!(".{}.wfb-tmp", file_name(today)));
     let _ = std::fs::remove_file(&tmp);
-    if !db.with_conn(|c| vacuum_into(c, &tmp))? {
+    if !db.with_conn(|c| vacuum_into(c, &tmp).map_err(AppError::from))? {
         let _ = std::fs::remove_file(&tmp);
         return Err(AppError::Db(
             "the database reads as damaged; no copy taken today".into(),
@@ -93,30 +93,165 @@ pub fn take_daily(db: &Db, dir: &Path, today: NaiveDate) -> AppResult<Option<Pat
     Ok(Some(target))
 }
 
+/// Why the safety copy before an update couldn't be made, in terms the
+/// startup screen can say plainly (design IMPLEMENTING.md §6, `?case=copy`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CopyFailure {
+    /// The drive is full. `free_bytes` is `None` if it couldn't be measured.
+    DiskFull {
+        free_bytes: Option<f64>,
+        needed_bytes: f64,
+    },
+    /// Another program holds the file (antivirus, a sync client, a second
+    /// copy of the app), or access was refused. Usually passes.
+    Locked,
+    /// Anything else; the message is for "Error details".
+    Other { message: String },
+}
+
+impl std::fmt::Display for CopyFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CopyFailure::DiskFull { .. } => f.write_str("the drive is full"),
+            CopyFailure::Locked => f.write_str("another program is using the file"),
+            CopyFailure::Other { message } => f.write_str(message),
+        }
+    }
+}
+
+/// A copy attempt's raw error, kept typed so it can be classified.
+#[derive(Debug)]
+enum CopyErr {
+    Sqlite(rusqlite::Error),
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for CopyErr {
+    fn from(e: std::io::Error) -> Self {
+        CopyErr::Io(e)
+    }
+}
+
+impl std::fmt::Display for CopyErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CopyErr::Sqlite(e) => write!(f, "{e}"),
+            CopyErr::Io(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl From<CopyErr> for AppError {
+    fn from(e: CopyErr) -> Self {
+        match e {
+            CopyErr::Sqlite(e) => e.into(),
+            CopyErr::Io(e) => e.into(),
+        }
+    }
+}
+
+/// Disk full: ENOSPC (28), and Windows ERROR_HANDLE_DISK_FULL (39) and
+/// ERROR_DISK_FULL (112). Locked: Windows access denied (5), sharing and
+/// lock violations (32, 33), or a permission error anywhere.
+fn classify(e: &CopyErr, needed: u64, dir: &Path) -> CopyFailure {
+    let full = || CopyFailure::DiskFull {
+        free_bytes: free_space(dir).map(|b| b as f64),
+        needed_bytes: needed as f64,
+    };
+    match e {
+        CopyErr::Io(io) => match (io.kind(), io.raw_os_error()) {
+            (std::io::ErrorKind::StorageFull, _) => full(),
+            (_, Some(28)) if cfg!(unix) => full(),
+            (_, Some(39 | 112)) if cfg!(windows) => full(),
+            (std::io::ErrorKind::PermissionDenied, _) => CopyFailure::Locked,
+            (_, Some(5 | 32 | 33)) if cfg!(windows) => CopyFailure::Locked,
+            _ => CopyFailure::Other {
+                message: io.to_string(),
+            },
+        },
+        CopyErr::Sqlite(sq) => match sq.sqlite_error_code() {
+            Some(rusqlite::ErrorCode::DiskFull) => full(),
+            Some(
+                rusqlite::ErrorCode::DatabaseBusy
+                | rusqlite::ErrorCode::DatabaseLocked
+                | rusqlite::ErrorCode::PermissionDenied
+                | rusqlite::ErrorCode::ReadOnly,
+            ) => CopyFailure::Locked,
+            _ => CopyFailure::Other {
+                message: sq.to_string(),
+            },
+        },
+    }
+}
+
+/// Free space on the drive holding `dir`: the disk with the longest mount
+/// point that `dir` is under.
+fn free_space(dir: &Path) -> Option<u64> {
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    sysinfo::Disks::new_with_refreshed_list()
+        .iter()
+        .filter(|d| dir.starts_with(d.mount_point()))
+        .max_by_key(|d| d.mount_point().as_os_str().len())
+        .map(|d| d.available_space())
+}
+
+/// Bytes a copy of the db needs: the file plus its write-ahead log.
+fn db_size(db_path: &Path) -> u64 {
+    let wal = {
+        let mut p = db_path.as_os_str().to_owned();
+        p.push("-wal");
+        PathBuf::from(p)
+    };
+    [db_path, wal.as_path()]
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .sum()
+}
+
 /// Before migrations run on an existing db (`from_version` > 0 and below
 /// the latest), a copy of it as it is: `pre-migration-v<from>-<stamp>.db`,
 /// keeping the newest 3. Not a daily copy, so restore never picks it on its
 /// own; it's there to recover by hand if a migration ever goes wrong.
 ///
+/// `VACUUM INTO` first; if that fails for any reason but corruption, a plain
+/// file copy (after checkpointing the WAL into the main file), which often
+/// works when VACUUM doesn't. Only if both fail is it an
+/// `AppError::UpgradeCopyFailed`, classified from the last attempt.
+///
 /// Returns `None` if the db itself turns out to be corrupt while copying
 /// (a readable header over damaged pages): there's nothing sound to copy,
-/// and the caller quarantines it instead. Any other failure is an error.
+/// and the caller quarantines it instead.
 pub fn take_pre_migration(
     conn: &rusqlite::Connection,
+    db_path: &Path,
     dir: &Path,
     from_version: i64,
 ) -> AppResult<Option<PathBuf>> {
-    std::fs::create_dir_all(dir)?;
+    let needed = db_size(db_path);
+    let failed = |e: CopyErr| AppError::UpgradeCopyFailed(classify(&e, needed, dir));
+    std::fs::create_dir_all(dir).map_err(|e| failed(e.into()))?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3f");
     let name = format!("{PRE_MIGRATION}v{from_version}-{stamp}{SUFFIX}");
     let target = dir.join(&name);
     let tmp = dir.join(format!(".{name}.wfb-tmp"));
     let _ = std::fs::remove_file(&tmp);
-    if !vacuum_into(conn, &tmp)? {
-        let _ = std::fs::remove_file(&tmp);
-        return Ok(None);
+    match vacuum_into(conn, &tmp) {
+        Ok(true) => {}
+        Ok(false) => {
+            let _ = std::fs::remove_file(&tmp);
+            return Ok(None);
+        }
+        Err(_) => {
+            let _ = std::fs::remove_file(&tmp);
+            if let Err(e) = plain_copy(conn, db_path, &tmp) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(failed(e));
+            }
+        }
     }
-    std::fs::rename(&tmp, &target)?;
+    std::fs::rename(&tmp, &target).map_err(|e| failed(e.into()))?;
     let mut old: Vec<PathBuf> = std::fs::read_dir(dir)?
         .flatten()
         .filter(|e| {
@@ -135,22 +270,40 @@ pub fn take_pre_migration(
 
 /// `VACUUM INTO` a temp file, flushed to disk. `Ok(false)`: the source db
 /// is corrupt (SQLite said so while reading it).
-fn vacuum_into(conn: &rusqlite::Connection, tmp: &Path) -> AppResult<bool> {
-    let tmp_str = tmp
-        .to_str()
-        .ok_or_else(|| AppError::Io(format!("db copy path isn't UTF-8: {}", tmp.display())))?;
+fn vacuum_into(conn: &rusqlite::Connection, tmp: &Path) -> Result<bool, CopyErr> {
+    let tmp_str = tmp.to_str().ok_or_else(|| {
+        CopyErr::Io(std::io::Error::other(format!(
+            "db copy path isn't UTF-8: {}",
+            tmp.display()
+        )))
+    })?;
     match conn.execute("VACUUM INTO ?1", [tmp_str]) {
         Ok(_) => {}
         Err(e) if is_corrupt(&e) => return Ok(false),
-        Err(e) => return Err(e.into()),
+        Err(e) => return Err(CopyErr::Sqlite(e)),
     }
-    // Write access: on Windows, flushing (FlushFileBuffers) a handle opened
-    // read-only fails with "Access is denied".
+    flush(tmp)?;
+    Ok(true)
+}
+
+/// The cheaper fallback: fold the WAL into the main file, then copy the file
+/// as it is.
+fn plain_copy(conn: &rusqlite::Connection, db_path: &Path, tmp: &Path) -> Result<(), CopyErr> {
+    // Best effort: without it the copy misses what's still in the WAL, but
+    // a failed checkpoint (busy) shouldn't stop the attempt.
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+    std::fs::copy(db_path, tmp)?;
+    flush(tmp)?;
+    Ok(())
+}
+
+/// Flushes a file to disk. Write access: on Windows, flushing
+/// (FlushFileBuffers) a handle opened read-only fails with "Access is denied".
+fn flush(path: &Path) -> std::io::Result<()> {
     std::fs::OpenOptions::new()
         .write(true)
-        .open(tmp)?
-        .sync_all()?;
-    Ok(true)
+        .open(path)?
+        .sync_all()
 }
 
 /// SQLite reported the database as corrupt or not a database.
@@ -303,5 +456,62 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap();
         assert_eq!(restore_newest(&path, ours), Some(day("2026-10-03")));
+    }
+
+    /// V5b: copy failures become a plain reason for the startup screen.
+    #[test]
+    fn copy_failures_are_classified() {
+        let dir = std::env::temp_dir();
+        let io = |e: std::io::Error| classify(&CopyErr::Io(e), 40_000_000, &dir);
+
+        match io(std::io::Error::from(std::io::ErrorKind::StorageFull)) {
+            CopyFailure::DiskFull { needed_bytes, .. } => assert_eq!(needed_bytes, 40e6),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            CopyFailure::Locked
+        );
+        assert!(matches!(
+            io(std::io::Error::other("something odd")),
+            CopyFailure::Other { message } if message.contains("odd")
+        ));
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                io(std::io::Error::from_raw_os_error(32)),
+                CopyFailure::Locked
+            );
+            assert!(matches!(
+                io(std::io::Error::from_raw_os_error(112)),
+                CopyFailure::DiskFull { .. }
+            ));
+        }
+        // A real free-space reading for the temp dir's drive.
+        match io(std::io::Error::from(std::io::ErrorKind::StorageFull)) {
+            CopyFailure::DiskFull { free_bytes, .. } => assert!(free_bytes.is_some()),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// V5b: the plain-copy fallback checkpoints first, so rows still in the
+    /// WAL make it into the copy.
+    #[test]
+    fn the_plain_copy_includes_what_is_in_the_wal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("buddy.db");
+        let db = Db::open(&path).unwrap();
+        db.set_meta("probe", "only in the wal").unwrap();
+        let copy = tmp.path().join("copy.db");
+        db.with_conn(|c| plain_copy(c, &path, &copy).map_err(AppError::from))
+            .unwrap();
+        drop(db);
+        let value: String = rusqlite::Connection::open(&copy)
+            .unwrap()
+            .query_row("SELECT value FROM meta WHERE key = 'probe'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(value, "only in the wal");
     }
 }

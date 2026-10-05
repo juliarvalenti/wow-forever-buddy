@@ -41,7 +41,7 @@ memchr = "2"
 # keyring silently falls back to an in-memory mock store.
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
 secrecy = "0.10"
-sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
 chrono = "0.4"
 blake3 = "1"
 zstd = "0.14"

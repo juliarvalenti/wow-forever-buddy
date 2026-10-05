@@ -61,6 +61,14 @@ pub enum AppError {
     Db(String),
     #[error("another backup or restore is in progress")]
     Busy,
+    /// The safety copy taken before updating the database couldn't be made
+    /// (both `VACUUM INTO` and a plain file copy failed), so the update didn't
+    /// run. The startup screen offers Try again, or a one-shot update without
+    /// the copy.
+    #[error(
+        "couldn't make a safety copy before updating the database ({0}), so it wasn't updated"
+    )]
+    UpgradeCopyFailed(crate::db::copies::CopyFailure),
     /// An export can't be saved there (inside the game or backup folder,
     /// or the folder doesn't exist).
     #[error("can't save the export there: {0}")]

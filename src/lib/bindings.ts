@@ -167,12 +167,47 @@ export const commands = {
 	paths: AppPaths,
 	/**  The file at fault, shown in red; `None` if it isn't one file. */
 	at_fault: string | null,
+	/**
+	 *  For `UpgradeCopy`: why, in plain terms (disk full with numbers,
+	 *  locked, other).
+	 */
+	copy_failure: CopyFailure | null,
+	/**
+	 *  For `UpgradeCopy`'s confirm: the date (YYYY-MM-DD) of the newest daily
+	 *  copy the app would fall back to if the update failed, if any.
+	 */
+	fallback_copy: string | null,
 } | null>("startup_failure"),
 	/**
 	 *  "Open data folder" on the startup error screen: the folder holding the
 	 *  file at fault. Works without `AppState`.
 	 */
 	startupOpenDataFolder: () => __TAURI_INVOKE<null>("startup_open_data_folder"),
+	/**
+	 *  The startup screen's "Try again", and its "Update without a safety copy"
+	 *  (`skip_safety_copy`). Re-runs startup; returns `null` if the app started
+	 *  (the UI then reloads into it), or the new failure. Skipping the copy is
+	 *  refused unless the current failure is that the copy failed, and it
+	 *  applies to this attempt only: nothing is saved.
+	 */
+	startupRetry: (skipSafetyCopy: boolean) => __TAURI_INVOKE<{
+	problem: StartupProblem,
+	/**  The error, for "Error details" and "Copy error details". */
+	message: string,
+	paths: AppPaths,
+	/**  The file at fault, shown in red; `None` if it isn't one file. */
+	at_fault: string | null,
+	/**
+	 *  For `UpgradeCopy`: why, in plain terms (disk full with numbers,
+	 *  locked, other).
+	 */
+	copy_failure: CopyFailure | null,
+	/**
+	 *  For `UpgradeCopy`'s confirm: the date (YYYY-MM-DD) of the newest daily
+	 *  copy the app would fall back to if the update failed, if any.
+	 */
+	fallback_copy: string | null,
+} | null>("startup_retry", { skipSafetyCopy }),
 };
 
 /** Events */
@@ -251,6 +286,13 @@ export type AppError =
 { kind: "DeletionsChanged"; detail: {
 	paths: string[],
 } } | { kind: "Secret"; detail: string } | { kind: "Db"; detail: string } | { kind: "Busy" } | 
+/**
+ *  The safety copy taken before updating the database couldn't be made
+ *  (both `VACUUM INTO` and a plain file copy failed), so the update didn't
+ *  run. The startup screen offers Try again, or a one-shot update without
+ *  the copy.
+ */
+{ kind: "UpgradeCopyFailed"; detail: CopyFailure } | 
 /**
  *  An export can't be saved there (inside the game or backup folder,
  *  or the folder doesn't exist).
@@ -389,6 +431,21 @@ export type CharacterRef = {
 	 */
 	name: string,
 };
+
+/**
+ *  Why the safety copy before an update couldn't be made, in terms the
+ *  startup screen can say plainly (design IMPLEMENTING.md §6, `?case=copy`).
+ */
+export type CopyFailure = 
+/**  The drive is full. `free_bytes` is `None` if it couldn't be measured. */
+{ kind: "disk_full"; free_bytes: number | null; needed_bytes: number | null } | 
+/**
+ *  Another program holds the file (antivirus, a sync client, a second
+ *  copy of the app), or access was refused. Usually passes.
+ */
+{ kind: "locked" } | 
+/**  Anything else; the message is for "Error details". */
+{ kind: "other"; message: string };
 
 /**
  *  What `install_detect` returns: every install found, plus every place we
@@ -847,12 +904,27 @@ export type StartupFailure = {
 	paths: AppPaths,
 	/**  The file at fault, shown in red; `None` if it isn't one file. */
 	at_fault: string | null,
+	/**
+	 *  For `UpgradeCopy`: why, in plain terms (disk full with numbers,
+	 *  locked, other).
+	 */
+	copy_failure: CopyFailure | null,
+	/**
+	 *  For `UpgradeCopy`'s confirm: the date (YYYY-MM-DD) of the newest daily
+	 *  copy the app would fall back to if the update failed, if any.
+	 */
+	fallback_copy: string | null,
 };
 
 /**  Which of the app's files is the problem, so the UI can mark it. */
 export type StartupProblem = 
 /**  `buddy.db`, e.g. written by a newer version of the app. */
 "database" | 
+/**
+ *  The safety copy before updating `buddy.db` couldn't be made, so the
+ *  update didn't run (`?case=copy`): Try again, or update without it.
+ */
+"upgrade_copy" | 
 /**  `settings.json`. */
 "settings" | 
 /**  Anything else, e.g. a data folder that can't be created. */
