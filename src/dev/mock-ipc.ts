@@ -743,6 +743,8 @@ export function installMockIpc(): void {
           { name: "Mining", skill: 285, max: 300 },
         ],
         lockouts: saves.filter((a) => a.character_id === c.id).map((a) => a.lockout),
+        // Read at the last login; Kaelor's never have been.
+        lockouts_as_of: c.id === 7 ? null : c.last_seen,
         gold_30d: [46, 44, 45, 38, 40, 34, 36, 28, 31, 24, 26, 18, 20, 8].map((y, i) => ({
           at: iso(60 * 24 * (28 - i * 2)),
           money: (2140 - y * 14) * 10000,

@@ -30,6 +30,7 @@ import {
   PanelHeader,
   Record as Parchment,
   Segmented,
+  Switch,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
@@ -690,22 +691,21 @@ function GoldSpark({ sheet }: { sheet: CharacterSheet }) {
 }
 
 /** Raid and dungeon saves that haven't reset, with the countdown (F3). */
-export function LockoutList({ lockouts }: { lockouts: Lockout[] }) {
-  if (lockouts.length === 0) return <p className="d-dim">No saves this week.</p>;
+/** IMPLEMENTING.md §8: one row per save, soonest reset first; the full
+ *  reset date in the row's tooltip. `asOf` null: never read yet. */
+function LockoutList({ lockouts, asOf }: { lockouts: Lockout[]; asOf: string | null }) {
+  if (asOf == null) return <p className="d-dim">Lockouts appear after your next login.</p>;
+  if (lockouts.length === 0) return <p className="d-dim">Not saved anywhere this week.</p>;
   return (
     <ul className="ch-locks">
       {lockouts.map((l) => (
-        <li key={`${l.name}|${l.difficulty}`}>
+        <li key={`${l.name}|${l.difficulty}`} title={l.reset_at ? resetDay(l.reset_at) : undefined}>
           <span>
             {l.name}
-            <small>
-              {l.raid ? "Raid" : "Dungeon"}
-              {l.difficulty && l.difficulty !== "Normal" ? ` · ${l.difficulty}` : ""}
-            </small>
+            {/* Only when it tells something: the game's default reads "Normal". */}
+            {l.difficulty && l.difficulty !== "Normal" && <span className="dif"> {l.difficulty}</span>}
           </span>
-          <span className="in" title={l.reset_at ? `Resets ${resetDay(l.reset_at)}` : undefined}>
-            {l.reset_at ? `resets in ${resetsIn(l.reset_at)}` : "reset unknown"}
-          </span>
+          <span className="in">{l.reset_at ? resetsIn(l.reset_at) : ""}</span>
         </li>
       ))}
     </ul>
@@ -762,9 +762,10 @@ function Sheet({
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {c && (
-            <Button variant="ghost" onClick={() => setBankAlt(!c.bank_alt)}>
-              {c.bank_alt ? "Not a bank alt" : "Mark as bank alt"}
-            </Button>
+            <label className="ch-bankalt" title="Shows a Bank tag on this character's card">
+              Bank alt
+              <Switch checked={c.bank_alt} onChange={setBankAlt} label="Bank alt" />
+            </label>
           )}
           <Button variant="icon" title="Previous alt" disabled={!prev} onClick={() => prev && onOpen(prev.id)}>
             <ChevronLeft size={14} />
@@ -947,10 +948,15 @@ function Sheet({
             </Panel>
             <Panel>
               <PanelHeader title="Lockouts">
-                {sheet.lockouts.length > 0 && <span className="d-dim">{sheet.lockouts.length} this week</span>}
+                {sheet.lockouts_as_of && (
+                  <span className="d-dim">
+                    as of login,{" "}
+                    {new Date(sheet.lockouts_as_of).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                  </span>
+                )}
               </PanelHeader>
               <PanelBody>
-                <LockoutList lockouts={sheet.lockouts} />
+                <LockoutList lockouts={sheet.lockouts} asOf={sheet.lockouts_as_of} />
               </PanelBody>
             </Panel>
           </div>

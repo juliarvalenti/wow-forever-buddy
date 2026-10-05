@@ -155,6 +155,9 @@ pub struct CharacterSheet {
     pub professions: Vec<ProfessionRow>,
     /// Saves that haven't reset, soonest reset first.
     pub lockouts: Vec<Lockout>,
+    /// The login the saves were read at (RFC 3339); `None` if they never
+    /// have been, as opposed to read and none found.
+    pub lockouts_as_of: Option<String>,
     /// The last 30 days of gold, oldest first.
     pub gold_30d: Vec<GoldPoint>,
 }
@@ -455,6 +458,13 @@ pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
         let lockouts = stmt
             .query_map(params![id, now], |r| lockout(r, 0))?
             .collect::<Result<Vec<_>, _>>()?;
+        // The addon reads saves at every login and puts them in the
+        // snapshot, so the newest snapshot dates them (IMPLEMENTING.md §8).
+        let lockouts_as_of: Option<i64> = c.query_row(
+            "SELECT max(at) FROM char_snapshots WHERE character_id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
         let since = now - 30 * 86_400;
         let mut stmt = c.prepare(
             "SELECT at, money FROM gold_points WHERE character_id = ?1 AND at >= ?2 ORDER BY at",
@@ -480,6 +490,7 @@ pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
             },
             professions,
             lockouts,
+            lockouts_as_of: lockouts_as_of.map(iso),
             gold_30d,
             card,
         })
@@ -750,6 +761,7 @@ mod tests {
         assert_eq!(s.gold_30d.len(), 1);
         let names: Vec<_> = s.lockouts.iter().map(|l| l.name.as_str()).collect();
         assert_eq!(names, ["Molten Core"], "the reset Deadmines save is gone");
+        assert_eq!(s.lockouts_as_of.as_deref(), Some(iso(now - 600).as_str()));
         assert!(s.lockouts[0].raid && s.lockouts[0].reset_at.is_some());
         assert!(!c.bank_alt);
     }

@@ -159,8 +159,9 @@ function SessionWho({ s }: { s: PlaySession }) {
   );
 }
 
-/** F3: this week's saves across alts, one row per instance, soonest reset
- *  first, with who is saved in class colour. */
+/** F3 (IMPLEMENTING.md §8): this week's saves across alts, one row per
+ *  instance, soonest reset first, with who is saved in class colour. At
+ *  most five rows. The caller leaves it out when nobody is saved. */
 function LockoutsThisWeek({ lockouts, onOpen }: { lockouts: AltLockout[]; onOpen: () => void }) {
   const rows: { key: string; l: AltLockout["lockout"]; who: AltLockout[] }[] = [];
   for (const a of lockouts) {
@@ -169,43 +170,34 @@ function LockoutsThisWeek({ lockouts, onOpen }: { lockouts: AltLockout[]; onOpen
     if (row) row.who.push(a);
     else rows.push({ key, l: a.lockout, who: [a] });
   }
+  const saved = new Set(lockouts.map((a) => a.character_id)).size;
   return (
     <Panel>
       <PanelHeader title="Lockouts this week">
         <span className="d-grow" />
-        <span className="d-dim">{lockouts.length > 0 ? plural(lockouts.length, "save", "saves") : ""}</span>
+        <span className="d-dim">{plural(saved, "character saved", "characters saved")}</span>
       </PanelHeader>
-      {rows.length === 0 ? (
-        <PanelBody>
-          <p className="d-muted">No raid or dungeon saves this week.</p>
-        </PanelBody>
-      ) : (
-        <ul className="d-rows">
-          {rows.map(({ key, l, who }) => (
-            <li key={key} className="d-open" onClick={onOpen}>
-              <span className="main">
-                {l.name}
-                {l.difficulty && l.difficulty !== "Normal" && <small className="d-dim"> {l.difficulty}</small>}
-              </span>
-              <span
-                className="side d-dim"
-                style={{ fontWeight: 400 }}
-                title={l.reset_at ? `Resets ${resetDay(l.reset_at)}` : undefined}
-              >
-                {l.reset_at ? `resets in ${resetsIn(l.reset_at)}` : ""}
-              </span>
-              <span className="sub">
-                {who.map((a, i) => (
-                  <span key={a.character_id}>
-                    {i > 0 && ", "}
-                    <span style={{ color: a.class ? `var(--c-${a.class})` : undefined }}>{a.character}</span>
-                  </span>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="d-rows">
+        {rows.slice(0, 5).map(({ key, l, who }) => (
+          <li key={key} className="d-open" onClick={onOpen} title={l.reset_at ? resetDay(l.reset_at) : undefined}>
+            <span className="main">
+              {l.name}
+              {l.difficulty && l.difficulty !== "Normal" && <small className="d-dim"> {l.difficulty}</small>}
+            </span>
+            <span className="side d-dim" style={{ fontWeight: 400 }}>
+              {l.reset_at ? resetsIn(l.reset_at) : ""}
+            </span>
+            <span className="sub">
+              {who.map((a, i) => (
+                <span key={a.character_id}>
+                  {i > 0 && ", "}
+                  <span style={{ color: a.class ? `var(--c-${a.class})` : undefined }}>{a.character}</span>
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }
@@ -763,7 +755,9 @@ export function Dashboard({
             )}
           </Panel>
 
-          {withAddon && lockouts && <LockoutsThisWeek lockouts={lockouts} onOpen={onOpenCharacters} />}
+          {withAddon && lockouts && lockouts.length > 0 && (
+            <LockoutsThisWeek lockouts={lockouts} onOpen={onOpenCharacters} />
+          )}
           {withAddon && recentSessions}
         </div>
       </section>

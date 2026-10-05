@@ -58,20 +58,20 @@ export function span(ms: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
-/** A lockout's countdown: "2d 4h", "5h 12m", "12m", or "now" once due. */
+/** A lockout's time to reset (IMPLEMENTING.md §8): "resets in 14 h" under a
+ *  day, "2 days" otherwise. No minutes: it's as of a login, not live. */
 export function resetsIn(iso: string, now = Date.now()): string {
-  const m = Math.floor((new Date(iso).getTime() - now) / 60000);
-  if (m <= 0) return "now";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
+  const h = Math.ceil((new Date(iso).getTime() - now) / 3_600_000);
+  if (h <= 1) return "resets within the hour";
+  if (h < 24) return `resets in ${h} h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "1 day" : `${d} days`;
 }
 
-/** "Tue 4 Oct, 3:00 AM", for a lockout reset's tooltip. */
+/** "Resets Tuesday 6 October, 09:00", a lockout row's tooltip. */
 export function resetDay(iso: string): string {
   const d = new Date(iso);
-  return `${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}, ${clock(d)}`;
+  return `Resets ${d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}, ${clock(d)}`;
 }
 
 function clock(d: Date): string {

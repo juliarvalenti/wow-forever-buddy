@@ -636,6 +636,11 @@ export type CharacterSheet = {
 	professions: ProfessionRow[],
 	/**  Saves that haven't reset, soonest reset first. */
 	lockouts: Lockout[],
+	/**
+	 *  The login the saves were read at (RFC 3339); `None` if they never
+	 *  have been, as opposed to read and none found.
+	 */
+	lockouts_as_of: string | null,
 	/**  The last 30 days of gold, oldest first. */
 	gold_30d: GoldPoint[],
 };
