@@ -19,6 +19,9 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/004_addon_data.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
+/// The schema version this build migrates to (`PRAGMA user_version`, which
+/// rusqlite_migration sets to the number of applied migrations).
+const LATEST_VERSION: i64 = MIGRATION_LIST.len() as i64;
 
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
@@ -46,6 +49,7 @@ impl Db {
     /// set, so the backup store rebuilds its index before it prunes anything,
     /// and `restored_from_copy` names the copy's date if one was used.
     pub fn open(path: &Path) -> AppResult<Self> {
+        backup_before_migrating(path)?;
         let mut quarantined = false;
         let mut restored = None;
         let conn = match Self::open_and_migrate(path) {
@@ -53,7 +57,7 @@ impl Db {
             Err(e) if is_corruption(&e) => {
                 quarantine(path)?;
                 quarantined = true;
-                restored = copies::restore_newest(path);
+                restored = copies::restore_newest(path, LATEST_VERSION);
                 match Self::open_and_migrate(path) {
                     Ok(conn) => conn,
                     // A copy that passed the check but still won't migrate:
@@ -155,20 +159,61 @@ fn migration_error(e: rusqlite_migration::Error) -> AppError {
     AppError::Db(e.to_string())
 }
 
-/// Moves a broken db (and its WAL/SHM side files) out of the way, keeping it for inspection.
+/// Before migrating an existing db (schema older than this build's), takes a
+/// copy of it as it is, so irreplaceable history survives a migration that
+/// goes wrong. If the copy can't be made, the migration doesn't run: the app
+/// shows its startup error instead of risking the only copy. A file that
+/// can't even be read is left to `open`'s corruption handling.
+fn backup_before_migrating(path: &Path) -> AppResult<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let Ok(conn) = Connection::open(path) else {
+        return Ok(());
+    };
+    let Ok(version) = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)) else {
+        return Ok(());
+    };
+    if version == 0 || version >= LATEST_VERSION {
+        return Ok(());
+    }
+    copies::take_pre_migration(&conn, &copies::dir_for(path), version).map_err(|e| {
+        AppError::Db(format!(
+            "couldn't back up the database before upgrading it, so it wasn't upgraded: {e}"
+        ))
+    })?;
+    Ok(())
+}
+
+/// Moves a broken db (and its WAL/SHM side files) out of the way, keeping it
+/// for inspection. Names never collide: a second quarantine in the same
+/// second gets `-2`, `-3`… rather than failing (Windows) or overwriting the
+/// evidence (macOS).
 fn quarantine(path: &Path) -> AppResult<()> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let side = |suffix: &str| {
+        let mut p = path.as_os_str().to_owned();
+        p.push(suffix);
+        std::path::PathBuf::from(p)
+    };
+    let tag = (1..)
+        .map(|n| match n {
+            1 => format!(".corrupt-{stamp}"),
+            n => format!(".corrupt-{stamp}-{n}"),
+        })
+        .find(|tag| {
+            ["", "-wal", "-shm"]
+                .iter()
+                .all(|s| !side(&format!("{tag}{s}")).exists())
+        })
+        .expect("an unused name exists");
     for suffix in ["", "-wal", "-shm"] {
-        let mut from = path.as_os_str().to_owned();
-        from.push(suffix);
-        let from = std::path::PathBuf::from(from);
+        let from = side(suffix);
         if from.exists() {
-            let mut to = path.as_os_str().to_owned();
-            to.push(format!(".corrupt-{stamp}{suffix}"));
-            std::fs::rename(&from, to)?;
+            std::fs::rename(&from, side(&format!("{tag}{suffix}")))?;
         }
     }
     Ok(())
@@ -345,6 +390,64 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    /// #41 review: opening a db with migrations pending first copies it as
+    /// it was; an up-to-date or brand-new db isn't copied.
+    #[test]
+    fn a_copy_is_taken_before_migrating() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("buddy.db");
+        let mut conn = Connection::open(&path).unwrap();
+        Migrations::from_slice(&MIGRATION_LIST[..3])
+            .to_latest(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        drop(Db::open(&path).unwrap());
+        let dir = copies::dir_for(&path);
+        let pre: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("pre-migration-v3-")
+            })
+            .collect();
+        assert_eq!(pre.len(), 1);
+        let version: i64 = Connection::open(&pre[0])
+            .unwrap()
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 3, "the copy is the db as it was before migrating");
+
+        drop(Db::open(&path).unwrap());
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "no copy when up to date"
+        );
+    }
+
+    /// #41 review: two quarantines in the same second keep both files.
+    #[test]
+    fn quarantine_names_never_collide() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("buddy.db");
+        for n in 0..2 {
+            std::fs::write(&path, format!("broken {n}")).unwrap();
+            quarantine(&path).unwrap();
+        }
+        let kept: Vec<String> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("buddy.db.corrupt-"))
+            .collect();
+        assert_eq!(kept.len(), 2, "{kept:?}");
     }
 
     #[test]
