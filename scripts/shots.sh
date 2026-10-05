@@ -54,6 +54,8 @@ SCENARIOS=(
   "addons-running|dashboard|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");wait:text=addon changes are locked|addons-running"
   # No shot of the linked state yet: it sits next to the edit state.
   "addons-linked|addons-linked|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");wait:text=linked folder|addons-edit"
+  "macros|characters|click:css=nav button[title=\"Macros\"];wait:css=.mc-code|macros-readonly"
+  "macros-empty|macros-empty|click:css=nav button[title=\"Macros\"];wait:text=WoW writes them when you log out|macros-readonly"
 )
 
 echo "== build:mock"

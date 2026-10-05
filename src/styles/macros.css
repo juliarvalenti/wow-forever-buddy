@@ -1,0 +1,56 @@
+/* Macros, read-only (F7), from design/mocks/round-3/macros-readonly.html and
+   IMPLEMENTING.md §12. Prefixed mc- so nothing collides with the d- styles.
+   Reuses .ad-dot, .ad-note (addons.css) and .ch-cc, .ch-bar (characters.css). */
+
+.mc-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mc-toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+.mc-who { display: inline-flex; align-items: center; gap: 8px; }
+.mc-name { font-weight: 600; font-size: 13px; }
+.mc-pick { position: relative; }
+.mc-pick .d-btn { height: 24px; }
+.mc-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 200px; max-height: 300px; overflow: auto;
+  list-style: none; margin: 0; padding: 4px 0; border-radius: var(--r, 6px);
+  background: linear-gradient(180deg, #2b2621, #1d1a17); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.06), 0 10px 24px rgba(0,0,0,.6); }
+.mc-menu li { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+.mc-menu li:hover, .mc-menu li[aria-selected="true"] { background: rgba(255,177,92,.08); }
+.mc-menu li .n { margin-left: auto; font-size: 11px; color: var(--soot); }
+
+.mc-grid { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .mc-grid { grid-template-columns: 220px minmax(0, 1fr); } }
+.mc-meta { margin-left: auto; }
+.mc-list { list-style: none; margin: 0; padding: 0; max-height: 560px; overflow: auto; }
+.mc-list li { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; font-size: 12.5px; cursor: pointer; color: var(--chalk); }
+.mc-list li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+.mc-list li:hover { background: rgba(255,255,255,.02); }
+.mc-list li.sel { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+.mc-list li .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-list li .len { margin-left: auto; font-size: 11px; color: var(--soot); font-variant-numeric: tabular-nums; }
+.mc-list li .len.hot { color: var(--warn); }
+.mc-list li .len.over { color: var(--bad); }
+.mc-ico { width: 26px; height: 26px; flex-shrink: 0; border-radius: 3px; display: grid; place-items: center;
+  font: 400 11px "Marcellus", Georgia, serif; background: rgba(0,0,0,.35);
+  box-shadow: inset 0 0 0 1px rgba(236,228,214,.45), inset 0 0 4px rgba(0,0,0,.6); }
+.mc-ico b { color: var(--chalk-hi); font-weight: 400; }
+.mc-ico.lg { width: 36px; height: 36px; font-size: 14px; }
+
+.mc-body { display: grid; gap: 10px; }
+.mc-top { display: flex; align-items: center; gap: 12px; }
+.mc-top .grow { flex: 1; min-width: 0; }
+.mc-top .t { font: 600 15px "Geist Variable", "Geist", sans-serif; color: var(--chalk-hi); }
+.mc-top .s { font-size: 11.5px; color: var(--soot); }
+.mc-copied { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ok); }
+.mc-code { font: 13px/1.7 ui-monospace, "Cascadia Mono", Menlo, monospace; padding: 12px 14px; min-height: 170px;
+  border-radius: var(--r, 6px); white-space: pre-wrap; word-break: break-word; color: var(--chalk); user-select: text;
+  background: rgba(0,0,0,.45); box-shadow: inset 0 2px 6px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); }
+.mc-code .meta-d { color: #b79c6c; }
+.mc-code .cmd { color: #ffb15c; }
+.mc-code .cond { color: #8fb4ee; }
+.mc-code .sp { color: #ece4d6; }
+.mc-count { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--soot); }
+.mc-count b { color: var(--chalk-hi); font-weight: 600; }
+.mc-count .mc-bar { flex: 1; }
+.mc-count .mc-bar .fill { background: linear-gradient(90deg, #7a6a52, #b8a27a); }
+.mc-count.hot b, .mc-count.hot .why { color: var(--warn); }
+.mc-count.hot .mc-bar .fill { background: linear-gradient(90deg, #7a6a52, var(--warn)); }
+.mc-count.over b, .mc-count.over .why { color: var(--bad); }
+.mc-count.over .mc-bar .fill { background: linear-gradient(90deg, #7a3a2a, var(--bad)); }
