@@ -16,12 +16,14 @@ export type RestoreRun =
   | { kind: "idle" }
   | { kind: "running"; done: number; total: number }
   | { kind: "done"; report: RestoreReport }
-  /** Refused or failed. `corrupt` lists damaged files when that's the reason;
-   *  `deletionsChanged` means the folder changed after the confirmed preview. */
+  /** Refused or failed. `corrupt` lists damaged files when that's the reason,
+   *  `missing` those of them whose stored copy is gone; `deletionsChanged`
+   *  means the folder changed after the confirmed preview. */
   | {
       kind: "error";
       message: string;
       corrupt?: string[];
+      missing?: string[];
       gameRunning?: boolean;
       deletionsChanged?: boolean;
     };
@@ -85,6 +87,7 @@ export function useRestore() {
           kind: "error",
           message: errorText(e),
           corrupt: isAppError(e) && e.kind === "BackupCorrupt" ? e.detail.files : undefined,
+          missing: isAppError(e) && e.kind === "BackupCorrupt" ? e.detail.missing : undefined,
           gameRunning: isAppError(e) && e.kind === "GameRunning",
           deletionsChanged: isAppError(e) && e.kind === "DeletionsChanged",
         });

@@ -251,12 +251,15 @@ const OLDER_TRIES = 5;
 function DamagedSnapshot({
   id,
   files,
+  missing,
   snapshots,
   onUse,
   onClose,
 }: {
   id: string;
   files: string[];
+  /** Those of `files` whose stored copy is gone; the rest don't match. */
+  missing: string[];
   snapshots: SnapshotSummary[];
   onUse: (olderId: string) => void;
   onClose: () => void;
@@ -336,7 +339,7 @@ function DamagedSnapshot({
           <li key={f} title={f}>
             <FileText size={13} aria-hidden />
             {shortFile(f)}
-            <span className="h">damaged</span>
+            <span className="h">{missing.includes(f) ? "missing" : "hash mismatch"}</span>
           </li>
         ))}
       </ul>
@@ -423,6 +426,7 @@ function ConfirmRestore({
       <DamagedSnapshot
         id={id}
         files={run.corrupt}
+        missing={run.missing ?? []}
         snapshots={snapshots}
         onUse={(older) => {
           reset();

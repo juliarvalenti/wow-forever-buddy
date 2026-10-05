@@ -13,6 +13,7 @@ import type {
   SnapshotSummary,
   StorageInfo,
   Trigger,
+  VerifyReport,
 } from "@/lib/bindings";
 
 /** The scenarios, for `scripts/shots.sh` and anyone poking around. */
@@ -194,6 +195,18 @@ export function installMockIpc(): void {
     crashed,
   });
 
+  // backups-corrupt: as in backups.html?error=corrupt, two copies that don't
+  // match and one that's gone.
+  const thrandor = "WTF/Account/ACCOUNT1/Ashenvale/Thrandor";
+  const damaged = {
+    files: [
+      `${thrandor}/SavedVariables/Details.lua`,
+      `${thrandor}/SavedVariables/Bartender4.lua`,
+      `${thrandor}/macros-cache.txt`,
+    ],
+    missing: [`${thrandor}/macros-cache.txt`],
+  };
+
   // Scenario state that changes as you click through.
   let refused = false;
   let recoveryRefused = false;
@@ -235,14 +248,15 @@ export function installMockIpc(): void {
         : null,
     backup_create: () => sum("S0", "manual", "Manual", 0),
     // In backups-corrupt only the newest snapshot (S1) is damaged.
-    backup_verify: ({ id }) => ({
-      snapshot_id: id,
-      files: 1912,
-      corrupt:
-        s === "backups-corrupt" && id === "S1"
-          ? ["WTF/Account/ACCOUNT1/Ashenvale/Thrandor/SavedVariables/Details.lua"]
-          : [],
-    }),
+    backup_verify: ({ id }): VerifyReport => {
+      const bad = s === "backups-corrupt" && id === "S1";
+      return {
+        snapshot_id: id as string,
+        files: 1912,
+        corrupt: bad ? damaged.files : [],
+        missing: bad ? damaged.missing : [],
+      };
+    },
     backup_get: () => {
       if (s === "snapshot-unreadable") throw { kind: "Io", detail: "manifest for S1 is unreadable" };
       return detail;
@@ -260,11 +274,7 @@ export function installMockIpc(): void {
         refused = true;
         throw { kind: "Io", detail: "Details.lua is locked by another program" };
       }
-      if (s === "backups-corrupt")
-        throw {
-          kind: "BackupCorrupt",
-          detail: { files: ["WTF/Account/ACCOUNT1/Ashenvale/Thrandor/SavedVariables/Details.lua"] },
-        };
+      if (s === "backups-corrupt") throw { kind: "BackupCorrupt", detail: damaged };
       return { snapshot_id: "S1", pre_restore_snapshot: "S9", written: 3, deleted: 1, summary: plan.summary };
     },
     restore_journal_status: () =>

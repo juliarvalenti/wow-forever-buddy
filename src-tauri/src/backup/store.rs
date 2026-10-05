@@ -15,6 +15,15 @@ use crate::fsx::atomic::sweep_temp_files_shallow;
 
 const ZSTD_LEVEL: i32 = 3;
 
+/// Why a stored copy can't be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlobFault {
+    /// The blob file is gone.
+    Missing,
+    /// It's there but unreadable, doesn't decompress, or doesn't match its hash.
+    Damaged,
+}
+
 pub struct BlobStore {
     objects: PathBuf,
     staging: PathBuf,
@@ -43,6 +52,7 @@ impl BlobStore {
         if !valid {
             return Err(AppError::BackupCorrupt {
                 files: vec![format!("bad blob id {hash:?}")],
+                missing: Vec::new(),
             });
         }
         Ok(self.objects.join(&hash[..2]).join(&hash[2..]))
@@ -79,13 +89,31 @@ impl BlobStore {
 
     /// Reads a blob back and verifies it against its hash.
     pub fn get(&self, hash: &str) -> AppResult<Vec<u8>> {
-        let corrupt = || AppError::BackupCorrupt {
+        self.read(hash).map_err(|fault| AppError::BackupCorrupt {
             files: vec![hash.to_string()],
-        };
-        let compressed = std::fs::read(self.path_for(hash)?).map_err(|_| corrupt())?;
-        let bytes = zstd::stream::decode_all(compressed.as_slice()).map_err(|_| corrupt())?;
+            missing: match fault {
+                BlobFault::Missing => vec![hash.to_string()],
+                BlobFault::Damaged => Vec::new(),
+            },
+        })
+    }
+
+    /// Why a blob can't be used, if it can't: for "missing" vs
+    /// "hash mismatch" in the damaged-snapshot dialog.
+    pub fn check(&self, hash: &str) -> Option<BlobFault> {
+        self.read(hash).err()
+    }
+
+    fn read(&self, hash: &str) -> Result<Vec<u8>, BlobFault> {
+        let path = self.path_for(hash).map_err(|_| BlobFault::Damaged)?;
+        let compressed = std::fs::read(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => BlobFault::Missing,
+            _ => BlobFault::Damaged,
+        })?;
+        let bytes =
+            zstd::stream::decode_all(compressed.as_slice()).map_err(|_| BlobFault::Damaged)?;
         if Self::hash(&bytes) != hash {
-            return Err(corrupt());
+            return Err(BlobFault::Damaged);
         }
         Ok(bytes)
     }

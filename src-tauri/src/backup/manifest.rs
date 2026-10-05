@@ -241,6 +241,7 @@ impl ManifestDir {
         })?;
         serde_json::from_slice(&bytes).map_err(|_| AppError::BackupCorrupt {
             files: vec![format!("snapshots/{id}.json")],
+            missing: Vec::new(),
         })
     }
 
@@ -269,6 +270,7 @@ impl ManifestDir {
                     "{} ({why}); not collecting garbage",
                     path.display()
                 )],
+                missing: Vec::new(),
             };
             let bytes = std::fs::read(&path).map_err(|_| refuse("unreadable"))?;
             let value: serde_json::Value =

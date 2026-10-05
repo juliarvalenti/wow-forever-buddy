@@ -220,8 +220,14 @@ export type AppError =
 	line: number,
 	col: number,
 	msg: string,
-} } | { kind: "BackupCorrupt"; detail: {
+} } | 
+/**
+ *  Stored copies that can't be used. `missing` lists those of `files`
+ *  whose copy is gone; the rest are there but don't match what was saved.
+ */
+{ kind: "BackupCorrupt"; detail: {
 	files: string[],
+	missing: string[],
 } } | 
 /**
  *  Game files marked read-only (players pin e.g. Config.wtf this way).
@@ -860,6 +866,8 @@ export type VerifyReport = {
 	files: number,
 	/**  Files whose stored copy is missing or fails its checksum. */
 	corrupt: string[],
+	/**  Those of `corrupt` whose stored copy is gone (the rest don't match). */
+	missing: string[],
 };
 
 /**  A character found in the WTF folder. */

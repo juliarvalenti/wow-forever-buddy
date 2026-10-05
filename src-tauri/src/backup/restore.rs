@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::backup::journal::{self, Journal};
 use crate::backup::manifest::{Manifest, ManifestFile, Scope};
-use crate::backup::store::BlobStore;
+use crate::backup::store::{BlobFault, BlobStore};
 use crate::backup::tree::Category;
 use crate::backup::BackupService;
 use crate::error::{AppError, AppResult};
@@ -125,6 +125,8 @@ pub struct VerifyReport {
     pub files: u32,
     /// Files whose stored copy is missing or fails its checksum.
     pub corrupt: Vec<String>,
+    /// Those of `corrupt` whose stored copy is gone (the rest don't match).
+    pub missing: Vec<String>,
 }
 
 /// What a restore resolves to.
@@ -176,30 +178,38 @@ pub fn plan(
 
 /// Checks every stored copy in a snapshot against its checksum.
 pub fn verify(backups: &BackupService, manifest: &Manifest) -> VerifyReport {
+    let (corrupt, missing) = corrupt_files(backups.blobs(), manifest.files.iter());
     VerifyReport {
         snapshot_id: manifest.id.clone(),
         files: manifest.files.len() as u32,
-        corrupt: corrupt_files(backups.blobs(), manifest.files.iter()),
+        corrupt,
+        missing,
     }
 }
 
-/// Paths whose stored copy is missing or fails its checksum. Each blob is
-/// read once, even if several files share it.
+/// Paths whose stored copy is missing or fails its checksum, and the subset
+/// whose copy is missing. Each blob is read once, even if several files
+/// share it.
 fn corrupt_files<'f>(
     blobs: &BlobStore,
     files: impl Iterator<Item = &'f ManifestFile>,
-) -> Vec<String> {
-    let mut bad_blob: HashMap<&str, bool> = HashMap::new();
-    let mut corrupt = Vec::new();
+) -> (Vec<String>, Vec<String>) {
+    let mut fault: HashMap<&str, Option<BlobFault>> = HashMap::new();
+    let (mut corrupt, mut missing) = (Vec::new(), Vec::new());
     for f in files {
-        let bad = *bad_blob
+        match *fault
             .entry(&f.blake3)
-            .or_insert_with(|| blobs.get(&f.blake3).is_err());
-        if bad {
-            corrupt.push(f.path.clone());
+            .or_insert_with(|| blobs.check(&f.blake3))
+        {
+            None => {}
+            Some(BlobFault::Missing) => {
+                corrupt.push(f.path.clone());
+                missing.push(f.path.clone());
+            }
+            Some(BlobFault::Damaged) => corrupt.push(f.path.clone()),
         }
     }
-    corrupt
+    (corrupt, missing)
 }
 
 /// How to recover an interrupted restore.
@@ -396,9 +406,13 @@ impl Restorer<'_> {
             });
         }
         // A damaged backup stops here, before anything changes.
-        let corrupt = corrupt_files(self.backups.blobs(), resolved.writes.iter().map(|(_, f)| f));
+        let (corrupt, missing) =
+            corrupt_files(self.backups.blobs(), resolved.writes.iter().map(|(_, f)| f));
         if !corrupt.is_empty() {
-            return Err(AppError::BackupCorrupt { files: corrupt });
+            return Err(AppError::BackupCorrupt {
+                files: corrupt,
+                missing,
+            });
         }
 
         let touched: Vec<RelPath> = resolved
@@ -1237,13 +1251,49 @@ mod tests {
             .join(&config.blake3[2..]);
         std::fs::write(&blob, b"not zstd").unwrap();
 
-        assert_eq!(verify(&backups, &manifest).corrupt, ["WTF/Config.wtf"]);
+        let report = verify(&backups, &manifest);
+        assert_eq!(report.corrupt, ["WTF/Config.wtf"]);
+        assert!(report.missing.is_empty(), "there but damaged, not missing");
         let err = restore(&t, &id, &everything(), RestoreMode::Mirror).unwrap_err();
         assert!(
-            matches!(&err, AppError::BackupCorrupt { files } if files == &["WTF/Config.wtf"]),
+            matches!(&err, AppError::BackupCorrupt { files, missing }
+                if files == &["WTF/Config.wtf"] && missing.is_empty()),
             "{err}"
         );
         assert_eq!(tree(&t), mutated);
+    }
+
+    #[test]
+    fn a_missing_stored_copy_is_reported_as_missing() {
+        let t = setup();
+        let id = snapshot(&t);
+        let backups = t.core.backups().unwrap();
+        let manifest = backups.manifest(&id).unwrap();
+        let blob_of = |path: &str| {
+            let f = manifest.files.iter().find(|f| f.path == path).unwrap();
+            backups
+                .dir()
+                .join("objects")
+                .join(&f.blake3[..2])
+                .join(&f.blake3[2..])
+        };
+        // One copy deleted, another damaged: the dialog tells them apart.
+        std::fs::remove_file(blob_of("WTF/Config.wtf")).unwrap();
+        let macros = format!("{THRANDOR}/macros-cache.txt");
+        std::fs::write(blob_of(&macros), b"not zstd").unwrap();
+
+        let report = verify(&backups, &manifest);
+        assert_eq!(report.missing, ["WTF/Config.wtf"]);
+        assert!(report.corrupt.contains(&"WTF/Config.wtf".to_string()));
+        assert!(report.corrupt.contains(&macros));
+
+        // A restore only reads the copies it needs: Config.wtf differs now.
+        mutate(&t);
+        let err = restore(&t, &id, &everything(), RestoreMode::Overlay).unwrap_err();
+        assert!(
+            matches!(&err, AppError::BackupCorrupt { missing, .. } if missing == &["WTF/Config.wtf"]),
+            "{err}"
+        );
     }
 
     #[test]

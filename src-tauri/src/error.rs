@@ -33,8 +33,13 @@ pub enum AppError {
         col: u32,
         msg: String,
     },
+    /// Stored copies that can't be used. `missing` lists those of `files`
+    /// whose copy is gone; the rest are there but don't match what was saved.
     #[error("backup is corrupt: {files:?}")]
-    BackupCorrupt { files: Vec<String> },
+    BackupCorrupt {
+        files: Vec<String>,
+        missing: Vec<String>,
+    },
     /// Game files marked read-only (players pin e.g. Config.wtf this way).
     /// Never overridden; the user clears the flag to allow the change.
     #[error("read-only files: {paths:?}")]
@@ -83,12 +88,16 @@ mod tests {
         );
 
         let strukt = serde_json::to_value(AppError::BackupCorrupt {
-            files: vec!["a".into()],
+            files: vec!["a".into(), "b".into()],
+            missing: vec!["b".into()],
         })
         .unwrap();
         assert_eq!(
             strukt,
-            serde_json::json!({ "kind": "BackupCorrupt", "detail": { "files": ["a"] } })
+            serde_json::json!({
+                "kind": "BackupCorrupt",
+                "detail": { "files": ["a", "b"], "missing": ["b"] }
+            })
         );
     }
 }
