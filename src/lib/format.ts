@@ -85,6 +85,13 @@ export function longDate(d = new Date()): string {
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 }
 
+/** A character folder name as people say it: Forever writes a surname as
+ *  `Ellygie-Vargur`, shown "Ellygie Vargur". First names can't contain '-',
+ *  so only the first one is the join; the surname is kept as written. */
+export function characterName(folder: string): string {
+  return folder.replace("-", " ");
+}
+
 export function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

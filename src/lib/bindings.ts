@@ -362,7 +362,12 @@ export type CategoryNode = {
 };
 
 export type CharacterNode = {
+	/**
+	 *  The folder above the character: Forever's opaque group id (`70`) or,
+	 *  in older folders, the realm. Identity only, never shown.
+	 */
 	realm: string,
+	/**  The character folder as written (`Ellygie-Vargur`), never split. */
 	name: string,
 	totals: Totals,
 	categories: CategoryNode[],
@@ -371,7 +376,17 @@ export type CharacterNode = {
 /**  One character folder: `WTF/Account/<account>/<realm>/<name>`. */
 export type CharacterRef = {
 	account: string,
+	/**
+	 *  The folder between account and character. On Forever it's an opaque
+	 *  group id (`70`); in the older layout it's the realm. Part of the
+	 *  identity only, never shown. (Kept as `realm` so stored sessions
+	 *  still read.)
+	 */
 	realm: string,
+	/**
+	 *  The character folder as written: the full name, with a surname as
+	 *  `Ellygie-Vargur`. Never split; the UI shows it as "Ellygie Vargur".
+	 */
 	name: string,
 };
 
@@ -417,11 +432,12 @@ export type Flavor = {
 	/**  Account folder names under `WTF/Account`. */
 	accounts: string[],
 	/**
-	 *  Realm (on Forever, ruleset) folder names across all accounts, for
-	 *  "7 characters on Ashenvale".
+	 *  Character folders under `WTF/Account/<account>/<group>/`. Forever
+	 *  writes `<group>` as an opaque id (`70`) and the character folder as
+	 *  the full name, `Ellygie-Vargur` with a surname; older folders are
+	 *  `<Realm>/<Name>`. Both are counted, and neither folder is a realm or
+	 *  ruleset to show (probe run 1, feature-matrix fact 5).
 	 */
-	realms: string[],
-	/**  Character folders under `WTF/Account/<account>/<realm>/`. */
 	characters: number,
 	/**
 	 *  `WTF` or `Interface/AddOns` when they're symlinks or junctions, as

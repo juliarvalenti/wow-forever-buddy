@@ -42,12 +42,10 @@ function lookedInSummary(looked: { source: string; path: string }[]): string {
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}` : parts[0];
 }
 
-/** "7 characters on Ashenvale +2 realms" (count first). */
+/** "7 characters". No realm: Forever's WTF folders don't name one. */
 function roster(f: Flavor): string {
   if (f.characters === 0) return "no characters yet";
-  const [first, ...rest] = f.realms;
-  const more = rest.length > 0 ? ` +${plural(rest.length, "realm", "realms")}` : "";
-  return `${plural(f.characters, "character", "characters")} on ${first}${more}`;
+  return plural(f.characters, "character", "characters");
 }
 
 function FlavorLine({ f, active }: { f: Flavor; active: boolean }) {
