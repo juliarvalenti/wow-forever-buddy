@@ -179,6 +179,9 @@
 .d-link:hover { text-decoration: underline; }
 .d-panel-foot { padding: 8px 14px 10px; font-size: 12px; color: var(--soot); border-top: 1px solid var(--stone-a); }
 @media (max-width: 1100px) {
-  .d-strip, .d-unlocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The strip stays one row of four (round-1 fix #6); values shrink instead. */
+  .d-tile .v { font-size: 17px; }
+  .d-tile .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-unlocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .d-cols { grid-template-columns: minmax(0, 1fr); }
 }

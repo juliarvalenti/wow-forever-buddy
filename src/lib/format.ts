@@ -26,7 +26,7 @@ export function when(iso: string, now = new Date()): string {
       : days === 1
         ? "Yesterday"
         : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return `${day}, ${time}`;
 }
 
@@ -54,7 +54,8 @@ export function span(ms: number): string {
 }
 
 function clock(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  // "1:45 AM", not "01:45 AM".
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 /** "Today", "Yesterday" or "Fri 2 Oct". */

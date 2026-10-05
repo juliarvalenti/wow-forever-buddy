@@ -59,18 +59,12 @@ function sessionMs(s: PlaySession, now = Date.now()): number {
 }
 
 /** Who played: "Thrandor, Coinpurse", or "Thrandor and 2 others" with the
- *  full list on hover. Never guessed: no changed folder means unknown. */
+ *  full list on hover. Never guessed from last played. */
 function SessionWho({ s }: { s: PlaySession }) {
   const ended = s.crashed ? " · ended unexpectedly" : "";
   if (!s.ended_at) return <span className="sub">Character known after you log out</span>;
   const names = s.characters.map((c) => c.name);
-  if (names.length === 0)
-    return (
-      <span className="sub">
-        <i>Character unknown</i>
-        {ended}
-      </span>
-    );
+  if (names.length === 0) return <span className="sub">No character settings changed{ended}</span>;
   const who =
     names.length <= 2 ? names.join(", ") : `${names[0]} and ${names.length - 1} others`;
   return (
