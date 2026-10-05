@@ -195,6 +195,15 @@ fn report_failure<T>(handle: &tauri::AppHandle, result: error::AppResult<T>) {
 fn spawn_auto_backups(handle: &tauri::AppHandle) {
     use backup::manifest::Trigger;
 
+    // The db's own daily copy (v0.2 spec §4): at start, then checked hourly,
+    // so an app left open across midnight still takes the next day's.
+    let h = handle.clone();
+    std::thread::spawn(move || loop {
+        let core = &h.state::<AppState>().core;
+        core.take_daily_db_copy(chrono::Local::now().date_naive());
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    });
+
     let h = handle.clone();
     std::thread::spawn(move || {
         let core = &h.state::<AppState>().core;
