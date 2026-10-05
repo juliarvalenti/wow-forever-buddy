@@ -1,7 +1,21 @@
 import { useEffect, useState } from "react";
-import { Archive, FolderOpen, Home, Shield } from "lucide-react";
+import {
+  Archive,
+  Coins,
+  FolderOpen,
+  Home,
+  type LucideIcon,
+  Puzzle,
+  Scale,
+  ScrollText,
+  Settings,
+  Shield,
+  SquareTerminal,
+  Users,
+} from "lucide-react";
 import { commands, type StartupFailure } from "@/lib/bindings";
 import { LiveDot, StatusDot } from "@/components/d";
+import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
@@ -13,6 +27,22 @@ import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { StartupError } from "@/screens/StartupError";
 
 type Screen = "dashboard" | "backups" | "game";
+
+type NavRow =
+  | { group: string }
+  | { id: Screen; label: string; icon: LucideIcon; n?: number | null }
+  | { soon: string; icon: LucideIcon };
+
+/** A sidebar row for a screen that isn't built yet: listed, not clickable. */
+function SoonNav({ label, icon: Icon }: { label: string; icon: LucideIcon }) {
+  return (
+    <button className="soon" disabled title={`${label} · coming soon`}>
+      <Icon size={16} aria-hidden />
+      <span className="lbl">{label}</span>
+      <span className="n">soon</span>
+    </button>
+  );
+}
 
 /** Asks first whether the app could start; only then mounts the app, since
  *  in the failure case no other command has state to work with. */
@@ -29,6 +59,7 @@ function Shell() {
   const game = useGameStatus();
   const install = useInstall();
   const recovery = useRecovery();
+  const snapshots = useSnapshotCount();
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [deferred, setDeferred] = useState(false);
   const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
@@ -49,10 +80,20 @@ function Shell() {
     return () => clearInterval(t);
   }, []);
 
-  const nav: { id: Screen; label: string; icon: typeof Home }[] = [
+  // The mocks' sidebar: two groups. Screens that aren't built yet are listed
+  // as "soon" and do nothing, never dead links.
+  const nav: NavRow[] = [
+    { group: "Overview" },
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "backups", label: "Backups", icon: Archive },
+    { soon: "Characters", icon: Users },
+    { soon: "Ledger", icon: Coins },
+    { soon: "Adventures", icon: ScrollText },
+    { soon: "Auction House", icon: Scale },
+    { group: "Game files" },
+    { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
+    { soon: "Addons", icon: Puzzle },
+    { soon: "Macros", icon: SquareTerminal },
   ];
   const folderOk = install.state.kind === "ok";
   // The saved folder went missing (drive unplugged, folder moved). Backups
@@ -74,17 +115,28 @@ function Shell() {
           </span>
         </div>
         <nav className="d-nav">
-          {nav.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              title={label}
-              aria-current={current === id ? "page" : undefined}
-              onClick={() => setScreen(id)}
-            >
-              <Icon size={16} aria-hidden />
-              <span className="lbl">{label}</span>
-            </button>
-          ))}
+          {nav.map((row) => {
+            if ("group" in row)
+              return (
+                <div key={row.group} className="d-nav-group">
+                  {row.group}
+                </div>
+              );
+            const { icon: Icon } = row;
+            if ("soon" in row) return <SoonNav key={row.soon} label={row.soon} icon={Icon} />;
+            return (
+              <button
+                key={row.id}
+                title={row.label}
+                aria-current={current === row.id ? "page" : undefined}
+                onClick={() => setScreen(row.id)}
+              >
+                <Icon size={16} aria-hidden />
+                <span className="lbl">{row.label}</span>
+                {row.n != null && <span className="n">{row.n}</span>}
+              </button>
+            );
+          })}
         </nav>
         <div className="d-status">
           {game?.unknown ? (
@@ -116,6 +168,9 @@ function Shell() {
                   : "Game folder not set"}
             </span>
           </div>
+        </div>
+        <div className="d-side-foot d-nav">
+          <SoonNav label="Settings" icon={Settings} />
         </div>
       </aside>
 

@@ -40,15 +40,30 @@ echo "== build:mock"
 npm run build:mock >/dev/null
 
 echo "== serve on :$PORT"
-node scripts/serve-csp.mjs dist-mock "$PORT" >/dev/null 2>&1 &
-SERVER=$!
-trap 'kill $SERVER 2>/dev/null' EXIT
-for _ in $(seq 1 50); do curl -s -o /dev/null "localhost:$PORT" && break; sleep 0.1; done
+# Something else on the port (an earlier run, a manual serve-csp) would
+# answer instead of this build, so refuse rather than shoot the wrong thing.
+if curl -s -o /dev/null "localhost:$PORT"; then
+  echo "port $PORT is already serving something; stop it (lsof -ti :$PORT | xargs kill) and rerun" >&2
+  exit 1
+fi
+SERVER=
+serve() {
+  node scripts/serve-csp.mjs dist-mock "$PORT" >"$OUT/.serve.log" 2>&1 &
+  SERVER=$!
+  for _ in $(seq 1 50); do curl -s -o /dev/null "localhost:$PORT" && return 0; sleep 0.1; done
+  echo "serve-csp didn't start; see $OUT/.serve.log" >&2
+  exit 1
+}
+trap '[[ -n "$SERVER" ]] && kill "$SERVER" 2>/dev/null' EXIT
+serve
 
 for row in "${SCENARIOS[@]}"; do
   IFS='|' read -r name scenario steps mock <<<"$row"
   [[ -n "$ONLY" && "$ONLY" != "$name" ]] && continue
   for size in 1280x800 1024x700; do
+    # Restart the server if it died (reported once: SIGTERM after the first
+    # scenario); its log says why.
+    kill -0 "$SERVER" 2>/dev/null || { echo "serve-csp exited, restarting" >&2; serve; }
     args=()
     if [[ -n "$steps" ]]; then
       IFS=';' read -ra parts <<<"$steps"
