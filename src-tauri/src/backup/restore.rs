@@ -197,6 +197,35 @@ fn corrupt_files<'f>(
     corrupt
 }
 
+/// How to recover an interrupted restore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recovery {
+    RollBack,
+    Finish,
+}
+
+impl Recovery {
+    /// The snapshot, selection and mode the recovery restores.
+    fn target(self, journal: &Journal) -> (&str, RestoreSelection, RestoreMode) {
+        match self {
+            // The pre-restore snapshot is partial: restoring all of it writes
+            // the original files back and removes the ones the restore created.
+            Recovery::RollBack => (
+                &journal.original_pre_restore,
+                RestoreSelection {
+                    items: vec![ScopeItem::Everything],
+                },
+                RestoreMode::Overlay,
+            ),
+            Recovery::Finish => (
+                &journal.source_snapshot,
+                journal.selection.clone(),
+                journal.mode,
+            ),
+        }
+    }
+}
+
 /// Everything `run` needs from the app.
 pub struct Restorer<'a> {
     pub backups: &'a BackupService,
@@ -258,44 +287,41 @@ impl Restorer<'_> {
         self.execute(id, selection, mode, Some(confirmed_deletes), None, progress)
     }
 
-    /// After a crash mid-restore: put back what was there before the user's
-    /// restore started, even if an earlier recovery was itself interrupted.
-    pub fn roll_back(
-        &self,
-        journal: &Journal,
-        progress: RestoreProgress<'_>,
-    ) -> AppResult<RestoreReport> {
-        let everything = RestoreSelection {
-            items: vec![ScopeItem::Everything],
-        };
-        // The pre-restore snapshot is partial: restoring all of it writes the
-        // original files back and removes the ones the restore created.
-        // No confirmation step here: roll back's deletions are by definition
-        // the files the original restore created.
-        let report = self.execute(
-            &journal.original_pre_restore,
-            &everything,
-            RestoreMode::Overlay,
-            None,
-            Some(journal),
-            progress,
-        )?;
-        journal::clear(self.journal_dir)?;
-        Ok(report)
+    /// What recovering an interrupted restore would do, for the same
+    /// confirm-the-deletions step as a normal restore. Touches nothing.
+    pub fn recovery_plan(&self, journal: &Journal, how: Recovery) -> AppResult<RestorePlan> {
+        let (id, selection, mode) = how.target(journal);
+        plan(
+            &self.backups.manifest(id)?,
+            &self.target.game,
+            &selection,
+            mode,
+        )
     }
 
-    /// After a crash mid-restore: finish the user's restore. Files already
-    /// written count as unchanged.
-    pub fn finish(
+    /// After a crash mid-restore, either
+    /// - `RollBack`: put back what was there before the user's restore
+    ///   started, even if an earlier recovery was itself interrupted; or
+    /// - `Finish`: finish the user's restore (files already written count as
+    ///   unchanged).
+    ///
+    /// Like `run`, refused with `DeletionsChanged` if it would delete a file
+    /// not in `confirmed_deletes` (from `recovery_plan`). This matters: after
+    /// a play session, finishing a mirror restore would otherwise remove the
+    /// SavedVariables WoW wrote meanwhile without anyone seeing the list.
+    pub fn recover(
         &self,
         journal: &Journal,
+        how: Recovery,
+        confirmed_deletes: &[RelPath],
         progress: RestoreProgress<'_>,
     ) -> AppResult<RestoreReport> {
+        let (id, selection, mode) = how.target(journal);
         let report = self.execute(
-            &journal.source_snapshot,
-            &journal.selection,
-            journal.mode,
-            None,
+            id,
+            &selection,
+            mode,
+            Some(confirmed_deletes),
             Some(journal),
             progress,
         )?;
@@ -1206,6 +1232,24 @@ mod tests {
         assert!(report.files > 0);
     }
 
+    /// The deletions a user would confirm in the recovery dialog.
+    fn recovery_confirmed(t: &T, journal: &Journal, how: Recovery) -> Vec<RelPath> {
+        with_restorer(&t.core, |r| r.recovery_plan(journal, how))
+            .unwrap()
+            .delete
+            .iter()
+            .map(|d| RelPath::new(d).unwrap())
+            .collect()
+    }
+
+    /// Previews a recovery, then runs it with that preview's deletions confirmed.
+    fn recover(t: &T, journal: &Journal, how: Recovery) -> AppResult<RestoreReport> {
+        let ok = recovery_confirmed(t, journal, how);
+        with_restorer(&t.core, |r| {
+            r.recover(journal, how, &ok, &mut |_, _| Ok(()))
+        })
+    }
+
     /// Runs a restore that "crashes" after its first change.
     fn interrupted(t: &T, id: &str) {
         let ok = confirmed(t, id, &everything(), RestoreMode::Mirror);
@@ -1244,11 +1288,53 @@ mod tests {
 
         // Rolling back restores the pre-restore state, including removing
         // the deleted WeakAuras.lua the restore had put back.
-        with_restorer(&t.core, |r| r.roll_back(&journal, &mut |_, _| Ok(()))).unwrap();
+        recover(&t, &journal, Recovery::RollBack).unwrap();
         assert_eq!(tree(&t), mutated);
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn recovery_deletions_beyond_the_confirmed_list_are_refused() {
+        let t = setup();
+        let id = snapshot(&t);
+        mutate(&t);
+        interrupted(&t, &id);
+        let journal = journal::read(&t.core.paths.local_data_dir)
+            .unwrap()
+            .unwrap();
+        let seen = recovery_confirmed(&t, &journal, Recovery::Finish);
+
+        // The user plays before deciding; WoW saves a new addon's settings,
+        // which finishing the mirror restore would remove.
+        let new_sv = format!("{ACCT}/SavedVariables/FromPlaying.lua");
+        write(&t, &new_sv, "FromPlayingDB = {}\n");
+        let sv = path(&t, &new_sv);
+        let before = tree(&t);
+        let snapshots = t.core.backups().unwrap().list().unwrap().len();
+
+        let err = with_restorer(&t.core, |r| {
+            r.recover(&journal, Recovery::Finish, &seen, &mut |_, _| Ok(()))
+        })
+        .unwrap_err();
+        assert!(
+            matches!(&err, AppError::DeletionsChanged { paths }
+                if paths.iter().any(|p| p.ends_with("FromPlaying.lua"))),
+            "{err}"
+        );
+        // Nothing changed, no safety snapshot taken, and the journal stays
+        // so the user can still decide.
+        assert_eq!(tree(&t), before);
+        assert_eq!(t.core.backups().unwrap().list().unwrap().len(), snapshots);
+        assert_eq!(
+            journal::read(&t.core.paths.local_data_dir).unwrap(),
+            Some(journal.clone())
+        );
+
+        // Once the new list is seen, it goes ahead.
+        recover(&t, &journal, Recovery::Finish).unwrap();
+        assert!(!sv.exists());
     }
 
     #[test]
@@ -1262,7 +1348,7 @@ mod tests {
         let journal = journal::read(&t.core.paths.local_data_dir)
             .unwrap()
             .unwrap();
-        with_restorer(&t.core, |r| r.finish(&journal, &mut |_, _| Ok(()))).unwrap();
+        recover(&t, &journal, Recovery::Finish).unwrap();
         assert_eq!(tree(&t), original);
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()
@@ -1308,8 +1394,9 @@ mod tests {
         assert_eq!(first.original_pre_restore, first.pre_restore_snapshot);
 
         // "Finish" is itself interrupted after one more change.
+        let ok = recovery_confirmed(&t, &first, Recovery::Finish);
         let err = with_restorer(&t.core, |r| {
-            r.finish(&first, &mut |done, _| {
+            r.recover(&first, Recovery::Finish, &ok, &mut |done, _| {
                 if done == 1 {
                     Err(AppError::Io("crashed again".into()))
                 } else {
@@ -1327,7 +1414,7 @@ mod tests {
         assert_ne!(second.pre_restore_snapshot, first.pre_restore_snapshot);
 
         // Rolling back now still returns to the state before the user's restore.
-        with_restorer(&t.core, |r| r.roll_back(&second, &mut |_, _| Ok(()))).unwrap();
+        recover(&t, &second, Recovery::RollBack).unwrap();
         assert_eq!(tree(&t), mutated);
         assert!(journal::read(&t.core.paths.local_data_dir)
             .unwrap()

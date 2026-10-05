@@ -79,10 +79,18 @@ export const commands = {
 	 */
 	restoreJournalStatus: () => __TAURI_INVOKE<RecoveryStatus>("restore_journal_status"),
 	/**
+	 *  What rolling back or finishing the interrupted restore would do, for the
+	 *  recovery dialog's confirm step. Changes nothing. Discard has no plan.
+	 */
+	restoreJournalPreview: (action: JournalAction) => __TAURI_INVOKE<RestorePlan>("restore_journal_preview", { action }),
+	/**
 	 *  Rolls back, finishes or discards an interrupted restore. Until one of
 	 *  these succeeds, `backup_restore` is refused with `RestorePending`.
+	 *  `confirmed_deletes` is `restore_journal_preview`'s `delete` list the user
+	 *  confirmed; roll back and finish are refused with `DeletionsChanged` if
+	 *  they would remove anything else. Discard ignores it.
 	 */
-	restoreJournalResolve: (action: JournalAction) => __TAURI_INVOKE<RestoreReport>("restore_journal_resolve", { action }),
+	restoreJournalResolve: (action: JournalAction, confirmedDeletes: RelPath[]) => __TAURI_INVOKE<RestoreReport>("restore_journal_resolve", { action, confirmedDeletes }),
 	/**
 	 *  Whether WoW is running, as of the last poll (every 2 s). The UI calls this
 	 *  on mount, then follows `game-status-changed`.

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { commands, type RecoveryStatus } from "@/lib/bindings";
 import { Button, Callout, Dialog, PrimaryButton } from "@/components/d";
 import { when } from "@/lib/format";
-import type { useRecovery } from "@/hooks/useRestore";
+import type { RecoveryAction, RecoveryPreview, useRecovery } from "@/hooks/useRestore";
+import { PlanDetails } from "@/screens/PlanDetails";
 
 /** When snapshot `id` was taken, or null until known (or if it's gone). */
 function useTakenAt(id: string | null | undefined): string | null {
@@ -33,7 +34,7 @@ export function RecoveryDialog({
   /** Opens that safety snapshot, or the Safety list when null. */
   onOpenSafety: (id: string | null) => void;
 }) {
-  const { status, busy, error, resolve } = recovery;
+  const { status, busy, error, confirming, preview, resolve } = recovery;
   const takenAt = useTakenAt(status?.kind === "pending" ? status.journal.original_pre_restore : null);
   if (!status || status.kind === "none") return null;
 
@@ -67,6 +68,8 @@ export function RecoveryDialog({
     );
   }
 
+  if (confirming) return <ConfirmRecovery recovery={recovery} preview={confirming} />;
+
   const { journal } = status;
   return (
     <Dialog
@@ -81,11 +84,11 @@ export function RecoveryDialog({
             Leave files as they are
           </Button>
           <span className="d-grow" />
-          <Button onClick={() => resolve("finish")} disabled={busy}>
-            Finish restore
+          <Button onClick={() => preview("finish")} disabled={busy}>
+            Finish restore…
           </Button>
-          <PrimaryButton onClick={() => resolve("roll_back")} disabled={busy}>
-            {busy ? "Working…" : "Roll back"}
+          <PrimaryButton onClick={() => preview("roll_back")} disabled={busy}>
+            Roll back…
           </PrimaryButton>
         </>
       }
@@ -100,6 +103,77 @@ export function RecoveryDialog({
       {takenAt && <p className="d-muted">Safety copy: taken {when(takenAt)}</p>}
       <p className="d-dim">Either way, the safety copy stays in Backups.</p>
       {error && <Callout tone="bad">{error}</Callout>}
+    </Dialog>
+  );
+}
+
+const RECOVERY_COPY: Record<
+  RecoveryAction,
+  { title: string; button: string; removedBecause: (one: boolean) => string }
+> = {
+  roll_back: {
+    title: "Roll back your last restore?",
+    button: "Roll back",
+    removedBecause: (one) => (one ? "your restore added it" : "your restore added them"),
+  },
+  finish: {
+    title: "Finish your last restore?",
+    button: "Finish restore",
+    removedBecause: (one) => (one ? "it isn't in that snapshot" : "they aren't in that snapshot"),
+  },
+};
+
+/** Roll back and finish change files, so they get the same confirm step as a
+ *  restore: every file to remove is listed, and the backend refuses to
+ *  remove anything not on this list. */
+function ConfirmRecovery({
+  recovery,
+  preview,
+}: {
+  recovery: ReturnType<typeof useRecovery>;
+  preview: RecoveryPreview;
+}) {
+  const { busy, error, cancel, resolve } = recovery;
+  const { action, plan } = preview;
+  const copy = RECOVERY_COPY[action];
+  // Unlike a new restore, an empty plan still goes ahead: it clears the
+  // notice once there's nothing left to change.
+  const blocked = !plan || plan.read_only.length > 0;
+  const empty = plan != null && plan.write_count + plan.delete.length === 0;
+  return (
+    <Dialog
+      title={copy.title}
+      onClose={busy ? undefined : cancel}
+      footer={
+        <>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={cancel} disabled={busy}>
+            Back
+          </Button>
+          <PrimaryButton onClick={() => plan && resolve(action, plan)} disabled={busy || blocked}>
+            {busy ? "Working…" : copy.button}
+          </PrimaryButton>
+        </>
+      }
+    >
+      {preview.changed && (
+        <Callout tone="bad">
+          Stopped before changing anything. More files would be removed than you confirmed.
+        </Callout>
+      )}
+      {preview.error && <Callout tone="bad">{preview.error}</Callout>}
+      {error && <Callout tone="bad">{error}</Callout>}
+      {!plan && !preview.error && <p className="d-muted">Working out what changes…</p>}
+      {plan && empty && <p>Nothing left to change. This clears the notice.</p>}
+      {plan && !empty && <PlanDetails plan={plan} removedBecause={copy.removedBecause} />}
+      {plan && !empty && (
+        <p className="d-muted">
+          A safety snapshot of the current files is taken before anything changes.
+        </p>
+      )}
+      {preview.changed && (
+        <p style={{ color: "var(--ember-2)" }}>The list changed. Please check it again.</p>
+      )}
     </Dialog>
   );
 }

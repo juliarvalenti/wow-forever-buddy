@@ -5,8 +5,8 @@ use tauri_specta::Event;
 use crate::backup::journal::{self, RecoveryStatus};
 use crate::backup::manifest::Trigger;
 use crate::backup::restore::{
-    self, with_restorer, RestoreMode, RestorePlan, RestoreReport, RestoreSelection, Restorer,
-    VerifyReport,
+    self, with_restorer, Recovery, RestoreMode, RestorePlan, RestoreReport, RestoreSelection,
+    Restorer, VerifyReport,
 };
 use crate::error::{AppError, AppResult};
 use crate::fsx::relpath::RelPath;
@@ -132,25 +132,56 @@ pub fn restore_journal_status(state: State<'_, AppState>) -> RecoveryStatus {
     })
 }
 
+fn pending(journal_dir: &std::path::Path) -> AppResult<journal::Journal> {
+    journal::read(journal_dir)?.ok_or_else(|| AppError::NotFound("no interrupted restore".into()))
+}
+
+impl JournalAction {
+    fn recovery(self) -> Option<Recovery> {
+        match self {
+            JournalAction::RollBack => Some(Recovery::RollBack),
+            JournalAction::Finish => Some(Recovery::Finish),
+            JournalAction::Discard => None,
+        }
+    }
+}
+
+/// What rolling back or finishing the interrupted restore would do, for the
+/// recovery dialog's confirm step. Changes nothing. Discard has no plan.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn restore_journal_preview(
+    state: State<'_, AppState>,
+    action: JournalAction,
+) -> AppResult<RestorePlan> {
+    let how = action
+        .recovery()
+        .ok_or_else(|| AppError::NotFound("discard changes no files".into()))?;
+    with_restorer(&state.core, |r| {
+        r.recovery_plan(&pending(r.journal_dir)?, how)
+    })
+}
+
 /// Rolls back, finishes or discards an interrupted restore. Until one of
 /// these succeeds, `backup_restore` is refused with `RestorePending`.
+/// `confirmed_deletes` is `restore_journal_preview`'s `delete` list the user
+/// confirmed; roll back and finish are refused with `DeletionsChanged` if
+/// they would remove anything else. Discard ignores it.
 #[tauri::command]
 #[specta::specta]
 pub async fn restore_journal_resolve(
     app: AppHandle,
     action: JournalAction,
+    confirmed_deletes: Vec<RelPath>,
 ) -> AppResult<RestoreReport> {
     restore_job(app, move |r, progress| {
-        let pending = || {
-            journal::read(r.journal_dir)?
-                .ok_or_else(|| AppError::NotFound("no interrupted restore".into()))
-        };
-        match action {
-            JournalAction::RollBack => r.roll_back(&pending()?, progress),
-            JournalAction::Finish => r.finish(&pending()?, progress),
-            JournalAction::Discard => {
-                // Works even when the journal can't be read.
-                let source = pending().map(|j| j.source_snapshot).unwrap_or_default();
+        match action.recovery() {
+            Some(how) => r.recover(&pending(r.journal_dir)?, how, &confirmed_deletes, progress),
+            None => {
+                // Discard works even when the journal can't be read.
+                let source = pending(r.journal_dir)
+                    .map(|j| j.source_snapshot)
+                    .unwrap_or_default();
                 r.discard()?;
                 Ok(RestoreReport {
                     snapshot_id: source,
