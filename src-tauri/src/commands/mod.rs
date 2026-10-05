@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod backup;
+pub mod characters;
 pub mod game;
 pub mod ingest;
 pub mod install;
