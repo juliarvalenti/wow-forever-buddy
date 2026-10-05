@@ -111,6 +111,34 @@
       '<div class="gtip" style="right:44px;top:210px"><i>Forever Buddy</i>This week: 4 to do<br><span style="color:#a9a291">Click to open · /fb</span></div>'],
     ['Login line', 'Once per login, and only when the app delivered something new.', 'cave',
       '<div class="chat"><div class="sys">Welcome to World of Warcraft!</div><div><span class="gold">Forever Buddy:</span> this week\'s checklist is ready. /fb to open.</div></div>'],
+    ['v0.4 idea: alt-aware tooltip', 'Our lines are appended under the game\'s own tooltip, after a gap, in its colours. They show whenever an item tooltip shows: bags, vendors, loot, chat links.', '',
+      '<div class="gtip" style="left:16px;top:16px;width:280px"><i style="color:#ffffff">Runecloth</i>Max Stack: 20<br><span style="color:#ffd100">Used to make Runecloth armor and bags.</span><br>Sell Price: 20 <span style="color:#c7c7cf">●</span>' +
+      '<div style="height:8px"></div><div style="color:#ffd100">Forever Buddy</div>' +
+      '<div style="display:flex;justify-content:space-between"><span class="war">Coinpurse</span><span>340 · bank</span></div>' +
+      '<div style="display:flex;justify-content:space-between"><span class="dru">Velyra</span><span>60 · bank</span></div>' +
+      '<div style="display:flex;justify-content:space-between"><span class="pal">Thrandor</span><span>40 · bags</span></div>' +
+      '<div style="display:flex;justify-content:space-between;color:#a9a291"><span>All alts</span><span>440</span></div>' +
+      '<div style="display:flex;justify-content:space-between"><span>Last scan</span><span>≈ 1g 12s each</span></div>' +
+      '<div style="display:flex;justify-content:space-between"><span>Your plan needs</span><span>20 more</span></div>' +
+      '<div style="color:#a9a291;font-size:10.5px;margin-top:3px">As of each alt\'s last logout · scan 3 days ago</div></div>'],
+    ['v0.4 idea: session coach', 'A tiny movable strip while you play. It counts from login, from out-of-combat events only (money, XP, loot). Hides itself in combat if you want; shift-drag to move.', 'cave',
+      '<div class="gf" style="width:210px;top:150px"><div class="gf-h" style="padding:4px 8px"><b style="font-size:12px">This session</b><span style="margin-left:auto;font-size:11px;color:var(--dim)">1h 42m</span></div>' +
+      '<div class="gf-b" style="gap:3px;padding:6px 10px 8px">' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Gold</span><span class="r" style="color:#fff">+312g · 184g/hr</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Experience</span><span class="r" style="color:#fff">87,000/hr</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Level 60 in</span><span class="r" style="color:#fff">≈ 41 min</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Loot</span><span class="r" style="color:#fff">47 items · ≈ 96g</span></div>' +
+      '</div></div>'],
+    ['v0.4 idea: session card at logout', 'Shown during the logout countdown, then saved; the same session becomes the Adventure entry in the app.', '',
+      '<div class="gf" style="left:50%;right:auto;transform:translateX(-50%);top:40px;width:270px"><div class="gf-h"><b>Thrandor\'s evening</b><span class="x">×</span></div>' +
+      '<div class="gf-b" style="gap:5px">' +
+      '<div style="color:#ffd100;font-size:13px">Ding! Level 60</div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Played</span><span class="r" style="color:#fff">3h 12m</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Gold</span><span class="r" style="color:#1eff00">+312g</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Best find</span><span class="r" style="color:#0070dd">Truestrike Shoulders</span></div>' +
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><span class="t">Quests</span><span class="r" style="color:#fff">9</span></div>' +
+      '</div><div class="gf-f"><span>Saved to your journal in Forever Buddy</span></div></div>' +
+      '<div style="position:absolute;left:50%;transform:translateX(-50%);top:270px;width:260px;padding:10px;text-align:center;font-size:12.5px;background:rgba(0,0,0,.85);border-radius:6px;box-shadow:0 0 0 1px #6f6a5e">Logging out in 17 seconds<div style="margin-top:8px"><button class="gbtn" style="margin:0">Cancel</button></div></div>'],
     ['Later: quest tracker', 'Placeholder until the quest-data spike. Objective-tracker style, in its own movable frame.', '',
       '<span class="tag">later</span><div class="trk"><div class="hd"><span>Forever Buddy plan</span><span style="color:var(--dim)">−</span></div>' +
       '<div class="q">The Archivist</div><div class="o done">- Archivist Galford slain</div><div class="o">- Return to Duke Nicholas Zverenhoff</div>' +

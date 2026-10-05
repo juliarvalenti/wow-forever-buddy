@@ -57,6 +57,27 @@ The route follows probe run 4, in the order of the Bridge spec (`docs/specs/brid
 ## 7. Later: the quest planner tracker
 A compact list in the objective tracker's own style (`ObjectiveTrackerFrame` fonts: gold heads, white lines, grey done lines). It sits in its own small movable frame, never injected into Blizzard's tracker, and is registered with Edit Mode if the API allows. The mock in `ingame.html?state=tracker` is a placeholder until the quest-data spike answers what we can know.
 
+## 8. v0.4 proposals (mocked in `ingame.html`, not yet specced)
+- **Alt-aware tooltip:**
+  - Appended to the game's own item tooltip with `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, …)`. Use no tooltip of our own.
+  - After a gap, a gold "Forever Buddy" head, then one row per alt holding the item, with the name in class colour and the right side reading "340 · bank".
+  - After those rows: "All alts" when there are two or more, "Last scan ≈ 1g 12s each" once F5 has a price, and "Your plan needs 20 more" when a plan or list exists.
+  - Finish with a small grey footer: "As of each alt's last logout · scan 3 days ago".
+  - Show at most 6 alt rows, then "+2 more". The current character's bags come live from the game, and other alts come from a data slot (an inventory and price index the app writes).
+  - Shift shows the fuller version (bank and mail split, per-alt dates).
+  - Never in combat-only tooltips, never on unit tooltips.
+- **Session coach:**
+  - A small movable strip headed "This session", with the session length in the meta.
+  - Rows: Gold (+312g · 184g/hr), Experience (87,000/hr), "Level 60 in ≈ 41 min" (only while levelling), and Loot (47 items · ≈ 96g, the worth only with prices).
+  - It counts from login, using only out-of-combat events (`PLAYER_MONEY`, `PLAYER_XP_UPDATE`, our bag diff).
+  - It's off by default, toggled with `/fb coach` or the compartment menu.
+  - An option hides it in combat, and its position is saved.
+- **Session card at logout:**
+  - It appears during the logout countdown, above the game's own dialog, and never blocks it.
+  - Contents: a gold "Ding! Level 60" if the character levelled, then played time, gold, best find (in quality colour), and quests.
+  - Footer: "Saved to your journal in Forever Buddy".
+  - It's the same data V9 already turns into the Adventure entry. The card is only the in-game face.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
