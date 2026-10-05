@@ -1002,6 +1002,43 @@ mod tests {
         }
     }
 
+    /// The Account gold tile and the chart's last day are the same gold:
+    /// every character's latest point (S2: the mismatch seen was the mock's).
+    #[test]
+    fn the_tile_total_is_the_charts_last_day() {
+        let db = Db::open_in_memory().unwrap();
+        for (i, name) in ["A", "B", "C", "D", "E", "F"].iter().enumerate() {
+            let id = character(&db, name, name, None);
+            let i = i as i64;
+            point(&db, id, NOW - (40 - i) * DAY, 1_000 * (i + 1));
+            point(&db, id, NOW - (10 - i) * DAY, 2_345 * (i + 1));
+            point(&db, id, NOW - (i + 1) * H, 6_789 * (i + 1) + 7);
+        }
+        for range in [
+            LedgerRange::Week,
+            LedgerRange::Month,
+            LedgerRange::Quarter,
+            LedgerRange::All,
+        ] {
+            let l = ledger(&db, FLAVOR, range, NOW, &utc()).unwrap();
+            assert_eq!(
+                l.chart.account.last().copied(),
+                Some(l.tiles.account_gold),
+                "{range:?}"
+            );
+            let lines: f64 = l
+                .chart
+                .series
+                .iter()
+                .filter_map(|s| *s.values.last().unwrap())
+                .sum();
+            assert_eq!(
+                lines, l.tiles.account_gold,
+                "{range:?}: the lines add up to it too"
+            );
+        }
+    }
+
     #[test]
     fn export_writes_a_csv_but_never_into_the_game_folder() {
         let db = Db::open_in_memory().unwrap();
