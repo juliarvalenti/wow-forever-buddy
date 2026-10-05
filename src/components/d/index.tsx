@@ -136,7 +136,7 @@ export function Callout({
   );
 }
 
-export type PillKind = "auto" | "manual" | "safety" | "ok" | "warn" | "bad";
+export type PillKind = "auto" | "manual" | "safety" | "ok" | "warn" | "bad" | "none";
 
 export function Pill({ kind, children }: Children & { kind: PillKind }) {
   return <span className={`d-pill ${kind}`}>{children}</span>;
@@ -159,6 +159,35 @@ export function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/** An on/off setting. `locked` shows it fixed (always on), not clickable. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  locked,
+  disabled,
+}: {
+  checked: boolean;
+  onChange?: (checked: boolean) => void;
+  /** For screen readers: the setting's name. */
+  label: string;
+  locked?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-disabled={locked || disabled || undefined}
+      title={locked ? "Locked on" : undefined}
+      className={`d-switch${checked ? " on" : ""}${locked ? " locked" : ""}`}
+      onClick={locked || disabled ? undefined : () => onChange?.(!checked)}
+    />
   );
 }
 

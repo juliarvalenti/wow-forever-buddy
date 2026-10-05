@@ -39,6 +39,7 @@ SCENARIOS=(
   "characters|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card|characters"
   "character|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
+  "settings|settings|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-svc|settings"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
 )
 
