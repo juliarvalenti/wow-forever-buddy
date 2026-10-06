@@ -4,6 +4,7 @@ import {
   Backpack,
   ChevronLeft,
   ChevronRight,
+  Image as ImageIcon,
   Landmark,
   type LucideIcon,
   Mail,
@@ -36,6 +37,7 @@ import {
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
 import { useGoodsWorth } from "@/hooks/useWorth";
+import { useSettings } from "@/hooks/useSettings";
 import {
   ago,
   characterName,
@@ -172,6 +174,9 @@ function Blank({ size = 64 }: { size?: number }) {
 
 type Sort = "level" | "gold" | "seen";
 
+/** settings.ui key: the item-icons offer was dismissed ("Not now"). */
+const ICON_NUDGE = "characters.icon_nudge";
+
 const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
 
 /** Characters: every alt's card, or one character's sheet. Characters in
@@ -182,6 +187,7 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   const worth = useGoodsWorth();
   const roster = useRoster();
   const addon = useAddon();
+  const { settings, update } = useSettings();
   const [sort, setSort] = useState<Sort>("gold");
   const [open, setOpen] = useState<number | null>(null);
   // Kept while a sheet opened from a result is on show, so Back returns to it.
@@ -213,6 +219,14 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
       .sort((a, b) => (b.last_played ?? "").localeCompare(a.last_played ?? ""));
   }, [overview, roster]);
   const addonMissing = addon.status != null && addon.status.installed_version == null;
+  // F8c: item icons are opt-in; offer them here, where the letters are, once
+  // there's a game folder to read them from (IMPLEMENTING §13).
+  const iconNudge =
+    settings != null &&
+    settings.install != null &&
+    !settings.item_icons &&
+    settings.ui?.[ICON_NUDGE] !== "dismissed" &&
+    !addonMissing;
 
   const cards = useMemo(() => {
     const list = [...(overview?.characters ?? [])];
@@ -277,6 +291,18 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
           <button onClick={onOpenDashboard}>
             How to install <ChevronRight size={13} aria-hidden />
           </button>
+        </div>
+      )}
+      {iconNudge && anySeen && (
+        <div className="ch-banner">
+          <ImageIcon size={16} aria-hidden />
+          <span className="grow">
+            Items show letters. Turn on icons to see the real pictures, read from your own game files.
+          </span>
+          <Button onClick={() => update({ item_icons: true })}>Show icons</Button>
+          <Button variant="ghost" onClick={() => update({ ui: { [ICON_NUDGE]: "dismissed" } })}>
+            Not now
+          </Button>
         </div>
       )}
       {overview && !anySeen && unseen.length === 0 ? (

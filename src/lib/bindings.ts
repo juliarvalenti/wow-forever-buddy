@@ -266,10 +266,14 @@ export const commands = {
 	gameStatus: () => __TAURI_INVOKE<GameStatus>("game_status"),
 	/**
 	 *  Settings > Game data cache: how many icons are cached, their size, and
-	 *  the build they came from.
+	 *  the build they came from (unknown while item icons are off: even the
+	 *  build files aren't read then).
 	 */
 	iconsCacheStatus: () => __TAURI_INVOKE<IconCacheStatus>("icons_cache_status"),
-	/**  "Rebuild": empties the cache and reads every known item's icon again. */
+	/**
+	 *  "Rebuild": empties the cache and reads every known item's icon again.
+	 *  Refused while item icons are off.
+	 */
 	iconsCacheRebuild: () => __TAURI_INVOKE<IconFill>("icons_cache_rebuild"),
 	/**  "Clear": empties the cache. Icons are read again as they're shown. */
 	iconsCacheClear: () => __TAURI_INVOKE<null>("icons_cache_clear"),
@@ -1645,6 +1649,12 @@ export type Settings = {
 	process_names_extra?: string[],
 	integrations?: Integrations,
 	/**
+	 *  "Show item icons from my game files" (F8c). Off by default: reading
+	 *  the game's art archive is the user's choice, and while it's off the
+	 *  app never opens the game's `Data` folder.
+	 */
+	item_icons?: boolean,
+	/**
 	 *  Free-form UI preferences (remembered tabs, filters). The backend never reads it.
 	 *  Strings only; the frontend JSON-encodes anything structured.
 	 */
@@ -1669,6 +1679,7 @@ export type SettingsPatch_Deserialize = {
 	backup?: BackupPatch_Deserialize | null,
 	process_names_extra?: string[] | null,
 	integrations?: IntegrationsPatch | null,
+	item_icons?: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui?: { [key in string]: string | null } | null,
 };
@@ -1683,6 +1694,7 @@ export type SettingsPatch_Serialize = {
 	backup: BackupPatch_Serialize | null,
 	process_names_extra: string[] | null,
 	integrations: IntegrationsPatch | null,
+	item_icons: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui: { [key in string]: string | null } | null,
 };

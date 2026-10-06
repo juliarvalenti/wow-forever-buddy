@@ -179,7 +179,14 @@ export function Settings({
               </div>
             </div>
             <AhNote status={ah} />
-            <GameDataCache />
+            <SwitchRow
+              title="Show item icons from my game files"
+              desc="Reads icon pictures from your own WoW install. Off: items show their first letter, and the game's files aren't opened."
+              checked={settings?.item_icons ?? false}
+              disabled={!settings}
+              onChange={(v) => update({ item_icons: v })}
+            />
+            <GameDataCache enabled={settings?.item_icons ?? false} />
           </Panel>
 
           <Panel>
@@ -267,7 +274,7 @@ export function Settings({
           <Panel>
             <PanelHeader title="About" />
             <div className="st-set full">
-              <div className="t">Forever Buddy{info ? ` ${info.version}` : ""}</div>
+              <div className="t">WoW Forever Buddy{info ? ` ${info.version}` : ""}</div>
               <div className="d">
                 Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft and
                 Blizzard Entertainment are trademarks or registered trademarks of Blizzard
@@ -458,7 +465,7 @@ function SwitchRow({
 /** F8: item icons read from the game's own files, cached on this PC. Rebuild
  *  reads every known item's icon again; Clear empties it, and icons are read
  *  again as they're shown. */
-function GameDataCache() {
+function GameDataCache({ enabled }: { enabled: boolean }) {
   const [status, setStatus] = useState<IconCacheStatus | null>(null);
   const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -466,7 +473,8 @@ function GameDataCache() {
   const refresh = () => commands.iconsCacheStatus().then(setStatus, (e) => setResult(errorText(e)));
   useEffect(() => {
     refresh();
-  }, []);
+    setResult(null);
+  }, [enabled]);
 
   const run = async (what: "rebuild" | "clear") => {
     setBusy(what);
@@ -489,6 +497,27 @@ function GameDataCache() {
       refresh();
     }
   };
+
+  // Off (F8c, IMPLEMENTING §13): the row only shows what's kept from before,
+  // dimmed, with Clear; with nothing kept it's hidden.
+  if (!enabled) {
+    if (!status?.files) return null;
+    return (
+      <div className="st-set full" style={{ opacity: 0.6 }}>
+        <div className="t">Game data cache</div>
+        <div className="ctl" style={{ marginTop: 2 }}>
+          <span className="d">
+            {plural(status.files, "icon", "icons")} · {bytes(status.bytes)} kept from before. Clear
+            removes them.
+          </span>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={() => run("clear")} disabled={busy != null}>
+            {busy === "clear" ? "Clearing…" : "Clear"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="st-set full">

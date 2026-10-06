@@ -6,6 +6,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { useIconsEnabled } from "@/hooks/useIconsEnabled";
 
 type Children = { children?: ReactNode };
 
@@ -73,10 +74,12 @@ function iconUrl(id: number): string | null {
 
 /** An item's real icon, read from the game (F8). Goes inside its letter
  *  tile, which keeps the quality border: it covers the letter once it
- *  loads, and removes itself if the icon can't be read. */
+ *  loads, and removes itself if the icon can't be read. Nothing is asked
+ *  for while "Show item icons" is off (F8c). */
 export function ItemIcon({ id }: { id: number | null | undefined }) {
+  const on = useIconsEnabled();
   const [failed, setFailed] = useState<number | null>(null);
-  const src = id != null && id !== failed ? iconUrl(id) : null;
+  const src = on && id != null && id !== failed ? iconUrl(id) : null;
   if (id == null || src == null) return null;
   return (
     <img className="d-icon" src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(id)} />

@@ -257,7 +257,8 @@ pub fn run() {
 /// `icon://localhost/<fileDataId>` (`http://icon.localhost/…` on Windows):
 /// an item icon as PNG, or 404 for "no icon", and the UI keeps its letter
 /// tile. The path must be a number; nothing from it reaches the file system
-/// except as that number.
+/// except as that number. While item icons are off (F8c) every request is a
+/// 404, cached or not.
 fn icon_protocol(
     ctx: tauri::UriSchemeContext<'_, tauri::Wry>,
     request: tauri::http::Request<Vec<u8>>,
@@ -280,7 +281,7 @@ fn icon_protocol(
     let Some(state) = ctx.app_handle().try_state::<AppState>() else {
         return responder.respond(not_found());
     };
-    let (Some(id), Some(flavor)) = (id, state.core.flavor_dir()) else {
+    let (Some(id), Some(flavor)) = (id, state.core.icon_flavor_dir()) else {
         return responder.respond(not_found());
     };
     state.core.icons.get(
@@ -315,8 +316,8 @@ fn spawn_ingest(handle: &tauri::AppHandle) -> std::sync::mpsc::Sender<ingest::Jo
             .emit(&h);
         }
         // Item icons (F8): read any new item's icon now, in the background,
-        // so screens find them cached.
-        if let (Some(flavor), Ok(ids)) = (core.flavor_dir(), icons::known_ids(&core.db)) {
+        // so screens find them cached. Only when the user turned them on.
+        if let (Some(flavor), Ok(ids)) = (core.icon_flavor_dir(), icons::known_ids(&core.db)) {
             core.icons.prefetch(flavor, ids);
         }
         // Auctionator's prices (F5), on the same triggers.

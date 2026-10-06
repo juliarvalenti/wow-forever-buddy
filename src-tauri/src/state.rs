@@ -242,6 +242,16 @@ impl AppCore {
         Some(choice.root.join(&choice.flavor))
     }
 
+    /// The flavor folder to read item icons from, or `None` while "Show item
+    /// icons from my game files" is off (F8c). Every path into the game's
+    /// art archive goes through this, so off means nothing there is opened.
+    pub fn icon_flavor_dir(&self) -> Option<PathBuf> {
+        if !self.settings.get().item_icons {
+            return None;
+        }
+        self.flavor_dir()
+    }
+
     pub fn active_game(&self) -> AppResult<ActiveGame> {
         let choice = self.settings.get().install.ok_or(AppError::NoInstall)?;
         // Re-validates the saved install, and refuses if a linked folder (a
@@ -472,6 +482,26 @@ mod tests {
             ))
             .unwrap();
         assert!(!s.backup.on_app_start, "everything else still goes through");
+    }
+
+    /// F8c: item icons are opt-in. Until the switch is on there's no folder
+    /// to read icons from, so nothing in the game's art archive is opened.
+    #[test]
+    fn item_icons_are_off_until_turned_on() {
+        let (dir, root) = crate::test_support::fixture_copy();
+        let core = AppCore::new(AppPaths::under(&dir.path().join("app"))).unwrap();
+        crate::install::set(&core.settings, &root, None).unwrap();
+        assert!(!core.settings.get().item_icons);
+        assert!(core.flavor_dir().is_some());
+        assert_eq!(core.icon_flavor_dir(), None);
+
+        let patch = |v: serde_json::Value| serde_json::from_value::<SettingsPatch>(v).unwrap();
+        core.update_settings(patch(serde_json::json!({ "item_icons": true })))
+            .unwrap();
+        assert_eq!(core.icon_flavor_dir(), core.flavor_dir());
+        core.update_settings(patch(serde_json::json!({ "item_icons": false })))
+            .unwrap();
+        assert_eq!(core.icon_flavor_dir(), None);
     }
 
     /// Refusals change nothing: a folder with someone's files in it, one
