@@ -1,8 +1,9 @@
 # WoW Forever Buddy
 
-A desktop companion for **World of Warcraft: Forever** — addons, macros, and
-whatever else is easier to manage outside the game. Right now it's just the
-shell: no features yet.
+A local-first Windows companion for **World of Warcraft: Forever**. It backs up
+and restores your WTF folder, tracks your characters and gold, adds alt-aware
+item tooltips through the ForeverBuddy addon, and manages addons and macros
+outside the game. Everything stays on your PC.
 
 > Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft
 > and Blizzard Entertainment are trademarks or registered trademarks of
