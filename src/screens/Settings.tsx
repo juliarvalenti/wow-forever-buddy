@@ -251,24 +251,38 @@ export function Settings({
           </Panel>
         </div>
 
-        <Panel>
-          <PanelHeader title="Integrations">
-            <span className="d-grow" />
-            <span className="d-dim">
-              {connected} of {SERVICES.length} set up
-            </span>
-          </PanelHeader>
-          <div className="st-note">
-            <KeyRound size={14} aria-hidden />
-            <span>
-              <b>Every key is optional.</b> The app works fully offline without them. Keys are stored
-              in <b>{keyStore()}</b>, never in app files or backups.
-            </span>
-          </div>
-          {SERVICES.map((s) => (
-            <ServiceRow key={s.mark} s={s} secrets={secrets} />
-          ))}
-        </Panel>
+        <div className="d-stack">
+          <Panel>
+            <PanelHeader title="Integrations">
+              <span className="d-grow" />
+              <span className="d-dim">
+                {connected} of {SERVICES.length} set up
+              </span>
+            </PanelHeader>
+            <div className="st-note">
+              <KeyRound size={14} aria-hidden />
+              <span>
+                <b>Every key is optional.</b> The app works fully offline without them. Keys are
+                stored in <b>{keyStore()}</b>, never in app files or backups.
+              </span>
+            </div>
+            {SERVICES.map((s) => (
+              <ServiceRow key={s.mark} s={s} secrets={secrets} />
+            ))}
+          </Panel>
+
+          <Panel>
+            <PanelHeader title="About" />
+            <div className="st-set full">
+              <div className="t">Forever Buddy{info ? ` ${info.version}` : ""}</div>
+              <div className="d">
+                Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft and
+                Blizzard Entertainment are trademarks or registered trademarks of Blizzard
+                Entertainment, Inc.
+              </div>
+            </div>
+          </Panel>
+        </div>
       </section>
     </Page>
   );
