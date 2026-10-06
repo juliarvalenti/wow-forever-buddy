@@ -264,3 +264,9 @@ Icons come from the player's own game files and replace the letter tiles in the 
     - **failed:** one warn line (amber, not red): "Couldn't read the game's art files, so items show letters instead. Nothing else is affected. Details". Details opens the log entry.
     - **empty:** "Not built yet. Icons are read the first time you open a screen with items."
 - **Never redistributed:** no icons in exports, screenshots for sharing, release assets, or the shots harness (it keeps the letter tiles).
+- **Opt-in (F8c, `icons.html?cache=off`):** icons are **off by default**.
+  - **The switch** is the first row in Settings › Game, above the cache. It's labelled "Show item icons from my game files", with the description "Reads icon pictures from your own WoW install. Off: items show their first letter, and the game's files aren't opened."
+  - **While it's off,** the cache row is dimmed. Its description reads "412 icons · 3.9 MB kept from before. Clear removes them." Show only Clear (ghost), and only when something is cached. If nothing is cached, hide the cache row entirely.
+  - **The nudge on Characters:** a slim, quiet stone strip above the cards, never a `Callout`. It has a letter tile, the text "Items show letters. Turn on icons to see the real pictures, read from your own game files.", a stone **Show icons** button (it turns the switch on directly, since the text has already said what it does) and a ghost **Not now**.
+  - **When the nudge appears:** only while icons are off, the game folder is set, and the nudge hasn't been dismissed. "Not now" hides it for good. Settings still has the switch.
+  - **No nudge** on any other screen. Turning the switch on never shows a dialog.

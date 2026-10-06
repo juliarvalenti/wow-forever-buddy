@@ -47,6 +47,9 @@
   .meter .bar { flex: 1; max-width: 260px; }
   .warnline { margin: 0 14px 12px; font-size: 12px; color: var(--warn); display: flex; gap: 6px; align-items: flex-start; }
   .warnline a { color: var(--ember-2); }
+  .nudge { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r); font-size: 12.5px; color: var(--chalk);
+    background: rgba(0,0,0,.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .nudge .grow { flex: 1; }
 </style>
 </head>
 <body data-page="settings" data-wow="closed">
@@ -74,9 +77,14 @@
       </article>
     </section>
 
+    <!-- F8c: the nudge on Characters, only while icons are off and it hasn't been dismissed -->
+    <div class="nudge"><span class="fi s24 q1 letter"><b>R</b></span>
+      <span class="grow">Items show letters. Turn on icons to see the real pictures, read from your own game files.</span>
+      <button class="btn">Show icons</button><button class="btn ghost">Not now</button></div>
+
     <section class="duo">
       <article class="panel" id="cache"></article>
-      <div style="align-self:start;padding-top:6px;font-size:11.5px;color:var(--soot);line-height:1.5">The Settings › Game section gains one row and a small details block. States: <a class="ember" href="?cache=ok">ok</a> · <a class="ember" href="?cache=building">building</a> · <a class="ember" href="?cache=failed">failed</a> · <a class="ember" href="?cache=empty">empty</a>. Rebuild is a stone button; Clear is ghost and needs no confirm (it rebuilds on its own).</div>
+      <div style="align-self:start;padding-top:6px;font-size:11.5px;color:var(--soot);line-height:1.5">The Settings › Game section gains one row and a small details block. States: <a class="ember" href="?cache=off">off (default)</a> · <a class="ember" href="?cache=ok">ok</a> · <a class="ember" href="?cache=building">building</a> · <a class="ember" href="?cache=failed">failed</a> · <a class="ember" href="?cache=empty">empty</a>. Rebuild is a stone button; Clear is ghost and needs no confirm (it rebuilds on its own).</div>
     </section>
   </div>
 </main>
@@ -112,8 +120,20 @@
     failed: '<div class="warnline"><i data-i="alert" class="sm"></i><span>Couldn\'t read the game\'s art files, so items show letters instead. Nothing else is affected. <a href="#">Details</a></span></div><div class="kv"><span>Read from</span><code>…\\World of Warcraft\\Data (read only)</code></div>',
     empty: '<div class="kv"><span>Status</span><div>Not built yet. Icons are read the first time you open a screen with items.</div></div>',
   }[state];
+  // F8c: icons are opt-in. ?cache=off shows the switch off (the default) with nothing read.
+  const off = state === 'off';
+  const toggle = `<div class="set"><div class="t">Show item icons from my game files</div>
+      <div class="d">Reads icon pictures from your own WoW install. Off: items show their first letter, and the game's files aren't opened.</div>
+      <div class="ctl"><span class="switch ${off ? '' : 'on'}"></span></div></div>`;
+  if (off) {
+    document.getElementById('cache').innerHTML = `<div class="ph"><h2>Game</h2></div>${toggle}
+      <div class="set"><div class="t" style="color:var(--ash)">Game data cache</div>
+        <div class="d">412 icons · 3.9 MB kept from before. Clear removes them.</div>
+        <div class="ctl"><button class="btn ghost">Clear</button></div></div>`;
+  } else
   document.getElementById('cache').innerHTML = `
     <div class="ph"><h2>Game</h2></div>
+    ${toggle}
     <div class="set"><div class="t">Game data cache</div>
       <div class="d">Item icons read from your own game files and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch.</div>
       <div class="ctl"><button class="btn" ${state === 'building' ? 'disabled' : ''}>Rebuild</button><button class="btn ghost" ${state === 'building' || state === 'empty' ? 'disabled' : ''}>Clear</button></div></div>
