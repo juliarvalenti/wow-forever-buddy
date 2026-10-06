@@ -181,7 +181,7 @@ export function Settings({
             <AhNote status={ah} />
             <SwitchRow
               title="Show item icons from my game files"
-              desc="Reads each item's icon from your WoW install's art files, on this PC only. Off: items show a letter."
+              desc="Reads icon pictures from your own WoW install. Off: items show their first letter, and the game's files aren't opened."
               checked={settings?.item_icons ?? false}
               disabled={!settings}
               onChange={(v) => update({ item_icons: v })}
@@ -484,31 +484,48 @@ function GameDataCache({ enabled }: { enabled: boolean }) {
     }
   };
 
+  // Off (F8c, IMPLEMENTING §13): the row only shows what's kept from before,
+  // dimmed, with Clear; with nothing kept it's hidden.
+  if (!enabled) {
+    if (!status?.files) return null;
+    return (
+      <div className="st-set full" style={{ opacity: 0.6 }}>
+        <div className="t">Game data cache</div>
+        <div className="ctl" style={{ marginTop: 2 }}>
+          <span className="d">
+            {plural(status.files, "icon", "icons")} · {bytes(status.bytes)} kept from before. Clear
+            removes them.
+          </span>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={() => run("clear")} disabled={busy != null}>
+            {busy === "clear" ? "Clearing…" : "Clear"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="st-set full">
       <div className="t">Game data cache</div>
       <div className="d">
-        {!enabled
-          ? status?.files
-            ? "Item icons are off. The ones already kept on this PC can be cleared."
-            : "Item icons are off, so nothing is read from your game files."
-          : status?.build
-            ? `Item icons read from your own game files (version ${status.build}) and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch.`
-            : "Item icons are read from your WoW install once the game folder is set. Until then, items show a letter."}
+        {status?.build
+          ? `Item icons read from your own game files (version ${status.build}) and kept on this PC. Never uploaded or shared. Rebuilt automatically after a game patch.`
+          : "Item icons are read from your WoW install once the game folder is set. Until then, items show a letter."}
       </div>
       <div className="ctl" style={{ marginTop: 6 }}>
         <span className="d-dim">
           {status ? `${plural(status.files, "icon", "icons")} · ${bytes(status.bytes)}` : "…"}
         </span>
         <span className="d-grow" />
-        <Button onClick={() => run("rebuild")} disabled={busy != null || !enabled || !status?.build}>
+        <Button onClick={() => run("rebuild")} disabled={busy != null || !status?.build}>
           {busy === "rebuild" ? "Rebuilding…" : "Rebuild"}
         </Button>
         <Button variant="ghost" onClick={() => run("clear")} disabled={busy != null || !status?.files}>
           {busy === "clear" ? "Clearing…" : "Clear"}
         </Button>
       </div>
-      {enabled && status?.unreadable && (
+      {status?.unreadable && (
         <div className="d" style={{ marginTop: 6, color: "var(--warn)" }}>
           Couldn't read the game's art files, so items show letters instead. Nothing else is affected.
         </div>

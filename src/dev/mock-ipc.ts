@@ -414,6 +414,10 @@ export function installMockIpc(): void {
       on_game_exit: true,
       schedule_hours: s.startsWith("settings") ? 24 : 0,
     },
+    install:
+      s === "nogame"
+        ? null
+        : { root: "C:\\Program Files (x86)\\World of Warcraft", flavor: "_classic_beta_", links: [] },
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     ui: {} as Record<string, string>,

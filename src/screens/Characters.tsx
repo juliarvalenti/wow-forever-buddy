@@ -219,9 +219,14 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
       .sort((a, b) => (b.last_played ?? "").localeCompare(a.last_played ?? ""));
   }, [overview, roster]);
   const addonMissing = addon.status != null && addon.status.installed_version == null;
-  // F8c: item icons are opt-in; offer them here, where the letters are.
+  // F8c: item icons are opt-in; offer them here, where the letters are, once
+  // there's a game folder to read them from (IMPLEMENTING §13).
   const iconNudge =
-    settings != null && !settings.item_icons && settings.ui?.[ICON_NUDGE] !== "dismissed" && !addonMissing;
+    settings != null &&
+    settings.install != null &&
+    !settings.item_icons &&
+    settings.ui?.[ICON_NUDGE] !== "dismissed" &&
+    !addonMissing;
 
   const cards = useMemo(() => {
     const list = [...(overview?.characters ?? [])];
@@ -292,10 +297,12 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
         <div className="ch-banner">
           <ImageIcon size={16} aria-hidden />
           <span className="grow">
-            <b>See real item icons</b> instead of letters, read from your own game files on this PC.
+            Items show letters. Turn on icons to see the real pictures, read from your own game files.
           </span>
-          <button onClick={() => update({ item_icons: true })}>Turn on</button>
-          <button onClick={() => update({ ui: { [ICON_NUDGE]: "dismissed" } })}>Not now</button>
+          <Button onClick={() => update({ item_icons: true })}>Show icons</Button>
+          <Button variant="ghost" onClick={() => update({ ui: { [ICON_NUDGE]: "dismissed" } })}>
+            Not now
+          </Button>
         </div>
       )}
       {overview && !anySeen && unseen.length === 0 ? (
