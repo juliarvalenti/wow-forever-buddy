@@ -87,8 +87,9 @@ export function installMockIpc(): void {
   const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
   // No Auctionator prices on this machine: no AH screen, no worth (F5d).
   const noPrices = s === "ah-empty" || s === "ah-unreadable";
-  // F8: the game data cache in Settings ("settings-nocache": nothing cached).
-  let iconFiles = s === "settings-nocache" ? 0 : 412;
+  // F8: the game data cache in Settings. Empty until icons are turned on
+  // ("settings-icons": on with a full cache; "-unreadable": on, can't read).
+  let iconFiles = s === "settings-icons" ? 412 : 0;
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -413,6 +414,9 @@ export function installMockIpc(): void {
       on_game_exit: true,
       schedule_hours: s.startsWith("settings") ? 24 : 0,
     },
+    // F8c: off by default, as in the app ("settings-icons": already on).
+    item_icons: s.startsWith("settings-icons"),
+    ui: {} as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
     ["curseforge", s.startsWith("settings")],
@@ -611,11 +615,12 @@ export function installMockIpc(): void {
     install_set: () => install,
     // F8: icons don't load outside the app (no icon://), so screens show
     // their letter tiles; Settings shows a cache as if they had.
+    // As the backend: while icons are off, not even the build is read.
     icons_cache_status: () => ({
       files: iconFiles,
       bytes: iconFiles * 9_800,
-      build: "1.60.1.70205",
-      unreadable: s === "settings-nocache",
+      build: settings.item_icons ? "1.60.1.70205" : null,
+      unreadable: settings.item_icons && s === "settings-icons-unreadable",
     }),
     icons_cache_rebuild: () => {
       iconFiles = 412;
@@ -631,6 +636,11 @@ export function installMockIpc(): void {
       const b = (patch as { backup?: Record<string, unknown> }).backup ?? {};
       for (const [k, v] of Object.entries(b))
         if (v !== null || k === "location") Object.assign(settings.backup, { [k]: v });
+      const p = patch as { item_icons?: boolean | null; ui?: Record<string, string | null> };
+      if (p.item_icons != null) settings.item_icons = p.item_icons;
+      for (const [k, v] of Object.entries(p.ui ?? {}))
+        if (v === null) delete settings.ui[k];
+        else settings.ui[k] = v;
       // A copy, as the real backend sends: React skips a re-render for the
       // same object.
       return structuredClone(settings);

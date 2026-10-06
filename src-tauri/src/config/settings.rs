@@ -24,6 +24,10 @@ pub struct Settings {
     /// Extra game process names to treat as WoW, e.g. if Forever's exe has an unusual name.
     pub process_names_extra: Vec<String>,
     pub integrations: Integrations,
+    /// "Show item icons from my game files" (F8c). Off by default: reading
+    /// the game's art archive is the user's choice, and while it's off the
+    /// app never opens the game's `Data` folder.
+    pub item_icons: bool,
     /// Free-form UI preferences (remembered tabs, filters). The backend never reads it.
     /// Strings only; the frontend JSON-encodes anything structured.
     pub ui: BTreeMap<String, String>,
@@ -37,6 +41,7 @@ impl Default for Settings {
             backup: BackupSettings::default(),
             process_names_extra: Vec::new(),
             integrations: Integrations::default(),
+            item_icons: false,
             ui: BTreeMap::new(),
         }
     }
@@ -197,6 +202,7 @@ pub struct SettingsPatch {
     pub backup: Option<BackupPatch>,
     pub process_names_extra: Option<Vec<String>>,
     pub integrations: Option<IntegrationsPatch>,
+    pub item_icons: Option<bool>,
     /// Set keys to a string to store them, or to null to remove them.
     pub ui: Option<BTreeMap<String, Option<String>>>,
 }
@@ -247,6 +253,7 @@ impl SettingsPatch {
             set(&mut s.backup.schedule_hours, b.schedule_hours);
         }
         set(&mut s.process_names_extra, self.process_names_extra);
+        set(&mut s.item_icons, self.item_icons);
         if let Some(i) = self.integrations {
             set(&mut s.integrations.curseforge, i.curseforge);
             set(&mut s.integrations.wago, i.wago);

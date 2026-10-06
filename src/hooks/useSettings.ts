@@ -8,6 +8,7 @@ import {
   type SettingsPatch_Deserialize,
 } from "@/lib/bindings";
 import { errorText } from "@/lib/format";
+import { setIconsEnabled } from "@/hooks/useIconsEnabled";
 
 /** The settings, saved as they change: each change is a patch, so a stale
  *  copy here can't overwrite newer values (spec §8). */
@@ -17,7 +18,14 @@ export function useSettings() {
 
   /** Re-reads them, after a backend-side change (moving the backups). */
   const reload = useCallback(
-    () => commands.settingsGet().then(setSettings, (e) => setError(errorText(e))),
+    () =>
+      commands.settingsGet().then(
+        (s) => {
+          setSettings(s);
+          setIconsEnabled(s.item_icons ?? false);
+        },
+        (e) => setError(errorText(e)),
+      ),
     [],
   );
   useEffect(() => {
@@ -29,7 +37,9 @@ export function useSettings() {
   const update = useCallback(async (patch: SettingsPatch_Deserialize) => {
     setError(null);
     try {
-      setSettings(await commands.settingsUpdate(patch));
+      const s = await commands.settingsUpdate(patch);
+      setSettings(s);
+      setIconsEnabled(s.item_icons ?? false);
       return true;
     } catch (e) {
       setError(errorText(e));
