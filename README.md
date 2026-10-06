@@ -4,6 +4,10 @@ A desktop companion for **World of Warcraft: Forever** — addons, macros, and
 whatever else is easier to manage outside the game. Right now it's just the
 shell: no features yet.
 
+> Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft
+> and Blizzard Entertainment are trademarks or registered trademarks of
+> Blizzard Entertainment, Inc.
+
 Built with [Tauri 2](https://tauri.app), React, Tailwind CSS 4,
 [shadcn/ui](https://ui.shadcn.com), and the Warcraft-styled components from
 [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT).
@@ -44,5 +48,6 @@ on Windows and attaches to the release:
   ships with Windows 10 and 11)
 
 Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`) before
-tagging. The builds are unsigned, so Windows SmartScreen will warn the first
+tagging. Start the release notes from `.github/release-notes-template.md`,
+which carries the not-affiliated notice. The builds are unsigned, so Windows SmartScreen will warn the first
 time you run one: **More info → Run anyway**.
