@@ -274,7 +274,7 @@ export function Settings({
           <Panel>
             <PanelHeader title="About" />
             <div className="st-set full">
-              <div className="t">Forever Buddy{info ? ` ${info.version}` : ""}</div>
+              <div className="t">WoW Forever Buddy{info ? ` ${info.version}` : ""}</div>
               <div className="d">
                 Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft and
                 Blizzard Entertainment are trademarks or registered trademarks of Blizzard
