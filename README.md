@@ -3,7 +3,7 @@
 A local-first Windows companion for **World of Warcraft: Forever**. It backs up
 and restores your WTF folder, tracks your characters and gold, adds alt-aware
 item tooltips through the ForeverBuddy addon, and manages addons and macros
-outside the game. Everything stays on your PC.
+outside the game. Its core features work offline, with your data kept on your PC.
 
 > Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft
 > and Blizzard Entertainment are trademarks or registered trademarks of
