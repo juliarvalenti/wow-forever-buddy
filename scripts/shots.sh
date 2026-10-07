@@ -40,6 +40,8 @@ SCENARIOS=(
   "ledger|dashboard|click:css=nav button[title=\"Ledger\"];wait:css=.d-worth|gold"
   "session|dashboard|click:css=nav button[title=\"Adventures\"];wait:css=.d-loot-t|session"
   "character|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet|character"
+  # Q1b: the Quests tab (mock: character.html?tab=quests; no stored shot yet, so it sits next to the sheet).
+  "character-quests|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;click:css=.ch-tabs button >> text=Quests;wait:css=.qv|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
   "character-bank-alt|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Coinpurse;wait:css=.ch-sheet|character"
   "ah|ah|click:css=nav button[title=\"Auction House\"];wait:css=.ah-chart|ah"

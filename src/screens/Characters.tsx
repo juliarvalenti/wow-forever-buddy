@@ -18,6 +18,7 @@ import {
   commands,
   type ItemRow,
   type Lockout,
+  type QuestEntry,
   type SearchResults,
   type WtfCharacter,
 } from "@/lib/bindings";
@@ -36,6 +37,7 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
+import { useQuestLog, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
 import {
@@ -584,7 +586,7 @@ function Card({
   );
 }
 
-type Tab = "gear" | "satchels" | "bank" | "mail" | "professions";
+type Tab = "gear" | "satchels" | "bank" | "mail" | "professions" | "quests";
 
 const SLOTS: Record<number, string> = {
   1: "Head", 2: "Neck", 3: "Shoulder", 4: "Shirt", 5: "Chest", 6: "Waist", 7: "Legs", 8: "Feet",
@@ -604,6 +606,105 @@ function visitLine(asOf: string | null, place: "bank" | "mailbox"): { text: stri
     text: `As of your last ${place} visit, ${day}${old ? `. Visit the ${place} in-game to refresh.` : ""}`,
     old,
   };
+}
+
+/** "Yesterday", "Sat 3 Oct": the day heads of "Recently completed". */
+function questDay(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(d)) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** "Zone · from Giver" / "Zone · to Giver"; the giver is left out when the
+ *  addon didn't record one (an item-started quest, or an older addon). */
+function questWhere(e: QuestEntry, prep: "from" | "to"): string | null {
+  const parts = [e.zone, e.giver && `${prep} ${e.giver}`].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+const COMPLETED_PAGE = 50;
+
+/** Q1b: IMPLEMENTING §14. Read-only; no coordinates (those are for the
+ *  planner), and never another player's name (the addon drops them). */
+function Quests({ name, log }: { name: string; log: NonNullable<ReturnType<typeof useQuestLog>> }) {
+  const [all, setAll] = useState(false);
+  if (log.done === 0 && log.open.length === 0 && log.completed.length === 0) {
+    return (
+      <p className="ch-empty">
+        No quests noted for {name} yet. They appear after you accept or hand one in with the addon running, then log
+        out.
+      </p>
+    );
+  }
+  const shown = all ? log.completed : log.completed.slice(0, COMPLETED_PAGE);
+  const days: [string, QuestEntry[]][] = [];
+  for (const e of shown) {
+    const day = questDay(e.at);
+    const last = days[days.length - 1];
+    if (last && last[0] === day) last[1].push(e);
+    else days.push([day, [e]]);
+  }
+  return (
+    <div className="qv">
+      {log.done > 0 && (
+        <div className="qfresh">
+          {plural(log.done, "quest", "quests")} completed{log.asOf ? ` · as of logout, ${shortDate(log.asOf)}` : ""}
+        </div>
+      )}
+      {log.open.length > 0 && (
+        <>
+          <div className="qsec">
+            In your log <span>{log.open.length}</span>
+          </div>
+          <ul className="qlist">
+            {log.open.map((e, i) => (
+              <li key={`${e.at}-${i}`}>
+                <span className="qt">{e.title ?? (e.quest_id != null ? `Quest ${e.quest_id}` : "A quest")}</span>
+                {questWhere(e, "from") && <span className="qw">{questWhere(e, "from")}</span>}
+                <span className="qd">accepted {shortDate(e.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {days.length > 0 && (
+        <>
+          <div className="qsec">
+            Recently completed <span>newest first</span>
+          </div>
+          {days.map(([day, entries]) => (
+            <div key={day}>
+              <div className="qday">{day}</div>
+              <ul className="qlist done">
+                {entries.map((e, i) => (
+                  <li key={`${e.at}-${i}`}>
+                    <span className="qt">{e.title ?? (e.quest_id != null ? `Quest ${e.quest_id}` : "A quest")}</span>
+                    {questWhere(e, "to") && <span className="qw">{questWhere(e, "to")}</span>}
+                    <span className="qd">{clock(e.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {!all && log.completed.length > COMPLETED_PAGE && (
+            <button className="qmore" onClick={() => setAll(true)}>
+              Show older
+            </button>
+          )}
+        </>
+      )}
+      <div className="qnote">
+        Each quest you accept or hand in is noted at logout. Completed quests from before the addon count in the total,
+        without dates.
+      </div>
+    </div>
+  );
 }
 
 function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mailbox" }) {
@@ -786,6 +887,9 @@ function Sheet({
     );
   };
   const [tab, setTab] = useState<Tab>("gear");
+  // Q1b ships dark: the tab appears once any character has quest data.
+  const questsOn = useQuestsAvailable();
+  const quests = useQuestLog(id);
   const at = cards.findIndex((c) => c.id === id);
   const prev = at > 0 ? cards[at - 1] : null;
   const next = at >= 0 && at < cards.length - 1 ? cards[at + 1] : null;
@@ -891,6 +995,7 @@ function Sheet({
                   ["bank", "Bank", bankCount > 0 ? bankCount : null],
                   ["mail", "Mail", sheet.mail.messages.length > 0 ? sheet.mail.messages.length : null],
                   ["professions", "Professions", null],
+                  ...(questsOn ? [["quests", "Quests", quests && quests.done > 0 ? quests.done : null]] : []),
                 ] as [Tab, string, string | number | null][]
               ).map(([key, label, n]) => (
                 <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
@@ -926,6 +1031,7 @@ function Sheet({
                 ))}
               </>
             )}
+            {tab === "quests" && questsOn && quests && <Quests name={c.name} log={quests} />}
             {tab === "professions" &&
               (sheet.professions.length === 0 ? (
                 <p className="ch-empty">No professions recorded yet.</p>

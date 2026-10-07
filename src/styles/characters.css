@@ -160,6 +160,20 @@
 .ch-slot .il { font: 700 13px Georgia, serif; color: var(--ink-2); }
 .ch-sec { font: italic 12.5px Georgia, serif; color: var(--ink-3); margin: 14px 0 6px; }
 .ch-empty { font: italic 13px Georgia, serif; color: var(--ink-3); padding: 10px 0; }
+/* Q1b: the Quests tab (character.html?tab=quests, IMPLEMENTING §14). */
+.qv { margin-top: 8px; }
+.qfresh { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin: 2px 0 8px; }
+.qsec { display: flex; align-items: baseline; gap: 8px; font: 700 13.5px Georgia, serif; color: var(--ink); margin: 10px 0 2px; }
+.qsec span { font: 500 11px "Geist", sans-serif; color: var(--ink-3); }
+.qday { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin: 8px 0 0; }
+.qlist { list-style: none; margin: 0; padding: 0; }
+.qlist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 5px 0; border-bottom: 1px solid var(--ink-hair); }
+.qlist .qt { font: 600 13px Georgia, serif; color: var(--ink); }
+.qlist .qw { grid-column: 1; font-size: 11.5px; color: var(--ink-3); }
+.qlist .qd { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.qlist.done .qt { color: var(--ink-2); }
+.qmore { margin-top: 6px; padding: 0; border: 0; background: none; font: italic 12px Georgia, serif; color: var(--ink-2); text-decoration: underline; cursor: pointer; }
+.qnote { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin-top: 10px; }
 .ch-mail { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--ink-hair); }
 .ch-mail .who { font: 600 13.5px Georgia, serif; }
 .ch-mail .what { font: italic 12.5px Georgia, serif; color: var(--ink-2); }

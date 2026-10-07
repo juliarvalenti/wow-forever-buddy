@@ -56,6 +56,18 @@ pub fn character_quests(state: State<'_, AppState>, id: u32) -> AppResult<QuestL
     quests::log(&state.core.db, id)
 }
 
+/// Whether any character has quest data yet; until then the sheet's Quests
+/// tab stays hidden. False before a game folder is set.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn quests_available(state: State<'_, AppState>) -> AppResult<bool> {
+    match state.core.active_game() {
+        Ok(game) => quests::any(&state.core.db, &game.flavor),
+        Err(AppError::NoInstall) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 /// Raid and dungeon saves across the active flavor's characters that haven't
 /// reset yet, soonest first (the Dashboard's "Lockouts this week"). Empty
 /// before a game folder is set.

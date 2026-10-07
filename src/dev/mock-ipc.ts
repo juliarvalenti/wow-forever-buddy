@@ -27,6 +27,7 @@ import type {
   Macro,
   MacrosList,
   PlaySession,
+  QuestLog,
   RestorePlan,
   SearchResults,
   SecretStatus,
@@ -916,6 +917,39 @@ export function installMockIpc(): void {
       };
     },
     lockouts_list: (): AltLockout[] => (noAddon ? [] : saves),
+    // Q1b: character.html?tab=quests for Thrandor (id 2); the other alts have
+    // none yet. Dark (no tab) before the addon has written anything.
+    quests_available: () => !noAddon,
+    character_quests: ({ id }): QuestLog => {
+      if (id !== 2) return { done: 0, done_as_of: null, entries: [] };
+      const day = (d: number, hh: number, mm: number) => {
+        const t = new Date(now - d * 86_400_000);
+        t.setHours(hh, mm, 0, 0);
+        return t.toISOString();
+      };
+      const q = (
+        at: string,
+        kind: QuestLog["entries"][number]["kind"],
+        title: string,
+        zone: string,
+        giver: string,
+      ): QuestLog["entries"][number] => ({ at, kind, quest_id: null, title, zone, giver, map: null, x: null, y: null });
+      return {
+        done: 214,
+        done_as_of: day(1, 23, 59),
+        entries: [
+          q(day(1, 22, 10), "turned_in", "The Archivist", "Eastern Plaguelands", "Duke Nicholas Zverenhoff"),
+          q(day(1, 21, 58), "turned_in", "Ramstein", "Stratholme", "Duke Nicholas Zverenhoff"),
+          q(day(1, 21, 41), "turned_in", "The Truth Comes Crashing Down", "Light's Hope Chapel", "Fiona"),
+          q(day(2, 20, 30), "accepted", "Dead Man's Plea", "Stratholme", "Anthion Harmon"),
+          q(day(2, 20, 25), "accepted", "The Active Agent", "Eastern Plaguelands", "Betina Bigglezink"),
+          q(day(3, 20, 12), "turned_in", "Houses of the Holy", "Stratholme", "Leonid Barthalomew"),
+          q(day(3, 19, 47), "turned_in", "The Corruptor", "Eastern Plaguelands", "Betina Bigglezink"),
+          q(day(4, 19, 0), "accepted", "Mission Accomplished!", "Eastern Plaguelands", "Betina Bigglezink"),
+          q(day(8, 18, 0), "accepted", "Of Love and Family", "Eastern Plaguelands", "Tirion Fordring"),
+        ],
+      };
+    },
     character_set_bank_alt: ({ id, bankAlt }) => {
       if (bankAlt) bankAlts.add(id as number);
       else bankAlts.delete(id as number);
