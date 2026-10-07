@@ -52,6 +52,7 @@ The route follows probe run 4, in the order of the Bridge spec (`docs/specs/brid
 - Sentence case, no em dashes, no all caps.
 - Short facts, with times as the game shows them ("resets Tue", "in 2 days", "ready").
 - Class-coloured names, plain everything else. Never name a loot source (IMPLEMENTING §7).
+- Refer to characters by name, never "he" or "she". We don't know a character's gender, and a character's sex isn't the player's.
 - Empty: "Nothing to do this week." Never seen: "Open Forever Buddy on your PC to fill this in."
 
 ## 7. The quest plan: tracker and waypoints (D2, `ingame-d2.html`)
@@ -157,7 +158,7 @@ Display only. The addon never buys, attaches or sends. **One Bridge slot ("Lists
   - Highlighting reads the frames' own item ids. It never clicks and never hooks a buy button.
 - **Alt errands at the mailbox:**
   - When the current character holds goods that another character's list needs, an "Errands" panel docks beside `MailFrame`. It's headed "Errands" with "from Coinpurse" in the meta.
-  - **Rows:** "Thorium Bar ×20 to Kaelor" (the name in class colour) and a grey line "you have 34 in bags · his Blacksmithing list".
+  - **Rows:** "Thorium Bar ×20 to Kaelor" (the name in class colour) and a grey line "you have 34 in bags · Kaelor's Blacksmithing list". Use the character's name, never a pronoun: we don't know a character's gender.
   - **Fill recipient:** one `UIPanelButtonTemplate` button that only sets the Send tab's To field (`SendMailNameEditBox:SetText`). Its tooltip reads: "Types "Kaelor" in the To field. Attach the Thorium Bars yourself, then press Send."
   - **Goods in the bank:** if they're in this character's bank rather than bags, the button is disabled, with the grey line "340 in your bank · visit the bank first".
   - **Footer:** "Nothing is attached or sent for you."
