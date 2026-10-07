@@ -41,7 +41,14 @@ import {
   ItemIcon,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
-import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
+import {
+  type Filters,
+  NO_FILTERS,
+  useCharacterSheet,
+  useCharacters,
+  useItemSearch,
+  useRoster,
+} from "@/hooks/useCharacters";
 import { useCleanup } from "@/hooks/useCleanup";
 import { useQuestLog, useQuestPlan, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
@@ -202,7 +209,12 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
   const [open, setOpen] = useState<number | null>(null);
   // Kept while a sheet opened from a result is on show, so Back returns to it.
   const [query, setQuery] = useState("");
-  const search = useItemSearch(query);
+  // TIP3 (b): kept while the text changes, reset when the search is cleared.
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  useEffect(() => {
+    if (!query.trim()) setFilters(NO_FILTERS);
+  }, [query]);
+  const search = useItemSearch(query, filters);
   const field = useRef<HTMLInputElement>(null);
   // Ctrl K (Cmd K on a Mac) jumps to the search box, as the mock's hint says.
   useEffect(() => {
@@ -334,7 +346,7 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Escape" && setQuery("")}
-                  placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite, ilvl>60"
+                  placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite"
                   aria-label="Search every satchel, bank and mailbox"
                   spellCheck={false}
                 />
@@ -355,7 +367,17 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
             </div>
           )}
           {search.error && <Callout tone="bad">{search.error}</Callout>}
-          {results && <Results query={query} results={results} cards={cards} onOpen={setOpen} />}
+          {results && (
+            <Results
+              query={query}
+              results={results}
+              cards={cards}
+              onOpen={setOpen}
+              filters={filters}
+              onFilters={setFilters}
+              filteredOut={search.filteredOut}
+            />
+          )}
           <section className={`ch-cards${results ? " searching" : ""}`}>
             {cards.map((c) => (
               <Card key={c.id} c={c} match={match(c.id)} onOpen={() => setOpen(c.id)} />
@@ -384,16 +406,63 @@ const WHERE: Record<string, { label: string; icon: LucideIcon }> = {
 /** The search results (characters-search mock), without the Value column
  *  and "≈ at last scan": AH numbers stay hidden until v0.4 (IMPLEMENTING.md
  *  §7). A row opens that character's sheet. */
+/** TIP3 (b): the quality choices, by the lowest quality each keeps. */
+const QUALITY = [
+  { value: "any", label: "Any", min: null },
+  { value: "2", label: "Uncommon+", min: 2 },
+  { value: "3", label: "Rare+", min: 3 },
+  { value: "4", label: "Epic", min: 4 },
+] as const;
+type QualityChoice = (typeof QUALITY)[number]["value"];
+
+/** "Quality" and "Item level at least", inside the results (IMPLEMENTING §19). */
+function FilterRow({ filters, onFilters }: { filters: Filters; onFilters: (f: Filters) => void }) {
+  const [ilvl, setIlvl] = useState(filters.minIlvl?.toString() ?? "");
+  useEffect(() => setIlvl(filters.minIlvl?.toString() ?? ""), [filters.minIlvl]);
+  const chosen = (QUALITY.find((q) => q.min === filters.minQuality)?.value ?? "any") as QualityChoice;
+  return (
+    <div className="ch-filters">
+      <span>Quality</span>
+      <Segmented<QualityChoice>
+        value={chosen}
+        onChange={(v) => onFilters({ ...filters, minQuality: QUALITY.find((q) => q.value === v)?.min ?? null })}
+        options={QUALITY.map((q) => ({ value: q.value, label: q.label }))}
+      />
+      <span className="gap">Item level at least</span>
+      <label className="d-field ch-ilvl">
+        <input
+          inputMode="numeric"
+          value={ilvl}
+          placeholder="any"
+          aria-label="Minimum item level"
+          onChange={(e) => {
+            const text = e.target.value.replace(/\D/g, "").slice(0, 3);
+            setIlvl(text);
+            const n = Number(text);
+            onFilters({ ...filters, minIlvl: text && n >= 1 && n <= 300 ? n : null });
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
 function Results({
   query,
   results,
   cards,
   onOpen,
+  filters,
+  onFilters,
+  filteredOut,
 }: {
   query: string;
   results: SearchResults;
   cards: CharacterCard[];
   onOpen: (id: number) => void;
+  filters: Filters;
+  onFilters: (f: Filters) => void;
+  filteredOut: boolean;
 }) {
   const names = new Set(results.hits.map((h) => h.name));
   // One item found: name it, as the mock does. Several: the query.
@@ -409,9 +478,19 @@ function Results({
           </span>
         )}
       </PanelHeader>
+      <FilterRow filters={filters} onFilters={onFilters} />
       {results.hits.length === 0 ? (
         <PanelBody>
-          <p className="d-muted">Nothing matches in any satchel, bank or mailbox.</p>
+          {filteredOut ? (
+            <div className="ch-nofilter">
+              <p className="d-muted">Nothing matches these filters.</p>
+              <Button variant="ghost" onClick={() => onFilters(NO_FILTERS)}>
+                Clear filters
+              </Button>
+            </div>
+          ) : (
+            <p className="d-muted">Nothing matches in any satchel, bank or mailbox.</p>
+          )}
         </PanelBody>
       ) : (
         <table className="d-table ch-results">

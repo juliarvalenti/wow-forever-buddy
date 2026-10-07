@@ -7,7 +7,7 @@
 //! text: the UI renders it as text, never as HTML.
 
 use rusqlite::{params, OptionalExtension, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
@@ -652,10 +652,42 @@ impl Query {
     }
 }
 
+/// The search panel's filters (TIP3 (b), IMPLEMENTING §19).
+#[derive(Debug, Clone, Default, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct SearchFilters {
+    /// "Item level at least": an item with no known item level (reagents,
+    /// other non-gear) is left out while it's set.
+    pub min_ilvl: Option<u32>,
+    /// 2 uncommon, 3 rare, 4 epic, and anything better.
+    pub min_quality: Option<u8>,
+}
+
+impl SearchFilters {
+    fn keeps(&self, hit: &SearchHit) -> bool {
+        self.min_ilvl
+            .is_none_or(|min| hit.ilvl.is_some_and(|i| i >= min))
+            && self
+                .min_quality
+                .is_none_or(|min| hit.quality.is_some_and(|q| q >= min))
+    }
+}
+
 /// Every satchel, bank and mailbox of `flavor`'s characters, searched for
 /// `text` (see `Query`). Bank and mail are as of each character's last
 /// visit, like the sheet. An empty query finds nothing.
 pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
+    search_filtered(db, flavor, text, &SearchFilters::default())
+}
+
+/// `search`, with the panel's filters: the counts and the characters lit
+/// are of the rows that pass them.
+pub fn search_filtered(
+    db: &Db,
+    flavor: &str,
+    text: &str,
+    filters: &SearchFilters,
+) -> AppResult<SearchResults> {
     let query = Query::parse(text);
     let mut hits: Vec<SearchHit> = Vec::new();
     if !query.is_empty() {
@@ -704,7 +736,7 @@ pub fn search(db: &Db, flavor: &str, text: &str) -> AppResult<SearchResults> {
             })?;
             for hit in rows {
                 let hit = hit?;
-                if query.matches(&hit.name, hit.ilvl) {
+                if query.matches(&hit.name, hit.ilvl) && filters.keeps(&hit) {
                     hits.push(hit);
                 }
             }
@@ -1026,6 +1058,54 @@ mod tests {
         assert!(search(&db, "_classic_", "linen").unwrap().hits.is_empty());
         let empty = search(&db, "_classic_beta_", "   ").unwrap();
         assert!(empty.hits.is_empty() && empty.characters.is_empty());
+    }
+
+    /// TIP3 (b): the panel's filters keep only matching rows, and the
+    /// counts and lit characters follow them.
+    #[test]
+    fn panel_filters_narrow_rows_and_counts() {
+        let db = two_alts();
+        let all = search(&db, "_classic_beta_", "e").unwrap();
+        for f in [
+            SearchFilters {
+                min_quality: Some(2),
+                min_ilvl: None,
+            },
+            SearchFilters {
+                min_quality: None,
+                min_ilvl: Some(10),
+            },
+            SearchFilters {
+                min_quality: Some(1),
+                min_ilvl: Some(1),
+            },
+        ] {
+            let r = search_filtered(&db, "_classic_beta_", "e", &f).unwrap();
+            let want: Vec<&SearchHit> = all.hits.iter().filter(|h| f.keeps(h)).collect();
+            assert_eq!(r.hits.len(), want.len(), "{f:?}");
+            assert!(r.hits.iter().all(|h| f.keeps(h)), "{f:?}");
+            assert_eq!(r.total, want.iter().map(|h| h.count).sum::<u32>(), "{f:?}");
+            assert!(r
+                .characters
+                .iter()
+                .all(|c| r.hits.iter().any(|h| h.character_id == *c)));
+        }
+        // Something is actually filtered out: Wool has no item info at all.
+        let wool = search_filtered(
+            &db,
+            "_classic_beta_",
+            "wool",
+            &SearchFilters {
+                min_quality: None,
+                min_ilvl: Some(1),
+            },
+        )
+        .unwrap();
+        assert!(wool.hits.is_empty() && wool.characters.is_empty());
+        assert!(!search(&db, "_classic_beta_", "wool")
+            .unwrap()
+            .hits
+            .is_empty());
     }
 
     #[test]

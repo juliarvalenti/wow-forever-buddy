@@ -1,6 +1,8 @@
 use tauri::State;
 
-use crate::characters::{self, AltLockout, CharacterSheet, CharactersOverview, SearchResults};
+use crate::characters::{
+    self, AltLockout, CharacterSheet, CharactersOverview, SearchFilters, SearchResults,
+};
 use crate::error::{AppError, AppResult};
 use crate::quests::{self, QuestLog};
 use crate::state::AppState;
@@ -26,11 +28,15 @@ pub fn characters_overview(state: State<'_, AppState>) -> AppResult<CharactersOv
 /// filters. Nothing before a game folder is set.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn characters_search(state: State<'_, AppState>, query: String) -> AppResult<SearchResults> {
+pub fn characters_search(
+    state: State<'_, AppState>,
+    query: String,
+    filters: SearchFilters,
+) -> AppResult<SearchResults> {
     // Typed text, so long only by mistake; a cap keeps the matching cheap.
     let query: String = query.chars().take(200).collect();
     match state.core.active_game() {
-        Ok(game) => characters::search(&state.core.db, &game.flavor, &query),
+        Ok(game) => characters::search_filtered(&state.core.db, &game.flavor, &query, &filters),
         Err(AppError::NoInstall) => Ok(SearchResults {
             hits: Vec::new(),
             total: 0,

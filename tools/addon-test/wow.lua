@@ -60,6 +60,12 @@ M.ITEMS = {
     [10004] = "Lionheart Helm",
     [10005] = "Felcloth Hood",
     [4355] = "Pattern: Icy Cloak",
+    [10010] = "Arcanite Reaper",
+    [10011] = "Dal'Rend's Sacred Charge",
+    [10012] = "Skullflame Shield",
+    [10013] = "Wand of Biting Cold",
+    [10020] = "Warhammer",
+    [10021] = "Shortsword",
 }
 
 -- Recipe items (item class 9): what C_Item.GetItemSpell gives for them
@@ -75,6 +81,14 @@ M.GEAR = {
     [10003] = { 55, 50, "INVTYPE_FINGER", 4, 0 },
     [10004] = { 63, 50, "INVTYPE_HEAD", 4, 4 },
     [10005] = { 40, 35, "INVTYPE_HEAD", 4, 1 },
+    -- TIP3 weapons (class 2; subclass 1 two-handed axe, 5 two-handed mace,
+    -- 7 sword, 19 wand) and a shield (armour subclass 6).
+    [10010] = { 63, 58, "INVTYPE_2HWEAPON", 2, 1 },
+    [10011] = { 63, 58, "INVTYPE_WEAPON", 2, 7 },
+    [10012] = { 63, 58, "INVTYPE_SHIELD", 4, 6 },
+    [10013] = { 60, 55, "INVTYPE_RANGEDRIGHT", 2, 19 },
+    [10020] = { 50, 45, "INVTYPE_2HWEAPON", 2, 5 },
+    [10021] = { 40, 35, "INVTYPE_WEAPON", 2, 7 },
 }
 
 M.QUESTS = { [176] = "Wanted: Hogger" }

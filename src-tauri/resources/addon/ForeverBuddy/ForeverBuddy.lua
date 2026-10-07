@@ -720,9 +720,9 @@ local STALE = 7 * 86400 -- older than a week reads grey
 local MIN_GAIN = 5 -- the upgrade hint ignores sidegrades
 local UPGRADE_NAMES = 2
 
--- Inventory slots an equip location is compared against (v2: armour and
--- jewellery only; weapons need proficiency rules). Rings and trinkets take
--- the lower of their two slots.
+-- Inventory slots an equip location is compared against: armour and
+-- jewellery (weapons and off-hand items are TIP3's `HAND` below). Rings and
+-- trinkets take the lower of their two slots.
 local SLOTS_FOR = {
     INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 },
     INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 },
@@ -734,6 +734,50 @@ local ARMOR = 4 -- item class; its subclasses 0 misc, 1 cloth, 2 leather, 3 mail
 local NO_LEATHER = { MAGE = true, PRIEST = true, WARLOCK = true }
 local MAIL_ALWAYS = { WARRIOR = true, PALADIN = true }
 local MAIL_AT_40 = { HUNTER = true, SHAMAN = true }
+
+-- Weapons (TIP3 (a), INGAME §15): what each class can train, Classic 1.x
+-- rules. We can't see what an alt has trained, so this is "can use". One
+-- table, so a Forever change is a one-line fix. Weapon subclasses: 0 axe,
+-- 1 two-handed axe, 2 bow, 3 gun, 4 mace, 5 two-handed mace, 6 polearm,
+-- 7 sword, 8 two-handed sword, 10 staff, 13 fist, 15 dagger, 16 thrown,
+-- 18 crossbow, 19 wand.
+-- One table, not a local each: the file is near Lua's 200-locals limit.
+local Wp = { WEAPON = 2, SHIELD = 6 } -- an item class; an armour subclass
+do
+    local function set(list)
+        local s = {}
+        for _, v in ipairs(list) do
+            s[v] = true
+        end
+        return s
+    end
+    Wp.CAN = {
+        WARRIOR = set({ 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18 }),
+        PALADIN = set({ 0, 1, 4, 5, 6, 7, 8 }),
+        HUNTER = set({ 0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18 }),
+        ROGUE = set({ 2, 3, 4, 7, 13, 15, 16, 18 }),
+        SHAMAN = set({ 0, 1, 4, 5, 10, 13, 15 }),
+        DRUID = set({ 4, 5, 10, 13, 15 }),
+        PRIEST = set({ 4, 10, 15, 19 }),
+        MAGE = set({ 7, 10, 15, 19 }),
+        WARLOCK = set({ 7, 10, 15, 19 }),
+    }
+    Wp.SHIELDS = set({ "WARRIOR", "PALADIN", "SHAMAN" })
+    Wp.DUAL_WIELD = set({ "WARRIOR", "ROGUE", "HUNTER" })
+end
+-- A weapon's equip location, and what it's compared with: inventory slots
+-- 16 main hand, 17 off hand, 18 ranged. Relics, shirts and tabards are out.
+Wp.HAND = {
+    INVTYPE_2HWEAPON = "two",
+    INVTYPE_WEAPON = "one",
+    INVTYPE_WEAPONMAINHAND = "main",
+    INVTYPE_WEAPONOFFHAND = "off",
+    INVTYPE_SHIELD = "held",
+    INVTYPE_HOLDABLE = "held",
+    INVTYPE_RANGED = "ranged",
+    INVTYPE_RANGEDRIGHT = "ranged",
+    INVTYPE_THROWN = "ranged",
+}
 
 -- Slot text shown as text: every "|" doubled, so a name can't carry an item
 -- link, a texture or a colour code.
@@ -861,6 +905,65 @@ local function isBound(data)
     return false
 end
 
+-- What a hand item would gain a character by base item level, and what it
+-- was set against when that isn't one plain slot ("main and off hand", "the
+-- off hand"). nil when the class can't use it or the comparison is skipped
+-- (a one-hander or off-hand item while a two-hander is worn). `worn(s)` is
+-- the item level in inventory slot s; `twoHanded` says whether the main hand
+-- holds a two-hander, nil when that's unknown (then no hint).
+function Wp.gain(kind, ilvl, class, classID, subclassID, worn, twoHanded)
+    local c = type(class) == "string" and class or ""
+    if classID == Wp.WEAPON and not (Wp.CAN[c] and Wp.CAN[c][subclassID]) then
+        return nil
+    elseif classID == ARMOR and subclassID == Wp.SHIELD and not Wp.SHIELDS[c] then
+        return nil
+    end
+    local function w(s)
+        return tonumber(worn(s)) or 0
+    end
+    if kind == "ranged" then
+        return ilvl - w(18)
+    elseif twoHanded == nil then
+        return nil
+    elseif kind == "two" then
+        if twoHanded then
+            return ilvl - w(16)
+        end
+        return ilvl - (w(16) + w(17)) / 2, "main and off hand"
+    elseif twoHanded then
+        return nil
+    elseif kind == "main" then
+        return ilvl - w(16)
+    elseif kind == "held" then
+        return ilvl - w(17), "the off hand"
+    elseif kind == "off" then
+        if not Wp.DUAL_WIELD[c] then
+            return nil
+        end
+        return ilvl - w(17), "the off hand"
+    end
+    -- A one-hander: the main hand, or for a dual wielder the off hand if
+    -- that gains more.
+    local gain = ilvl - w(16)
+    local off = ilvl - w(17)
+    if Wp.DUAL_WIELD[c] and off > gain then
+        return off, "the off hand"
+    end
+    return gain
+end
+
+-- Whether item `id` is a two-hander: nil when the client doesn't know it yet.
+function Wp.twoHanded(id)
+    if type(id) ~= "number" or id <= 0 then
+        return false
+    end
+    local loc = select(9, read("C_Item.GetItemInfo", id))
+    if type(loc) ~= "string" then
+        return nil
+    end
+    return loc == "INVTYPE_2HWEAPON"
+end
+
 -- Which other characters the item would upgrade, by base item level: best
 -- first (ties to the higher level), at most two, none when this character
 -- is the best fit (the game's own comparison covers that).
@@ -868,34 +971,54 @@ local function upgrades(id, data, alts)
     local _, _, _, ilvl, required, _, _, _, equipLoc, _, _, classID, subclassID =
         read("C_Item.GetItemInfo", id)
     local slotsFor = type(equipLoc) == "string" and SLOTS_FOR[equipLoc]
-    if not slotsFor or type(ilvl) ~= "number" or isBound(data) then
+    local hand = type(equipLoc) == "string" and Wp.HAND[equipLoc]
+    if not (slotsFor or hand) or type(ilvl) ~= "number" or isBound(data) then
         return {}
     end
     required = tonumber(required) or 0
+    local function liveIlvl(s)
+        local worn = read(GetInventoryItemID, "player", s)
+        return type(worn) == "number" and select(4, read("C_Item.GetItemInfo", worn)) or 0
+    end
     local mine = -math.huge
     local myLevel = read(UnitLevel, "player")
-    if character and canWear(character.class, myLevel, classID, subclassID, required) then
-        mine = ilvl - lowest(slotsFor, function(s)
-            local worn = read(GetInventoryItemID, "player", s)
-            return type(worn) == "number" and select(4, read("C_Item.GetItemInfo", worn)) or 0
-        end)
+    if character and hand then
+        mine = Wp.gain(hand, ilvl, character.class, classID, subclassID, liveIlvl,
+            Wp.twoHanded(read(GetInventoryItemID, "player", 16))) or -math.huge
+    elseif character and canWear(character.class, myLevel, classID, subclassID, required) then
+        mine = ilvl - lowest(slotsFor, liveIlvl)
     end
     local found = {}
     for _, alt in ipairs(alts) do
         if type(alt) == "table" and not isMe(alt) and type(alt.worn) == "table" then
             local level = tonumber(alt.level)
-            if canWear(alt.class, level, classID, subclassID, required) then
-                local gain = ilvl - lowest(slotsFor, function(s)
+            local gain, over
+            if hand then
+                -- An index from before TIP3 has no hands: an empty main hand
+                -- is still known to hold no two-hander.
+                local two
+                if type(alt.hands) == "table" then
+                    two = Wp.twoHanded(alt.hands[1])
+                elseif (tonumber(alt.worn[16]) or 0) == 0 then
+                    two = false
+                end
+                gain, over = Wp.gain(hand, ilvl, alt.class, classID, subclassID, function(s)
+                    return alt.worn[s]
+                end, two)
+            elseif canWear(alt.class, level, classID, subclassID, required) then
+                gain = ilvl - lowest(slotsFor, function(s)
                     return alt.worn[s]
                 end)
-                if gain >= MIN_GAIN then
-                    found[#found + 1] = {
-                        alt = alt,
-                        gain = gain,
-                        level = level or 0,
-                        under = level and level < required and required or nil,
-                    }
-                end
+            end
+            gain = gain and math.floor(gain)
+            if gain and gain >= MIN_GAIN then
+                found[#found + 1] = {
+                    alt = alt,
+                    gain = gain,
+                    over = over,
+                    level = level or 0,
+                    under = level and level < required and required or nil,
+                }
             end
         end
     end
@@ -1167,7 +1290,9 @@ local function fullLines(tooltip, slot, id, others, price, found, makers, mats)
     if #found > 0 then
         local parts = {}
         for k, u in ipairs(found) do
+            -- TIP3: what a weapon was set against, when not one plain slot.
             parts[k] = colorName(u.alt.name, u.alt.class) .. " +" .. u.gain
+                .. (u.over and (" " .. GREY .. "(over " .. u.over .. ")|r") or "")
                 .. (u.under and (" " .. GREY .. "(level " .. u.under .. ")|r") or "")
         end
         tooltip:AddDoubleLine("Upgrade for", table.concat(parts, " · "), 1, 0.82, 0, 1, 1, 1)

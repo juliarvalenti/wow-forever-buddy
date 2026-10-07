@@ -70,6 +70,8 @@ SCENARIOS=(
   "settings-move-refused|settings-pending|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Nothing was moved|settings"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
   "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
+  # TIP3 (b): Epic leaves nothing of Runecloth: "Nothing matches these filters".
+  "characters-search-filtered|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results;click:css=.ch-filters button >> text=Epic;wait:text=Nothing matches these filters|characters-search"
   "addons|characters|click:css=nav button[title=\"Addons\"];wait:css=.ad-table|addons-readonly"
   "addons-empty|addons-empty|click:css=nav button[title=\"Addons\"];wait:text=No addons in|addons-readonly"
   # F6: after turning Questie on for Thrandor (Undo offered), and locked while WoW runs.
