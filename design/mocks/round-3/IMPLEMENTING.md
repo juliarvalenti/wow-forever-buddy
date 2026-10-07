@@ -287,3 +287,28 @@ This is read-only, from `character_quests(id)`: the completed count plus the new
   - Nothing recorded for this character: "No quests noted for Thrandor yet. They appear after you accept or hand one in with the addon running, then log out."
   - Completed ids but no events: show the count line and the note only.
 - No quest links, rewards or descriptions. We don't have them, and won't guess.
+
+## 15. B1 + B2: Lists, login notes and "Sent to the game" (`lists.html`, `?state=proposal`)
+A new **Lists** screen in the sidebar under Overview, after Adventures (list icon). The in-game side is INGAME §9 and §10.
+- **Layout:** three columns.
+  - Left: "Your lists", with each list's item count.
+  - Middle: the selected list's table.
+  - Right: "Login notes" and "Sent to the game".
+- **The list table** has columns Item (tile and name), Need, "Your characters have", and Last scan.
+  - **Need:** a number while short ("2 more" when partly held), then a green "done".
+  - **Have:** the total and the character with the most, with a grey line under it: "of 6", "errand: send 20 to Sela", or "sold by trade vendors" when we know it's a vendor item.
+  - **Last scan:** "~1g 12s" from F5, or "50s vendor" when the item is sold by vendors. It's empty when there's neither (AH hidden or no scan).
+  - **The list header meta** names who it's for ("for Sela", in class colour) and the price age.
+  - The last row is "+ Add an item…", a search over items your characters have seen, plus free text.
+- **Claude's proposals** (P2, MCP):
+  - Claude can only *propose* a new list, an added or changed item, or a note. A proposal shows as an ember-tinted row with "proposed by Claude: "…"" carrying its reason, and the list in the left column says "1 proposal".
+  - Under the table sits the F6 stage/apply bar: "**Claude proposed 1 change** to this list. Nothing changes until you apply it." with a ghost **Discard** and a bronze **Apply**, the screen's only primary.
+  - Nothing reaches the game until it's applied.
+- **Login notes:**
+  - Each note has the character in class colour, the text, and a muted meta line ("by you · until Thu 9 Oct", "by Claude, approved · once").
+  - A note can be "once" (shown at the next login, then archived) or "until <date>".
+  - "+ Add a note…" picks the character.
+  - Claude's notes arrive as proposals in the same apply bar.
+- **"Sent to the game":** one row per Bridge slot this screen feeds ("Lists and errands", "Login briefing"), with the four Bridge states from `bridge.html` ("in the game since 21:06", "waiting for a sync", "restart WoW once", "couldn't write") and a grey summary ("3 lists · 2 errands").
+- **Empty:** "No lists yet. Make one for anything you're gathering across characters: mats for a profession, consumables for raid night." with a stone **New list** button.
+- **Never:** prices that look like advice ("buy now"), anything about other players, or anything that acts in game.

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game: briefing, list and errands · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* B1 + B2 in the INGAME.md style: Blizzard templates and fonts only, nothing of D.
+     Rules: INGAME.md §9 (briefing) and §10 (list and errands). Display only: we never buy, attach or send. */
+  :root { --gold: #ffd100; --white: #f1ece0; --grey: #8f8a7c; --dim: #a9a291; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: var(--white); font: 13px/1.4 "Friz Quadrata TT", Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; color: #d8cfc0; margin-bottom: 4px; }
+  h2 { font: 600 14px -apple-system, "Geist", sans-serif; color: #d8cfc0; margin: 22px 0 10px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 8px; }
+  .lede a { color: #ffb15c; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { display: grid; gap: 6px; align-content: start; }
+  .tile > p { font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+  .tile > p b { color: #d8cfc0; font-weight: 600; }
+  .world { position: relative; height: 300px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+  .world.tall { height: 430px; }
+  .world.cave { background: radial-gradient(120% 90% at 70% 30%, #3b3346 0%, #1f1a26 50%, #0f0d12 100%); }
+
+  .chat { position: absolute; left: 12px; bottom: 12px; right: 12px; padding: 6px 8px; background: rgba(0,0,0,.35); border-radius: 3px; font-size: 12.5px; line-height: 1.55; }
+  .chat .sys { color: #ffff00; } .gold { color: var(--gold); } .grey { color: var(--grey); }
+  .pal { color: #f48cba; } .dru { color: #ff7c0a; } .war { color: #c69b6d; } .hun { color: #aad372; } .rog { color: #fff468; } .pri { color: #f0ebe0; }
+  .q1 { color: #fff; } .q2 { color: #1eff00; } .q3 { color: #0070dd; }
+
+  /* stand-in for a Blizzard window (merchant, AH, mail) */
+  .bw { position: absolute; left: 12px; top: 12px; width: 300px; bottom: 12px; background: rgba(12,10,8,.92); border-radius: 4px; box-shadow: 0 0 0 1px #6f6a5e, 0 6px 18px rgba(0,0,0,.6); }
+  .bw .hd { padding: 6px 10px; color: var(--gold); font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .bw .items { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
+  .mi { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 6px; align-items: center; font-size: 11.5px; padding: 3px; border-radius: 3px; }
+  .mi .ic { width: 30px; height: 30px; border-radius: 3px; background: linear-gradient(135deg, #5d6f80, #1e2a36); box-shadow: inset 0 0 0 1px #000; }
+  .mi .p { display: block; color: var(--dim); font-size: 10.5px; }
+  .mi.hit { box-shadow: 0 0 0 1.5px var(--gold), 0 0 8px rgba(255,209,0,.35); }
+  .mi.hit .tag { display: inline-block; margin-left: 4px; font-size: 9.5px; color: #2a1a00; background: var(--gold); border-radius: 2px; padding: 0 3px; }
+  .rows { padding: 6px 8px; font-size: 11.5px; }
+  .rows div { display: grid; grid-template-columns: minmax(0, 1fr) 70px 50px; gap: 6px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .rows div.hit { box-shadow: inset 2px 0 0 var(--gold); background: rgba(255,209,0,.08); }
+  .rows .h { color: var(--dim); font-size: 10.5px; }
+
+  /* our docked panel (DefaultPanelFlatTemplate stand-in) */
+  .gf { position: absolute; top: 12px; width: 250px; background: rgba(10,10,12,.92); border-radius: 6px; box-shadow: 0 0 0 1px #4d4a44, 0 6px 18px rgba(0,0,0,.7); }
+  .gf.dock { left: 318px; }
+  .gf-h { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-bottom: 1px solid #3a3731; background: linear-gradient(180deg, #2a2824, #1a1917); border-radius: 6px 6px 0 0; }
+  .gf-h b { font-weight: 400; color: var(--gold); font-size: 12.5px; }
+  .gf-h small { margin-left: auto; color: var(--dim); font-size: 10.5px; }
+  .gf-b { padding: 6px 10px 8px; display: grid; gap: 5px; font-size: 11.5px; }
+  .li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; }
+  .li .s { grid-column: 1 / -1; color: var(--dim); font-size: 10.5px; }
+  .li .n { color: #fff; white-space: nowrap; }
+  .li.here .t::after { content: " · here"; color: var(--gold); }
+  .li.done .t, .li.done .n { color: var(--grey); }
+  .gf-f { padding: 5px 10px 7px; border-top: 1px solid rgba(255,255,255,.1); font-size: 10.5px; color: var(--dim); }
+  .gbtn { height: 20px; padding: 0 10px; font: 11.5px "Friz Quadrata TT", Georgia, serif; color: var(--gold); border-radius: 3px; border: 0;
+    background: linear-gradient(180deg, #9a2314, #4a0d07); box-shadow: inset 0 0 0 1px #c9a23a, inset 0 1px 0 rgba(255,255,255,.25); }
+  .er { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .er .s { grid-column: 1; color: var(--dim); font-size: 10.5px; }
+  .er .gbtn { grid-row: 1 / span 2; grid-column: 2; }
+  .field { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--dim); }
+  .field span { flex: 1; padding: 2px 6px; background: rgba(0,0,0,.5); box-shadow: inset 0 0 0 1px #5d584d; color: #fff; border-radius: 2px; }
+  .gtip { position: absolute; width: 210px; padding: 7px 9px; font-size: 11.5px; color: #fff; background: rgba(6,10,28,.95); border-radius: 3px; box-shadow: 0 0 0 1px #6c7a9a; }
+  .gtip i { color: var(--gold); font-style: normal; display: block; }
+</style>
+</head>
+<body>
+<h1>In-game: login briefing, shopping list and alt errands</h1>
+<p class="lede">B1 + B2 mocks, in the <a href="INGAME.md">INGAME.md</a> style. Display only: the addon never buys, attaches or sends; the player clicks. The app side (making lists, approving Claude's proposals) is in <a href="lists.html">lists.html</a>.</p>
+
+<h2>B1 · Login briefing (chat, once per login)</h2>
+<section class="grid">
+  <div class="tile"><p><b>Something to say.</b> One line, only facts that matter now: quests ready to hand in and repair from the game itself, mail and errands from the app.</p>
+    <div class="world cave"><div class="chat"><div class="sys">Welcome to World of Warcraft!</div>
+      <div><span class="gold">Forever Buddy:</span> 3 quests ready to hand in · repair due (24%) · <span class="pri">Sela</span> has 2 letters waiting · 1 errand at the mailbox</div></div></div></div>
+  <div class="tile"><p><b>With a note.</b> A note written in the app (by you, or proposed by Claude and approved) follows as a second line, in quotes.</p>
+    <div class="world cave"><div class="chat">
+      <div><span class="gold">Forever Buddy:</span> 2 quests ready to hand in</div>
+      <div><span class="gold">Note:</span> "Hand in the Onyxia attunement before raid on Thursday."</div></div></div></div>
+  <div class="tile"><p><b>Nothing to say.</b> No line at all. <b>/fb brief</b> repeats the last briefing on demand; it can be switched off from the compartment menu.</p>
+    <div class="world cave"><div class="chat"><div class="sys">Welcome to World of Warcraft!</div><div class="grey" style="font-style:italic">(no Forever Buddy line)</div></div></div></div>
+</section>
+
+<h2>B2 · Shopping list at vendors and the AH</h2>
+<section class="grid two">
+  <div class="tile"><p><b>At a vendor.</b> A small panel docks beside the merchant window. Items on your list that this vendor sells glow gold with a "list" tag; the panel marks them "here". Buying stays yours.</p>
+    <div class="world tall"><div class="bw"><div class="hd">Merchant: Harlo Wigglesworth</div>
+      <div class="items">
+        <div class="mi"><span class="ic"></span><span>Coarse Thread<span class="p">10c</span></span></div>
+        <div class="mi hit"><span class="ic"></span><span>Rune Thread<span class="tag">list</span><span class="p">50s</span></span></div>
+        <div class="mi"><span class="ic"></span><span>Fine Thread<span class="p">25c</span></span></div>
+        <div class="mi hit"><span class="ic"></span><span>Heavy Silken Thread<span class="tag">list</span><span class="p">20s</span></span></div>
+        <div class="mi"><span class="ic"></span><span>Salt<span class="p">50c</span></span></div>
+        <div class="mi"><span class="ic"></span><span>Bleach<span class="p">25c</span></span></div>
+      </div></div>
+      <div class="gf dock"><div class="gf-h"><b>Your list</b><small>Tailoring 300</small></div>
+        <div class="gf-b">
+          <div class="li here"><span class="t">Rune Thread</span><span class="n">need 6</span><span class="s">your alts have 0</span></div>
+          <div class="li here"><span class="t">Heavy Silken Thread</span><span class="n">need 2</span><span class="s"><span class="pri">Sela</span> has 4 in bank, still 2 short</span></div>
+          <div class="li"><span class="t q1">Runecloth</span><span class="n">need 20</span><span class="s"><span class="war">Coinpurse</span> 340 bank · ~1g 12s at last scan</span></div>
+          <div class="li done"><span class="t">Felcloth</span><span class="n">done</span><span class="s">you have 8 of 8</span></div>
+        </div><div class="gf-f">From Forever Buddy · 21:04 · /fb list</div></div></div></div>
+
+  <div class="tile"><p><b>At the auction house.</b> The same panel docks beside the AH. Matching results get a gold edge; the panel shows your last scan price so you can tell a deal from a trap. Buying stays yours.</p>
+    <div class="world tall"><div class="bw"><div class="hd">Auction House: Browse</div>
+      <div class="rows">
+        <div class="h"><span>Item</span><span>Each</span><span>Qty</span></div>
+        <div class="hit"><span class="q1">Runecloth</span><span>1g 05s</span><span>20</span></div>
+        <div><span class="q1">Runecloth</span><span>1g 40s</span><span>40</span></div>
+        <div><span class="q2">Mooncloth</span><span>24g</span><span>1</span></div>
+        <div class="hit"><span class="q1">Runecloth</span><span>1g 09s</span><span>12</span></div>
+      </div></div>
+      <div class="gf dock"><div class="gf-h"><b>Your list</b><small>Tailoring 300</small></div>
+        <div class="gf-b">
+          <div class="li here"><span class="t q1">Runecloth</span><span class="n">need 20</span><span class="s">~1g 12s at your last scan · first two rows are under it</span></div>
+          <div class="li"><span class="t">Rune Thread</span><span class="n">need 6</span><span class="s">sold by trade vendors</span></div>
+        </div><div class="gf-f">From Forever Buddy · 21:04</div></div></div></div>
+</section>
+
+<h2>B2 · Alt errands at the mailbox</h2>
+<section class="grid two">
+  <div class="tile"><p><b>On the alt that holds the goods.</b> The panel lists what other characters' lists need from this one. <b>Fill recipient</b> only types the name in the Send tab. You attach and press Send.</p>
+    <div class="world tall"><div class="bw"><div class="hd">Mailbox: Send</div>
+      <div style="padding:10px;display:grid;gap:8px">
+        <div class="field">To <span id="to">Kaelor</span></div>
+        <div class="field">Subject <span>&nbsp;</span></div>
+        <div style="height:120px;border-radius:3px;box-shadow:inset 0 0 0 1px #5d584d;display:grid;place-items:center;color:var(--dim);font-size:11px">attachments (yours to add)</div>
+        <div style="text-align:right"><button class="gbtn">Send</button></div></div></div>
+      <div class="gf dock"><div class="gf-h"><b>Errands</b><small>from <span class="war">Coinpurse</span></small></div>
+        <div class="gf-b">
+          <div class="er"><span>Thorium Bar ×20 to <span class="rog">Kaelor</span></span><button class="gbtn">Fill recipient</button><span class="s">you have 34 in bags · his Blacksmithing list</span></div>
+          <div class="er"><span>Runecloth ×20 to <span class="pri">Sela</span></span><button class="gbtn" style="filter:grayscale(1) brightness(.7)">Fill recipient</button><span class="s">340 in your bank · visit the bank first</span></div>
+        </div><div class="gf-f">Nothing is attached or sent for you.</div></div>
+      <div class="gtip" style="left:330px;top:250px"><i>Fill recipient</i>Types "Kaelor" in the To field. Attach the Thorium Bars yourself, then press Send.</div></div></div>
+
+  <div class="tile"><p><b>Nothing to send.</b> No panel. On the receiving alt, the list panel's line reads "<span class="war">Coinpurse</span> can send 20" instead of "need 20".</p>
+    <div class="world tall"><div class="bw"><div class="hd">Mailbox: Inbox</div><div style="padding:10px;color:var(--dim);font-size:11.5px">(the game's own inbox)</div></div></div></div>
+</section>
+</body>
+</html>
