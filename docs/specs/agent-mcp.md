@@ -64,6 +64,8 @@ All are annotated `readOnlyHint: true`. Each answers from the app's database ope
 
 **Text from the game is data.** Item names, zone names and quest titles come from Blizzard's client, and character names are Julia's own. Every result wraps them in plain JSON fields and never in instructions. The tool descriptions say so, to keep a confused model from treating a field as a command.
 
+The same goes for text an agent proposed earlier. An approved note or plan comes back later through `get_recent_play` or `get_quests`, so it's always returned in its own field and never concatenated into a tool description or a prompt (stored injection).
+
 ---
 
 ## 3. Proposal tools
@@ -85,7 +87,11 @@ All are annotated `readOnlyHint: false, destructiveHint: false`. Each one **stag
 The app stays the only writer of its database. The sidecar never writes to `buddy.db`.
 
 1. **The inbox.** The sidecar writes the proposal as one JSON file, `<local data>/agent-inbox/<ulid>.json`, via `atomic_replace`. The folder path comes from the app's own data directory, never from the agent. The file is the producer (the MCP client's `clientInfo.name`), the kind, the body and the time.
-2. **Ingest.** The app picks up new inbox files on start, on window focus and every 10 seconds while open. For each file it:
+2. **Ingest.** The app picks up new inbox files on start, on window focus and every 10 seconds while open.
+
+   **While agent access is off, nothing is staged.** The switch is checked here too, not only in the sidecar, because any local process can write the inbox. Each file found while off is recorded `rejected: agent access is off` (so the agent can tell why) and deleted unread past its header. Test: switch off, drop a valid file in the inbox, and confirm nothing reaches the Approvals panel.
+
+   For each file, it:
    - parses it with `deny_unknown_fields` against the kind's schema;
    - applies the limits;
    - resolves every `character`, `adventure` and `item_id` against its own data, refusing unknown ones;
@@ -99,6 +105,13 @@ The app stays the only writer of its database. The sidecar never writes to `budd
    - a list's items with counts and icons.
 
    It has **Approve** and **Decline** buttons, and Approve all / Decline all for a batch. It reuses F6's stage-and-apply bar. A badge on the sidebar shows the count.
+
+   **What's previewed is exactly what's applied:**
+   - Every proposed string (steps, notes, list names, the producer) is rendered as React text, never HTML.
+   - No field is applied that the preview doesn't show.
+   - Approve applies the stored, validated body that was on screen, not a re-read of anything.
+   - The producer is the client's self-reported `clientInfo.name`, so it's labelled as a claim ("from "Claude Desktop""), never shown as a verified identity.
+   - Approve all is fine for these display-only kinds. When §7's `SvEdit` and `Profile` kinds arrive, they're approved one by one.
 4. **Apply.** Approving runs the kind's normal app code path (the same functions the UI calls), records `applied` with the time, and the change shows up wherever that data lives. Declining records `discarded`. The agent sees either outcome through `list_proposals`.
 
 **The queue is the one from bridge §7**, with three new kinds: `QuestPlan`, `Note`, `ShoppingList`. The columns stay as specced there: id, kind, JSON body, producer (`app` or `agent:<client name>`), created_at, status (`staged`, `applied`, `discarded`, `conflict`), plus `rejected` and its reason.
@@ -133,6 +146,8 @@ These are enforced in the sidecar, and again at ingest, since the inbox is a fol
    - mail text never appears in any result.
 2. **P2b, proposals:** the inbox, ingest with validation, migration 010, and the Approvals panel, with **notes** first since they're the simplest and already exist in the app. Tests:
    - malformed, oversized and unknown-target files are rejected with a reason;
+   - with agent access off, a valid inbox file never reaches Approvals;
+   - the preview shows every applied field, as text;
    - nothing is applied without Approve;
    - the conflict path.
 3. **P2c:** `propose_quest_plan`, when P1's plan table and slot land (@coder2), and `propose_shopping_list`, when B2's lists land. Each is a schema plus its apply function on the same queue.
