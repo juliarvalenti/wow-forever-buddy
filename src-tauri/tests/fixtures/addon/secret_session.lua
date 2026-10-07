@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario secret_session). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.4.0",
+		["addon"] = "0.4.1",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 0,
@@ -49,7 +49,11 @@ ForeverBuddyDB = {
 			["events"] = {
 				{
 					["kind"] = "quest",
+					["map"] = 1429,
 					["t"] = 1790964060,
+					["x"] = 0.412,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [1]
 				{
 					["kind"] = "money",

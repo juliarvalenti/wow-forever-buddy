@@ -316,6 +316,11 @@ export const commands = {
 	lockoutsList: () => __TAURI_INVOKE<AltLockout[]>("lockouts_list"),
 	/**  Marks or unmarks a character as a bank alt (its card's "Bank" tag). */
 	characterSetBankAlt: (id: number, bankAlt: boolean) => __TAURI_INVOKE<null>("character_set_bank_alt", { id, bankAlt }),
+	/**
+	 *  One character's quest log (Q1b): completed count and recent accepts and
+	 *  turn-ins. The sheet shows it only when it has something in it.
+	 */
+	characterQuests: (id: number) => __TAURI_INVOKE<QuestLog>("character_quests", { id }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1456,10 +1461,41 @@ export type PruneReport = {
 	over_budget: boolean,
 };
 
+/**
+ *  One accept or turn-in. Everything but the time and kind is optional:
+ *  older addons recorded only the id and title, and the place is missing
+ *  inside instances.
+ */
+export type QuestEntry = {
+	/**  RFC 3339, UTC. */
+	at: string,
+	kind: QuestKind,
+	quest_id: number | null,
+	title: string | null,
+	zone: string | null,
+	/**  The NPC it was taken from or handed to; never another player. */
+	giver: string | null,
+	/**  uiMapID, and the position on it (0 to 1). */
+	map: number | null,
+	x: number | null,
+	y: number | null,
+};
+
+export type QuestKind = "accepted" | "turned_in";
+
 export type QuestLine = {
 	title: string,
 	/**  The zone the character was in when they turned it in. */
 	zone: string | null,
+};
+
+export type QuestLog = {
+	/**  Quests completed, as of `done_as_of`; 0 before an addon that reports it. */
+	done: number,
+	/**  When the addon last listed them (RFC 3339, UTC). */
+	done_as_of: string | null,
+	/**  Newest first. */
+	entries: QuestEntry[],
 };
 
 /**  What the UI shows about interrupted restores. */

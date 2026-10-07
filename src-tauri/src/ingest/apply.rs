@@ -32,6 +32,9 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     let id = upsert_character(tx, target, file, at)?;
     if let Some(snap) = &file.snapshot {
         apply_snapshot(tx, id, snap)?;
+        if let Some(done) = &snap.quests_done {
+            apply_quests_done(tx, id, snap.at, done)?;
+        }
     }
     for item in &file.items {
         tx.execute(
@@ -74,6 +77,26 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
         )?;
     }
     Ok(id)
+}
+
+/// The completed-quest list, whole, unless what's stored is newer.
+fn apply_quests_done(tx: &Transaction<'_>, id: i64, at: i64, done: &[i64]) -> AppResult<()> {
+    let stored: Option<i64> = tx.query_row(
+        "SELECT max(as_of) FROM char_quests_done WHERE character_id = ?1",
+        [id],
+        |r| r.get(0),
+    )?;
+    if stored.is_some_and(|s| s > at) {
+        return Ok(());
+    }
+    tx.execute("DELETE FROM char_quests_done WHERE character_id = ?1", [id])?;
+    let mut insert = tx.prepare(
+        "INSERT OR IGNORE INTO char_quests_done (character_id, quest_id, as_of) VALUES (?1, ?2, ?3)",
+    )?;
+    for quest in done {
+        insert.execute(params![id, quest, at])?;
+    }
+    Ok(())
 }
 
 fn upsert_character(tx: &Transaction<'_>, t: &Target, file: &AddonFile, at: i64) -> AppResult<i64> {
