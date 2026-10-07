@@ -471,6 +471,63 @@ local function playedAt(t)
     }
 end
 
+-- Known recipes (C1): what each of this character's professions can make,
+-- read when its profession window is open (the only time the game lists
+-- them). Your own window only, never a linked or guild crafter's, and
+-- never in combat. Item ids and skill only.
+local R = { scanned = nil } -- scanned: profession name -> { skill, max, at, made }
+do
+    local MAX_MADE = 1000
+
+    function R.scan()
+        if read("InCombatLockdown") or read("C_TradeSkillUI.IsTradeSkillLinked")
+            or read("C_TradeSkillUI.IsTradeSkillGuild") or read("C_TradeSkillUI.IsNPCCrafting") then
+            return
+        end
+        local info = read("C_TradeSkillUI.GetBaseProfessionInfo")
+        local name = type(info) == "table" and info.professionName
+        local ids = read("C_TradeSkillUI.GetAllRecipeIDs")
+        if type(name) ~= "string" or name == "" or type(ids) ~= "table" then
+            return
+        end
+        local made, seen = {}, {}
+        for _, id in ipairs(ids) do
+            local r = type(id) == "number" and read("C_TradeSkillUI.GetRecipeInfo", id)
+            if type(r) == "table" and r.learned == true and #made < MAX_MADE then
+                local schematic = read("C_TradeSkillUI.GetRecipeSchematic", id, false)
+                local out = type(schematic) == "table" and schematic.outputItemID
+                if type(out) == "number" and out > 0 and not seen[out] then
+                    seen[out] = true
+                    made[#made + 1] = out
+                end
+            end
+        end
+        table.sort(made)
+        R.scanned = R.scanned or {}
+        R.scanned[name] = {
+            skill = type(info.skillLevel) == "number" and info.skillLevel or nil,
+            max = type(info.maxSkillLevel) == "number" and info.maxSkillLevel or nil,
+            at = now(),
+            made = made,
+        }
+    end
+
+    -- At logout: this session's scans over the last file's, for the
+    -- professions the character still has. nil when there's none.
+    function R.merged(prior, has)
+        local out = {}
+        for name, p in pairs(type(prior) == "table" and prior or {}) do
+            if type(p) == "table" and has[name] then
+                out[name] = p
+            end
+        end
+        for name, p in pairs(R.scanned or {}) do
+            out[name] = p
+        end
+        return next(out) and out or nil
+    end
+end
+
 -- A table from the loaded file, if it's one.
 local function prior(key)
     local s = loaded and loaded.snapshot
@@ -530,6 +587,13 @@ local function snapshot(t)
         s.bags[bag] = container(bag)
     end
     s.professions = professions()
+    -- Recipes are readable only with the profession window open: without a
+    -- look this session, the last scan carries forward.
+    local has = {}
+    for _, p in ipairs(s.professions) do
+        has[p.name] = true
+    end
+    s.recipes = R.merged(prior("recipes"), has)
     s.lockouts = lockouts or prior("lockouts")
     -- Only readable at the banker and the mailbox: without a visit this
     -- session, the last one carries forward (a relog mustn't wipe it).
@@ -2689,6 +2753,16 @@ handlers.MAIL_INBOX_UPDATE = function()
     if mailOpen then
         scanMail()
     end
+end
+
+-- The profession window (C1): its recipe list fills in after SHOW, and
+-- again when a recipe is learned or the skill rises.
+handlers.TRADE_SKILL_SHOW = function()
+    pcall(R.scan)
+end
+
+handlers.TRADE_SKILL_LIST_UPDATE = function()
+    pcall(R.scan)
 end
 
 handlers.TIME_PLAYED_MSG = function(total, level)

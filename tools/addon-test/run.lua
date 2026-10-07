@@ -1167,6 +1167,55 @@ scenario("lists", function()
     return text
 end)
 
+-- Known recipes (C1): read from this character's own profession window,
+-- learned recipes only, item ids and skill; carried forward until the next
+-- look, and dropped with the profession.
+local TAILORING = {
+    name = "Tailoring",
+    skill = 34,
+    max = 75,
+    recipes = {
+        { id = 2387, learned = true, out = 2568 },
+        { id = 2389, learned = true, out = 2572 },
+        { id = 2390, learned = false, out = 2575 }, -- not learned: not recorded
+        { id = 2391, learned = true, out = 2568 }, -- a second recipe for the same item
+    },
+}
+
+scenario("recipes", function()
+    local c = client()
+    c.login(nil)
+    c.openProfession(TAILORING)
+    c.closeProfession()
+    -- Someone else's window, and one opened in combat, record nothing.
+    c.openProfession({ name = "Blacksmithing", skill = 300, max = 300, linked = true,
+        recipes = { { id = 9999, learned = true, out = 12345 } } })
+    c.closeProfession()
+    c.world.combat = true
+    c.openProfession({ name = "Cooking", skill = 29, max = 75, recipes = { { id = 2538, learned = true, out = 2679 } } })
+    c.closeProfession()
+    c.world.combat = false
+    local text = c.logout()
+    local r = file(text).snapshot.recipes
+    eq(entries(r), 1, "only Tailoring")
+    eq(table.concat(r.Tailoring.made, ","), "2568,2572", "learned, sorted, once each")
+    eq(r.Tailoring.skill, 34, "skill")
+    eq(r.Tailoring.max, 75, "max")
+    eq(r.Tailoring.at, c.now, "when")
+
+    -- Not opened this session: the last scan carries forward.
+    local again = client()
+    again.login(text)
+    eq(table.concat(file(again.logout()).snapshot.recipes.Tailoring.made, ","), "2568,2572", "carried forward")
+
+    -- A dropped profession takes its recipes with it.
+    local dropped = client()
+    dropped.world.professions[2] = nil
+    dropped.login(text)
+    eq(file(dropped.logout()).snapshot.recipes, nil, "gone with the profession")
+    return text
+end)
+
 -- This session (S2, INGAME §8): the coach strip, off until /fb coach, and
 -- the card during the logout countdown. Runecloth has a last-scan price of
 -- 1g 12s in the tooltip index.

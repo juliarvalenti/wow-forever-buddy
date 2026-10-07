@@ -386,6 +386,42 @@ function M.new(opts)
         GetMerchantItemID = function(index)
             return world.merchant[index]
         end,
+        -- The open profession window (C1): world.tradeskill = { name, skill,
+        -- max, linked, recipes = { { id, learned, out } } }.
+        ["C_TradeSkillUI.GetBaseProfessionInfo"] = function()
+            local t = world.tradeskill
+            return t and { professionName = t.name, skillLevel = t.skill, maxSkillLevel = t.max } or nil
+        end,
+        ["C_TradeSkillUI.GetAllRecipeIDs"] = function()
+            local out = {}
+            for i, r in ipairs(world.tradeskill and world.tradeskill.recipes or {}) do
+                out[i] = r.id
+            end
+            return out
+        end,
+        ["C_TradeSkillUI.GetRecipeInfo"] = function(id)
+            for _, r in ipairs(world.tradeskill and world.tradeskill.recipes or {}) do
+                if r.id == id then
+                    return { recipeID = id, learned = r.learned }
+                end
+            end
+        end,
+        ["C_TradeSkillUI.GetRecipeSchematic"] = function(id)
+            for _, r in ipairs(world.tradeskill and world.tradeskill.recipes or {}) do
+                if r.id == id then
+                    return { recipeID = id, outputItemID = r.out }
+                end
+            end
+        end,
+        ["C_TradeSkillUI.IsTradeSkillLinked"] = function()
+            return world.tradeskill ~= nil and world.tradeskill.linked == true
+        end,
+        ["C_TradeSkillUI.IsTradeSkillGuild"] = function()
+            return false
+        end,
+        ["C_TradeSkillUI.IsNPCCrafting"] = function()
+            return false
+        end,
         ["C_AuctionHouse.GetBrowseResults"] = function()
             local out = {}
             for i, id in ipairs(world.ah_browse) do
@@ -873,6 +909,19 @@ function M.new(opts)
             world.xp = rest
         end
         client.fire("PLAYER_XP_UPDATE", "player")
+    end
+
+    -- Opens a profession window (`ts` as world.tradeskill); its list fills
+    -- in after it shows, as the client's does. Closing it leaves nothing.
+    function client.openProfession(ts)
+        world.tradeskill = ts
+        client.fire("TRADE_SKILL_SHOW")
+        client.fire("TRADE_SKILL_LIST_UPDATE")
+    end
+
+    function client.closeProfession()
+        world.tradeskill = nil
+        client.fire("TRADE_SKILL_CLOSE")
     end
 
     -- /logout's countdown, and cancelling it.
