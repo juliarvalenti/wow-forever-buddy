@@ -287,13 +287,26 @@ impl AppCore {
     pub fn send_to_game_locked(&self) -> AppResult<Sent> {
         let game = self.active_game()?;
         let target = self.mutation_target()?;
-        send(
+        let sent = send(
             &self.db,
             &self.write_gate()?,
             &target,
             &game.flavor,
             chrono::Utc::now().timestamp(),
-        )
+        );
+        // BUG-LISTS: these two leave the screens at "waiting" with nothing
+        // recorded, so the log says which it was.
+        let why = match &sent {
+            Ok(Sent::Waiting) => Some("game data waits: the write gate says WoW is running"),
+            Ok(Sent::NoAddon) => {
+                Some("game data not sent: the installed addon lists no data files")
+            }
+            _ => None,
+        };
+        if let Some(why) = why {
+            crate::applog::append(&self.paths.log_dir, why);
+        }
+        sent
     }
 }
 
