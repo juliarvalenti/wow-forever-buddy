@@ -617,7 +617,7 @@ pub fn worth_selling(
         };
         let mut stmt = c.prepare(
             "SELECT i.item_id, c.id, c.name, c.class, i.location, sum(i.count)
-             FROM char_items i JOIN characters c ON c.id = i.character_id
+             FROM char_items i JOIN visible_characters c ON c.id = i.character_id
              JOIN ah_latest l ON l.flavor = c.flavor AND l.realm = ?2 AND l.item_key = CAST(i.item_id AS TEXT)
              WHERE c.flavor = ?1 AND i.location != 'equipped'
              GROUP BY i.item_id, c.id, i.location",
@@ -690,7 +690,7 @@ pub fn goods_worth(db: &Db, flavor: &str, today: NaiveDate) -> AppResult<GoodsWo
         let realm = market(c, flavor)?;
         let mut stmt = c.prepare(
             "SELECT i.item_id, c.id, sum(i.count), l.price
-             FROM char_items i JOIN characters c ON c.id = i.character_id
+             FROM char_items i JOIN visible_characters c ON c.id = i.character_id
              LEFT JOIN ah_latest l ON l.flavor = c.flavor AND l.realm = ?2
                                   AND l.item_key = CAST(i.item_id AS TEXT)
              WHERE c.flavor = ?1 AND i.location != 'equipped'

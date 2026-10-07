@@ -206,7 +206,7 @@ const CARD_SQL: &str = "
            (SELECT coalesce(sum(count), 0) FROM char_items i
              WHERE i.character_id = c.id AND i.location = 'bank'),
            c.account, c.group_dir, c.char_dir, c.bank_alt
-    FROM characters c
+    FROM visible_characters c
     LEFT JOIN char_snapshots s
       ON s.character_id = c.id
      AND s.at = (SELECT max(at) FROM char_snapshots WHERE character_id = c.id)";
@@ -260,7 +260,7 @@ pub fn lockouts(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<AltLockout>> {
     db.with_conn(|c| {
         let mut stmt = c.prepare(&format!(
             "SELECT c.id, c.name, c.class, l.name, l.difficulty, l.raid, l.reset_at
-             FROM lockouts l JOIN characters c ON c.id = l.character_id
+             FROM lockouts l JOIN visible_characters c ON c.id = l.character_id
              WHERE c.flavor = ?1 AND {LOCKOUT_LIVE}
              ORDER BY l.reset_at IS NULL, l.reset_at, l.name, c.name"
         ))?;
@@ -304,7 +304,7 @@ pub fn overview(db: &Db, flavor: &str) -> AppResult<CharactersOverview> {
             .collect::<Result<Vec<_>, _>>()?;
         let items: i64 = c.query_row(
             "SELECT coalesce(sum(i.count), 0) FROM char_items i
-             JOIN characters c ON c.id = i.character_id
+             JOIN visible_characters c ON c.id = i.character_id
              WHERE c.flavor = ?1 AND i.location != 'equipped'",
             [flavor],
             |r| r.get(0),
@@ -697,7 +697,7 @@ pub fn search_filtered(
                         sum(i.count), it.name, it.quality, it.ilvl, max(i.as_of),
                         it.icon_file_id
                  FROM char_items i
-                 JOIN characters c ON c.id = i.character_id
+                 JOIN visible_characters c ON c.id = i.character_id
                  LEFT JOIN items it ON it.item_id = i.item_id
                  WHERE c.flavor = ?1 AND i.location IN ('bag', 'bank', 'mail')
                  GROUP BY c.id, i.location, i.item_id",

@@ -285,7 +285,16 @@ function Shell() {
             onOpenCharacters={() => setScreen("characters")}
           />
         )}
-        {current === "characters" && <Characters onOpenDashboard={() => setScreen("dashboard")} />}
+        {current === "characters" && (
+          <Characters
+            onOpenDashboard={() => setScreen("dashboard")}
+            onOpenData={() => {
+              // O2: "Manage in Settings" and "Show" land on Settings › Data.
+              setScreen("settings");
+              requestAnimationFrame(() => document.getElementById("settings-data")?.scrollIntoView());
+            }}
+          />
+        )}
         {current === "backups" && (
           <Backups
             game={game}

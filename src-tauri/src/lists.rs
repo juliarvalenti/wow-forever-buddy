@@ -139,7 +139,7 @@ fn item_flavor(c: &rusqlite::Connection, item: u32) -> AppResult<String> {
 fn check_for(c: &rusqlite::Connection, flavor: &str, character: Option<u32>) -> AppResult<()> {
     if let Some(id) = character {
         let known: bool = c.query_row(
-            "SELECT EXISTS (SELECT 1 FROM characters WHERE id = ?1 AND flavor = ?2)",
+            "SELECT EXISTS (SELECT 1 FROM visible_characters WHERE id = ?1 AND flavor = ?2)",
             params![id, flavor],
             |r| r.get(0),
         )?;
@@ -430,7 +430,7 @@ pub fn lists(db: &Db, flavor: &str) -> AppResult<Vec<List>> {
         // What every character holds of the listed items, by place.
         let mut stmt = c.prepare(
             "SELECT i.item_id, i.character_id, i.location, sum(i.count), min(i.as_of)
-             FROM char_items i JOIN characters ch ON ch.id = i.character_id
+             FROM char_items i JOIN visible_characters ch ON ch.id = i.character_id
              WHERE ch.flavor = ?1 AND i.location IN ('bag', 'bank', 'mail')
                AND i.item_id IN (SELECT li.item_id FROM list_items li
                                  JOIN lists l ON l.id = li.list_id WHERE l.flavor = ?1)

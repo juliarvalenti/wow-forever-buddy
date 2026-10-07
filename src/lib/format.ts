@@ -106,6 +106,16 @@ export function played(seconds: number): string {
   return `${m}m`;
 }
 
+/** "3 Aug", with the year when it isn't this one: "3 Aug 2025". */
+export function dayMonth(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
 /** "Sunday, 4 October". */
 export function longDate(d = new Date()): string {
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });

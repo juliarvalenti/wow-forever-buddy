@@ -49,6 +49,8 @@ import type {
   SnapshotKind,
   SnapshotSummary,
   StorageInfo,
+  Tidy,
+  TidyCharacter,
   Trigger,
   VerifyReport,
   WtfCharacter,
@@ -92,6 +94,7 @@ export const SCENARIOS = [
   "approvals", // P2b: a new note, a conflict, and the Decided list
   "approvals-empty", // agent access on, nothing waiting
   "approvals-off", // agent access off
+  "tidy", // O2: Kaelor's folder is gone, Sela is hidden, Oldmain was forgotten (Characters, Settings › Data)
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -348,6 +351,41 @@ export function installMockIpc(): void {
     bank_alt: bankAlts.has(id),
     ...extra,
   });
+  // O2 (IMPLEMENTING §22), "tidy": Kaelor's WTF folder is gone, Sela is
+  // hidden, and Oldmain was forgotten two days ago.
+  const tidyCase = s === "tidy";
+  const goneIds = new Set<number>(tidyCase ? [7] : []);
+  const hiddenAt = new Map<number, string>(tidyCase ? [[6, iso(60 * 24 * 3)]] : []);
+  const forgottenIds = new Set<number>();
+  let forgotten: Tidy["forgotten"] = tidyCase
+    ? [{ id: 1, name: "Oldmain", class: "warlock", forgotten_at: iso(60 * 24 * 2) }]
+    : [];
+  let dataSize = {
+    bytes: 48.2 * 1024 * 1024,
+    copies: 7,
+    copies_bytes: 310 * 1024 * 1024,
+    characters: 8,
+    gold_days: 214,
+    adventures: 1046,
+    items_seen: 3812,
+    price_days: 61,
+  };
+  const tidyView = (): Tidy => {
+    const rows: TidyCharacter[] = alts
+      .filter(([id]) => !forgottenIds.has(id))
+      .map(([id, name, surname, cls, , , , , mins]) => ({
+        id,
+        name: surname ? `${name} ${surname}` : name,
+        class: cls,
+        last_seen: id === 7 && tidyCase ? "2026-08-03T21:00:00Z" : iso(mins),
+        hidden_at: hiddenAt.get(id) ?? null,
+        gone: goneIds.has(id),
+        account: "ACCOUNT1",
+        group_dir: "70",
+        char_dir: surname ? `${name}-${surname}` : name,
+      }));
+    return { gone: rows.filter((r) => r.gone), hidden: rows.filter((r) => r.hidden_at), forgotten };
+  };
   // F3: Coinpurse is the bank alt, and this week's saves (resets ahead).
   const bankAlts = new Set<number>([1]);
   // P1: Thrandor's plan from character.html?plan, 2 of 5 done, in the game.
@@ -1306,11 +1344,17 @@ export function installMockIpc(): void {
       resolved = true;
       return { snapshot_id: "S1", pre_restore_snapshot: "S9", written: 3, deleted: 1, summary: plan.summary };
     },
-    // V7: the round-3 characters.html alts (no net worth, §7).
+    // V7: the round-3 characters.html alts (no net worth, §7). O2: hidden
+    // and forgotten ones leave it.
     characters_overview: () => {
-      const characters = alts.map(([id, name, surname, cls, race, level, money, zone, mins, extra]) =>
-        card(id, name, surname, cls, race, level, money, zone, mins, extra),
-      );
+      const characters = alts
+        .filter(([id]) => !hiddenAt.has(id) && !forgottenIds.has(id))
+        .map(([id, name, surname, cls, race, level, money, zone, mins, extra]) =>
+          card(id, name, surname, cls, race, level, money, zone, mins, {
+            ...extra,
+            ...(goneIds.has(id) ? { last_seen: "2026-08-03T21:00:00Z" } : {}),
+          }),
+        );
       return {
         gold: characters.reduce((n, c) => n + (c.money ?? 0), 0),
         items: 1284,
@@ -1360,6 +1404,36 @@ export function installMockIpc(): void {
     plan_clear: ({ characterId }): Plan[] => {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
+    },
+    // O2: IMPLEMENTING §22. "tidy" has one of each; elsewhere nothing.
+    tidy_get: (): Tidy => tidyView(),
+    tidy_data: () => dataSize,
+    tidy_hide: ({ characterId, hidden }): Tidy => {
+      if (hidden) hiddenAt.set(Number(characterId), iso(0));
+      else hiddenAt.delete(Number(characterId));
+      return tidyView();
+    },
+    tidy_forget_preview: ({ characterId }) => {
+      const a = alts.find(([id]) => id === characterId);
+      if (!a || !goneIds.has(a[0])) throw { kind: "InvalidSettings", detail: "still in your WTF folder" };
+      return { id: a[0], name: a[1], adventures: 212, gold_since: "2026-03-14T20:00:00Z", notes: 3, plans: 1 };
+    },
+    tidy_forget: ({ characterId }): Tidy => {
+      const a = alts.find(([id]) => id === characterId);
+      if (a) {
+        forgottenIds.add(a[0]);
+        hiddenAt.delete(a[0]);
+        forgotten.unshift({ id: 100 + a[0], name: a[1], class: a[3], forgotten_at: iso(0) });
+      }
+      return tidyView();
+    },
+    tidy_remember: ({ forgottenId }): Tidy => {
+      forgotten = forgotten.filter((f) => f.id !== forgottenId);
+      return tidyView();
+    },
+    tidy_compact: () => {
+      dataSize = { ...dataSize, bytes: dataSize.bytes - 6.3 * 1024 * 1024 };
+      return dataSize;
     },
     // B3/B3b: Thrandor's bag cleanup (character.html, IMPLEMENTING §18).
     cleanup_get: ({ characterId }): Cleanup => cleanupView(Number(characterId)),

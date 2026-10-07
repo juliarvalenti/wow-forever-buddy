@@ -96,7 +96,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                     (SELECT max(as_of) FROM char_items
                      WHERE character_id = c.id AND location = 'mail'),
                     c.level
-             FROM characters c WHERE c.flavor = ?1
+             FROM visible_characters c WHERE c.flavor = ?1
              ORDER BY c.last_seen DESC, c.id",
         )?;
         let alts = stmt
@@ -117,7 +117,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         let mut stmt = c.prepare(
             "SELECT i.character_id, i.slot, max(coalesce(it.ilvl, 0)), max(i.item_id)
              FROM char_items i
-             JOIN characters c ON c.id = i.character_id
+             JOIN visible_characters c ON c.id = i.character_id
              LEFT JOIN items it ON it.item_id = i.item_id
              WHERE c.flavor = ?1 AND i.location = 'equipped'
              GROUP BY i.character_id, i.slot",
@@ -147,7 +147,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         }
         let mut stmt = c.prepare(
             "SELECT i.item_id, i.character_id, i.location, sum(i.count)
-             FROM char_items i JOIN characters c ON c.id = i.character_id
+             FROM char_items i JOIN visible_characters c ON c.id = i.character_id
              WHERE c.flavor = ?1
              GROUP BY i.item_id, i.character_id, i.location",
         )?;
@@ -197,7 +197,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
     let (made, profs) = db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT r.item_id, r.character_id, r.profession
-             FROM char_recipes r JOIN characters ch ON ch.id = r.character_id
+             FROM char_recipes r JOIN visible_characters ch ON ch.id = r.character_id
              WHERE ch.flavor = ?1",
         )?;
         let made = stmt
@@ -211,7 +211,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
             .collect::<Result<Vec<_>, _>>()?;
         let mut stmt = c.prepare(
             "SELECT r.character_id, r.profession, p.skill, max(r.scanned_at)
-             FROM char_recipes r JOIN characters ch ON ch.id = r.character_id
+             FROM char_recipes r JOIN visible_characters ch ON ch.id = r.character_id
              LEFT JOIN professions p ON p.character_id = r.character_id AND p.name = r.profession
              WHERE ch.flavor = ?1
              GROUP BY r.character_id, r.profession",
@@ -233,7 +233,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         let mut stmt = c.prepare(
             "SELECT g.item_id, g.reagent_id, g.qty FROM recipe_reagents g
              WHERE g.item_id IN (SELECT r.item_id FROM char_recipes r
-                                 JOIN characters ch ON ch.id = r.character_id
+                                 JOIN visible_characters ch ON ch.id = r.character_id
                                  WHERE ch.flavor = ?1)
              ORDER BY g.item_id, g.reagent_id",
         )?;

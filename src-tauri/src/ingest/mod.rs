@@ -182,6 +182,11 @@ pub fn scan(db: &Db, flavor: &str, flavor_dir: &Path) -> AppResult<Vec<i64>> {
         let Some(target) = target_for(flavor, &rel) else {
             continue;
         };
+        // Forgotten (O2): not read again until Remember again. Its
+        // ingest_state row went with it, so that reads it fresh.
+        if crate::tidy::is_forgotten(db, &target)? {
+            continue;
+        }
         let key = state_key(flavor, &rel);
         let Ok(meta) = std::fs::metadata(&abs) else {
             continue;
@@ -290,6 +295,10 @@ pub fn replay_backups(core: &AppCore, flavor: &str) -> AppResult<Vec<i64>> {
                 continue;
             };
             if older.contains(&(target.account.clone(), target.group_dir.clone())) {
+                continue;
+            }
+            // Forgotten (O2): an old backup doesn't bring it back.
+            if crate::tidy::is_forgotten(&core.db, &target)? {
                 continue;
             }
             let Ok(bytes) = store.blobs().get(&f.blake3) else {
@@ -927,6 +936,26 @@ mod tests {
         );
         // Another flavor's backups aren't replayed into this one.
         assert!(replay_backups(&core, "_retail_").unwrap().is_empty());
+    }
+
+    /// O2: a forgotten character isn't brought back by a replay, even one
+    /// that starts over (a db restored from an older daily copy).
+    #[test]
+    fn a_forgotten_character_stays_forgotten_through_a_replay() {
+        let (_dir, root, core) = backup_core();
+        full_backup(&core, &root, "_classic_beta_");
+        let ids = replay_backups(&core, "_classic_beta_").unwrap();
+        let flavor_dir = root.join("_classic_beta_");
+        std::fs::remove_dir_all(flavor_dir.join("WTF/Account/ACCOUNT1/70/Thrandor-Vargur"))
+            .unwrap();
+        crate::tidy::forget(&core.db, "_classic_beta_", &flavor_dir, ids[0] as u32, 1).unwrap();
+
+        core.db
+            .set_meta(&last_replayed_key("_classic_beta_"), "")
+            .unwrap();
+        assert!(replay_backups(&core, "_classic_beta_").unwrap().is_empty());
+        assert_eq!(count(&core.db, "SELECT count(*) FROM characters"), 0);
+        assert_eq!(count(&core.db, "SELECT count(*) FROM adventures"), 0);
     }
 
     /// The marker is per flavor: replaying one flavor's newer backups

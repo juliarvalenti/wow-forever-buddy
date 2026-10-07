@@ -293,11 +293,13 @@ pub(crate) fn suggest_from(
 ) -> AppResult<Vec<(u32, Mark, Reason)>> {
     let flavor = flavor_of(c, character)?;
     // Every character of the flavor: class, level, and its worn item levels.
+    // A hidden one (O2) is never suggested as a recipient.
     let mut stmt = c.prepare(
-        "SELECT id, lower(coalesce(class, '')), coalesce(level, 0) FROM characters WHERE flavor = ?1",
+        "SELECT id, lower(coalesce(class, '')), coalesce(level, 0) FROM characters
+         WHERE flavor = ?1 AND (hidden_at IS NULL OR id = ?2)",
     )?;
     let chars = stmt
-        .query_map([&flavor], |r| {
+        .query_map(rusqlite::params![flavor, character], |r| {
             Ok((
                 r.get::<_, u32>(0)?,
                 r.get::<_, String>(1)?,

@@ -22,6 +22,7 @@ import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
 import { useAppInfo, useSecrets, useSettings } from "@/hooks/useSettings";
 import { ago, bytes, errorText, plural } from "@/lib/format";
+import { DataPanel } from "@/screens/SettingsData";
 
 // Copy and layout from design/mocks/round-3/settings.html (F1).
 
@@ -128,7 +129,7 @@ export function Settings({
   onRunSetup: () => void;
 }) {
   const { settings, error, update, reload } = useSettings();
-  const { storage, refresh: refreshBackups } = useBackups();
+  const { storage, progress: backupProgress, refresh: refreshBackups } = useBackups();
   const info = useAppInfo();
   const secrets = useSecrets();
   const ah = useAhStatus();
@@ -244,6 +245,10 @@ export function Settings({
               }}
             />
           </Panel>
+
+          <div id="settings-data">
+            <DataPanel backupRunning={backupProgress != null} />
+          </div>
 
           <Panel>
             <PanelHeader title="Safety" />

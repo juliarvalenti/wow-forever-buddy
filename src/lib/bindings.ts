@@ -377,6 +377,27 @@ export const commands = {
 	cleanupAccept: (characterId: number, itemId: number | null) => __TAURI_INVOKE<Cleanup>("cleanup_accept", { characterId, itemId }),
 	/**  B3b: dismiss a suggestion; it doesn't come back for that item. */
 	cleanupDismiss: (characterId: number, itemId: number) => __TAURI_INVOKE<Cleanup>("cleanup_dismiss", { characterId, itemId }),
+	/**
+	 *  O2: gone, hidden and forgotten characters, for Characters and Settings ›
+	 *  Data. Without a game folder, nothing is gone.
+	 */
+	tidyGet: () => __TAURI_INVOKE<Tidy>("tidy_get"),
+	/**  "Forever Buddy's own data": sizes and counts (Settings › Data only). */
+	tidyData: () => __TAURI_INVOKE<DataSize>("tidy_data"),
+	tidyHide: (characterId: number, hidden: boolean) => __TAURI_INVOKE<Tidy>("tidy_hide", { characterId, hidden }),
+	/**
+	 *  What Forget would remove, for its dialog. Refused for a character that's
+	 *  still in WTF.
+	 */
+	tidyForgetPreview: (characterId: number) => __TAURI_INVOKE<ForgetPreview>("tidy_forget_preview", { characterId }),
+	tidyForget: (characterId: number) => __TAURI_INVOKE<Tidy>("tidy_forget", { characterId }),
+	/**  Remember again: the folder can be read again from WTF or a newer backup. */
+	tidyRemember: (forgottenId: number) => __TAURI_INVOKE<Tidy>("tidy_remember", { forgottenId }),
+	/**
+	 *  Compact (VACUUM). Refused while a backup, restore or ingest holds the job
+	 *  lock, rather than waiting behind it.
+	 */
+	tidyCompact: () => __TAURI_INVOKE<DataSize>("tidy_compact"),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1039,6 +1060,20 @@ export type Cleanup = {
 /**  How sure a price is, from how often and how lately it was seen. */
 export type Confidence = "sure" | "fair" | "rough";
 
+/**  "Forever Buddy's own data" in Settings › Data. */
+export type DataSize = {
+	/**  The database file and its journal (write-ahead log). */
+	bytes: number | null,
+	/**  The daily copies (up to 7), which hold the same data. */
+	copies: number,
+	copies_bytes: number | null,
+	characters: number,
+	gold_days: number,
+	adventures: number,
+	items_seen: number,
+	price_days: number,
+};
+
 export type Decision = "approve" | "decline" | 
 /**
  *  For a conflict: replace the player's note anyway. "Keep mine" is
@@ -1154,6 +1189,30 @@ export type FolderTarget = "backups" | "logs" |
  *  opening it fails.
  */
 "addons";
+
+/**
+ *  What Forget removes, for the dialog: "212 adventures, gold since March
+ *  (…), bags, bank, quests, recipes, lockouts, 3 notes and a plan".
+ */
+export type ForgetPreview = {
+	id: number,
+	name: string,
+	adventures: number,
+	/**  RFC 3339, its first gold point. */
+	gold_since: string | null,
+	notes: number,
+	plans: number,
+};
+
+/**  A forgotten character, for "Forgotten (1)". */
+export type Forgotten = {
+	/**  For Remember again. */
+	id: number,
+	name: string,
+	class: string | null,
+	/**  RFC 3339. */
+	forgotten_at: string,
+};
 
 export type GameStatus = {
 	running: boolean,
@@ -2249,6 +2308,34 @@ export type Tally = {
 	loot: number,
 	deaths: number,
 	repairs: number | null,
+};
+
+export type Tidy = {
+	/**  Gone from WTF, hidden or not. Empty when the game folder can't be read. */
+	gone: TidyCharacter[],
+	hidden: TidyCharacter[],
+	forgotten: Forgotten[],
+};
+
+/**  A character in Settings › Data: a gone one, or a hidden one. */
+export type TidyCharacter = {
+	id: number,
+	name: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	/**  RFC 3339. */
+	last_seen: string,
+	/**  RFC 3339, when it was hidden. */
+	hidden_at: string | null,
+	/**  Its WTF folder isn't on disk. */
+	gone: boolean,
+	/**
+	 *  The folder, so Characters can leave a hidden one out of the WTF list
+	 *  too: `WTF/Account/<account>/<group_dir>/<char_dir>`.
+	 */
+	account: string,
+	group_dir: string,
+	char_dir: string,
 };
 
 export type Tiles = {
