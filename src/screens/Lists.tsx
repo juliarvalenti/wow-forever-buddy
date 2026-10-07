@@ -79,7 +79,18 @@ function sent(d: Delivery): { live: boolean; text: string; hint?: string } {
   }
 }
 
-export function Lists({ focus, onReview }: { focus?: number | null; onReview: () => void }) {
+export function Lists({
+  focus,
+  startNew,
+  onStarted,
+  onReview,
+}: {
+  focus?: number | null;
+  /** Open on a new list (New goal's "Collect items…"). */
+  startNew?: boolean;
+  onStarted?: () => void;
+  onReview: () => void;
+}) {
   const lists = useLists();
   // P2 (§15): agents' list proposals also show in place. Same queue entries
   // as Approvals; new lists stay there until approved.
@@ -92,7 +103,10 @@ export function Lists({ focus, onReview }: { focus?: number | null; onReview: ()
   useEffect(() => {
     if (focus != null) setSelected(focus);
   }, [focus]);
-  const [editing, setEditing] = useState<List | "new" | null>(null);
+  const [editing, setEditing] = useState<List | "new" | null>(startNew ? "new" : null);
+  useEffect(() => {
+    if (startNew) onStarted?.();
+  }, [startNew, onStarted]);
 
   const { notes } = useNotes();
   const all = lists.view?.lists ?? [];

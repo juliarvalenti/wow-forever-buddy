@@ -3,16 +3,19 @@
 //! waiting (how many, the soonest expiry), and each character's login note.
 //! Also, for the entrance line (L2, INGAME §13), each character's saved
 //! instances that haven't reset yet: `lockouts = { { name, surname, class,
-//! saves = { "Molten Core", "40 Player", resetAt, … } } }`.
+//! saves = { "Molten Core", "40 Player", resetAt, … } } }`. And goals (G1,
+//! INGAME §16): `goals = { { id, kind, target, name?, surname?, by?, label?,
+//! done? } }`, with progress worked out live in game.
 //!
-//! The only strings are the account's own character names and the notes
-//! Julia wrote (or approved); the addon escapes `|` at display. Mail is
+//! The only strings are the account's own character names, and the notes and
+//! goal labels Julia wrote (or approved); the addon escapes `|` at display. Mail is
 //! counted, never quoted: no sender or subject leaves the app (spec §4).
 
 use std::collections::HashMap;
 
 use crate::db::Db;
 use crate::error::AppResult;
+use crate::goals;
 use crate::notes;
 use crate::sv::{LuaTable, LuaValue};
 
@@ -139,6 +142,10 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
     body.hash.push((key("notes"), table(note_rows, Vec::new())));
     body.hash
         .push((key("lockouts"), table(lockout_rows, Vec::new())));
+    body.hash.push((
+        key("goals"),
+        table(goals::slot_entries(db, flavor, stamp)?, Vec::new()),
+    ));
     render(Slot::Briefing, body)
 }
 
@@ -272,5 +279,62 @@ mod tests {
         assert_eq!(saves.array.len(), 6, "two saves, three values each");
         assert_eq!(saves.array[0].as_bytes(), Some(&b"Molten Core"[..]));
         assert_eq!(saves.array[2], LuaValue::Int(9_000));
+    }
+
+    /// G1: goals ride the slot as kinds and numbers, with the character's
+    /// name and the player's label; an account gold goal has no name.
+    #[test]
+    fn goals_ride_the_slot() {
+        let db = Db::open_in_memory().unwrap();
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO characters (flavor, account, group_dir, char_dir, name, class, level,
+                                         first_seen, last_seen)
+                 VALUES (?1, 'A', '70', 'Brannic', 'Brannic', 'HUNTER', 52, 0, 0)",
+                params![FLAVOR],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let level = goals::NewGoal {
+            character_id: Some(1),
+            kind: goals::GoalKind::Level,
+            target: 55.0,
+            label: None,
+            by: Some(9_000.0),
+        };
+        let gold = goals::NewGoal {
+            character_id: None,
+            kind: goals::GoalKind::Gold,
+            target: 5_000_000.0,
+            label: Some("for the mount".into()),
+            by: None,
+        };
+        goals::add(&db, FLAVOR, &level, "app", 1_000).unwrap();
+        goals::add(&db, FLAVOR, &gold, "app", 1_000).unwrap();
+
+        let bytes = build(&db, FLAVOR, 5_000).unwrap();
+        let LuaValue::Table(t) = check(Slot::Briefing, &bytes).unwrap() else {
+            unreachable!()
+        };
+        let goals = t.get("goals").unwrap().as_table().unwrap();
+        assert_eq!(goals.array.len(), 2);
+        let first = goals.array[0].as_table().unwrap();
+        assert_eq!(
+            first.get("kind").and_then(|v| v.as_bytes()),
+            Some(&b"level"[..])
+        );
+        assert_eq!(
+            first.get("name").and_then(|v| v.as_bytes()),
+            Some(&b"Brannic"[..])
+        );
+        assert_eq!(first.get("target"), Some(&LuaValue::Int(55)));
+        assert_eq!(first.get("by"), Some(&LuaValue::Int(9_000)));
+        let second = goals.array[1].as_table().unwrap();
+        assert_eq!(second.get("name"), None, "the whole account");
+        assert_eq!(
+            second.get("label").and_then(|v| v.as_bytes()),
+            Some(&b"for the mount"[..])
+        );
     }
 }

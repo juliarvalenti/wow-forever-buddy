@@ -38,8 +38,10 @@ import {
 import { useAddon } from "@/hooks/useAddon";
 import { useBackups } from "@/hooks/useBackups";
 import { useCharacters, useLockouts } from "@/hooks/useCharacters";
+import { useGoals } from "@/hooks/useGoals";
 import { useLedger } from "@/hooks/useLedger";
 import { Coins } from "@/screens/Characters";
+import { GoalsPanel, NewGoalButton, NewGoalDialog } from "@/screens/Goals";
 import { LastAdventure, useLastAdventure } from "@/screens/LastAdventure";
 import { Coins as TileCoins } from "@/screens/Ledger";
 import type { useInstall } from "@/hooks/useInstall";
@@ -219,6 +221,7 @@ export function Dashboard({
   onCheckFolder,
   onOpenAdventure,
   onOpenCharacters,
+  onNewList,
 }: {
   game: GameStatus | null;
   install: ReturnType<typeof useInstall>;
@@ -228,6 +231,8 @@ export function Dashboard({
   onCheckFolder: () => void;
   onOpenAdventure: (id: number) => void;
   onOpenCharacters: () => void;
+  /** New goal's "Collect items…": item goals are Lists. */
+  onNewList: () => void;
 }) {
   const { list, storage, progress, failed, backUpNow, refresh: refreshBackups } = useBackups();
   const { sessions, characters, refresh: refreshSessions } = useSessions();
@@ -255,6 +260,8 @@ export function Dashboard({
   // adventure and the roster with gold. Without it, the v0.1 state stays.
   const { overview } = useCharacters();
   const lockouts = useLockouts();
+  const goals = useGoals();
+  const [newGoal, setNewGoal] = useState(false);
   const withAddon = (overview?.characters.length ?? 0) > 0;
   const { ledger } = useLedger("week");
   const lastAdventure = useLastAdventure();
@@ -686,6 +693,7 @@ export function Dashboard({
           <Panel>
             <PanelHeader title="Characters">
               <span className="d-grow" />
+              {withAddon && goals.goals?.length === 0 && <NewGoalButton onClick={() => setNewGoal(true)} />}
               {withAddon ? (
                 <button className="d-link" style={{ whiteSpace: "nowrap" }} onClick={onOpenCharacters}>
                   All <ChevronRight size={12} aria-hidden style={{ display: "inline", verticalAlign: "-2px" }} />
@@ -755,6 +763,20 @@ export function Dashboard({
             )}
           </Panel>
 
+          {withAddon && goals.goals && goals.goals.length > 0 && (
+            <GoalsPanel goals={goals.goals} onNew={() => setNewGoal(true)} onRemove={goals.remove} />
+          )}
+          {newGoal && (
+            <NewGoalDialog
+              characters={chars}
+              add={goals.add}
+              onClose={() => setNewGoal(false)}
+              onCollect={() => {
+                setNewGoal(false);
+                onNewList();
+              }}
+            />
+          )}
           {withAddon && lockouts && lockouts.length > 0 && (
             <LockoutsThisWeek lockouts={lockouts} onOpen={onOpenCharacters} />
           )}

@@ -1,4 +1,4 @@
-import { AlertTriangle, Backpack, Check, FileText, Lock, Map as MapIcon, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Backpack, Check, FileText, Lock, Map as MapIcon, ShoppingBag, Target } from "lucide-react";
 import type { BagMarksView, Decision, ListView, LoginNote, NoteView, PlanView, Proposal, Step } from "@/lib/bindings";
 import { MarkTag } from "@/screens/BagCleanup";
 import { Button, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
@@ -6,6 +6,7 @@ import { useApprovals } from "@/hooks/useApprovals";
 import { useSettings } from "@/hooks/useSettings";
 import { ago, plural } from "@/lib/format";
 import { classStyle } from "@/screens/Characters";
+import { GoalPreview } from "@/screens/Goals";
 
 // design/mocks/round-3/approvals.html, IMPLEMENTING §17; rules from
 // docs/specs/agent-mcp.md §4. Every proposed string (note text, reason, the
@@ -28,9 +29,10 @@ const KIND: Record<string, string> = {
   quest_plan: "Quest plan",
   list: "List change",
   bag_marks: "Bag marks",
+  goal: "Goal",
 };
 
-function Who({ n }: { n: NoteView | PlanView | BagMarksView }) {
+function Who({ n }: { n: Pick<NoteView | PlanView | BagMarksView, "character" | "class"> }) {
   return (
     <span className="ch-cc" style={classStyle({ class: n.class })}>
       {n.character}
@@ -48,6 +50,14 @@ function Title({ p }: { p: Proposal }) {
       </>
     );
   if (p.list) return <>{p.list.list_id == null ? `New list ${p.list.name}` : `Changes to ${p.list.name}`}</>;
+  if (p.goal)
+    return p.goal.character ? (
+      <>
+        {kind} for <Who n={{ character: p.goal.character, class: p.goal.class }} />
+      </>
+    ) : (
+      <>{kind} for the account</>
+    );
   return <>{kind}</>;
 }
 
@@ -203,6 +213,8 @@ function Waiting({
             <ShoppingBag size={15} />
           ) : p.bags ? (
             <Backpack size={15} />
+          ) : p.goal ? (
+            <Target size={15} />
           ) : (
             <FileText size={15} />
           )}
@@ -280,6 +292,7 @@ function Waiting({
       {p.plan && <PlanPreview v={p.plan} />}
       {p.list && <ListPreview v={p.list} />}
       {p.bags && <BagPreview v={p.bags} />}
+      {p.goal && <GoalPreview v={p.goal} />}
     </div>
   );
 }

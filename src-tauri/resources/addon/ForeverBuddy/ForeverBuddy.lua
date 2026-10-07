@@ -1592,6 +1592,157 @@ local function lowestDurability()
     return low
 end
 
+-- Goals (G1, INGAME §16): made in the app, they ride the Briefing slot as
+-- { kind, target, name?, surname?, by?, label?, done?, alts? }. Only this
+-- character's goals and the account's gold goals apply. Progress is worked
+-- out live: the level with its XP, GetMoney, and for account gold the other
+-- characters' gold at their last logout (`alts`). One briefing fact and one
+-- coach row; never a pop-up or a nudge. In S.goals: the chunk is at its
+-- 200 locals. (S is the session section's export table, below.)
+local S = { errors = 0, goals = {} }
+do
+    local Gl = S.goals
+    -- The goals that apply here, soonest date first, undated last.
+    function Gl.mine()
+        local slot = slots.Briefing
+        local out = {}
+        if type(slot) ~= "table" or type(slot.goals) ~= "table" then
+            return out
+        end
+        for _, g in ipairs(slot.goals) do
+            if type(g) == "table" and (g.kind == "level" or g.kind == "gold") and type(g.target) == "number"
+                and (g.name == nil or (type(g.name) == "string" and isMe(g)))
+                and not (g.kind == "level" and g.name == nil) then
+                out[#out + 1] = g
+            end
+        end
+        table.sort(out, function(a, b)
+            local x, y = type(a.by) == "number" and a.by or math.huge, type(b.by) == "number" and b.by or math.huge
+            return x < y
+        end)
+        return out
+    end
+
+    -- 52.4: the level and how far into it.
+    function Gl.level()
+        local l, cur, max = read(UnitLevel, "player"), read(UnitXP, "player"), read(UnitXPMax, "player")
+        if type(l) ~= "number" then
+            return nil
+        end
+        if type(cur) == "number" and type(max) == "number" and max > 0 then
+            return l + math.min(cur / max, 0.999)
+        end
+        return l
+    end
+
+    -- Copper now: this character's, or the account's (the others as of
+    -- their last logout, plus this one live).
+    function Gl.gold(g)
+        local mine = read(GetMoney)
+        if type(mine) ~= "number" then
+            return nil
+        end
+        if g.name ~= nil then
+            return mine
+        end
+        local total = mine
+        for _, a in ipairs(type(g.alts) == "table" and g.alts or {}) do
+            if type(a) == "table" and type(a.money) == "number" and not isMe(a) then
+                total = total + a.money
+            end
+        end
+        return total
+    end
+
+    -- Whole gold, rounded up so "0g to go" never shows: "288g".
+    local function wholeGold(copper)
+        return math.max(1, math.ceil(copper / 10000)) .. "g"
+    end
+
+    -- "Fri" within the week, else "9 Oct".
+    function Gl.day(t)
+        local soon = (t - (now() or t)) < 6 * 86400
+        return read(date, soon and "%a" or "%d %b", t) or ""
+    end
+
+    -- "level 55", "500g for the mount".
+    function Gl.name(g)
+        if g.kind == "level" then
+            return "level " .. g.target
+        end
+        local label = type(g.label) == "string" and g.label ~= "" and (" " .. plain(g.label)) or ""
+        return math.floor(g.target / 10000) .. "g" .. label
+    end
+
+    -- How far to go, or nil when it's reached or unknown: 2.6 (levels), or copper.
+    function Gl.left(g)
+        local cur = g.kind == "level" and Gl.level() or Gl.gold(g)
+        if type(cur) ~= "number" or cur >= g.target then
+            return nil
+        end
+        return g.target - cur
+    end
+
+    -- The briefing fact: "level 55 by Fri: 2.6 to go", "500g for the mount:
+    -- 288g to go", "level 55 done", with "+1 goal" when there are more.
+    function Gl.fact()
+        local mine = Gl.mine()
+        local first
+        for _, g in ipairs(mine) do
+            if g.done == true then
+                first = g
+                break
+            end
+        end
+        first = first or mine[1]
+        if not first then
+            return nil
+        end
+        local text
+        local left = first.done ~= true and Gl.left(first)
+        if not left then
+            text = Gl.name(first) .. " done"
+        elseif first.kind == "level" then
+            local by = type(first.by) == "number" and (" by " .. Gl.day(first.by)) or ""
+            text = Gl.name(first) .. by .. ": " .. string.format("%.1f", math.max(left, 0.1)) .. " to go"
+        else
+            text = Gl.name(first) .. ": " .. wholeGold(left) .. " to go"
+        end
+        local more = #mine - 1
+        if more > 0 then
+            text = text .. " +" .. more .. (more == 1 and " goal" or " goals")
+        end
+        return text
+    end
+
+    -- The coach row for the soonest open goal: "Level 55 by Fri", "~4h 10m
+    -- of play" from the session's XP/hr after 10 minutes (else "2.6 levels to
+    -- go"); "500g goal", "288g to go". `span` formats seconds.
+    function Gl.coach(t, span)
+        for _, g in ipairs(Gl.mine()) do
+            local left = g.done ~= true and Gl.left(g)
+            if left then
+                if g.kind == "gold" then
+                    return math.floor(g.target / 10000) .. "g goal", wholeGold(left) .. " to go"
+                end
+                local label = "Level " .. g.target
+                    .. (type(g.by) == "number" and (" by " .. Gl.day(g.by)) or "")
+                local max = read(UnitXPMax, "player")
+                if t.length >= 600 and type(t.xpHour) == "number" and t.xpHour > 0
+                    and type(max) == "number" and max > 0 then
+                    -- Only a time that reads as useful (§11): under 10 hours.
+                    local secs = left * max / t.xpHour * 3600
+                    if secs < 10 * 3600 then
+                        return label, "~" .. span(secs) .. " of play"
+                    end
+                end
+                return label, string.format("%.1f", math.max(left, 0.1)) .. " levels to go"
+            end
+        end
+        return nil
+    end
+end
+
 -- Every fact that's true now, in §9's order, and this character's note.
 local function briefing()
     local facts = {}
@@ -1620,6 +1771,10 @@ local function briefing()
     end
     if planIsNew then
         facts[#facts + 1] = "tonight's plan is ready"
+    end
+    local okGoal, goal = pcall(S.goals.fact)
+    if okGoal and goal then
+        facts[#facts + 1] = goal
     end
     local note
     if type(slot) == "table" and type(slot.notes) == "table" then
@@ -2644,8 +2799,8 @@ end
 -- logout countdown. Neither acts or blocks anything.
 
 -- The section's functions live in a do-block (a chunk can hold only 200
--- locals); what the rest of the file uses is exported through S.
-local S = { errors = 0 }
+-- locals); what the rest of the file uses is exported through S (declared
+-- with the goals, above).
 do
 local COACH_EVERY = 5 -- seconds between coach refreshes while it's shown
 local QUALITY_HEX = { [0] = "9d9d9d", "ffffff", "1eff00", "0070dd", "a335ee", "ff8000", "e6cc80", "00ccff" }
@@ -2817,6 +2972,10 @@ local function renderCoach()
     end
     if s.toLevel then
         lines[#lines + 1] = { "Level " .. s.nextLevel .. " in", "~" .. span(s.toLevel) }
+    end
+    local okGoal, goalLabel, goalValue = pcall(S.goals.coach, s, span)
+    if okGoal and goalLabel then
+        lines[#lines + 1] = { goalLabel, goalValue }
     end
     lines[#lines + 1] = { "Loot", s.loot .. (s.loot == 1 and " item" or " items")
         .. (s.priced and (" · ~" .. money(s.worth)) or "") }

@@ -1144,6 +1144,84 @@ scenario("briefing", function()
     return text
 end)
 
+-- G1 (INGAME §16): goals in the briefing and the coach. Thrandor Vargur is
+-- level 12 with 1,200 of 8,800 XP and 2g 50s. The account wants 500g for the
+-- mount (Sela holds 200g); Sela's own level goal isn't Thrandor's.
+local function goalsSlot(goals)
+    return 'ForeverBuddyData_Briefing = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
+        .. '\t["mail"] = {},\n\t["notes"] = {},\n\t["goals"] = {\n' .. goals .. '\t},\n}\n'
+end
+local LEVEL_GOAL = '\t\t{ ["id"] = 1, ["kind"] = "level", ["target"] = 14, ["name"] = "Thrandor", ["surname"] = "Vargur", ["by"] = '
+    .. (wow.EPOCH + 3 * DAY) .. ' },\n'
+local MOUNT_GOAL = '\t\t{ ["id"] = 2, ["kind"] = "gold", ["target"] = 5000000, ["label"] = "for the mount", ["alts"] = {\n'
+    -- Thrandor's own gold at logout is replaced by what he holds now.
+    .. '\t\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["money"] = 99990000 },\n'
+    .. '\t\t\t{ ["name"] = "Sela", ["surname"] = "", ["money"] = 2000000 },\n\t\t} },\n'
+local SELA_GOAL = '\t\t{ ["id"] = 3, ["kind"] = "level", ["target"] = 40, ["name"] = "Sela", ["surname"] = "" },\n'
+
+scenario("goals", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local fri = os.date("!%a", wow.EPOCH + 3 * DAY)
+    local c = client({ slots = { ["Data/Briefing.lua"] = goalsSlot(MOUNT_GOAL .. SELA_GOAL .. LEVEL_GOAL) } })
+    c.login(nil)
+    c.advance(5)
+    eq(c.chat[1], PREFIX .. "level 14 by " .. fri .. ": 1.9 to go +1 goal", "the soonest goal, and how many more")
+
+    -- The coach: levels to go before 10 minutes, then the time at this pace.
+    c.slash("/fb coach")
+    local f = c.global("ForeverBuddyCoachFrame")
+    local function row(label)
+        for _, r in ipairs(f.rows) do
+            if r.shown and r.label.text == label then
+                return r.value.text
+            end
+        end
+    end
+    eq(row("Level 14 by " .. fri), "1.9 levels to go", "no pace yet")
+    c.gainXp(1000)
+    c.advance(60 * MINUTE)
+    -- 1.75 levels of 8,800 at 1,000 XP an hour is over 10 hours: levels.
+    eq(row("Level 14 by " .. fri), "1.8 levels to go", "no time past 10 hours")
+    c.gainXp(4000)
+    c.advance(5)
+    -- 11,400 XP left at 5,000 XP in the session's 60m 10s.
+    eq(row("Level 14 by " .. fri), "~2h 17m of play", "the time at this pace")
+
+    -- Account gold: Sela's 200g at her logout plus Thrandor's live 2g 50s.
+    local gold = client({ slots = { ["Data/Briefing.lua"] = goalsSlot(MOUNT_GOAL .. SELA_GOAL) } })
+    gold.login(nil)
+    gold.advance(5)
+    eq(gold.chat[1], PREFIX .. "500g for the mount: 298g to go", "the label is the goal's own name")
+    gold.slash("/fb coach")
+    local g = gold.global("ForeverBuddyCoachFrame")
+    local found
+    for _, r in ipairs(g.rows) do
+        if r.shown and r.label.text == "500g goal" then
+            found = r.value.text
+        end
+    end
+    eq(found, "298g to go", "the gold row")
+
+    -- Reached since the last login: said once (the app drops it after the
+    -- next logout); labels are shown as text.
+    local done = client({ slots = { ["Data/Briefing.lua"] = goalsSlot(
+        '\t\t{ ["id"] = 4, ["kind"] = "level", ["target"] = 12, ["name"] = "Thrandor", ["surname"] = "Vargur", ["done"] = true },\n') } })
+    done.login(nil)
+    done.advance(5)
+    eq(done.chat[1], PREFIX .. "level 12 done", "done")
+    local piped = client({ slots = { ["Data/Briefing.lua"] = goalsSlot(
+        '\t\t{ ["id"] = 5, ["kind"] = "gold", ["target"] = 5000000, ["label"] = "|cffff0000x|r" },\n') } })
+    piped.login(nil)
+    piped.advance(5)
+    eq(piped.chat[1], PREFIX .. "500g ||cffff0000x||r: 498g to go", "escaped")
+
+    -- Another character's goal alone says nothing.
+    local other = client({ slots = { ["Data/Briefing.lua"] = goalsSlot(SELA_GOAL) } })
+    other.login(nil)
+    other.advance(5)
+    eq(#other.chat, 0, "not Thrandor's")
+end)
+
 -- Shopping lists and alt errands (B2, INGAME §10). Thrandor (alt 1) has 4
 -- Linen Cloth in bags and 20 Runecloth in the bank; Sela (2) gathers for
 -- Tailoring; Kaelor (3) holds the raid's jerky.

@@ -23,6 +23,7 @@ import type {
   CharacterCard,
   CharacterSheet,
   Cleanup,
+  Goal,
   GoodsWorth,
   IntegrationId,
   ItemRow,
@@ -165,8 +166,21 @@ export function installMockIpc(): void {
     plan: null,
     list: null,
     bags: null,
+    goal: null,
     ...extra,
   });
+  // G1 (dashboard.html): Brannic to 55 by Friday, Fizzwick's mount gold, and
+  // Velyra's 60, done Thursday from an approved proposal. Only "dashboard"
+  // has goals; elsewhere Characters' header offers New goal.
+  const inDays = (d: number) => new Date(now + d * 86_400_000).toISOString();
+  const goals: Goal[] =
+    s === "dashboard"
+      ? [
+          { id: 1, character_id: 4, character: "Brannic", class: "hunter", kind: "level", target: 55, label: null, start: 48, current: 52.4, per_day: 0.9, as_of: iso(60 * 5), by: inDays(3), producer: "app", created_at: iso(60 * 24 * 5), done_at: null },
+          { id: 2, character_id: 5, character: "Fizzwick", class: "mage", kind: "gold", target: 5_000_000, label: "for the mount", start: 900_000, current: 2_120_000, per_day: null, as_of: iso(60 * 140), by: null, producer: "app", created_at: iso(60 * 24 * 8), done_at: null },
+          { id: 3, character_id: 3, character: "Velyra", class: "druid", kind: "level", target: 60, label: null, start: 58.2, current: 60, per_day: null, as_of: iso(60 * 22), by: null, producer: "agent:Claude Desktop", created_at: iso(60 * 24 * 9), done_at: iso(60 * 22) },
+        ]
+      : [];
   const step = (text: string, zone: string | null = null): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
   const felwood: Plan = {
     id: 4,
@@ -254,6 +268,12 @@ export function installMockIpc(): void {
                   },
                 ],
               },
+            }),
+            // G1: "Goal for Brannic", previewed as the Dashboard row.
+            proposal(7, 8, "Claude Desktop", {
+              kind: "goal",
+              reason: "Level 55 opens the Searing Gorge quests you asked about.",
+              goal: { character_id: 4, character: "Brannic", class: "hunter", kind: "level", target: 55, label: null, by: inDays(5) },
             }),
             proposal(2, 12, "Claude Desktop", {
               note: {
@@ -1394,6 +1414,40 @@ export function installMockIpc(): void {
     },
     notes_delete: ({ id }) => {
       loginNotes = loginNotes.filter((n) => n.id !== id);
+      return null;
+    },
+    // G1: added goals start where the character is; Brannic at 52 refuses 52.
+    goals_list: () => goals,
+    goals_add: ({ goal }) => {
+      const g = goal as Pick<Goal, "character_id" | "kind" | "target" | "label"> & { by: number | null };
+      const c = alts.find((a) => a[0] === g.character_id);
+      const current = g.kind === "level" ? (c?.[5] ?? 0) : c ? c[6] : alts.reduce((n, a) => n + a[6], 0);
+      if ((g.target ?? 0) <= current) {
+        const who = c?.[1] ?? "The account";
+        throw { kind: "InvalidSettings", detail: g.kind === "level" ? `${who} is already level ${current}.` : `${who} already has ${Math.floor(current / 10_000).toLocaleString()}g.` };
+      }
+      const id = goals.length + 10;
+      goals.push({
+        id,
+        character_id: g.character_id,
+        character: c?.[1] ?? null,
+        class: c?.[3] ?? null,
+        kind: g.kind,
+        target: g.target,
+        label: g.label,
+        start: current,
+        current,
+        per_day: null,
+        as_of: iso(30),
+        by: g.by ? new Date(g.by * 1000).toISOString() : null,
+        producer: "app",
+        created_at: iso(0),
+        done_at: null,
+      });
+      return id;
+    },
+    goals_delete: ({ id }) => {
+      goals.splice(goals.findIndex((g) => g.id === id), 1);
       return null;
     },
     // Q1b: character.html?tab=quests for Thrandor (id 2); the other alts have

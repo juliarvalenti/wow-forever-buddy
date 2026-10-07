@@ -12,6 +12,7 @@ pub mod backup;
 pub mod characters;
 pub mod cleanup;
 pub mod game;
+pub mod goals;
 pub mod icons;
 pub mod ingest;
 pub mod install;
