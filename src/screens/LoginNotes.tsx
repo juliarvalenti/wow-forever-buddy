@@ -15,10 +15,10 @@ const MAX_TEXT = 300;
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
-/** "by you · next login", "from an agent, approved · until Thu 9 Oct", "shown Thu 2 Oct".
- *  P2b swaps "an agent" for the quoted client name it stores ("Claude Desktop"). */
+/** "by you · next login", `from "Claude Desktop", approved · until Thu 9 Oct`, "shown Thu 2 Oct".
+ *  The client's name is its own claim, so it's quoted. */
 function meta(n: LoginNote): string {
-  const by = n.author === "claude" ? "from an agent, approved" : "by you";
+  const by = n.author === "claude" ? `from "${n.producer ?? "an agent"}", approved` : "by you";
   if (n.once && n.shown_at) return `${by} · shown ${day(n.shown_at)}`;
   return `${by} · ${n.once ? "next login" : n.until ? `until ${day(n.until)}` : ""}`;
 }

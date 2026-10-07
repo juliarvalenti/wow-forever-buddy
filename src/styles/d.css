@@ -95,6 +95,10 @@
 .d-nav button.soon:hover { background: none; }
 .d-nav button.soon .n { font-style: italic; }
 .d-nav button[aria-current="page"] .n { display: none; }
+/* a count that wants you (P2 Approvals): ember pill, not the dim count */
+.d-nav .n.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--ember-2); color: #2a1608; font-weight: 600; }
+.d-nav button[aria-current="page"] .n.badge { display: grid; }
 .d-side-foot { padding: 0 10px; }
 .d-side-foot.d-nav { flex: none; }
 .d-status {

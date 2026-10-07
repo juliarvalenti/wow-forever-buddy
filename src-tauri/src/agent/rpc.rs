@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::activity::{self, AgentCall};
-use super::{access, tools, Paths};
+use super::{access, propose, tools, Paths};
 
 /// Protocol versions this server speaks, newest first. A client asking for
 /// one of these gets it back; any other gets the newest.
@@ -152,10 +152,13 @@ impl Session<'_> {
                 )
             }
             "ping" => result(id, json!({})),
-            "tools/list" => result(id, json!({ "tools": tools::list() })),
+            "tools/list" => {
+                let all: Vec<Value> = tools::list().into_iter().chain(propose::list()).collect();
+                result(id, json!({ "tools": all }))
+            }
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-                if !tools::exists(name) {
+                if !tools::exists(name) && !propose::exists(name) {
                     return Some(error(id, -32602, &format!("Unknown tool: {name}")));
                 }
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
@@ -194,7 +197,11 @@ impl Session<'_> {
             return Err(OFF.into());
         }
         let flavor = access.flavor.ok_or_else(|| NOT_SET_UP.to_string())?;
-        tools::call(&self.paths.db, &flavor, name, args)
+        if propose::exists(name) {
+            propose::call(self.paths, &flavor, &self.client, name, args)
+        } else {
+            tools::call(&self.paths.db, &flavor, name, args)
+        }
     }
 }
 
@@ -238,9 +245,18 @@ mod tests {
         assert_eq!(out[0]["result"]["protocolVersion"], "2025-06-18");
         assert_eq!(out[0]["result"]["serverInfo"]["name"], "forever-buddy");
         let tools = out[1]["result"]["tools"].as_array().unwrap();
-        assert!(tools
-            .iter()
-            .all(|t| t["annotations"]["readOnlyHint"] == true));
+        // Only propose_note isn't read-only, and it's never destructive.
+        for t in tools {
+            let a = &t["annotations"];
+            if t["name"] == "propose_note" {
+                assert_eq!(
+                    (&a["readOnlyHint"], &a["destructiveHint"]),
+                    (&json!(false), &json!(false))
+                );
+            } else {
+                assert_eq!(a["readOnlyHint"], true, "{t}");
+            }
+        }
         assert_eq!(out[2]["result"], json!({}));
         assert_eq!(out[3]["error"]["code"], -32601);
     }
@@ -294,6 +310,7 @@ mod tests {
         // No settings file, then one with access off: both refuse.
         let mut lines: Vec<Value> = tools::list()
             .iter()
+            .chain(propose::list().iter())
             .enumerate()
             .map(|(i, t)| call(i as u32, t["name"].as_str().unwrap()))
             .collect();

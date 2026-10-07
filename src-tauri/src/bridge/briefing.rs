@@ -152,8 +152,15 @@ mod tests {
             once: true,
             until: None,
         };
-        notes::add(&db, FLAVOR, &note(2, "Older"), "you", 10).unwrap();
-        notes::add(&db, FLAVOR, &note(2, "Train poisons"), "you", 20).unwrap();
+        notes::add(&db, FLAVOR, &note(2, "Older"), notes::Author::You, 10).unwrap();
+        notes::add(
+            &db,
+            FLAVOR,
+            &note(2, "Train poisons"),
+            notes::Author::You,
+            20,
+        )
+        .unwrap();
 
         let bytes = build(&db, FLAVOR, 5_000).unwrap();
         let text = String::from_utf8_lossy(&bytes);

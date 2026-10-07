@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Archive,
+  CheckCheck,
   Coins,
   FolderOpen,
   Home,
@@ -17,6 +18,7 @@ import {
 import { type CharacterCard, commands, type StartupFailure } from "@/lib/bindings";
 import { LiveDot, StatusDot } from "@/components/d";
 import { useAhStatus } from "@/hooks/useAh";
+import { useApprovalsWaiting } from "@/hooks/useApprovals";
 import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
@@ -25,6 +27,7 @@ import { useRecovery } from "@/hooks/useRestore";
 import { duration } from "@/lib/format";
 import { Addons } from "@/screens/Addons";
 import { Adventure } from "@/screens/Adventure";
+import { Approvals } from "@/screens/Approvals";
 import { AuctionHouse } from "@/screens/AuctionHouse";
 import { Backups } from "@/screens/Backups";
 import { Characters } from "@/screens/Characters";
@@ -44,6 +47,7 @@ type Screen =
   | "adventures"
   | "lists"
   | "ah"
+  | "approvals"
   | "backups"
   | "game"
   | "addons"
@@ -52,7 +56,7 @@ type Screen =
 
 type NavRow =
   | { group: string }
-  | { id: Screen; label: string; icon: LucideIcon; n?: number | null }
+  | { id: Screen; label: string; icon: LucideIcon; n?: number | null; badge?: number }
   | { soon: string; icon: LucideIcon };
 
 /** A sidebar row for a screen that isn't built yet: listed, not clickable. */
@@ -83,6 +87,7 @@ function Shell() {
   const recovery = useRecovery();
   const snapshots = useSnapshotCount();
   const hasPrices = useAhStatus()?.has_prices ?? false;
+  const approvalsWaiting = useApprovalsWaiting();
   // With the addon's data: who logged out last (RFC 3339 UTC sorts as time).
   const { overview } = useCharacters();
   const lastPlayed = overview?.characters.reduce<CharacterCard | null>(
@@ -126,6 +131,8 @@ function Shell() {
     { id: "lists", label: "Lists", icon: ListChecks },
     // F5d: only once an Auctionator file has given prices on this machine.
     ...(hasPrices ? [{ id: "ah", label: "Auction House", icon: Scale } as const] : []),
+    // P2b: an ember count while agent proposals wait; none at 0 or while off.
+    { id: "approvals", label: "Approvals", icon: CheckCheck, badge: approvalsWaiting },
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
@@ -172,7 +179,11 @@ function Shell() {
               >
                 <Icon size={16} aria-hidden />
                 <span className="lbl">{row.label}</span>
-                {row.n != null && <span className="n">{row.n}</span>}
+                {row.badge ? (
+                  <span className="n badge">{row.badge}</span>
+                ) : (
+                  row.n != null && <span className="n">{row.n}</span>
+                )}
               </button>
             );
           })}
@@ -269,6 +280,7 @@ function Shell() {
         {current === "lists" && <Lists />}
         {current === "game" && <GameFolder install={install} />}
         {current === "ah" && <AuctionHouse />}
+        {current === "approvals" && <Approvals onOpenSettings={() => setScreen("settings")} />}
         {current === "settings" && (
           <SettingsScreen install={install} onOpenGameFolder={() => setScreen("game")} />
         )}

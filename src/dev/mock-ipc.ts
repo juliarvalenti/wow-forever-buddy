@@ -7,7 +7,10 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
+  Approvals,
   LoginNote,
+  NoteView,
+  Proposal,
   AddonChange,
   AddonInfo,
   AddonsList,
@@ -81,6 +84,9 @@ export const SCENARIOS = [
   "ah-empty", // no Auctionator prices yet: the AH is hidden, Settings says why (F5d)
   "ah-unreadable", // an Auctionator file this version can't read: hidden, Settings says so
   "lists-empty", // B2: no lists yet (the Lists screen has three in every other scenario)
+  "approvals", // P2b: a new note, a conflict, and the Decided list
+  "approvals-empty", // agent access on, nothing waiting
+  "approvals-off", // agent access off
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -107,10 +113,87 @@ export function installMockIpc(): void {
       once: false,
       until: iso(-60 * 24 * 3),
       author: "you",
+      producer: null,
       created_at: iso(60 * 24),
       shown_at: null,
     },
   ];
+  // P2b Approvals (approvals.html): Coinpurse's conflict, a new note for
+  // Velyra, and the Decided list.
+  const mine: LoginNote = {
+    id: 7,
+    character_id: 1,
+    text: "Relist the Arcanite Bars if the price is still above 38g.",
+    once: true,
+    until: null,
+    author: "you",
+    producer: null,
+    created_at: iso(30),
+    shown_at: null,
+  };
+  const noteView = (character_id: number, character: string, cls: string, text: string): NoteView => ({
+    character_id,
+    character,
+    class: cls,
+    text,
+    once: true,
+    until: null,
+    replaces: null,
+  });
+  const proposal = (id: number, mins: number, producer: string, extra: Partial<Proposal>): Proposal => ({
+    id,
+    kind: "login_note",
+    producer,
+    reason: null,
+    created_at: iso(mins),
+    status: "staged",
+    status_reason: null,
+    decided_at: null,
+    note: null,
+    ...extra,
+  });
+  const approvals: Approvals = {
+    waiting:
+      s === "approvals"
+        ? [
+            proposal(3, 4, "Claude Desktop", {
+              reason: "Thursday's raid needs the attunement done first.",
+              note: {
+                ...noteView(3, "Velyra Duskmane", "druid", "Hand in the Onyxia attunement before Thursday's raid."),
+                once: false,
+                until: iso(-60 * 24 * 2),
+              },
+            }),
+            proposal(2, 12, "Claude Desktop", {
+              note: {
+                ...noteView(1, "Coinpurse", "warrior", "Relist the Arcanite Bars above 36g, and post the Thorium Bars from the bank."),
+                replaces: { id: 7, saw: "Relist the Arcanite Bars.", now: mine, conflict: true },
+              },
+            }),
+          ]
+        : [],
+    decided:
+      s === "approvals"
+        ? [
+            proposal(1, 60 * 20, "Claude Desktop", {
+              status: "applied",
+              decided_at: iso(60 * 20),
+              note: noteView(6, "Sela", "priest", "Train at the Undercity on the way."),
+            }),
+            proposal(0, 60 * 44, "Claude Desktop", {
+              status: "discarded",
+              decided_at: iso(60 * 44),
+              note: noteView(3, "Velyra Duskmane", "druid", "Farm Felwood."),
+            }),
+            proposal(-1, 60 * 46, "claude-code", {
+              kind: "list",
+              status: "rejected",
+              status_reason: "List changes can't be applied yet.",
+              decided_at: null,
+            }),
+          ]
+        : [],
+  };
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -554,7 +637,7 @@ export function installMockIpc(): void {
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
-    agent_access: s === "settings-agents",
+    agent_access: s === "settings-agents" || s === "approvals" || s === "approvals-empty",
     ui: {} as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
@@ -1080,10 +1163,23 @@ export function installMockIpc(): void {
         once: n.once,
         until: n.until ? new Date(n.until * 1000).toISOString() : null,
         author: "you",
+        producer: null,
         created_at: iso(0),
         shown_at: null,
       });
       return id;
+    },
+    // P2b: approvals.html. "approvals": a note replacing one, a conflict,
+    // and some history; "approvals-empty"; "approvals-off" (access off).
+    approvals_list: () => approvals,
+    approvals_waiting: () => (settings.agent_access ? approvals.waiting.length : 0),
+    approvals_decide: ({ id, decision }) => {
+      const p = approvals.waiting.find((w) => w.id === id);
+      if (!p) throw { kind: "NotFound", message: "that suggestion, or it was already decided" };
+      approvals.waiting = approvals.waiting.filter((w) => w.id !== id);
+      const status = decision === "decline" ? "discarded" : "applied";
+      approvals.decided.unshift({ ...p, status, decided_at: iso(0) });
+      return null;
     },
     notes_delete: ({ id }) => {
       loginNotes = loginNotes.filter((n) => n.id !== id);

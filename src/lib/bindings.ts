@@ -115,6 +115,15 @@ export const commands = {
 	agentStatus: () => __TAURI_INVOKE<AgentStatus>("agent_status"),
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	/**  Approvals (IMPLEMENTING §17): what's waiting, and the last 30 days decided. */
+	approvalsList: () => __TAURI_INVOKE<Approvals>("approvals_list"),
+	/**  The sidebar's count: waiting proposals, or 0 while agent access is off. */
+	approvalsWaiting: () => __TAURI_INVOKE<number>("approvals_waiting"),
+	/**
+	 *  Approve, Decline, or (for a conflicting note) Use proposed. An applied
+	 *  note is sent to the game like one written in the app.
+	 */
+	approvalsDecide: (id: number, decision: Decision) => __TAURI_INVOKE<null>("approvals_decide", { id, decision }),
 	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
 	 *  journal, over `range`, in the user's time zone.
@@ -422,6 +431,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	approvalsChanged: makeEvent<ApprovalsChanged>("approvals-changed"),
 	backupCreated: makeEvent<BackupCreated>("backup-created"),
 	backupFailed: makeEvent<BackupFailed>("backup-failed"),
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
@@ -760,6 +770,19 @@ export type AppPaths = {
 	log_dir: string,
 };
 
+export type Approvals = {
+	/**  Newest first. */
+	waiting: Proposal[],
+	/**  The last 30 days, newest first: approved, declined, not queued. */
+	decided: Proposal[],
+};
+
+/**
+ *  Emitted when ingest stores something, so Approvals and its sidebar count
+ *  refresh.
+ */
+export type ApprovalsChanged = null;
+
 /**
  *  An automatic backup that failed, or that left files out, for the Backups
  *  screen (R1): nobody is watching when one runs, so it's kept until a later
@@ -985,6 +1008,13 @@ export type Chart = {
 
 /**  How sure a price is, from how often and how lately it was seen. */
 export type Confidence = "sure" | "fair" | "rough";
+
+export type Decision = "approve" | "decline" | 
+/**
+ *  For a conflict: replace the player's note anyway. "Keep mine" is
+ *  `Decline`.
+ */
+"use_proposed";
 
 /**
  *  Where a character's data in a slot is (bridge spec §4, `bridge.html`'s
@@ -1461,6 +1491,11 @@ export type LoginNote = {
 	until: string | null,
 	/**  "you", or "claude" for an approved agent proposal (P2). */
 	author: string,
+	/**
+	 *  For an agent's note: the client's own name for itself, a claim
+	 *  ("Claude Desktop").
+	 */
+	producer: string | null,
 	created_at: string,
 	/**  The first login that showed it (RFC 3339). */
 	shown_at: string | null,
@@ -1556,6 +1591,18 @@ export type NewNote = {
 	until: number | null,
 };
 
+export type NoteView = {
+	character_id: number,
+	character: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	text: string,
+	once: boolean,
+	/**  RFC 3339. */
+	until: string | null,
+	replaces: Replaced | null,
+};
+
 /**
  *  The journal's "Of note" (spec §5): a level-up, else the zone with the most
  *  time and the quest count, else the biggest gain.
@@ -1643,6 +1690,23 @@ export type ProfessionRow = {
 	max: number | null,
 };
 
+export type Proposal = {
+	id: number,
+	kind: string,
+	/**  Exactly as the client reported it. Shown quoted, as a claim. */
+	producer: string,
+	reason: string | null,
+	/**  RFC 3339. */
+	created_at: string,
+	/**  staged | applied | discarded | rejected */
+	status: string,
+	/**  Rejected: why, in plain words. */
+	status_reason: string | null,
+	decided_at: string | null,
+	/**  The preview for a login note: every field Approve applies. */
+	note: NoteView | null,
+};
+
 /**  What a prune did. */
 export type PruneReport = {
 	pruned: string[],
@@ -1719,6 +1783,19 @@ export type RecoveryStatus =
  *  alias `a`), and DOS device names like `CON` or `com1.txt`.
  */
 export type RelPath = string;
+
+export type Replaced = {
+	id: number,
+	/**  The note's text when the agent read it. */
+	saw: string,
+	/**  The note as it is now; `None` once it's gone (shown, removed, expired). */
+	now: LoginNote | null,
+	/**
+	 *  The note changed after the agent read it: the player picks, and it's
+	 *  never part of Approve all.
+	 */
+	conflict: boolean,
+};
 
 /**  Emitted when a restore (or a recovery) has finished. */
 export type RestoreCompleted = RestoreReport;

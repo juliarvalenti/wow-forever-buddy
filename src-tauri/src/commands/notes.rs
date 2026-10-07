@@ -28,7 +28,13 @@ pub fn notes_list(state: State<'_, AppState>) -> AppResult<Vec<LoginNote>> {
 #[specta::specta]
 pub fn notes_add(state: State<'_, AppState>, note: NewNote) -> AppResult<u32> {
     let core = &state.core;
-    let id = notes::add(&core.db, &core.active_game()?.flavor, &note, "you", now())?;
+    let id = notes::add(
+        &core.db,
+        &core.active_game()?.flavor,
+        &note,
+        notes::Author::You,
+        now(),
+    )?;
     resend(&state);
     Ok(id)
 }

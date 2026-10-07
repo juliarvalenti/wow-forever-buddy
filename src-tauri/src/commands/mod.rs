@@ -7,6 +7,7 @@ pub mod adventures;
 pub mod agent;
 pub mod ah;
 pub mod app;
+pub mod approvals;
 pub mod backup;
 pub mod characters;
 pub mod game;
