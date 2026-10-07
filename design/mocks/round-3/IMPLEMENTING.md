@@ -391,3 +391,15 @@ You mark items on the character sheet; the addon shows the marks in game (INGAME
 - **Clearing:** a mark clears itself once the item has left this character (seen at the next sync). Marks on items that are still there survive syncs.
 - **Agents (after the app side):** an agent can propose marks through Approvals as a new kind ("Bag marks for Thrandor", previewed as these same rows with reasons). Approved marks show "from "Claude Desktop", approved" in the reason line.
 - **Never:** marking another account's or another player's items, prices that read like advice, or anything that sells or sends.
+
+## 19. TIP3 (b): item level and quality filters in Characters search (`characters.html?q=Runecloth`)
+- **Where:** a thin row inside the search results panel, under its header, shown only while searching.
+  - "Quality", then a `Segmented`: **Any** · **Uncommon+** · **Rare+** · **Epic**.
+  - "Item level at least", then a small field (placeholder "any", whole numbers only, 1 to 300).
+- **Behaviour:**
+  - Filters apply to the result rows and to the header meta, which counts only what matches: "**12** on 3 characters".
+  - The character cards' hit/miss highlight follows the filtered rows.
+  - Items with no known item level (reagents and other non-gear) are hidden while an item level is set.
+  - The filters stay while you change the search text, and reset when the search is cleared.
+- **Empty:** "Nothing matches these filters." with a ghost **Clear filters**. If the text alone has no results, the existing "No items match" stays as it is.
+- **The search placeholder** loses "ilvl>60". The filter controls are the one way to filter, with no typed syntax to learn.

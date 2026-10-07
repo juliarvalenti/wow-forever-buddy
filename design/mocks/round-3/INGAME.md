@@ -250,6 +250,29 @@ You mark items in the app ("sell" or "send to Sela"); the addon shows the marks 
 - **Commands:** `/fb cleanup` prints `Forever Buddy: 5 marked to sell, 2 to send.` or `Forever Buddy: nothing marked on Thrandor.`
 - **Never:** a sell or send button, auto-selling greys, deleting items, or marks on another player's items.
 
+## 15. TIP3 (a): weapons in the upgrade hint
+Extends §8 (b). Same copy, gain threshold (+5), top two, bound-item skip and "once level N" rule. The data is already there: `worn` covers slots 16 (main hand), 17 (off hand) and 18 (ranged).
+- **Who can use it** (by class, what the class can train; we don't know what each alt has trained, so this is "can use", never "is skilled in"):
+  - Warrior: every weapon type except wands.
+  - Paladin: one- and two-handed axes, maces and swords, and polearms.
+  - Hunter: daggers, fist weapons, one- and two-handed axes and swords, polearms, staves, bows, crossbows, guns and thrown.
+  - Rogue: daggers, fist weapons, one-handed maces and swords, bows, crossbows, guns and thrown.
+  - Shaman: daggers, fist weapons, one- and two-handed axes and maces, and staves.
+  - Druid: daggers, fist weapons, one- and two-handed maces, and staves.
+  - Priest: daggers, one-handed maces, staves and wands.
+  - Mage and warlock: daggers, one-handed swords, staves and wands.
+  - Shields: warrior, paladin and shaman. "Held in off hand" items: every class.
+  - Dual wield (a one-hand weapon counts for the off hand): warrior, rogue and hunter.
+  - These are Classic 1.x rules. Keep them in one table in the addon, so a Forever change is a one-line fix.
+- **What it's compared with:**
+  - **Two-handed:** the alt's two-hander if they wear one. Otherwise the *average* of main hand and off hand (an empty slot counts as 0).
+  - **One-hand or main hand:** the alt's main hand. If they wear a two-hander, skip it (we can't judge a one-hander against a two-hander). For dual-wield classes, a "One-Hand" item also compares with the off hand, and the better gain wins.
+  - **Shield, off hand, held in off hand:** the alt's off hand. Skip it if they wear a two-hander.
+  - **Ranged, wand, thrown:** slot 18, for classes that can use that type.
+  - **Still out:** relics (librams, totems, idols), shirts and tabards.
+- **Copy:** unchanged in compact view, `Upgrade for Kaelor (+9 item level)`. In Shift, add what it was compared with, in grey: `Upgrade for | Kaelor +9 (over main and off hand)`, `(over the off hand)`. One-slot comparisons need no suffix.
+- **No hint** when the class can't use the type, the item is bound, or the comparison is skipped as above. Never guess from the item's name.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
