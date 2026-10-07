@@ -194,7 +194,7 @@ Addon only, from live events; no Bridge slot. Both read what the addon already r
 - **Never:** comparisons with other players, damage or kill meters, advice ("you should"), a sound, or anything that delays or blocks logging out.
 
 ## 12. C1: crafting across alts (tooltip lines)
-Two additions to the shipped item tooltip (§8), using the same rules: `TooltipDataProcessor` post-call, `pcall`, nothing in combat, other characters only, names in class colour, max 3 names in compact view then "+N more", and `G` = grey `|cff808080`. The strings below are the harness targets. "Reagents across alts" is C2, later.
+Two additions to the shipped item tooltip (§8), using the same rules: `TooltipDataProcessor` post-call, `pcall`, nothing in combat, other characters only, names in class colour, max 3 names in compact view then "+N more", and `G` = grey `|cff808080`. The strings below are the harness targets. Materials across alts is C2, in (c).
 - **Data (what the tooltip needs; the C1 data plan decides how):** per character, the known recipes as `result item id → { profession, skill }`, plus the profession's skill and max. Also, for the learn line, `recipe item id → { profession, required skill }`. Ids and numbers only, in the tooltip index. A character's recipes are as of their last trade-skill window scan, so the stale rule from §8 (a) applies, with the date of that scan.
 - **(a) Can make** (hovering an item another character can craft):
   - **Compact, own line, after the price line:** `Sela can make this` · two: `Sela and Kaelor can make this` · more: `Sela, Kaelor and Velyra can make this` · past three: `Sela, Kaelor, Velyra +2 can make this`. "can make this" is gold.
@@ -207,7 +207,14 @@ Two additions to the shipped item tooltip (§8), using the same rules: `TooltipD
   - Both kinds can show, knows first: `Sela knows this` then `Kaelor could learn this (Tailoring 280 of 300)`, at most two lines.
   - **Shift:** rows `Sela | knows · Tailoring 300`, `Kaelor | could learn · 280 of 300`.
   - **If the recipe item can't be mapped to a recipe reliably,** drop the learn lines entirely. Never guess from the name.
-- **The current character:** never in these lines. The game's own tooltip already says "Already known" or shows the requirement in red.
+- **(c) Materials across your characters (C2).** Only on an item that (a) shows, so some other character can make it.
+  - **Data:** per known recipe, its reagents as `{ item id, count }` for one craft (from `GetRecipeSchematic`), carried with C1's recipe data. Holdings come from the existing index, plus the current character's bags live.
+  - **What counts:** for each reagent, everything your characters hold together (bags, bank, mail, any character, including the one you're on). A reagent is "covered" when that total reaches the count for one craft. Crafted items made by different characters may have different recipes; use the first maker's recipe (the order of (a)).
+  - **Compact:** appended to the can-make line after " · ": `Sela can make this · materials 4 of 6`. When all are covered: `Sela can make this · all materials on hand`. "materials" is gold, and the numbers are white. "all materials on hand" is green (`|cff1eff00`).
+  - **Shift:** after the maker rows, a gold sub-head "Materials for one", then one row per reagent: `Mooncloth | 2 of 2 · Sela bags` (the character with the most, and their place, as in §8). Missing: the right side grey, `Rune Thread | G[0 of 1]`. Partly held: `Runecloth | 3 of 5 · Coinpurse bank` with "3 of 5" in white. At most 8 reagent rows.
+  - **Stale holdings:** the §8 (a) rule applies to the place: a holding older than 7 days is grey with its date in Shift. Compact counts it anyway.
+  - **Never:** a price for the missing materials, "buy", a shopping-list nudge, or a count of how many crafts you could make (that invites a craft queue). Lists can come later as their own ticket.
+- **The current character:** never named as a maker or learner (its materials still count in (c)). The game's own tooltip already says "Already known" or shows the requirement in red.
 - **Nothing to say:** no line, no head. These lines can appear alone (no alt holds the item), like the upgrade hint.
 - **Never:** "used in…" on reagents, other players or guild crafters, prices beyond the existing scan line, or anything that opens the profession window or crafts.
 
