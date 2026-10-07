@@ -7,6 +7,10 @@
 //! emits: the price in copper (0 without one), then five numbers per alt
 //! holding it: the alt's index in `alts`, and its count in bags, bank, mail
 //! and equipped.
+//!
+//! Each alt also carries its level and `worn`: the base item level of what
+//! it wears in each of the 19 inventory slots (0 for empty), so the addon
+//! can say which alt a hovered item would upgrade (TIP2, INGAME §8 (b)).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -53,7 +57,11 @@ struct Alt {
     seen: i64,
     bank: Option<i64>,
     mail: Option<i64>,
+    level: Option<i64>,
 }
+
+/// Inventory slots 1-19, as the game numbers them.
+const WORN_SLOTS: usize = 19;
 
 fn key(k: &str) -> LuaValue {
     LuaValue::str(k)
@@ -66,14 +74,15 @@ fn table(array: Vec<LuaValue>, hash: Vec<(LuaValue, LuaValue)>) -> LuaValue {
 /// Builds both slots for `flavor`, every character the app knows there (the
 /// AddOns folder is shared by all the folder's WTF accounts).
 pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
-    let (alts, rows) = db.with_conn(|c| {
+    let (alts, rows, worn) = db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT c.id, c.name, coalesce(c.surname, ''), upper(coalesce(c.class, '')),
                     c.last_seen,
                     (SELECT max(as_of) FROM char_items
                      WHERE character_id = c.id AND location = 'bank'),
                     (SELECT max(as_of) FROM char_items
-                     WHERE character_id = c.id AND location = 'mail')
+                     WHERE character_id = c.id AND location = 'mail'),
+                    c.level
              FROM characters c WHERE c.flavor = ?1
              ORDER BY c.last_seen DESC, c.id",
         )?;
@@ -87,9 +96,35 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                     seen: r.get(4)?,
                     bank: r.get(5)?,
                     mail: r.get(6)?,
+                    level: r.get(7)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        // What each alt wears: base item level by inventory slot.
+        let mut stmt = c.prepare(
+            "SELECT i.character_id, i.slot, max(coalesce(it.ilvl, 0))
+             FROM char_items i
+             JOIN characters c ON c.id = i.character_id
+             LEFT JOIN items it ON it.item_id = i.item_id
+             WHERE c.flavor = ?1 AND i.location = 'equipped'
+             GROUP BY i.character_id, i.slot",
+        )?;
+        let mut worn: HashMap<i64, [i64; WORN_SLOTS]> = HashMap::new();
+        for row in stmt.query_map([flavor], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })? {
+            let (character, slot, ilvl) = row?;
+            if let Some(at) = usize::try_from(slot)
+                .ok()
+                .filter(|s| (1..=WORN_SLOTS).contains(s))
+            {
+                worn.entry(character).or_insert([0; WORN_SLOTS])[at - 1] = ilvl.max(0);
+            }
+        }
         let mut stmt = c.prepare(
             "SELECT i.item_id, i.character_id, i.location, sum(i.count)
              FROM char_items i JOIN characters c ON c.id = i.character_id
@@ -106,7 +141,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok((alts, rows))
+        Ok((alts, rows, worn))
     })?;
 
     // item → alt index (1-based, in `alts` order) → counts by location.
@@ -152,6 +187,17 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                 if let Some(t) = a.mail {
                     hash.push((key("mail"), LuaValue::Int(t)));
                 }
+                if let Some(level) = a.level {
+                    hash.push((key("level"), LuaValue::Int(level)));
+                }
+                let slots = worn.get(&a.id).copied().unwrap_or([0; WORN_SLOTS]);
+                hash.push((
+                    key("worn"),
+                    table(
+                        slots.iter().map(|&n| LuaValue::Int(n)).collect(),
+                        Vec::new(),
+                    ),
+                ));
                 table(Vec::new(), hash)
             })
             .collect(),
@@ -338,6 +384,45 @@ mod tests {
         // The only text is the alts header: no item names anywhere.
         let (_, bytes) = &built.slots[1];
         assert!(!String::from_utf8_lossy(bytes).contains("Runecloth"));
+    }
+
+    #[test]
+    fn each_alt_carries_its_level_and_worn_item_levels_by_slot() {
+        let db = account(&[
+            ("Kaelor", "ROGUE", 3_000, vec![]),
+            ("Sela", "PRIEST", 2_000, vec![]),
+        ]);
+        db.with_conn(|c| {
+            c.execute_batch(
+                "INSERT INTO items (item_id, name, ilvl, seen_at) VALUES
+                    (100, 'Cap', 50, 0), (101, 'Ring', 44, 0), (102, 'Unknown ilvl', NULL, 0);
+                 UPDATE characters SET level = 52 WHERE name = 'Kaelor';
+                 INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
+                 SELECT id, 'equipped', 0, 1, 100, '', 1, 0 FROM characters WHERE name = 'Kaelor';
+                 INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
+                 SELECT id, 'equipped', 0, 12, 101, '', 1, 0 FROM characters WHERE name = 'Kaelor';
+                 INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
+                 SELECT id, 'equipped', 0, 19, 102, '', 1, 0 FROM characters WHERE name = 'Kaelor';",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let built = build(&db, FLAVOR, 42).unwrap();
+        let t = parsed(&built, Slot::Tooltip1);
+        let alts = t.get("alts").unwrap().as_table().unwrap();
+
+        let kaelor = alts.get_index(1).unwrap().as_table().unwrap();
+        assert_eq!(kaelor.get("level"), Some(&LuaValue::Int(52)));
+        let mut want = [0i64; 19];
+        want[0] = 50; // head
+        want[11] = 44; // second finger
+                       // An item with no known ilvl reads as 0, like an empty slot.
+        assert_eq!(ints(kaelor.get("worn").unwrap()), want);
+
+        // Nothing worn and no level yet: all zeros, no level key.
+        let sela = alts.get_index(2).unwrap().as_table().unwrap();
+        assert_eq!(sela.get("level"), None);
+        assert_eq!(ints(sela.get("worn").unwrap()), [0; 19]);
     }
 
     /// Synthetic accounts to check spec §5's size table against what the
