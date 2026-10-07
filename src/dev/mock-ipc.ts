@@ -1088,7 +1088,8 @@ export function installMockIpc(): void {
     },
     agent_status: () => ({
       command: "C:\\Program Files\\WoW Forever Buddy\\wow-forever-buddy.exe",
-      flag: "--mcp",
+      flag: "mcp",
+      claude_code: 'claude mcp add forever-buddy "C:\\Program Files\\WoW Forever Buddy\\wow-forever-buddy.exe" mcp',
       activity:
         s === "settings-agents"
           ? [

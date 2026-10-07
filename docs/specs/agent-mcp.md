@@ -16,11 +16,11 @@ Status: 2026-10-07 (@coder). Built: P2a (the read side), P2b (the queue, login n
 
 ## 1. How an agent connects
 
-**The app's own executable, started with `--mcp`.** The agent client starts it as a local MCP server over stdio. Claude Desktop, Claude Code and most MCP clients support this out of the box. Below, "the agent process" means the app started this way.
+**The app's own executable, started with `mcp`** (`--mcp` before 0.9, still accepted). The agent client starts it as a local MCP server over stdio. Claude Desktop, Claude Code and most MCP clients support this out of the box. Below, "the agent process" means the app started this way.
 
 As built in P2a, this is a flag rather than a separate `externalBin`:
 
-- **Single instance.** `main` checks for `--mcp` before Tauri and `tauri-plugin-single-instance` start. The agent process never becomes a second app instance, and it never focuses the running window.
+- **Single instance.** `main` checks for `mcp` (or `--mcp`) before Tauri and `tauri-plugin-single-instance` start. The agent process never becomes a second app instance, and it never focuses the running window.
 - **One file to ship and sign.** There's no sidecar to bundle per target triple.
 - **No port.** A localhost HTTP server would be a listening socket any local process, or a web page through DNS rebinding, could reach. Stdio is a private pipe to the client that started it.
 - **Least privilege, the same as a sidecar would have.** The agent process:
@@ -35,9 +35,9 @@ It uses a small JSON-RPC loop of its own (`agent/rpc.rs`: `initialize`, `ping`, 
 - A switch: "Let AI agents read my characters and suggest plans", off by default.
 - Under it, the config to paste, with a Copy button:
   ```json
-  { "mcpServers": { "forever-buddy": { "command": "C:\\…\\wow-forever-buddy.exe", "args": ["--mcp"] } } }
+  { "mcpServers": { "forever-buddy": { "command": "C:\\…\\wow-forever-buddy.exe", "args": ["mcp"] } } }
   ```
-  and the Claude Code one-liner `claude mcp add forever-buddy -- "C:\…\wow-forever-buddy.exe" --mcp`.
+  and the Claude Code one-liner `claude mcp add forever-buddy "C:\…\wow-forever-buddy.exe" mcp`. It has no `--`, and the argument has no dashes, on purpose: on Windows `claude` is usually npm's PowerShell shim, PowerShell drops the first `--` given to a script, and Claude Code then refused `--mcp` as its own option (BUG-MCP).
 - "Recent agent activity": the last 20 tool calls (client name, tool, time; never the arguments' text), and the pending proposals count with a link to Approvals.
 
 The activity list is `<local data>/agent/activity.json`, written by the agent process. It holds only the client name, the tool, the time and whether the call worked.

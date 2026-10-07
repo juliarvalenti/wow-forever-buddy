@@ -48,6 +48,17 @@ jobs:
           uploadPlainBinary: true
           uploadWorkflowArtifacts: true
 
+      # BUG-MCP: the release exe (a Windows GUI-subsystem program, unlike the
+      # test build) started the way an agent client starts it, over pipes.
+      # It runs after the upload, so a failure marks the release job red
+      # rather than holding the files back.
+      - name: Agent connection works on the release exe
+        shell: pwsh
+        working-directory: src-tauri
+        env:
+          MCP_EXE: ${{ github.workspace }}\src-tauri\target\release\wow-forever-buddy.exe
+        run: cargo test --locked --test mcp_stdio
+
       # The addon the app bundles, as a zip whose root is the ForeverBuddy
       # folder, named for the version in its TOC. 7-Zip (on the runner) writes
       # forward-slash entry names, which every unzipper reads as folders.
