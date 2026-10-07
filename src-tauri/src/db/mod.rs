@@ -102,6 +102,30 @@ impl Db {
         })
     }
 
+    /// Opens the db for reading only, for the agent connection (P2), which
+    /// runs alongside the app: no migration, no write. SQLite opens it
+    /// read-only and `query_only` refuses writes on top. A db from another
+    /// version is refused rather than misread.
+    pub fn open_read_only(path: &Path) -> AppResult<Self> {
+        use rusqlite::OpenFlags;
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        conn.pragma_update(None, "query_only", "ON")?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version != LATEST_VERSION {
+            return Err(AppError::Db(format!(
+                "the database is version {version}, this build reads {LATEST_VERSION}: \
+                 open Forever Buddy once, and use the agent connection from the same version"
+            )));
+        }
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
     fn open_and_migrate(path: &Path) -> Result<Connection, rusqlite_migration::Error> {
         let mut conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
