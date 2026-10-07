@@ -76,6 +76,8 @@ pub struct ItemRow {
     /// it, and the zone it was in. Never a source (IMPLEMENTING.md §7).
     pub looted_at: Option<String>,
     pub looted_in: Option<String>,
+    /// The game reported it soulbound (B3: it can't be marked to send).
+    pub bound: bool,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -331,7 +333,7 @@ fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<
              AND json_extract(e.data, '$.how') IS NULL
          )
          SELECT i.container, i.slot, i.item_id, i.link, i.count, it.name, it.quality, it.ilvl,
-                l.at, l.zone, it.icon_file_id
+                l.at, l.zone, it.icon_file_id, i.bound
          FROM char_items i
          LEFT JOIN items it ON it.item_id = i.item_id
          LEFT JOIN loot l ON l.item_id = i.item_id AND l.n = 1
@@ -358,6 +360,7 @@ fn items_at(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Vec<
                 count: r.get::<_, i64>(4)? as u32,
                 looted_at: r.get::<_, Option<i64>>(8)?.map(iso),
                 looted_in: r.get(9)?,
+                bound: r.get::<_, i64>(11)? != 0,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

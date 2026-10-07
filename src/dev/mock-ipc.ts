@@ -22,6 +22,7 @@ import type {
   CategoryNode,
   CharacterCard,
   CharacterSheet,
+  Cleanup,
   GoodsWorth,
   IntegrationId,
   ItemRow,
@@ -32,6 +33,7 @@ import type {
   ListItem,
   ListsView,
   Macro,
+  Mark,
   MacrosList,
   Plan,
   PlaySession,
@@ -405,6 +407,44 @@ export function installMockIpc(): void {
             ],
           },
         ];
+  // B3: the sheet's bag items by id (character_detail's ids), and each
+  // character's marks: item id -> 0 to sell, or the recipient's id.
+  const cleanupItems: Record<number, { name: string; quality: number; count: number; sell: number | null }> = {
+    1001: { name: "Hearthstone", quality: 1, count: 1, sell: null },
+    1002: { name: "Runecloth", quality: 1, count: 40, sell: 40 },
+    1003: { name: "Broken Fang", quality: 0, count: 6, sell: 6 },
+    1004: { name: "Torn Bear Pelt", quality: 0, count: 3, sell: 16 },
+    1005: { name: "Truestrike Shoulders", quality: 3, count: 1, sell: 12_100 },
+    1101: { name: "Major Healing Potion", quality: 1, count: 12, sell: 1_000 },
+  };
+  const allMarks = new Map<number, Map<number, number>>([
+    [2, new Map([[1003, 0], [1005, 7]])],
+  ]);
+  const cleanupMarks = (id: number) => {
+    if (!allMarks.has(id)) allMarks.set(id, new Map());
+    return allMarks.get(id)!;
+  };
+  const cleanupView = (id: number): Cleanup => {
+    const marks = cleanupMarks(id);
+    return {
+      marks: [...marks.entries()]
+        .filter(([item]) => cleanupItems[item])
+        .map(([item, to]) => {
+          const it = cleanupItems[item];
+          return {
+            item_id: item,
+            name: it.name,
+            quality: it.quality,
+            icon: null,
+            count: it.count,
+            sell_price: it.sell,
+            to: to ? listWho(to) : null,
+          };
+        }),
+      greys: Object.entries(cleanupItems).filter(([item, it]) => it.quality === 0 && !marks.has(Number(item))).length,
+      delivery: { state: "synced", since: iso(18) },
+    };
+  };
   const listsView = (): ListsView => ({
     lists: noAddon ? [] : lists,
     delivery: { state: "synced", since: iso(18) },
@@ -1253,6 +1293,24 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
+    // B3: Thrandor's bag cleanup (character.html, IMPLEMENTING §18): the
+    // Broken Fangs marked to sell, the shoulders to send to Kaelor, and one
+    // grey (the bear pelts) not marked yet.
+    cleanup_get: ({ characterId }): Cleanup => cleanupView(Number(characterId)),
+    cleanup_mark: ({ characterId, itemId, mark }): Cleanup => {
+      const m = mark as Mark;
+      cleanupMarks(Number(characterId)).set(Number(itemId), m.action === "send" ? m.to : 0);
+      return cleanupView(Number(characterId));
+    },
+    cleanup_clear: ({ characterId, itemId }): Cleanup => {
+      cleanupMarks(Number(characterId)).delete(Number(itemId));
+      return cleanupView(Number(characterId));
+    },
+    cleanup_mark_greys: ({ characterId }): Cleanup => {
+      const marks = cleanupMarks(Number(characterId));
+      for (const [id, it] of Object.entries(cleanupItems)) if (it.quality === 0 && !marks.has(Number(id))) marks.set(Number(id), 0);
+      return cleanupView(Number(characterId));
+    },
     lists_get: listsView,
     list_create: ({ name, forCharacter }) => {
       lists = [
@@ -1341,7 +1399,9 @@ export function installMockIpc(): void {
       const item = (slot: number, name: string, quality: number, ilvl: number, container = 0, count = 1): ItemRow => ({
         container,
         slot,
-        item_id: 1000 + slot,
+        item_id: 1000 + container * 100 + slot,
+        // B3: the Hearthstone is soulbound, so it can't be marked to send.
+        bound: name === "Hearthstone",
         name,
         quality,
         ilvl,
@@ -1372,7 +1432,19 @@ export function installMockIpc(): void {
           item(18, "Libram of Hope", 3, 60),
         ],
         bags: [
-          { container: 0, name: "Backpack", size: 16, free: 0, items: [item(1, "Hearthstone", 1, 1), item(2, "Runecloth", 1, 50, 0, 40)] },
+          {
+            container: 0,
+            name: "Backpack",
+            size: 16,
+            free: 0,
+            items: [
+              item(1, "Hearthstone", 1, 1),
+              item(2, "Runecloth", 1, 50, 0, 40),
+              item(3, "Broken Fang", 0, 1, 0, 6),
+              item(4, "Torn Bear Pelt", 0, 1, 0, 3),
+              item(5, "Truestrike Shoulders", 3, 63),
+            ],
+          },
           { container: 1, name: "Mooncloth Bag", size: 20, free: 4, items: [item(1, "Major Healing Potion", 1, 55, 1, 12)] },
           { container: 2, name: "Mooncloth Bag", size: 20, free: 4, items: [] },
           { container: 3, name: "Runecloth Bag", size: 24, free: 4, items: [] },

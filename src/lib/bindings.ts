@@ -366,6 +366,15 @@ export const commands = {
 	listItemRemove: (id: number) => __TAURI_INVOKE<ListsView>("list_item_remove", { id }),
 	/**  "+ Add an item…": items your characters have seen. */
 	itemsSeenSearch: (query: string) => __TAURI_INVOKE<SeenItem[]>("items_seen_search", { query }),
+	/**
+	 *  The sheet's Bag cleanup panel (B3) for one character, with the Cleanup
+	 *  slot's way to the game.
+	 */
+	cleanupGet: (characterId: number) => __TAURI_INVOKE<Cleanup>("cleanup_get", { characterId }),
+	cleanupMark: (characterId: number, itemId: number, mark: Mark) => __TAURI_INVOKE<Cleanup>("cleanup_mark", { characterId, itemId, mark }),
+	cleanupClear: (characterId: number, itemId: number) => __TAURI_INVOKE<Cleanup>("cleanup_clear", { characterId, itemId }),
+	/**  "Mark all greys": a one-off. */
+	cleanupMarkGreys: (characterId: number) => __TAURI_INVOKE<Cleanup>("cleanup_mark_greys", { characterId }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1006,6 +1015,17 @@ export type Chart = {
 	account: (number | null)[],
 };
 
+/**  The sheet's Bag cleanup panel. */
+export type Cleanup = {
+	marks: Marked[],
+	/**
+	 *  Poor-quality items in the bags that aren't marked yet (for "Mark all
+	 *  greys (6)").
+	 */
+	greys: number,
+	delivery: Delivery,
+};
+
 /**  How sure a price is, from how often and how lately it was seen. */
 export type Confidence = "sure" | "fair" | "rough";
 
@@ -1320,6 +1340,8 @@ export type ItemRow = {
 	 */
 	looted_at: string | null,
 	looted_in: string | null,
+	/**  The game reported it soulbound (B3: it can't be marked to send). */
+	bound: boolean,
 };
 
 /**  An interrupted restore: enough to roll it back or run it again. */
@@ -1572,6 +1594,25 @@ export type MailView = {
 	messages: MailRow[],
 };
 
+/**  What to do with an item. */
+export type Mark = { action: "sell" } | 
+/**  To another character (its id). */
+{ action: "send"; to: number };
+
+/**  One marked item of a character. */
+export type Marked = {
+	item_id: number,
+	name: string,
+	quality: number | null,
+	icon: number | null,
+	/**  How many the character holds (bags and bank). */
+	count: number,
+	/**  The vendor's price for one, when the game gave it. */
+	sell_price: number | null,
+	/**  `None` for sell. */
+	to: Recipient | null,
+};
+
 export type Marker = {
 	at: string,
 	/**  death | encounter | level | quest */
@@ -1794,6 +1835,13 @@ export type QuestLog = {
 	done_as_of: string | null,
 	/**  Newest first. */
 	entries: QuestEntry[],
+};
+
+export type Recipient = {
+	id: number,
+	name: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
 };
 
 /**  What the UI shows about interrupted restores. */

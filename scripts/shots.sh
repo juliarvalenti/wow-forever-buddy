@@ -40,6 +40,9 @@ SCENARIOS=(
   "ledger|dashboard|click:css=nav button[title=\"Ledger\"];wait:css=.d-worth|gold"
   "session|dashboard|click:css=nav button[title=\"Adventures\"];wait:css=.d-loot-t|session"
   "character|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet|character"
+  # B3: the satchels tab with marks and the Bag cleanup panel; then the Mark menu open on the Runecloth.
+  "character-cleanup|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;click:css=.ch-tabs button >> text=Satchels;wait:css=.bc-row|character"
+  "character-mark|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;click:css=.ch-tabs button >> text=Satchels;hover:css=.ch-slot.markable >> nth=1;click:css=.ch-slot.markable >> nth=1 >> css=.bc-mark;wait:css=.bc-pop|character"
   # Q1b: the Quests tab (mock: character.html?tab=quests; no stored shot yet, so it sits next to the sheet).
   "character-quests|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;click:css=.ch-tabs button >> text=Quests;wait:css=.qv|character"
   # P1: Thrandor's active quest plan in the side column (mock: character.html?plan).

@@ -595,7 +595,8 @@ scenario("toc", function()
     eq(fields.AddonCompartmentFunc, "ForeverBuddy_OnAddonCompartmentClick", "compartment")
     -- The bridge slots load first, so their globals exist when the addon runs.
     eq(table.concat(files, ", "),
-        "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, ForeverBuddy.lua", "files")
+        "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, Data/Cleanup.lua, "
+            .. "ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -1005,7 +1006,7 @@ scenario("briefing", function()
     eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
     quiet.slash("/fb")
     eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
-        .. "/fb coach this session's strip; /fb card off hides the logout card; "
+        .. "/fb cleanup what's marked; /fb coach this session's strip; /fb card off hides the logout card; "
         .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
 
     -- Not in combat.
@@ -1322,6 +1323,79 @@ scenario("entrance", function()
     off.chat = {}
     off.enterInstance("Molten Core", "raid", 9, "40 Player")
     eq(#off.chat, 0, "off")
+end)
+
+-- Bag cleanup (B3, INGAME §14): Thrandor's Linen Cloth is marked to sell;
+-- his Hearthstone (soulbound) and a Felcloth Hood are marked to send to
+-- Sela. Tags in the bags, tooltip lines, the vendor line, the errands.
+local CLEANUP = 'ForeverBuddyData_Cleanup = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
+    .. '\t["alts"] = {\n'
+    .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "WARRIOR" },\n'
+    .. '\t\t{ ["name"] = "Sela", ["surname"] = "", ["class"] = "PRIEST" },\n'
+    .. '\t},\n\t["marks"] = {\n'
+    .. '\t\t[1] = { 2589, "sell", 0, 6948, "send", 2, 10005, "send", 2 },\n'
+    .. '\t},\n}\n'
+
+scenario("cleanup", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local SELA = "|cffffffffSela|r"
+    local c = client({ slots = { ["Data/Cleanup.lua"] = CLEANUP } })
+    c.world.bound[6948] = "Soulbound"
+    c.login(nil)
+    c.give(10005, 1)
+    c.slash("/fb cleanup")
+    eq(c.chat[#c.chat], PREFIX .. "1 marked to sell, 2 to send.", "/fb cleanup")
+
+    -- Tags in the backpack: Hearthstone (slot 1) a letter, Linen (slot 2) a
+    -- coin; our own child texture, nothing else on the button.
+    local bag = c.global("ContainerFrame1")
+    c.give(117, 1) -- a bag update tags them
+    local tagOf = function(slot)
+        local t = bag.buttons[slot].children[1]
+        return t and t.shown and t.texture or nil
+    end
+    eq(tagOf(1), "Interface\\Minimap\\Tracking\\Mailbox", "send: a letter")
+    eq(tagOf(2), "Interface\\MoneyFrame\\UI-GoldIcon", "sell: a coin")
+    eq(tagOf(4), nil, "the jerky isn't marked")
+
+    -- Tooltips.
+    eq(c.hover(2589)[2], "Marked to sell in Forever Buddy|cffffffff · 13c each at a vendor|r", "sell line")
+    eq(c.hover(10005)[2], "Marked to send to " .. SELA, "send line")
+    eq(c.hover(6948)[2], "Marked to send to " .. SELA .. G .. ", but it's soulbound|r", "soulbound")
+    eq(#c.hover(14047), 1, "not marked, nothing")
+
+    -- At a vendor: one grey line, no button.
+    c.openMerchant({})
+    local v = c.global("ForeverBuddyCleanupFrame")
+    eq(v.shown, true, "at the vendor")
+    eq(v.point[2], c.global("MerchantFrame"), "on its own, no list")
+    eq(v.text.text, "4 marked to sell · ~52c at the vendor", "the line")
+    c.sell(2589, 4, 52)
+    eq(v.shown, false, "sold: nothing left to say")
+    eq(tagOf(2), nil, "and the tag goes right away")
+    c.closeMerchant()
+
+    -- At the mailbox, marked sends are errands.
+    c.openMailbox()
+    local e = c.global("ForeverBuddyErrandFrame")
+    eq(e.shown, true, "errands")
+    eq(e.meta.text, "from |cffc79c6eThrandor|r", "from this character")
+    eq(e.rows[2].label.text, "Felcloth Hood to " .. SELA, "a marked send")
+    eq(e.rows[2].detail.text, "in your bags · marked in Forever Buddy", "why")
+    eq(e.rows[2].fill.enabled, true, "Fill recipient")
+    c.click(e.rows[2].fill)
+    eq(c.global("SendMailNameEditBox"):GetText(), "Sela", "only the name")
+    c.closeMailbox()
+
+    -- Another character has nothing marked.
+    local sela = client({
+        slots = { ["Data/Cleanup.lua"] = CLEANUP },
+        character = { name = "Sela", surname = "", realm = "Classic Beta PvP 2", guid = "Player-2" },
+    })
+    sela.login(nil)
+    sela.slash("/fb cleanup")
+    eq(sela.chat[#sela.chat], PREFIX .. "nothing marked on Sela.", "nothing")
+    eq(#sela.hover(2589), 1, "no lines for someone else's marks")
 end)
 
 -- Known recipes (C1): read from this character's own profession window,
