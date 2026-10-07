@@ -2245,10 +2245,27 @@ local function cardTitle()
     return plain(character and character.name or "Your") .. "'s " .. part
 end
 
+local SHORT = 5 * 60 -- a session this short with nothing but Played gets no card
+
 -- The logout card: shown during the countdown, above the game's dialog;
 -- only its × takes the mouse.
 local function showCard()
     if not cardOn() or not session then
+        return
+    end
+    local s = tally()
+    local lines = { { "Played", span(s.length) } }
+    if s.gold and s.gold ~= 0 then
+        -- A gain in green; a loss stays white (§11).
+        lines[#lines + 1] = { "Gold", s.gold > 0 and ("|cff1eff00+" .. money(s.gold) .. "|r") or ("-" .. money(s.gold)) }
+    end
+    if s.best then
+        lines[#lines + 1] = { "Best find", "|cff" .. (QUALITY_HEX[s.best.q] or "ffffff") .. plain(s.best.name) .. "|r" }
+    end
+    if s.quests > 0 then
+        lines[#lines + 1] = { "Quests", tostring(s.quests) }
+    end
+    if s.length < SHORT and #lines == 1 and not s.ding then
         return
     end
     if not cardFrame then
@@ -2268,27 +2285,16 @@ local function showCard()
         f.ding:SetPoint("TOPLEFT", 12, -28)
         f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         f.footer:SetPoint("BOTTOMLEFT", 12, 8)
-        f.footer:SetText("Saved to your journal in Forever Buddy")
+        f.footer:SetText("In Adventures after you close WoW")
         f.rows = {}
         cardFrame = f
     end
     local f = cardFrame
-    local s = tally()
     f.heading:SetText(cardTitle())
     f.ding:SetText(s.ding and ("Ding! Level " .. s.ding) or "")
     f.ding:SetShown(s.ding ~= nil)
     for _, row in ipairs(f.rows) do
         row:Hide()
-    end
-    local lines = { { "Played", span(s.length) } }
-    if s.gold and s.gold ~= 0 then
-        lines[#lines + 1] = { "Gold", (s.gold > 0 and "|cff1eff00+" or "|cffff2020-") .. money(s.gold) .. "|r" }
-    end
-    if s.best then
-        lines[#lines + 1] = { "Best find", "|cff" .. (QUALITY_HEX[s.best.q] or "ffffff") .. plain(s.best.name) .. "|r" }
-    end
-    if s.quests > 0 then
-        lines[#lines + 1] = { "Quests", tostring(s.quests) }
     end
     local top = s.ding and 50 or 28
     for i, l in ipairs(lines) do
