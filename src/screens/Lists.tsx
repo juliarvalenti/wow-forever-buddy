@@ -240,8 +240,9 @@ function SentRow({
   );
 }
 
-/** An agent's proposed item: ember-tinted, with who proposed it and why. */
-function ProposedRow({ p, c, item }: { p: Proposal; c: ListChange; item?: ListItem }) {
+/** An item an agent proposes adding: its own ember row. (A changed need
+ *  shows in the item's existing row instead.) Who and why are in the bar. */
+function ProposedRow({ c }: { c: ListChange }) {
   const q = c.quality != null ? `ch-q${c.quality}` : "";
   return (
     <tr className="prop">
@@ -254,17 +255,11 @@ function ProposedRow({ p, c, item }: { p: Proposal; c: ListChange; item?: ListIt
           <span className={`nm ${q}`}>{c.name}</span>
         </div>
       </td>
-      <td className="num need">
-        {c.was != null && <s className="was">{c.was}</s>}
-        {c.need}
-      </td>
+      <td className="num need">{c.need}</td>
       <td className="have">
-        {item ? item.have.toLocaleString() : ""}
-        <small className="chg">
-          proposed · from "{p.producer}"{p.reason ? `: "${p.reason}"` : ""}
-        </small>
+        <small className="chg">proposed</small>
       </td>
-      <td className="num">{item?.price != null ? price(item.price) : ""}</td>
+      <td className="num" />
       <td />
     </tr>
   );
@@ -327,11 +322,19 @@ function ListTable({
         </thead>
         <tbody>
           {list.items.map((i) => (
-            <Row key={i.id} item={i} list={list} lists={lists} />
+            <Row
+              key={i.id}
+              item={i}
+              list={list}
+              lists={lists}
+              proposed={changes.find(({ c }) => c.item_id === i.item_id)?.c}
+            />
           ))}
-          {changes.map(({ p, c }) => (
-            <ProposedRow key={`${p.id}-${c.item_id}`} p={p} c={c} item={list.items.find((i) => i.item_id === c.item_id)} />
-          ))}
+          {changes
+            .filter(({ c }) => !list.items.some((i) => i.item_id === c.item_id))
+            .map(({ p, c }) => (
+              <ProposedRow key={`${p.id}-${c.item_id}`} c={c} />
+            ))}
           <AddRow listId={list.id} lists={lists} />
         </tbody>
       </table>
@@ -339,7 +342,9 @@ function ListTable({
         <div className="ls-applybar">
           <span className="grow">
             <b>{plural(changes.length, "proposed change", "proposed changes")}</b> from{" "}
-            {producers.map((p) => `"${p}"`).join(", ")}. Nothing changes until you apply it.{" "}
+            {producers.map((p) => `"${p}"`).join(", ")}
+            {proposals.length === 1 && proposals[0].reason ? `: "${proposals[0].reason}"` : ""}. Nothing changes
+            until you apply it.{" "}
             <button className="d-link" onClick={onReview}>
               Review in Approvals
             </button>
@@ -354,7 +359,18 @@ function ListTable({
   );
 }
 
-function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnType<typeof useLists> }) {
+function Row({
+  item,
+  list,
+  lists,
+  proposed,
+}: {
+  item: ListItem;
+  list: List;
+  lists: ReturnType<typeof useLists>;
+  /** An agent's proposed new need for this item (§15): shown in this row. */
+  proposed?: ListChange;
+}) {
   const [editing, setEditing] = useState(false);
   const [need, setNeed] = useState(String(item.need));
   // For a character: what it holds itself (the rest are errands). Otherwise
@@ -381,7 +397,7 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
   };
 
   return (
-    <tr className={done ? "done" : undefined}>
+    <tr className={proposed ? "prop" : done ? "done" : undefined}>
       <td>
         <div className="ls-an">
           <span className={`ch-ico ${q}`} aria-hidden>
@@ -392,7 +408,12 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
         </div>
       </td>
       <td className="num need">
-        {editing ? (
+        {proposed ? (
+          <>
+            <s className="was">{item.need}</s>
+            {proposed.need}
+          </>
+        ) : editing ? (
           <input
             className="ls-needin"
             type="number"
@@ -426,7 +447,7 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
         ) : (
           "none"
         )}
-        {sub && <small>{sub}</small>}
+        {proposed ? <small className="chg">proposed</small> : sub && <small>{sub}</small>}
       </td>
       <td className="num">{item.price != null ? price(item.price) : ""}</td>
       <td className="rm">

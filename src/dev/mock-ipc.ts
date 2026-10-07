@@ -696,7 +696,7 @@ export function installMockIpc(): void {
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
-    agent_access: s === "settings-agents" || s === "approvals" || s === "approvals-empty",
+    agent_access: ["settings-agents", "approvals", "approvals-empty", "lists-proposal"].includes(s),
     ui: {} as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
