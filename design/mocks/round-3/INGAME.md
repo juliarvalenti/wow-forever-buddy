@@ -198,9 +198,9 @@ Two additions to the shipped item tooltip (§8), using the same rules: `TooltipD
 - **Data (what the tooltip needs; the C1 data plan decides how):** per character, the known recipes as `result item id → { profession, skill }`, plus the profession's skill and max. Also, for the learn line, `recipe item id → { profession, required skill }`. Ids and numbers only, in the tooltip index. A character's recipes are as of their last trade-skill window scan, so the stale rule from §8 (a) applies, with the date of that scan.
 - **(a) Can make** (hovering an item another character can craft):
   - **Compact, own line, after the price line:** `Sela can make this` · two: `Sela and Kaelor can make this` · more: `Sela, Kaelor and Velyra can make this` · past three: `Sela, Kaelor, Velyra +2 can make this`. "can make this" is gold.
-  - **Shift:** one row per character, `Sela | Tailoring 285`. If the recipe has a cooldown and it's known, add ` · ready` or ` · ready Tue` (the game's day). Stale: the right side grey with ` · as of 21 Sep`.
+  - **Shift:** one row per character, `Sela | Tailoring 285`. Stale (that profession's last scan older than 7 days): the right side grey with ` · as of 21 Sep`. *Later, once cooldowns are recorded:* add ` · ready` or ` · ready Tue` (the game's day).
   - Not shown when only the current character can make it (the game's own profession UI covers that).
-- **(b) Recipe items** (hovering a pattern, plan, formula, manual or schematic):
+- **(b) Recipe items: C1b, not in C1.** No reliable API maps a pattern item to its recipe, so C1 ships without these lines, and a logout probe checks whether a real mapping exists. If it does, build these strings as written:
   - **Knows:** `Sela knows this` (several names as in (a)). Gold verb, class-coloured names.
   - **Could learn:** `Kaelor could learn this (Tailoring 280 of 300)`, for a character who has the profession, doesn't know the recipe and whose skill is at or above the required skill. The bracket is grey.
   - **Not yet:** `Kaelor could learn this at Tailoring 290 (now 280)`, only when within 25 points. Further away, say nothing.
