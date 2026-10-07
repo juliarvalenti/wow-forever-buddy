@@ -263,12 +263,14 @@ function M.new(opts)
         GetMoney = function()
             return world.torn and 0 or world.money
         end,
+        -- Torn down (opts.forever at logout), the character reads as level
+        -- 0 with no XP, quests, professions or saves, as in Julia's file.
         UnitXP = function()
-            return world.xp
+            return world.torn and 0 or world.xp
         end,
         UnitLevel = function(unit)
             if unit == "player" then
-                return world.level
+                return world.torn and 0 or world.level
             end
         end,
         GetRealZoneText = function()
@@ -378,6 +380,9 @@ function M.new(opts)
             end
         end,
         ["C_QuestLog.GetAllCompletedQuestIDs"] = function()
+            if world.torn then
+                return {}
+            end
             local copy = {}
             for i, id in ipairs(world.quests_done) do
                 copy[i] = id
@@ -553,6 +558,9 @@ function M.new(opts)
             return id and M.link(id) or nil
         end,
         GetProfessions = function()
+            if world.torn then
+                return
+            end
             local p = world.professions
             return p[1] and 1, p[2] and 2, p[3] and 3, p[4] and 4, p[5] and 5
         end,
@@ -576,7 +584,7 @@ function M.new(opts)
             end)
         end,
         GetNumSavedInstances = function()
-            return #world.lockouts
+            return world.torn and 0 or #world.lockouts
         end,
         GetSavedInstanceInfo = function(i)
             local l = world.lockouts[i]
