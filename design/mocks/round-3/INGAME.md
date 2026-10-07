@@ -266,8 +266,9 @@ Extends §8 (b). Same copy, gain threshold (+5), top two, bound-item skip and "o
   - These are Classic 1.x rules. Keep them in one table in the addon, so a Forever change is a one-line fix.
 - **What it's compared with:**
   - **Two-handed:** the alt's main hand (their two-hander, or a one-hander with nothing in the off hand). When an off hand is worn too, the *average* of main hand and off hand. Which hand holds what comes from each alt's `hands` item ids (main, off, ranged) and `GetItemInfo`'s equip location.
-  - **One-hand or main hand:** the alt's main hand. If they wear a two-hander, skip it (we can't judge a one-hander against a two-hander). For dual-wield classes, a "One-Hand" item also compares with the off hand, and the better gain wins.
-  - **Shield, off hand, held in off hand:** the alt's off hand. Skip it if they wear a two-hander.
+  - **One-hand or main hand:** the alt's main hand. If they wear a two-hander, skip it (we can't judge a one-hander against a two-hander). For dual-wield classes, a "One-Hand" item also compares with the off hand when one is worn, and the better gain wins.
+  - **Shield, off hand, held in off hand:** the alt's off hand. Skip it if they wear a two-hander or the off hand is empty.
+  - **An empty off hand is never compared against.** "+63 item level" over nothing reads like noise, and an empty off hand is usually a choice.
   - **Ranged, wand, thrown:** slot 18, for classes that can use that type.
   - **Still out:** relics (librams, totems, idols), shirts and tabards.
 - **Copy:** unchanged in compact view, `Upgrade for Kaelor (+9 item level)`. In Shift, add what it was compared with, in grey: `Upgrade for | Kaelor +9 (over main and off hand)`, `(over the off hand)`. One-slot comparisons need no suffix.
