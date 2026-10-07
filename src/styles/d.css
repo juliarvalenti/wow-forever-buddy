@@ -397,6 +397,29 @@
 .d-hints > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 3px; font-size: 11.5px; color: var(--ink-2); background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1px rgba(58, 38, 22, .2); }
 .d-letter-note { font: italic 12.5px Georgia, serif; color: var(--ink-3); }
 .d-letter-after { text-align: center; font-size: 11.5px; }
+/* O1 setup (onboarding.html, IMPLEMENTING §20) */
+.ob-top { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ob-skip { align-self: flex-end; font-size: 12px; color: var(--soot); }
+.ob-skip:hover { color: var(--chalk); }
+.d-stepper li.done span { color: #0f1a0c; background: var(--ok); box-shadow: none; }
+.d-stepper li.done { color: var(--chalk); }
+.d-stepper li.skipped span { color: var(--soot); opacity: .6; }
+.ob-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ob-rows li { display: grid; grid-template-columns: 18px minmax(120px, auto) minmax(0, 1fr); gap: 10px; align-items: center; min-height: 32px; font-size: 12.5px; border-bottom: 1px solid var(--ink-hair); }
+.ob-rows .w { color: var(--ink); font-weight: 500; }
+.ob-rows .r { color: var(--ink-2); font-size: 12px; text-align: right; }
+.ob-rows .ok, .d-letter .ok { color: var(--ok-ink); }
+.ob-rows li.off { color: var(--ink-3); }
+.ob-rows li.off .w { color: var(--ink-3); font-weight: 400; }
+.ob-what .r { text-align: left; }
+.ob-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(255, 122, 46, .25); border-top-color: var(--ember); animation: ob-spin .9s linear infinite; }
+@keyframes ob-spin { to { transform: rotate(360deg); } }
+.ob-progress .d-meter > i { background: linear-gradient(90deg, #c8641f, var(--ember-2)); }
+.ob-progress .lbl { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+.ob-ember { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #9a4a12; }
+.ob-extra { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--ink-hair); }
+.ob-extra .t { font-size: 13px; font-weight: 500; color: var(--ink); }
+.ob-extra .d { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
 
 /* ---------- Ledger (gold.html, V8) ---------- */
 .d-coins { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
