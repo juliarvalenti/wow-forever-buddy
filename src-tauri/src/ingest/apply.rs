@@ -271,6 +271,26 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
                 params![id, r.profession, item, r.at],
             )?;
         }
+        // C2: what each item takes. Game data, shared by every character:
+        // the newest scan of an item wins.
+        for (item, reagents) in &r.mats {
+            let seen: Option<i64> = tx.query_row(
+                "SELECT max(seen_at) FROM recipe_reagents WHERE item_id = ?1",
+                [item],
+                |row| row.get(0),
+            )?;
+            if seen.is_some_and(|at| at > r.at) {
+                continue;
+            }
+            tx.execute("DELETE FROM recipe_reagents WHERE item_id = ?1", [item])?;
+            for (reagent, qty) in reagents {
+                tx.execute(
+                    "INSERT OR REPLACE INTO recipe_reagents (item_id, reagent_id, qty, seen_at)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![item, reagent, qty, r.at],
+                )?;
+            }
+        }
     }
     if let Some(lockouts) = &s.lockouts {
         if newer(tx, "lockouts", id, s.at)? {

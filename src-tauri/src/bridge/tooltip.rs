@@ -17,6 +17,10 @@
 //! which profession), and each alt has `prof = { [name] =
 //! { skill, at } }`, `at` being when its recipes were last read (for the
 //! stale greying). An addon from before C1 ignores both.
+//!
+//! C2: each half also has `mats = { [itemID] = { reagentID, qty, … } }`,
+//! the required reagents of the items in its `makes`. The holdings of each
+//! reagent are already in `items`, so the addon adds them up across alts.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -217,6 +221,34 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok((made, profs))
     })?;
+    // C2: what each craftable item takes, for the items someone can make.
+    let reagents: Vec<(i64, i64, i64)> = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT g.item_id, g.reagent_id, g.qty FROM recipe_reagents g
+             WHERE g.item_id IN (SELECT r.item_id FROM char_recipes r
+                                 JOIN characters ch ON ch.id = r.character_id
+                                 WHERE ch.flavor = ?1)
+             ORDER BY g.item_id, g.reagent_id",
+        )?;
+        let rows = stmt
+            .query_map([flavor], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    // item → flat reagent id, quantity, …
+    let mut takes: BTreeMap<i64, Vec<LuaValue>> = BTreeMap::new();
+    for (item_id, reagent, qty) in reagents {
+        takes
+            .entry(item_id)
+            .or_default()
+            .extend([LuaValue::Int(reagent), LuaValue::Int(qty)]);
+    }
+    let mut mats: HashMap<Slot, Vec<(LuaValue, LuaValue)>> = HashMap::new();
+    for (item_id, flat) in takes {
+        mats.entry(slot_for(item_id))
+            .or_default()
+            .push((LuaValue::Int(item_id), table(flat, Vec::new())));
+    }
     // item → (alt index, profession), one per alt.
     let mut makes: BTreeMap<i64, BTreeMap<i64, String>> = BTreeMap::new();
     for (item_id, character_id, profession) in made {
@@ -319,6 +351,9 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         ];
         if let Some(m) = makers.remove(&slot) {
             fields.push((key("makes"), table(Vec::new(), m)));
+        }
+        if let Some(m) = mats.remove(&slot) {
+            fields.push((key("mats"), table(Vec::new(), m)));
         }
         let body = head(fields);
         match render_capped(slot, body)? {
@@ -516,6 +551,10 @@ mod tests {
     /// writer really emits: `alts` characters with `per_alt` distinct items
     /// each, spread over bags, bank and mail, from a pool of `pool` ids.
     fn sized(alts: usize, per_alt: usize, pool: i64) -> Built {
+        build(&sized_db(alts, per_alt, pool), FLAVOR, 1_790_000_000).unwrap()
+    }
+
+    fn sized_db(alts: usize, per_alt: usize, pool: i64) -> Db {
         let places = ["bag", "bank", "mail"];
         let chars: Vec<(String, Held)> = (0..alts)
             .map(|a| {
@@ -533,7 +572,56 @@ mod tests {
             .enumerate()
             .map(|(i, (n, items))| (n.as_str(), "MAGE", 1_790_000_000 + i as i64, items.clone()))
             .collect();
-        build(&account(&rows), FLAVOR, 1_790_000_000).unwrap()
+        account(&rows)
+    }
+
+    /// `crafters` characters each knowing `recipes` recipes (out of a pool
+    /// of craftable items), every item taking `reagents` reagents.
+    fn with_recipes(db: &Db, crafters: usize, recipes: usize, pool: i64, reagents: i64) {
+        db.with_conn(|c| {
+            let ids: Vec<i64> = c
+                .prepare("SELECT id FROM characters ORDER BY id")?
+                .query_map([], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            for (a, id) in ids.iter().take(crafters).enumerate() {
+                for i in 0..recipes {
+                    let item = 50_000 + (a as i64 * 131 + i as i64 * 3) % pool;
+                    c.execute(
+                        "INSERT OR IGNORE INTO char_recipes (character_id, profession, item_id, scanned_at)
+                         VALUES (?1, 'Tailoring', ?2, 1)",
+                        rusqlite::params![id, item],
+                    )?;
+                    for r in 0..reagents {
+                        c.execute(
+                            "INSERT OR IGNORE INTO recipe_reagents (item_id, reagent_id, qty, seen_at)
+                             VALUES (?1, ?2, ?3, 1)",
+                            rusqlite::params![item, 1000 + (item * 7 + r * 13) % 3_000, 1 + r],
+                        )?;
+                    }
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// C2 adds `mats` to the index: a crafting-heavy account still fits,
+    /// and an absurd one says it's too large rather than dropping a half.
+    #[test]
+    fn materials_fit_or_say_too_large() {
+        let db = sized_db(20, 250, 3_000);
+        with_recipes(&db, 10, 1_000, 4_000, 6);
+        let built = build(&db, FLAVOR, 1_790_000_000).unwrap();
+        assert!(!built.too_large);
+        for (slot, bytes) in &built.slots {
+            eprintln!("crafters: {} is {} KB", slot.name(), bytes.len() / 1024);
+            assert!(bytes.len() < crate::bridge::MAX_SLOT_BYTES);
+        }
+        let db = sized_db(50, 400, 6_000);
+        with_recipes(&db, 50, 1_000, 60_000, 8);
+        let built = build(&db, FLAVOR, 1_790_000_000).unwrap();
+        assert!(built.too_large);
+        assert_eq!(built.slots.len(), 2, "both halves, each saying so");
     }
 
     #[test]
@@ -588,6 +676,12 @@ mod tests {
         assert_eq!(maker.array[1].as_bytes(), Some(&b"Tailoring"[..]));
         assert!(makes.get_index(2572).is_some());
         assert_eq!(makes.get_index(2575), None, "not learned");
+        // C2: 2568 takes 1 Coarse Thread and 2 Linen Cloth (by reagent id);
+        // 2572 lists none.
+        let mats = even.get("mats").unwrap().as_table().unwrap();
+        let takes = mats.get_index(2568).unwrap().as_table().unwrap();
+        assert_eq!(takes.array, [2320, 1, 2589, 2].map(LuaValue::Int));
+        assert_eq!(mats.get_index(2572), None);
         assert_eq!(
             parsed(&built, Slot::Tooltip2).get("makes"),
             None,

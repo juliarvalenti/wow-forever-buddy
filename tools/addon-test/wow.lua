@@ -443,7 +443,14 @@ function M.new(opts)
         ["C_TradeSkillUI.GetRecipeSchematic"] = function(id)
             for _, r in ipairs(world.tradeskill and world.tradeskill.recipes or {}) do
                 if r.id == id then
-                    return { recipeID = id, outputItemID = r.out }
+                    -- r.mats = { { itemID, qty, type } }: type 1 is Basic
+                    -- (required), anything else optional or finishing.
+                    local slots = {}
+                    for _, m in ipairs(r.mats or {}) do
+                        table.insert(slots, { reagentType = m[3] or 1, quantityRequired = m[2],
+                            reagents = { { itemID = m[1] } } })
+                    end
+                    return { recipeID = id, outputItemID = r.out, reagentSlotSchematics = slots }
                 end
             end
         end,
@@ -725,7 +732,12 @@ function M.new(opts)
                 table.insert(state.timers, { at = client.now + seconds, fn = fn })
             end,
         }
-        env.Enum = { BagIndex = { Bank = -1 }, BankType = { Character = 0 }, TooltipDataType = { Item = 0 } }
+        env.Enum = {
+            BagIndex = { Bank = -1 },
+            BankType = { Character = 0 },
+            TooltipDataType = { Item = 0 },
+            CraftingReagentType = { Modifying = 0, Basic = 1, Finishing = 2 },
+        }
         -- The game's tooltip hook point: callbacks run after an item tooltip
         -- is filled (client.hover).
         env.TooltipDataProcessor = {

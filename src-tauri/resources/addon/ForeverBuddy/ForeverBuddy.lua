@@ -475,9 +475,29 @@ end
 -- read when its profession window is open (the only time the game lists
 -- them). Your own window only, never a linked or guild crafter's, and
 -- never in combat. Item ids and skill only.
-local R = { scanned = nil } -- scanned: profession name -> { skill, max, at, made }
+local R = { scanned = nil } -- scanned: profession name -> { skill, max, at, made, mats }
 do
     local MAX_MADE = 1000
+    -- C2: a recipe's required reagents, { reagentID, qty, ... }. Basic
+    -- slots only: optional and finishing reagents aren't needed to craft.
+    local MAX_REAGENTS = 8
+
+    local function reagents(schematic)
+        local basic = type(Enum) == "table" and type(Enum.CraftingReagentType) == "table"
+            and Enum.CraftingReagentType.Basic or 1
+        local out = {}
+        local slots = type(schematic.reagentSlotSchematics) == "table" and schematic.reagentSlotSchematics or {}
+        for _, s in ipairs(slots) do
+            local r = type(s) == "table" and s.reagentType == basic and type(s.reagents) == "table" and s.reagents[1]
+            local id = type(r) == "table" and r.itemID
+            local qty = s.quantityRequired
+            if type(id) == "number" and id > 0 and type(qty) == "number" and qty > 0 and #out < MAX_REAGENTS * 2 then
+                out[#out + 1] = id
+                out[#out + 1] = qty
+            end
+        end
+        return #out > 0 and out or nil
+    end
 
     function R.scan()
         if read("InCombatLockdown") or read("C_TradeSkillUI.IsTradeSkillLinked")
@@ -490,7 +510,7 @@ do
         if type(name) ~= "string" or name == "" or type(ids) ~= "table" then
             return
         end
-        local made, seen = {}, {}
+        local made, seen, mats = {}, {}, {}
         for _, id in ipairs(ids) do
             local r = type(id) == "number" and read("C_TradeSkillUI.GetRecipeInfo", id)
             if type(r) == "table" and r.learned == true and #made < MAX_MADE then
@@ -499,6 +519,7 @@ do
                 if type(out) == "number" and out > 0 and not seen[out] then
                     seen[out] = true
                     made[#made + 1] = out
+                    mats[out] = reagents(schematic)
                 end
             end
         end
@@ -509,6 +530,7 @@ do
             max = type(info.maxSkillLevel) == "number" and info.maxSkillLevel or nil,
             at = now(),
             made = made,
+            mats = next(mats) and mats or nil,
         }
     end
 
@@ -961,13 +983,91 @@ do
             tooltip:AddDoubleLine(plain(m.alt.name), right, c and c.r or 1, c and c.g or 1, c and c.b or 1, 1, 1, 1)
         end
     end
+
+    -- Materials (C2, INGAME §12 (c)): what one craft takes, from the index's
+    -- `mats`, against what every character holds of each reagent in bags,
+    -- bank and mail. This character's bags and bank are live; the rest is
+    -- as of each alt's last logout. { id, need, have, who, place } each.
+    local MAX_MATS = 8
+    function R.mats(slot, id)
+        local m = type(slot.mats) == "table" and slot.mats[id]
+        if type(m) ~= "table" then
+            return nil
+        end
+        local out = {}
+        for k = 1, math.min(#m - 1, MAX_MATS * 2), 2 do
+            local rid, need = m[k], m[k + 1]
+            if type(rid) == "number" and type(need) == "number" and need > 0 then
+                local half = slots[(rid % 2 == 0) and "Tooltip1" or "Tooltip2"]
+                local entry = type(half) == "table" and type(half.items) == "table" and half.items[rid]
+                local alts = type(half) == "table" and type(half.alts) == "table" and half.alts or {}
+                local mine = read("C_Item.GetItemCount", rid, true)
+                local have = type(mine) == "number" and mine or 0
+                local r = { id = rid, need = need, have = 0, best = have, who = have > 0 and "me" or nil, place = "on you" }
+                if type(entry) == "table" then
+                    for i = 2, #entry, 5 do
+                        local alt = alts[entry[i]]
+                        if type(alt) == "table" then
+                            -- This character's bags and bank are live above;
+                            -- only its mail comes from the index.
+                            for p = isMe(alt) and 3 or 1, 3 do
+                                local n = tonumber(entry[i + p]) or 0
+                                have = have + n
+                                if n > r.best and not isMe(alt) then
+                                    r.best, r.who, r.place = n, alt, PLACES[p]
+                                end
+                            end
+                        end
+                    end
+                end
+                r.have = have
+                out[#out + 1] = r
+            end
+        end
+        return #out > 0 and out or nil
+    end
+
+    -- "· materials 4 of 6", or "· all materials on hand" in green.
+    function R.matsLine(mats)
+        local enough = 0
+        for _, r in ipairs(mats) do
+            if r.have >= r.need then
+                enough = enough + 1
+            end
+        end
+        if enough == #mats then
+            return " · |cff40ff40all materials on hand|r"
+        end
+        return " · materials " .. enough .. " of " .. #mats
+    end
+
+    -- Shift: "Materials for one", then "Mooncloth | 2 of 2 · Sela bags",
+    -- grey where there isn't enough ("Rune Thread | 0 of 1").
+    function R.matsRows(tooltip, mats)
+        tooltip:AddLine("Materials for one", 1, 0.82, 0)
+        for _, r in ipairs(mats) do
+            local name = read("C_Item.GetItemNameByID", r.id) or read("C_Item.GetItemInfo", r.id)
+            name = type(name) == "string" and plain(name) or ("Item " .. r.id)
+            local right = math.min(r.have, r.need) .. " of " .. r.need
+            if r.who == "me" then
+                right = right .. " · on you"
+            elseif r.who then
+                right = right .. " · " .. plain(r.who.name) .. " " .. r.place
+            end
+            if r.have >= r.need then
+                tooltip:AddDoubleLine(name, right, 1, 1, 1, 1, 1, 1)
+            else
+                tooltip:AddDoubleLine(name, right, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
+            end
+        end
+    end
 end
 
 -- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
 -- with names in class colour, at most three, then the price, the upgrade
 -- hint, who can make it and a hint about Shift. An alt whose place is stale
 -- is grey, dated.
-local function compactLines(tooltip, slot, others, price, found, makers)
+local function compactLines(tooltip, slot, others, price, found, makers, mats)
     tooltip:AddLine(" ")
     if #others > 0 then
         local parts = {}
@@ -997,7 +1097,7 @@ local function compactLines(tooltip, slot, others, price, found, makers)
         tooltip:AddLine(upgradeLine(found), 1, 0.82, 0)
     end
     if #makers > 0 then
-        tooltip:AddLine(R.line(makers), 1, 0.82, 0)
+        tooltip:AddLine(R.line(makers) .. (mats and R.matsLine(mats) or ""), 1, 0.82, 0)
     end
     -- Only when Shift has more to show than this.
     if #others > 0 or #makers > 0 then
@@ -1007,7 +1107,7 @@ end
 
 -- The Shift view: a head, this character first with its live count, then
 -- each alt by place and date, the total, the scan and the upgrade hint.
-local function fullLines(tooltip, slot, id, others, price, found, makers)
+local function fullLines(tooltip, slot, id, others, price, found, makers, mats)
     local rows, total = {}, 0
     local mine = read("C_Item.GetItemCount", id, true)
     if type(mine) == "number" and mine > 0 and character and character.name then
@@ -1069,6 +1169,9 @@ local function fullLines(tooltip, slot, id, others, price, found, makers)
         tooltip:AddDoubleLine("Upgrade for", table.concat(parts, " · "), 1, 0.82, 0, 1, 1, 1)
     end
     R.rows(tooltip, makers)
+    if mats then
+        R.matsRows(tooltip, mats)
+    end
     tooltip:AddLine("As of each alt's last logout", 0.5, 0.5, 0.5)
 end
 
@@ -1124,10 +1227,12 @@ local function addItemLines(tooltip, data)
         return
     end
     local price = type(entry) == "table" and tonumber(entry[1]) or 0
+    -- What one craft takes (C2), only alongside who can make it.
+    local mats = #makers > 0 and R.mats(slot, id) or nil
     if (#others > 0 or #makers > 0) and read("IsShiftKeyDown") then
-        fullLines(tooltip, slot, id, others, price, found, makers)
+        fullLines(tooltip, slot, id, others, price, found, makers, mats)
     else
-        compactLines(tooltip, slot, others, price, found, makers)
+        compactLines(tooltip, slot, others, price, found, makers, mats)
     end
 end
 
