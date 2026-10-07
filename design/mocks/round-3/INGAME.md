@@ -274,6 +274,18 @@ Extends §8 (b). Same copy, gain threshold (+5), top two, bound-item skip and "o
 - **Copy:** unchanged in compact view, `Upgrade for Kaelor (+9 item level)`. In Shift, add what it was compared with, in grey: `Upgrade for | Kaelor +9 (over main and off hand)`, `(over the off hand)`. One-slot comparisons need no suffix.
 - **No hint** when the class can't use the type, the item is bound, or the comparison is skipped as above. Never guess from the item's name.
 
+## 16. G1: goals in game (briefing fact and coach row)
+Goals are made in the app (IMPLEMENTING §21). In game they appear in two places only, and only for the character you're on (or account gold goals). Data: they ride the Briefing slot as `goals = { { kind, characterIndex|nil, target, by|nil, label }, … }`. Progress is worked out live from the game, not the slot.
+- **Login briefing (§9), as one fact,** after "tonight's plan is ready", within the 4-fact cap:
+  - Level: `level 55 by Fri: 2.6 to go`, or `level 55: 2.6 to go` without a date. Levels to go to one decimal, from `UnitLevel` + XP.
+  - Gold: `500g for the mount: 288g to go` (the label is the goal's own short name).
+  - Several goals: the one with the soonest date, then "+1 goal" at the end of that fact.
+  - A goal reached since the last login: `level 55 done` once, then never again.
+- **Session coach (§11), one row,** only when a goal applies to this character:
+  - Level: `Level 55 by Fri | ~4h 10m of play`, from the coach's own XP/hr, after 10 minutes. Before that, or with no rate: `Level 55 by Fri | 2.6 levels to go`.
+  - Gold: `500g goal | 288g to go`.
+- **Never:** a pop-up, a sound, nagging ("you're behind"), or a goal for another player.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/

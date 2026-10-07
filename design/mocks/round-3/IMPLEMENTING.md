@@ -416,3 +416,14 @@ Builds on the existing first-run screen (find the game). Four steps on one parch
 - **Done** (h1 "You're set."): a summary with ✓ for what happened and a grey × with "off" or "skipped" for the rest. Next to the addon: "log in once on each character". A bronze **Open the dashboard**, and the note "You can run this again any time from Settings › Game."
 - **Reopening:** Settings › Game gets a ghost **Run setup again**. A rerun starts at step 1 with the current folder already found, shows done steps with ✓, and never takes a second "first" backup (step 2 shows "Last backup 3 Oct, 21:14 ✓" and Continue).
 - **Never:** turning on icons or agents by default, installing the addon without a click, or anything that needs WoW closed without a `LockedAction` and a reason.
+
+## 21. G1: goals (`dashboard.html`, the Goals panel)
+Two kinds in G1: **level** (a character reaches level N) and **gold** (a character, or the account, holds N gold). **Item goals ("20 Runecloth") are Lists**, so don't build a second way to track items: "New goal" offers "Collect items…", which opens Lists' "New list". The in-game side is INGAME §16.
+- **Dashboard:** a stone "Goals" panel in the right column, after Characters. Header meta "2 active · 1 done" and a ghost **New goal**. With no goals, there's no panel, just a ghost "New goal" in the Characters panel header.
+  - **Rows**, soonest date first and then undated: the goal in words ("Brannic to level 55", "500g for Fizzwick's mount"), the date on the right ("by Fri", or "no date"), a bar (XP purple for level, the stone fill for gold), and a grey line of plain facts: "52 and 40% now · 3 days left · ~0.9 levels a day", "212g of 500g · 288g to go".
+  - **Done:** the date becomes a green "done Thu", the bar goes away, and the row stays for 3 days ("leaves this list on Sun"), then moves to the goal's history.
+  - **Past the date, not done:** the date turns ash with "was Fri", and the facts stay plain. No red, no "behind".
+- **New goal** (a small dialog): a `Segmented` Level / Gold / Collect items…; a character picker (class colours; Gold also offers "Whole account"); a target field ("Level 55", "500g"); an optional date ("by"); and an optional short label for gold ("for the mount", up to 24 characters). A bronze **Add goal**. A goal already reached when it's made is refused: "Brannic is already level 55."
+- **Agents:** `propose_goal` through Approvals as a new kind, "Goal for Brannic", previewed as the same row. Approved goals show "from "Claude Desktop", approved" in their grey line.
+- **Progress** comes only from data we already ingest (level and XP at logout, gold snapshots), so it's "as of logout". The grey line ends with "· as of logout" when the data is older than a day.
+- **Never:** streaks, rewards or badges, "you're behind", notifications, or goals about other players.
