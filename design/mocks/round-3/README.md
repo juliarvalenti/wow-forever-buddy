@@ -16,7 +16,7 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 
 | Area | File | States (query flags) |
 |---|---|---|
-| **First run** | `onboarding.html` | `found` (default), `?state=detecting`, `?state=notfound`, `?state=pick` |
+| **First run** (O1, IMPLEMENTING §20) | `onboarding.html` | step 1: `found` (default), `?state=detecting`, `?state=notfound`, `?state=pick`. Then `?state=backup`, `addon`, `addon-running`, `extras`, `done` |
 | **No addon yet** | `dashboard-noaddon.html`, `characters-noaddon.html` | **v0.1 (default):** step 1 reads "Coming in the next update", with no Install button, and "Back up now" is the bronze action. **`?v=0.2`:** the bronze "Install addon" step (locked while WoW runs). Both show only what the app knows: folder, WTF characters, backups, WoW running, and **recent sessions from the process watcher** (start, end, duration, and the character whose WTF folder changed; the running session says "Character known after you log out"; no gold or loot) |
 | Dashboard | `dashboard.html` | `?recover` (restore interrupted: Roll back / Finish), `?folder=missing` |
 | **Can't start** | `startup-error.html` | `AppCore::new` failed. No sidebar. `?case=newer` (default, a database from a newer version) or `?case=settings` (unreadable settings) |

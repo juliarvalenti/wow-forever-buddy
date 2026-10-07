@@ -74,9 +74,27 @@
   .caveat { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--warn-ink); }
   .caveat svg { margin-top: 2px; flex-shrink: 0; }
 
+  /* O1: later steps (IMPLEMENTING §20) */
+  .stepper .st.done .num { color: var(--ok); }
+  .topbar { width: 640px; max-width: 100%; display: flex; align-items: center; gap: 12px; }
+  .topbar .skip { margin-left: auto; font-size: 12px; color: var(--soot); white-space: nowrap; }
+  .facts { display: grid; gap: 0; }
+  .facts li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 34px; padding: 4px 0; font-size: 12.5px; border-bottom: 1px solid var(--ink-hair); color: var(--ink); }
+  .facts li .r { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+  .facts .ok { color: var(--ok-ink); } .facts .pend { color: var(--ink-3); } .facts .skip { color: var(--ink-3); font-style: italic; font-family: Georgia, serif; }
+  .extra { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; padding: 12px 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(58,38,22,.2); }
+  .extra + .extra { margin-top: 8px; }
+  .extra .nm { font-weight: 600; font-size: 13px; color: var(--ink); }
+  .extra .d { grid-column: 1; font-size: 12px; color: var(--ink-2); }
+  .extra .sw { grid-row: 1 / 3; grid-column: 2; width: 34px; height: 18px; border-radius: 9px; background: rgba(58,38,22,.25); box-shadow: inset 0 1px 2px rgba(0,0,0,.35); position: relative; }
+  .extra .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #f4ead2; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .lockline { margin-top: 10px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--warn-ink); }
+
   .state { display: none; }
   body[data-state="found"] .state.found, body[data-state="detecting"] .state.detecting,
-  body[data-state="notfound"] .state.notfound, body[data-state="pick"] .state.pick { display: block; }
+  body[data-state="notfound"] .state.notfound, body[data-state="pick"] .state.pick,
+  body[data-state="backup"] .state.backup, body[data-state="addon"] .state.addon, body[data-state="addon-running"] .state.addon-running,
+  body[data-state="extras"] .state.extras, body[data-state="done"] .state.done { display: block; }
 
   .foot-note { font-size: 11.5px; color: var(--soot); text-align: center; max-width: 640px; }
 
@@ -89,17 +107,21 @@
   }
 </style>
 </head>
-<body data-page="onboarding" data-wow="nofolder" data-addon="none">
+<body data-page="onboarding" data-wow="nofolder" data-addon="none" data-approvals="none">
 <main class="main">
-  <div class="stepper">
-    <span class="st on"><span class="num">1</span>Find the game</span><span class="line"></span>
-    <span class="st"><span class="num">2</span>First backup</span><span class="line"></span>
-    <span class="st"><span class="num">3</span>Companion addon <span class="opt">optional</span></span>
+  <div class="topbar">
+    <div class="stepper" id="stepper">
+      <span class="st"><span class="num">1</span>Find the game</span><span class="line"></span>
+      <span class="st"><span class="num">2</span>First backup</span><span class="line"></span>
+      <span class="st"><span class="num">3</span>Companion addon</span><span class="line"></span>
+      <span class="st"><span class="num">4</span>Extras <span class="opt">optional</span></span>
+    </div>
+    <a class="skip" href="dashboard.html" title="Run it again from Settings › Game">Skip setup</a>
   </div>
 
   <article class="parchment letter">
-    <h1>Well met.</h1>
-    <div class="intro">Forever Buddy keeps your WoW: Forever settings backed up and, later, keeps a ledger of your characters. First, let's find the game.</div>
+    <h1 id="h1">Well met.</h1>
+    <div class="intro" id="intro">Forever Buddy keeps your WoW: Forever settings backed up, keeps a ledger of your characters, and shows what it knows in game. First, let's find the game.</div>
     <div class="rule2"></div>
 
     <!-- FOUND (default) -->
@@ -164,11 +186,86 @@
       <div class="caveat"><i data-i="alert" class="sm"></i><span>There's no game here, just its settings. Backups and restore work; we won't be able to tell when WoW is running from this copy.</span></div>
       <div class="acts"><button class="primary"><i data-i="check"></i>Use this folder</button><button class="btn ghost">Choose a different one…</button></div>
     </section>
+
+    <!-- 2. FIRST BACKUP (starts by itself; allowed while WoW runs) -->
+    <section class="state backup">
+      <div class="k">Backing up your settings</div>
+      <ul class="facts">
+        <li><i data-i="check" class="sm ok"></i><span>Account settings and keybindings</span><span class="r">212 files</span></li>
+        <li><i data-i="check" class="sm ok"></i><span>7 characters' settings and macros</span><span class="r">1,488 files</span></li>
+        <li><span class="spin"></span><span>Addon settings (SavedVariables)</span><span class="r">212 files</span></li>
+      </ul>
+      <div class="progress"><span class="bar" style="display:block"><i class="fill" style="width:78%"></i></span><div class="lbl"><span>37.6 of 48.2 MB</span><span>a few seconds</span></div></div>
+      <div class="acts"><button class="primary" disabled style="opacity:.55">Continue</button></div>
+      <div class="note"><i data-i="lock" class="sm"></i>Your first backup is kept until you delete it. Every later backup is automatic when WoW closes.</div>
+    </section>
+
+    <!-- 3. COMPANION ADDON -->
+    <section class="state addon">
+      <div class="k">What it does</div>
+      <ul class="facts">
+        <li><i data-i="check" class="sm ok"></i><span>Records gold, bags, quests and lockouts when you log out</span><span class="r"></span></li>
+        <li><i data-i="check" class="sm ok"></i><span>Shows your alts on item tooltips, lists at vendors, a login briefing</span><span class="r"></span></li>
+        <li><i data-i="check" class="sm ok"></i><span>Display only: it never plays, buys or sends for you</span><span class="r"></span></li>
+      </ul>
+      <div class="acts"><button class="primary"><i data-i="puzzle"></i>Install addon</button><button class="btn ghost">Not now</button></div>
+      <div class="note"><i data-i="folder" class="sm"></i>Installs ForeverBuddy 0.8.0 into Interface\AddOns. A safety snapshot is taken first.</div>
+    </section>
+
+    <section class="state addon-running">
+      <div class="k">What it does</div>
+      <ul class="facts">
+        <li><i data-i="check" class="sm ok"></i><span>Records gold, bags, quests and lockouts when you log out</span><span class="r"></span></li>
+        <li><i data-i="check" class="sm ok"></i><span>Shows your alts on item tooltips, lists at vendors, a login briefing</span><span class="r"></span></li>
+        <li><i data-i="check" class="sm ok"></i><span>Display only: it never plays, buys or sends for you</span><span class="r"></span></li>
+      </ul>
+      <div class="acts"><span class="lockact" title="Close WoW first" style="height:30px;padding:0 12px"><i data-i="lock"></i>Install addon</span><button class="btn ghost">Not now</button></div>
+      <div class="lockline"><span class="live"></span>WoW is running. Close it to install: WoW only loads addons when it starts. This step waits for you.</div>
+    </section>
+
+    <!-- 4. EXTRAS (both off by default) -->
+    <section class="state extras">
+      <div class="k">Two extras, both off unless you turn them on</div>
+      <div class="extra"><span class="nm">Show item icons from my game files</span><span class="sw"></span><span class="d">Reads icon pictures from your own WoW install. Off: items show their first letter, and the game's files aren't opened.</span></div>
+      <div class="extra"><span class="nm">Let AI agents read my characters and suggest plans</span><span class="sw"></span><span class="d">For Claude Desktop or Claude Code. Agents can only suggest; you approve everything in Approvals. Setup is in Settings › Agents.</span></div>
+      <div class="acts"><button class="primary">Finish</button></div>
+    </section>
+
+    <!-- DONE -->
+    <section class="state done">
+      <div class="k">All set</div>
+      <ul class="facts">
+        <li><i data-i="check" class="sm ok"></i><span>WoW: Forever (Beta)</span><span class="r">7 characters</span></li>
+        <li><i data-i="check" class="sm ok"></i><span>First backup</span><span class="r">48.2 MB · kept until you delete it</span></li>
+        <li><i data-i="check" class="sm ok"></i><span>Companion addon 0.8.0</span><span class="r">log in once on each character</span></li>
+        <li><i data-i="x" class="sm pend"></i><span class="skip">Item icons</span><span class="r">off</span></li>
+        <li><i data-i="x" class="sm pend"></i><span class="skip">AI agents</span><span class="r">off</span></li>
+      </ul>
+      <div class="acts"><button class="primary">Open the dashboard</button></div>
+      <div class="note"><i data-i="gear" class="sm"></i>You can run this again any time from Settings › Game.</div>
+    </section>
   </article>
 
-  <div class="foot-note">Next we'll take a first backup of your settings, before anything else happens.</div>
+  <div class="foot-note" id="foot">Next we'll take a first backup of your settings, before anything else happens.</div>
 </main>
-<script>document.body.dataset.state = new URLSearchParams(location.search).get('state') || 'found';</script>
+<script>
+  const st = new URLSearchParams(location.search).get('state') || 'found';
+  document.body.dataset.state = st;
+  const STEP = { found: 0, detecting: 0, notfound: 0, pick: 0, backup: 1, addon: 2, 'addon-running': 2, extras: 3, done: 4 }[st] ?? 0;
+  document.querySelectorAll('#stepper .st').forEach((el, i) => {
+    if (i < STEP) { el.classList.add('done'); el.querySelector('.num').textContent = '✓'; }
+    if (i === STEP) el.classList.add('on');
+  });
+  const COPY = {
+    backup: ['A safety copy first.', 'Before anything else, Forever Buddy copies your settings. It works with WoW open or closed.', 'Next: the companion addon, if you want it.'],
+    addon: ['The companion addon.', 'Optional, but it\'s what lets Forever Buddy see your characters and show things in game.', 'Next: two optional extras.'],
+    'addon-running': ['The companion addon.', 'Optional, but it\'s what lets Forever Buddy see your characters and show things in game.', 'Next: two optional extras.'],
+    extras: ['Two extras.', 'Both are optional and off by default. You can change them later in Settings.', ''],
+    done: ['You\'re set.', 'Here\'s what Forever Buddy did. Your first adventure appears after you next close WoW.', ''],
+  }[st];
+  if (COPY) { document.getElementById('h1').textContent = COPY[0]; document.getElementById('intro').textContent = COPY[1]; document.getElementById('foot').textContent = COPY[2]; }
+  if (STEP > 0) document.body.dataset.wow = st === 'addon-running' ? 'running' : 'closed';
+</script>
 <script src="_shell.js"></script>
 </body>
 </html>
