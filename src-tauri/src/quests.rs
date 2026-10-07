@@ -109,6 +109,23 @@ pub fn log(db: &Db, character_id: u32) -> AppResult<QuestLog> {
     })
 }
 
+/// Whether any character of `flavor` has quest data yet: the sheet's Quests
+/// tab ships dark until then (IMPLEMENTING §14), then shows for everyone.
+pub fn any(db: &Db, flavor: &str) -> AppResult<bool> {
+    db.with_conn(|c| {
+        Ok(c.query_row(
+            "SELECT EXISTS (SELECT 1 FROM char_quests_done q
+                            JOIN characters ch ON ch.id = q.character_id WHERE ch.flavor = ?1)
+                 OR EXISTS (SELECT 1 FROM adventure_events e
+                            JOIN adventures a ON a.id = e.adventure_id
+                            JOIN characters ch ON ch.id = a.character_id
+                            WHERE ch.flavor = ?1 AND e.kind IN ('quest_accepted', 'quest'))",
+            [flavor],
+            |r| r.get(0),
+        )?)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +189,19 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let log = log(&db, 1).unwrap();
         assert_eq!((log.done, log.done_as_of, log.entries.len()), (0, None, 0));
+        assert!(!any(&db, "_classic_beta_").unwrap(), "the tab stays dark");
+    }
+
+    #[test]
+    fn any_turns_on_with_the_first_data() {
+        let db = Db::open_in_memory().unwrap();
+        let t = target_for(
+            "_classic_beta_",
+            "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
+        )
+        .unwrap();
+        ingest_bytes(&db, &t, &fixture("quests.lua")).unwrap();
+        assert!(any(&db, "_classic_beta_").unwrap());
+        assert!(!any(&db, "_retail_").unwrap(), "per flavor");
     }
 }

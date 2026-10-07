@@ -321,6 +321,11 @@ export const commands = {
 	 *  turn-ins. The sheet shows it only when it has something in it.
 	 */
 	characterQuests: (id: number) => __TAURI_INVOKE<QuestLog>("character_quests", { id }),
+	/**
+	 *  Whether any character has quest data yet; until then the sheet's Quests
+	 *  tab stays hidden. False before a game folder is set.
+	 */
+	questsAvailable: () => __TAURI_INVOKE<boolean>("quests_available"),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
