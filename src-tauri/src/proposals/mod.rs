@@ -309,9 +309,10 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                     let NoteBodyChecked(body) = check_note(db, flavor, &p, now)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
-                other => Err(format!(
-                    "{other:?} isn't something Forever Buddy can apply yet"
-                )),
+                // In plain words, never the kind id (IMPLEMENTING §17).
+                "list" => Err("List changes can't be applied yet.".into()),
+                "quest_plan" => Err("Quest plans can't be applied yet.".into()),
+                _ => Err("This kind of suggestion can't be applied yet.".into()),
             }
         })();
         let row = Row {
@@ -667,7 +668,7 @@ mod tests {
             "the note isn't in the form this version reads",
             "2001-01-01 has already passed",
             "note 99 isn't one of Velyra Duskmane's",
-            "\"sv_edit\" isn't something Forever Buddy can apply yet",
+            "This kind of suggestion can't be applied yet.",
         ] {
             assert!(
                 reasons.iter().any(|r| r == want),

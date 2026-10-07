@@ -188,7 +188,7 @@ export function installMockIpc(): void {
             proposal(-1, 60 * 46, "claude-code", {
               kind: "list",
               status: "rejected",
-              status_reason: "\"list\" isn't something Forever Buddy can apply yet",
+              status_reason: "List changes can't be applied yet.",
               decided_at: null,
             }),
           ]

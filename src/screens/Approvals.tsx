@@ -201,9 +201,8 @@ export function Approvals({ onOpenSettings }: { onOpenSettings: () => void }) {
               <span className="ap-kind" aria-hidden>
                 <Check size={18} />
               </span>
-              <span>
-                Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here.
-              </span>
+              {/* Name more kinds here as agents can propose them (P2c). */}
+              <span>Nothing waiting. When an agent suggests a login note, it shows up here.</span>
             </div>
           ) : (
             <div className="ap-blank">
