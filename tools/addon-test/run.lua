@@ -588,9 +588,13 @@ scenario("toc", function()
     end
     eq(fields.Interface, "16001", "Interface")
     eq(fields.SavedVariablesPerCharacter, "ForeverBuddyDB", "SavedVariablesPerCharacter")
-    eq(fields.SavedVariables, nil, "account-wide SavedVariables")
+    -- Account-wide: only the briefing toggle (INGAME §9, "saved per
+    -- account"). The character data stays per character (v0.2 spec §2): a
+    -- toggle lost to "Exit Now" is harmless, a character's file isn't.
+    eq(fields.SavedVariables, "ForeverBuddySettings", "account-wide SavedVariables")
+    eq(fields.AddonCompartmentFunc, "ForeverBuddy_OnAddonCompartmentClick", "compartment")
     -- The bridge slots load first, so their globals exist when the addon runs.
-    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, ForeverBuddy.lua", "files")
+    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Briefing.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -823,6 +827,95 @@ scenario("tooltip_v2", function()
     c.world.bound[10003] = nil
 
     eq(file(c.logout())._meta.tooltip_errors, nil, "no tooltip errors")
+end)
+
+-- B1 (INGAME §9): the login briefing, one chat line from live facts and the
+-- Briefing slot, the note on its own line, /fb brief, and the toggle.
+local PREFIX = "|cffffd100Forever Buddy:|r "
+local function briefingSlot(notes)
+    return 'ForeverBuddyData_Briefing = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
+        .. '\t["mail"] = {\n'
+        -- This character's own mail is never a fact; the first other alt is.
+        .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "PALADIN", ["letters"] = 5 },\n'
+        .. '\t\t{ ["name"] = "Sela", ["surname"] = "", ["class"] = "PRIEST", ["letters"] = 2, ["expires"] = '
+        .. (wow.EPOCH + DAY) .. ' },\n'
+        .. '\t\t{ ["name"] = "Kaelor", ["surname"] = "", ["class"] = "ROGUE", ["letters"] = 1 },\n'
+        .. '\t},\n'
+        .. '\t["notes"] = {\n' .. (notes or "") .. '\t},\n}\n'
+end
+local NOTES = '\t\t{ ["name"] = "Sela", ["surname"] = "", ["class"] = "PRIEST", ["id"] = 8, ["text"] = "Not mine", ["once"] = true },\n'
+    .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "PALADIN", ["id"] = 7, '
+    .. '["text"] = "Hand in the Onyxia attunement |cffff0000before|r raid", ["once"] = true },\n'
+
+scenario("briefing", function()
+    local c = client({ slots = { ["Data/Briefing.lua"] = briefingSlot(NOTES) } })
+    c.world.questlog = {
+        { questID = 1, header = true, done = true }, -- a zone header isn't a quest
+        { questID = 176, done = true },
+        { questID = 783, done = true },
+        { questID = 7, done = true },
+        { questID = 33 },
+    }
+    c.world.durability = { [1] = { 80, 100 }, [5] = { 24, 100 } }
+    c.login(nil)
+    eq(#c.chat, 0, "nothing before the quest log has loaded")
+    c.advance(5)
+    eq(table.concat(c.chat, "\n"), table.concat({
+        PREFIX .. "3 quests ready to hand in · repair due (24%) · Sela has 2 letters waiting",
+        -- The note's own colour codes are shown as text, not run.
+        '|cffffd100Note:|r "Hand in the Onyxia attunement ||cffff0000before||r raid"',
+    }, "\n"), "the briefing")
+
+    -- /fb brief repeats it.
+    c.chat = {}
+    c.slash("brief")
+    eq(#c.chat, 2, "/fb brief repeats both lines")
+    local text = c.logout()
+    local db = file(text)
+    eq(db.briefed[7], wow.EPOCH + 5, "the shown note's receipt")
+
+    -- A relog before the app rewrote the slot: the once note isn't shown again.
+    c.chat = {}
+    c.login(text)
+    c.advance(5)
+    eq(table.concat(c.chat, "\n"), PREFIX .. "3 quests ready to hand in · repair due (24%) · Sela has 2 letters waiting",
+        "a once note shows once")
+    eq(file(c.logout()).briefed[7], wow.EPOCH + 5, "the receipt is kept until the app reads it")
+
+    -- /reload doesn't brief again.
+    c.chat = {}
+    c.reload()
+    c.advance(5)
+    eq(#c.chat, 0, "not after /reload")
+
+    -- The toggle is account-wide and survives logins.
+    c.slash("brief off")
+    eq(c.chat[1], PREFIX .. "login briefing off.", "off")
+    c.chat = {}
+    c.login(c.logout())
+    c.advance(5)
+    eq(#c.chat, 0, "off: silent at login")
+    eq(c.settings.briefing, false, "saved account-wide")
+    c.slash("brief on")
+    eq(c.settings == nil or c.settings.briefing == nil, true, "on: nothing saved")
+
+    -- Nothing to say: no line at login; /fb brief says so.
+    local quiet = client({})
+    quiet.login(nil)
+    quiet.advance(5)
+    eq(#quiet.chat, 0, "silent when there's nothing to say")
+    quiet.slash("brief")
+    eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
+    quiet.slash("")
+    eq(quiet.chat[2], PREFIX .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
+
+    -- Not in combat.
+    local fighting = client({ slots = { ["Data/Briefing.lua"] = briefingSlot(NOTES) } })
+    fighting.login(nil)
+    fighting.world.combat = true
+    fighting.advance(5)
+    eq(#fighting.chat, 0, "nothing in combat")
+    return text
 end)
 
 -- Runner ---------------------------------------------------------------------

@@ -282,6 +282,7 @@ mod tests {
                 "ingest_state",
                 "items",
                 "lockouts",
+                "login_notes",
                 "meta",
                 "play_sessions",
                 "professions",
@@ -321,7 +322,7 @@ mod tests {
         std::fs::write(&path, vec![0xAB; 8192]).unwrap();
 
         let db = Db::open(&path).unwrap();
-        assert_eq!(tables(&db).len(), 24);
+        assert_eq!(tables(&db).len(), 25);
         assert_eq!(
             db.get_meta(RESTORED_FROM_COPY).unwrap(),
             None,
@@ -494,7 +495,7 @@ mod tests {
         std::fs::write(&path, bytes).unwrap();
 
         let db = Db::open(&path).expect("starts instead of failing");
-        assert_eq!(tables(&db).len(), 24);
+        assert_eq!(tables(&db).len(), 25);
         assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
         let quarantined = std::fs::read_dir(tmp.path()).unwrap().flatten().any(|e| {
             e.file_name()

@@ -40,6 +40,7 @@ import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/ho
 import { useQuestLog, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
+import { LoginNotes } from "@/screens/LoginNotes";
 import {
   ago,
   characterName,
@@ -1050,6 +1051,7 @@ function Sheet({
            </div>
           </Parchment>
           <div className="ch-side">
+            <LoginNotes characterId={id} />
             <Panel>
               <PanelHeader title="Satchels">
                 {satchelsSize > 0 && <span className="d-dim">{satchelsUsed} of {satchelsSize} used</span>}

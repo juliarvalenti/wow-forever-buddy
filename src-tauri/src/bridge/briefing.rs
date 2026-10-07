@@ -87,12 +87,13 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
         .collect();
     let note_rows: Vec<LuaValue> = notes::due(db, flavor, stamp)?
         .into_iter()
-        .filter_map(|(character, id, text)| {
+        .filter_map(|n| {
             person(
-                character,
+                n.character_id,
                 vec![
-                    (key("id"), LuaValue::Int(id)),
-                    (key("text"), LuaValue::str(&text)),
+                    (key("id"), LuaValue::Int(n.id)),
+                    (key("text"), LuaValue::str(&n.text)),
+                    (key("once"), LuaValue::Bool(n.once)),
                 ],
             )
         })

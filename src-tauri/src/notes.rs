@@ -183,12 +183,23 @@ pub fn mark_shown(
     Ok(())
 }
 
+/// A note a character will see at its next login.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Due {
+    pub character_id: i64,
+    pub id: i64,
+    pub text: String,
+    /// The addon skips a once note it has already shown (a relog before
+    /// the app could rewrite the slot).
+    pub once: bool,
+}
+
 /// The note each character would see at its next login: its newest active
-/// one. `(character_id, id, text)`.
-pub fn due(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<(i64, i64, String)>> {
+/// one.
+pub fn due(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<Due>> {
     db.with_conn(|c| {
         let mut stmt = c.prepare(
-            "SELECT n.character_id, n.id, n.text
+            "SELECT n.character_id, n.id, n.text, n.once
              FROM login_notes n JOIN characters ch ON ch.id = n.character_id
              WHERE ch.flavor = ?1 AND n.archived_at IS NULL
                AND (n.once = 1 OR n.until_at > ?2)
@@ -200,7 +211,12 @@ pub fn due(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<(i64, i64, String)>
         )?;
         let rows = stmt
             .query_map(params![flavor, now], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                Ok(Due {
+                    character_id: r.get(0)?,
+                    id: r.get(1)?,
+                    text: r.get(2)?,
+                    once: r.get::<_, i64>(3)? != 0,
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
@@ -253,7 +269,12 @@ mod tests {
         let id = add(&db, FLAVOR, &new(1, "Train skills", true, None), "you", 100).unwrap();
         assert_eq!(
             due(&db, FLAVOR, 200).unwrap(),
-            [(1, id as i64, "Train skills".into())]
+            [Due {
+                character_id: 1,
+                id: id as i64,
+                text: "Train skills".into(),
+                once: true
+            }]
         );
 
         db.with_conn(|c| {
@@ -289,11 +310,12 @@ mod tests {
         })
         .unwrap();
         // Shown once, still due: an until note isn't archived by showing.
-        assert_eq!(due(&db, FLAVOR, 200).unwrap()[0].1, old as i64);
+        assert_eq!(due(&db, FLAVOR, 200).unwrap()[0].id, old as i64);
+        assert!(!due(&db, FLAVOR, 200).unwrap()[0].once);
         let newer = add(&db, FLAVOR, &new(1, "Newer", true, None), "claude", 300).unwrap();
-        assert_eq!(due(&db, FLAVOR, 400).unwrap()[0].1, newer as i64);
+        assert_eq!(due(&db, FLAVOR, 400).unwrap()[0].id, newer as i64);
         delete(&db, FLAVOR, newer, 500).unwrap();
-        assert_eq!(due(&db, FLAVOR, 600).unwrap()[0].1, old as i64);
+        assert_eq!(due(&db, FLAVOR, 600).unwrap()[0].id, old as i64);
         // Past its date: not due, not listed.
         assert!(due(&db, FLAVOR, 1_000).unwrap().is_empty());
     }

@@ -139,6 +139,13 @@ export const commands = {
 	max: number,
 } | null>("macros_list"),
 	/**
+	 *  Login notes for the active flavor's characters: waiting ones, and the
+	 *  ones shown in the last week.
+	 */
+	notesList: () => __TAURI_INVOKE<LoginNote[]>("notes_list"),
+	notesAdd: (note: NewNote) => __TAURI_INVOKE<number>("notes_add", { note }),
+	notesDelete: (id: number) => __TAURI_INVOKE<null>("notes_delete", { id }),
+	/**
 	 *  The scan bar: whether there are prices, how many, and when Auctionator
 	 *  last scanned.
 	 */
@@ -1310,6 +1317,21 @@ export type Lockout = {
 	reset_at: string | null,
 };
 
+export type LoginNote = {
+	id: number,
+	character_id: number,
+	text: string,
+	/**  Shown at the next login only. */
+	once: boolean,
+	/**  For a non-once note: shown at each login until this (RFC 3339). */
+	until: string | null,
+	/**  "you", or "claude" for an approved agent proposal (P2). */
+	author: string,
+	created_at: string,
+	/**  The first login that showed it (RFC 3339). */
+	shown_at: string | null,
+};
+
 export type LookedIn = {
 	source: CandidateSource,
 	path: string,
@@ -1386,6 +1408,15 @@ export type MoveReport = {
 	 *  are safe in the new one; this is a leftover copy to delete by hand.
 	 */
 	left_behind: string | null,
+};
+
+/**  What the app's form sends. */
+export type NewNote = {
+	character_id: number,
+	text: string,
+	once: boolean,
+	/**  Required when `once` is false: unix seconds, in the future. */
+	until: number | null,
 };
 
 /**

@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario secret_values). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.5.0",
+		["addon"] = "0.6.0",
 		["counts"] = {
 			["bag_items"] = 0,
 			["events"] = 0,
@@ -12,7 +12,7 @@ ForeverBuddyDB = {
 		["missing_events"] = {
 		},
 		["schema"] = 1,
-		["secret_hits"] = 74,
+		["secret_hits"] = 76,
 		["truncated"] = false,
 		["written"] = 1790967600,
 	},

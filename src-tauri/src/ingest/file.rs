@@ -746,6 +746,17 @@ mod tests {
     }
 
     #[test]
+    fn briefed_note_receipts_are_read() {
+        // Addon 0.6.0's login briefing showed note 7 five seconds in.
+        let file = decode(&fixture("briefing.lua")).unwrap();
+        assert_eq!(file.briefed, [(7, 1790964005)]);
+        assert!(decode(&fixture("first_login.lua"))
+            .unwrap()
+            .briefed
+            .is_empty());
+    }
+
+    #[test]
     fn the_adventure_fixture_reads_in_full() {
         let file = decode(&fixture("adventure.lua")).unwrap();
         assert_eq!(file.character.name.as_deref(), Some("Thrandor"));

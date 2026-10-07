@@ -182,6 +182,15 @@
 .ch-side { display: grid; gap: 12px; }
 .ch-bagrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font-size: 12px; padding: 4px 0; color: var(--chalk); }
 .ch-bagrow .free { color: var(--ash); }
+/* B1 login notes (LoginNotes) */
+.ch-note { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.ch-note .t { font-size: 12.5px; color: var(--chalk-hi); overflow-wrap: anywhere; }
+.ch-note .m { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ash); }
+.ch-note .m span { flex: 1; }
+.ch-note.done .t { color: var(--ash); }
+.ch-note-form { display: grid; gap: 8px; margin-top: 6px; }
+.ch-note-form .row { display: flex; align-items: center; gap: 8px; }
+.ch-note-add { margin-top: 6px; font-size: 12px; }
 .ch-prof { list-style: none; display: grid; gap: 10px; margin: 0; padding: 0; }
 .ch-prof li > div:first-child { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; color: var(--chalk); }
 .ch-prof .muted { color: var(--ash); }

@@ -1,4 +1,4 @@
--- Written by tools/addon-test/run.lua (scenario readback_missing). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario briefing). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.6.0",
@@ -16,7 +16,17 @@ ForeverBuddyDB = {
 		["schema"] = 1,
 		["secret_hits"] = 0,
 		["truncated"] = false,
-		["written"] = 1791061200,
+		["written"] = 1790964005,
+	},
+	["bridge"] = {
+		["Briefing"] = {
+			["schema"] = 1,
+			["seen"] = 1790964000,
+			["stamp"] = 1790960000,
+		},
+	},
+	["briefed"] = {
+		[7] = 1790964005,
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -66,9 +76,9 @@ ForeverBuddyDB = {
 		{
 			["events"] = {
 			},
-			["id"] = 1791057600,
-			["login"] = 1791057600,
-			["logout"] = 1791061200,
+			["id"] = 1790964000,
+			["login"] = 1790964000,
+			["logout"] = 1790964005,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -78,7 +88,7 @@ ForeverBuddyDB = {
 		}, -- [1]
 	},
 	["snapshot"] = {
-		["at"] = 1791061200,
+		["at"] = 1790964005,
 		["bags"] = {
 			[0] = {
 				["free"] = 14,
@@ -107,8 +117,8 @@ ForeverBuddyDB = {
 		},
 		["money"] = 25000,
 		["played"] = {
-			["level"] = 97674,
-			["total"] = 116751,
+			["level"] = 479,
+			["total"] = 19556,
 		},
 		["professions"] = {
 			{
