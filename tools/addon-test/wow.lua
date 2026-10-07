@@ -296,6 +296,10 @@ function M.new(opts)
                 return "Linen Bag"
             end
         end,
+        ["C_Container.GetContainerItemID"] = function(bag, slot)
+            local item = readable(bag) and world.bags[bag] and world.bags[bag].slots[slot]
+            return item and item.id or nil
+        end,
         ["C_Container.GetContainerItemInfo"] = function(bag, slot)
             local item = readable(bag) and world.bags[bag] and world.bags[bag].slots[slot]
             if item then
@@ -657,6 +661,16 @@ function M.new(opts)
     function Frame:Hide()
         self.shown = false
     end
+    -- An item button in the bag frames knows its bag and slot.
+    function Frame:GetBagID()
+        return rawget(self, "bag")
+    end
+    function Frame:GetID()
+        return rawget(self, "id")
+    end
+    function Frame:SetTexture(path)
+        self.texture = path
+    end
     function Frame:SetShown(on)
         self.shown = on and true or false
     end
@@ -719,6 +733,21 @@ function M.new(opts)
         env.AuctionHouseFrame = newWidget(env.UIParent)
         env.MailFrame = newWidget(env.UIParent)
         env.SendMailNameEditBox = newWidget(env.MailFrame)
+        -- Blizzard's backpack frame (B3): sixteen item buttons, bag 0.
+        local backpack = newWidget(env.UIParent)
+        backpack.buttons = {}
+        for slot = 1, 16 do
+            local b = newWidget(backpack)
+            b.bag, b.id = 0, slot
+            backpack.buttons[slot] = b
+        end
+        backpack.EnumerateValidItems = function(self)
+            return ipairs(self.buttons)
+        end
+        env.ContainerFrame1 = backpack
+        env.ContainerFrameUtil_EnumerateContainerFrames = function()
+            return ipairs({ backpack })
+        end
         env.DEFAULT_CHAT_FRAME = {
             AddMessage = function(_, msg)
                 table.insert(client.chat, msg)

@@ -106,7 +106,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -477,6 +477,9 @@ end
 -- them). Your own window only, never a linked or guild crafter's, and
 -- never in combat. Item ids and skill only.
 local R = { scanned = nil } -- scanned: profession name -> { skill, max, at, made, mats }
+-- Bag cleanup marks (B3), filled in by the cleanup section further down
+-- (the tooltip hook and the mailbox's errands use it).
+local C = {}
 do
     local MAX_MADE = 1000
     -- C2: a recipe's required reagents, { reagentID, qty, ... }. Basic
@@ -1245,6 +1248,10 @@ local function hookTooltips()
     hooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
         if not pcall(addItemLines, tooltip, data) then
+            tooltipErrors = tooltipErrors + 1
+        end
+        -- B3: a marked item's line, after ours (C is filled in further down).
+        if C.tooltip and not pcall(C.tooltip, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
     end)
@@ -2137,28 +2144,40 @@ local function auctionItem(itemKey)
     end
 end
 
+-- Who an errand goes to: a list's character (Lists slot) or a marked
+-- send's (B3, which carries its own name and class).
+function C.recipient(e, s)
+    if e.marked then
+        return e.toName, e.toClass
+    end
+    local to = s and s.alts[e.to]
+    return type(to) == "table" and type(to.name) == "string" and to.name or "?", type(to) == "table" and to.class
+end
+
 -- The errands panel: one row per errand, a "Fill recipient" button that
--- only types the name, disabled when the goods are in the bank.
+-- only types the name, disabled when the goods are in the bank. Marked
+-- sends (B3) are ordinary rows: "Truestrike Shoulders to Kaelor".
 local function renderErrands(errands, s, me)
     local f = errandFrame
     for _, row in ipairs(f.rows) do
         row:Hide()
     end
-    f.meta:SetText("from " .. altName(s, me))
+    f.meta:SetText("from " .. (s and me and altName(s, me)
+        or colorName(character and character.name or "?", character and character.class)))
     for i, e in ipairs(errands) do
         local row = listRow(f, i, 56)
-        local to = s.alts[e.to]
-        local toName = type(to) == "table" and type(to.name) == "string" and to.name or "?"
+        local toName, toClass = C.recipient(e, s)
         local name = itemName(e.item)
-        row.label:SetText(plain(name) .. " ×" .. e.count .. " to " .. colorName(toName, to and to.class))
+        row.label:SetText(plain(name) .. (e.count and (" ×" .. e.count) or "") .. " to " .. colorName(toName, toClass))
         row.right:SetText("")
         local bags, bank = 0, 0
         if type(e.item.id) == "number" then
             bags, bank = liveCount(e.item.id)
         end
-        local whose = plain(toName) .. "'s " .. plain(e.list.name or "") .. " list"
+        local whose = e.marked and "marked in Forever Buddy"
+            or (plain(toName) .. "'s " .. plain(e.list.name or "") .. " list")
         if bags > 0 then
-            row.detail:SetText("you have " .. bags .. " in bags · " .. whose)
+            row.detail:SetText((e.marked and "in your bags · " or ("you have " .. bags .. " in bags · ")) .. whose)
         elseif bank > 0 then
             row.detail:SetText(bank .. " in your bank · visit the bank first")
         else
@@ -2178,8 +2197,18 @@ local function renderErrands(errands, s, me)
     f:SetHeight(48 + #errands * 56)
 end
 
-local function atMailbox()
+-- The list errands, then the marked sends.
+function C.errands()
     local errands = myErrands()
+    local ok, sends = pcall(C.sends)
+    for _, e in ipairs(ok and sends or {}) do
+        errands[#errands + 1] = e
+    end
+    return errands
+end
+
+local function atMailbox()
+    local errands = C.errands()
     if #errands == 0 then
         return
     end
@@ -2189,7 +2218,7 @@ local function atMailbox()
     end
     errandFrame:ClearAllPoints()
     errandFrame:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
-    renderErrands(errands, s, myAlt(s))
+    renderErrands(errands, s, s and myAlt(s))
     errandFrame:Show()
 end
 
@@ -2205,24 +2234,237 @@ end
 
 -- /fb errands: the same, as text, anywhere.
 local function sayErrands()
-    local errands = myErrands()
+    local errands = C.errands()
     if #errands == 0 then
         say(GOLD_PREFIX .. "no errands for this character.")
         return
     end
     local s = listsSlot()
     for _, e in ipairs(errands) do
-        local to = s.alts[e.to]
+        local toName, toClass = C.recipient(e, s)
         local bags = type(e.item.id) == "number" and (liveCount(e.item.id)) or 0
-        say(GOLD_PREFIX .. plain(itemName(e.item)) .. " ×" .. e.count .. " to "
-            .. altName(s, e.to) .. " (" .. bags .. " in bags) · " .. plain(type(to) == "table" and to.name or "?")
-            .. "'s " .. plain(e.list.name or "") .. " list")
+        local whose = e.marked and "marked in Forever Buddy"
+            or (plain(toName) .. "'s " .. plain(e.list.name or "") .. " list")
+        say(GOLD_PREFIX .. plain(itemName(e.item)) .. (e.count and (" ×" .. e.count) or "") .. " to "
+            .. colorName(toName, toClass) .. " (" .. bags .. " in bags) · " .. whose)
     end
 end
 
 local function guarded(fn, ...)
     if not pcall(fn, ...) then
         listErrors = listErrors + 1
+    end
+end
+
+-- Bag cleanup (B3, INGAME §14) ---------------------------------------------------------
+--
+-- Items marked in the app to sell or to send to another character (the
+-- Cleanup slot). A corner tag on their buttons in Blizzard's bags, a line
+-- on their tooltip, one grey line at a vendor, and marked sends join the
+-- mailbox's errands. Nothing sells, attaches or sends.
+
+do
+    local COIN = "Interface\\MoneyFrame\\UI-GoldIcon"
+    local LETTER = "Interface\\Minimap\\Tracking\\Mailbox"
+    local tags = setmetatable({}, { __mode = "k" }) -- our own textures, by button
+    local vendorFrame
+
+    -- This character's marks: item id -> { sell = true } or { to = alt }.
+    function C.mine()
+        local s = slots.Cleanup
+        local out = {}
+        if type(s) ~= "table" or type(s.alts) ~= "table" or type(s.marks) ~= "table" then
+            return out
+        end
+        local me
+        for i, a in ipairs(s.alts) do
+            if type(a) == "table" and isMe(a) then
+                me = i
+            end
+        end
+        local flat = me and s.marks[me]
+        for k = 1, (type(flat) == "table" and #flat or 0) - 2, 3 do
+            local id, action, to = flat[k], flat[k + 1], flat[k + 2]
+            if type(id) == "number" then
+                if action == "sell" then
+                    out[id] = { sell = true }
+                elseif action == "send" and type(s.alts[to]) == "table" then
+                    out[id] = { to = s.alts[to] }
+                end
+            end
+        end
+        return out
+    end
+
+    local function sellPrice(id)
+        local p = select(11, read("C_Item.GetItemInfo", id))
+        return type(p) == "number" and p > 0 and p or nil
+    end
+
+    local function tag(button, mark)
+        local t = tags[button]
+        if not mark then
+            if t then
+                t:Hide()
+            end
+            return
+        end
+        if not t then
+            t = button:CreateTexture(nil, "OVERLAY")
+            t:SetSize(12, 12)
+            t:SetPoint("TOPLEFT", 1, -1)
+            tags[button] = t
+        end
+        t:SetTexture(mark.sell and COIN or LETTER)
+        t:Show()
+    end
+
+    -- Every item button in Blizzard's bag frames (combined or separate).
+    function C.tagBags()
+        local each = rawget(_G, "ContainerFrameUtil_EnumerateContainerFrames")
+        if type(each) ~= "function" then
+            return
+        end
+        local marks = C.mine()
+        for _, frame in each() do
+            if type(frame) == "table" and type(frame.EnumerateValidItems) == "function" then
+                for _, button in frame:EnumerateValidItems() do
+                    local bag = type(button.GetBagID) == "function" and button:GetBagID()
+                    local id = bag and read("C_Container.GetContainerItemID", bag, button:GetID())
+                    tag(button, type(id) == "number" and marks[id] or nil)
+                end
+            end
+        end
+    end
+
+    -- Re-tag when a bag opens (the game builds its buttons then).
+    function C.hook()
+        if type(hooksecurefunc) ~= "function" then
+            return
+        end
+        for _, name in ipairs({ "OpenAllBags", "ToggleAllBags", "OpenBag", "ToggleBag", "ToggleBackpack" }) do
+            if type(rawget(_G, name)) == "function" then
+                pcall(hooksecurefunc, name, function()
+                    read("C_Timer.After", 0, function()
+                        pcall(C.tagBags)
+                    end)
+                end)
+            end
+        end
+    end
+
+    -- The item tooltip's line, for an item this character carries.
+    function C.tooltip(tooltip, data)
+        local id = type(data) == "table" and data.id
+        if type(id) ~= "number" or isSecret(id) or read("InCombatLockdown") then
+            return
+        end
+        local m = C.mine()[id]
+        if not m or num(read("C_Item.GetItemCount", id)) == 0 then
+            return
+        end
+        if m.sell then
+            local p = sellPrice(id)
+            tooltip:AddLine("Marked to sell in Forever Buddy"
+                .. (p and (WHITE .. " · " .. coins(p) .. " each at a vendor|r") or ""), 1, 0.82, 0)
+        else
+            tooltip:AddLine("Marked to send to " .. colorName(m.to.name, m.to.class)
+                .. (isBound(data) and (GREY .. ", but it's soulbound|r") or ""), 1, 0.82, 0)
+        end
+    end
+
+    -- What's marked to sell in the bags now: items, copper, whether priced.
+    local function sells()
+        local n, total, priced = 0, 0, false
+        for id, m in pairs(C.mine()) do
+            local bags = m.sell and num(read("C_Item.GetItemCount", id)) or 0
+            if bags > 0 then
+                n = n + bags
+                local p = sellPrice(id)
+                if p then
+                    total, priced = total + p * bags, true
+                end
+            end
+        end
+        return n, total, priced
+    end
+
+    -- At a vendor: "5 marked to sell · ~1g 20s at the vendor", under the
+    -- list panel or on its own. No button.
+    function C.atVendor()
+        local n, total, priced = sells()
+        if n == 0 then
+            C.leaveVendor()
+            return
+        end
+        if not vendorFrame then
+            vendorFrame = CreateFrame("Frame", "ForeverBuddyCleanupFrame", UIParent, "DefaultPanelFlatTemplate")
+            vendorFrame:SetSize(300, 28)
+            vendorFrame.text = vendorFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            vendorFrame.text:SetPoint("LEFT", 12, 0)
+        end
+        vendorFrame:ClearAllPoints()
+        if listFrame and listFrame:IsShown() then
+            vendorFrame:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -4)
+        else
+            vendorFrame:SetPoint("TOPLEFT", MerchantFrame, "TOPRIGHT", 6, 0)
+        end
+        vendorFrame.text:SetText(n .. " marked to sell" .. (priced and (" · ~" .. coins(total) .. " at the vendor") or ""))
+        vendorFrame:Show()
+    end
+
+    function C.leaveVendor()
+        if vendorFrame then
+            vendorFrame:Hide()
+        end
+    end
+
+    -- Marked sends still carried (bags or bank), as errand rows.
+    function C.sends()
+        local out = {}
+        for id, m in pairs(C.mine()) do
+            local bags, bank = liveCount(id)
+            if m.to and bags + bank > 0 then
+                local name = read("C_Item.GetItemInfo", id)
+                out[#out + 1] = {
+                    marked = true,
+                    item = { id = id, name = type(name) == "string" and name or nil },
+                    toName = type(m.to.name) == "string" and m.to.name or "?",
+                    toClass = m.to.class,
+                }
+            end
+        end
+        table.sort(out, function(a, b)
+            return a.item.id < b.item.id
+        end)
+        return out
+    end
+
+    -- /fb cleanup: "5 marked to sell, 2 to send." or "nothing marked on
+    -- Thrandor."
+    function C.say()
+        local sell, send = 0, 0
+        for id, m in pairs(C.mine()) do
+            if num(read("C_Item.GetItemCount", id, true)) > 0 then
+                if m.sell then
+                    sell = sell + 1
+                else
+                    send = send + 1
+                end
+            end
+        end
+        if sell + send == 0 then
+            say(GOLD_PREFIX .. "nothing marked on " .. plain(character and character.name or "this character") .. ".")
+            return
+        end
+        local parts = {}
+        if sell > 0 then
+            parts[#parts + 1] = sell .. " marked to sell"
+        end
+        if send > 0 then
+            parts[#parts + 1] = send .. (sell > 0 and " to send" or " marked to send")
+        end
+        say(GOLD_PREFIX .. table.concat(parts, ", ") .. ".")
     end
 end
 
@@ -2724,6 +2966,8 @@ local function slash(msg)
         guarded(toggleLists)
     elseif cmd == "errands" then
         guarded(sayErrands)
+    elseif cmd == "cleanup" then
+        guarded(C.say)
     elseif cmd == "coach" then
         S.guarded(S.setCoach, not S.coachOn())
         say(GOLD_PREFIX .. "session coach " .. (S.coachOn() and "on." or "off."))
@@ -2735,7 +2979,7 @@ local function slash(msg)
         say(GOLD_PREFIX .. "session card at logout " .. (S.cardOn() and "on." or "off."))
     else
         say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
-            .. "/fb coach this session's strip; /fb card off hides the logout card; "
+            .. "/fb cleanup what's marked; /fb coach this session's strip; /fb card off hides the logout card; "
             .. "/fb brief repeats the login briefing; /fb brief off turns it off.")
     end
 end
@@ -2778,6 +3022,7 @@ handlers.PLAYER_LOGIN = function()
     local t = now()
     character = identity()
     hookTooltips()
+    pcall(C.hook)
     if not pcall(loadPlan) then
         planErrors = planErrors + 1
     end
@@ -2983,6 +3228,7 @@ handlers.MERCHANT_SHOW = function()
     merchantOpen = true
     repairCost = repairCostNow()
     guarded(atMerchant)
+    guarded(C.atVendor)
 end
 
 handlers.UPDATE_INVENTORY_DURABILITY = function()
@@ -3000,6 +3246,7 @@ handlers.MERCHANT_CLOSED = function()
     merchantOpen, repairCost = false, nil
     here = {}
     undock()
+    guarded(C.leaveVendor)
 end
 
 -- The AH (B2): the list panel docks beside it, and what's in its results
@@ -3035,6 +3282,11 @@ handlers.BAG_UPDATE_DELAYED = function()
     end
     if listFrame and listFrame:IsShown() then
         guarded(renderLists, listDocked)
+    end
+    -- B3: a sold or sent item's tag goes right away.
+    guarded(C.tagBags)
+    if merchantOpen then
+        guarded(C.atVendor)
     end
 end
 
