@@ -1075,7 +1075,7 @@ function renderPlan()
     end
     if not plan then
         f.title:SetText("Tonight's plan")
-        f.footer:SetText("No plan for this character. Make one in Forever Buddy.")
+        f.footer:SetText("No plan for this character yet.")
         return
     end
     local zone = plan.steps[1] and plan.steps[1].zone
