@@ -162,7 +162,22 @@ pub struct Snapshot {
     /// ids; `None` from older files or a client without the API. Read, not
     /// stored yet: the quest planner (#94) is what will use it.
     pub quests_done: Option<Vec<i64>>,
+    /// What each profession can make, from its last look at the profession
+    /// window (C1, addon 0.7.0 on). `None` when the file has no scan.
+    pub recipes: Option<Vec<KnownRecipes>>,
 }
+
+/// One profession's learned recipes, as the item ids they make.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnownRecipes {
+    pub profession: String,
+    /// When its window was read (Unix seconds).
+    pub at: i64,
+    pub made: Vec<i64>,
+}
+
+/// More than any profession's recipe list; a bigger one is cut.
+const MAX_MADE: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemInfo {
@@ -626,6 +641,28 @@ fn snapshot(t: &LuaTable) -> Option<Snapshot> {
         professions,
         lockouts,
         quests_done: tbl(t, "quests_done").map(|q| q.array.iter().filter_map(as_int).collect()),
+        recipes: tbl(t, "recipes").map(|r| {
+            r.hash
+                .iter()
+                .filter_map(|(name, v)| {
+                    let p = v.as_table()?;
+                    Some(KnownRecipes {
+                        profession: name.to_string_lossy().filter(|s| !s.is_empty())?,
+                        at: int(p, "at")?,
+                        made: tbl(p, "made")
+                            .map(|m| {
+                                m.array
+                                    .iter()
+                                    .filter_map(as_int)
+                                    .filter(|&id| id > 0)
+                                    .take(MAX_MADE)
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    })
+                })
+                .collect()
+        }),
     })
 }
 
