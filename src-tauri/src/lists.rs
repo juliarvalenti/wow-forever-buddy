@@ -33,7 +33,8 @@ const MAX_NEED: u32 = 9999;
 pub struct Who {
     pub id: u32,
     pub name: String,
-    /// Class file token, e.g. "WARRIOR".
+    /// File token, lowercase (`warrior`), for the class colour; empty if
+    /// unknown.
     pub class: String,
 }
 
@@ -368,7 +369,7 @@ pub fn lists(db: &Db, flavor: &str) -> AppResult<Vec<List>> {
     let (mut out, rows, chars, held) = db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT l.id, l.name, l.producer, l.created_at,
-                    ch.id, ch.name, upper(coalesce(ch.class, ''))
+                    ch.id, ch.name, lower(coalesce(ch.class, ''))
              FROM lists l LEFT JOIN characters ch ON ch.id = l.for_character_id
              WHERE l.flavor = ?1 ORDER BY l.id",
         )?;
@@ -414,7 +415,7 @@ pub fn lists(db: &Db, flavor: &str) -> AppResult<Vec<List>> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let mut stmt = c.prepare(
-            "SELECT id, name, upper(coalesce(class, '')) FROM characters WHERE flavor = ?1",
+            "SELECT id, name, lower(coalesce(class, '')) FROM characters WHERE flavor = ?1",
         )?;
         let chars: HashMap<u32, Who> = stmt
             .query_map([flavor], |r| {
