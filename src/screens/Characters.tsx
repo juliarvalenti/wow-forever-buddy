@@ -18,6 +18,8 @@ import {
   commands,
   type ItemRow,
   type Lockout,
+  type Mark,
+  type Marked,
   type Plan,
   type QuestEntry,
   type SearchResults,
@@ -40,9 +42,11 @@ import {
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
+import { useCleanup } from "@/hooks/useCleanup";
 import { useQuestLog, useQuestPlan, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
+import { BagCleanup, MarkMenu, MarkTag, type Who } from "@/screens/BagCleanup";
 import { LoginNotes } from "@/screens/LoginNotes";
 import {
   ago,
@@ -813,12 +817,32 @@ function Tooltip({ item, slot, at }: { item: ItemRow; slot?: string; at: DOMRect
   );
 }
 
-function Slot({ item, label, slot }: { item: ItemRow; label?: string; slot?: string }) {
+/** B3: what the satchels tab needs to mark items. */
+type Marking = {
+  marks: Map<number, Marked>;
+  others: Who[];
+  onMark: (itemId: number, mark: Mark) => void;
+  onClear: (itemId: number) => void;
+};
+
+function Slot({
+  item,
+  label,
+  slot,
+  marking,
+}: {
+  item: ItemRow;
+  label?: string;
+  slot?: string;
+  marking?: Marking | null;
+}) {
   const q = item.quality != null ? `ch-q${item.quality}` : "";
   const [hover, setHover] = useState<DOMRect | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const marked = marking?.marks.get(item.item_id);
   return (
     <div
-      className="ch-slot"
+      className={`ch-slot${marking ? " markable" : ""}`}
       onMouseEnter={(e) => setHover(e.currentTarget.getBoundingClientRect())}
       onMouseLeave={() => setHover(null)}
     >
@@ -828,10 +852,25 @@ function Slot({ item, label, slot }: { item: ItemRow; label?: string; slot?: str
       </span>
       <div className="t">
         <div className={q}>{item.name}</div>
-        <small>{label ?? (item.count > 1 ? `× ${item.count}` : "")}</small>
+        <small>
+          {label ?? (item.count > 1 ? `× ${item.count}` : "")}
+          {marked && <MarkTag mark={marked} />}
+        </small>
       </div>
-      <span className="il">{item.ilvl ?? ""}</span>
-      {hover && <Tooltip item={item} slot={slot} at={hover} />}
+      <span className="il">
+        {marking ? (
+          <MarkMenu
+            item={item}
+            marked={marked}
+            others={marking.others}
+            onMark={(m) => marking.onMark(item.item_id, m)}
+            onClear={() => marking.onClear(item.item_id)}
+            onOpenChange={setMenuOpen}
+          />
+        ) : null}
+        {item.ilvl ?? ""}
+      </span>
+      {hover && !menuOpen && <Tooltip item={item} slot={slot} at={hover} />}
     </div>
   );
 }
@@ -865,7 +904,7 @@ function Gear({ items }: { items: ItemRow[] }) {
   );
 }
 
-function Bags({ bags, empty }: { bags: BagView[]; empty: string }) {
+function Bags({ bags, empty, marking }: { bags: BagView[]; empty: string; marking?: Marking | null }) {
   if (bags.every((b) => b.items.length === 0)) return <p className="ch-empty">{empty}</p>;
   return (
     <>
@@ -877,7 +916,7 @@ function Bags({ bags, empty }: { bags: BagView[]; empty: string }) {
           </div>
           <div className="ch-doll">
             {b.items.map((i) => (
-              <Slot key={`${i.container}-${i.slot}`} item={i} />
+              <Slot key={`${i.container}-${i.slot}`} item={i} marking={marking} />
             ))}
           </div>
         </div>
@@ -966,6 +1005,16 @@ function Sheet({
   const quests = useQuestLog(id);
   // P1: this character's active quest plan, if it has one.
   const { plan, clear: clearPlan } = useQuestPlan(id);
+  // B3: marks to sell or send, and who else could receive.
+  const cleanup = useCleanup(id);
+  const marking: Marking | null = cleanup.cleanup
+    ? {
+        marks: new Map(cleanup.cleanup.marks.map((m) => [m.item_id, m])),
+        others: cards.filter((k) => k.id !== id).map((k) => ({ id: k.id, name: k.name, class: k.class })),
+        onMark: (item, mark) => cleanup.mark(item, mark),
+        onClear: (item) => cleanup.clear(item),
+      }
+    : null;
   const at = cards.findIndex((c) => c.id === id);
   const prev = at > 0 ? cards[at - 1] : null;
   const next = at >= 0 && at < cards.length - 1 ? cards[at + 1] : null;
@@ -1082,7 +1131,9 @@ function Sheet({
               <span className="stamp">{ago(c.last_seen)}</span>
             </nav>
             {tab === "gear" && <Gear items={sheet.equipped} />}
-            {tab === "satchels" && <Bags bags={sheet.bags} empty="No satchels recorded yet." />}
+            {tab === "satchels" && (
+              <Bags bags={sheet.bags} empty="No satchels recorded yet." marking={marking} />
+            )}
             {tab === "bank" && (
               <>
                 <Freshness asOf={sheet.bank.as_of} place="bank" />
@@ -1145,6 +1196,14 @@ function Sheet({
                 )}
               </PanelBody>
             </Panel>
+            {cleanup.cleanup && (
+              <BagCleanup
+                cleanup={cleanup.cleanup}
+                error={cleanup.error}
+                onClear={cleanup.clear}
+                onMarkGreys={cleanup.markGreys}
+              />
+            )}
             <Panel>
               <PanelHeader title="Gold, 30 days">
                 {change != null && change !== 0 && (
