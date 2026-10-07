@@ -174,10 +174,38 @@ pub struct KnownRecipes {
     /// When its window was read (Unix seconds).
     pub at: i64,
     pub made: Vec<i64>,
+    /// C2: each made item's required reagents, `(reagent id, quantity)`.
+    pub mats: Vec<(i64, Vec<(i64, i64)>)>,
 }
 
 /// More than any profession's recipe list; a bigger one is cut.
 const MAX_MADE: usize = 1000;
+/// Reagent slots a recipe has, at most.
+const MAX_REAGENTS: usize = 8;
+const MAX_QTY: i64 = 1000;
+
+/// `mats = { [itemID] = { reagentID, qty, ... } }`: positive ids and
+/// quantities only, pairs past the cap dropped.
+fn mats(t: &LuaTable) -> Vec<(i64, Vec<(i64, i64)>)> {
+    let mut out: Vec<(i64, Vec<(i64, i64)>)> = pairs(t)
+        .filter_map(|(id, v)| {
+            let id = id.filter(|&id| id > 0)?;
+            let flat: Vec<i64> = v.as_table()?.array.iter().filter_map(as_int).collect();
+            let reagents: Vec<(i64, i64)> = flat
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&[r, q]| (r, q))
+                .filter(|&(r, q)| r > 0 && (1..=MAX_QTY).contains(&q))
+                .take(MAX_REAGENTS)
+                .collect();
+            (!reagents.is_empty()).then_some((id, reagents))
+        })
+        .take(MAX_MADE)
+        .collect();
+    out.sort();
+    out
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemInfo {
@@ -659,6 +687,7 @@ fn snapshot(t: &LuaTable) -> Option<Snapshot> {
                                     .collect()
                             })
                             .unwrap_or_default(),
+                        mats: tbl(p, "mats").map(mats).unwrap_or_default(),
                     })
                 })
                 .collect()

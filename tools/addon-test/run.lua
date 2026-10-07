@@ -1187,6 +1187,43 @@ local CRAFTERS = tooltipSlot("Tooltip1", '\t["alts"] = {\n'
     .. '\t\t[2578] = { 1, "Tailoring" },\n'
     .. '\t},\n')
 
+-- C2 (INGAME §12 (c)): what one craft of 2572 takes, 1 Coarse Thread (2320,
+-- Sela's bank), 2 Linen Cloth (2589, live in this character's bags) and 1
+-- Silk (4306, nobody), split over both halves by item parity.
+local MATS_ALTS = '\t["alts"] = {\n'
+    .. alt("Thrandor", "PALADIN", 60, {}, prof(300, wow.EPOCH), "Vargur")
+    .. alt("Sela", "PRIEST", 40, {}, prof(285, wow.EPOCH))
+    .. '\t},\n'
+local MATS_EVEN = tooltipSlot("Tooltip1", MATS_ALTS
+    .. '\t["items"] = { [2320] = { 0, 2, 0, 1, 0, 0 } },\n'
+    .. '\t["makes"] = { [2572] = { 2, "Tailoring" }, [2574] = { 2, "Tailoring" } },\n'
+    .. '\t["mats"] = { [2572] = { 2320, 1, 2589, 2, 4306, 1 }, [2574] = { 2320, 1 } },\n')
+local MATS_ODD = tooltipSlot("Tooltip2", MATS_ALTS
+    .. '\t["items"] = { [2589] = { 0, 2, 1, 0, 0, 0 } },\n')
+
+scenario("materials", function()
+    local c = client({ slots = { ["Data/Tooltip1.lua"] = MATS_EVEN, ["Data/Tooltip2.lua"] = MATS_ODD } })
+    c.login(nil)
+    local SELA = "|cffffffffSela|r"
+    eq(c.hover(2572)[3], SELA .. " can make this · materials 2 of 3", "compact: 2 of 3")
+    eq(c.hover(2574)[3], SELA .. " can make this · |cff40ff40all materials on hand|r", "compact: all")
+    c.world.shift = true
+    local lines = c.hover(2572)
+    local from = 0
+    for i, l in ipairs(lines) do
+        if l == "Materials for one" then
+            from = i
+        end
+    end
+    eq(table.concat(lines, "\n", from, from + 3), table.concat({
+        "Materials for one",
+        "Item 2320 | 1 of 1 · Sela bank",
+        "Linen Cloth | 2 of 2 · on you",
+        "Item 4306 | 0 of 1",
+    }, "\n"), "Shift rows")
+    c.world.shift = false
+end)
+
 scenario("crafting", function()
     local c = client({ slots = { ["Data/Tooltip1.lua"] = CRAFTERS } })
     c.login(nil)
@@ -1295,7 +1332,9 @@ local TAILORING = {
     skill = 34,
     max = 75,
     recipes = {
-        { id = 2387, learned = true, out = 2568 },
+        -- C2: required reagents (2 Linen Cloth, 1 Coarse Thread); an optional
+        -- reagent (type 0) isn't recorded.
+        { id = 2387, learned = true, out = 2568, mats = { { 2589, 2 }, { 2320, 1 }, { 6260, 1, 0 } } },
         { id = 2389, learned = true, out = 2572 },
         { id = 2390, learned = false, out = 2575 }, -- not learned: not recorded
         { id = 2391, learned = true, out = 2568 }, -- a second recipe for the same item
@@ -1322,6 +1361,8 @@ scenario("recipes", function()
     eq(r.Tailoring.skill, 34, "skill")
     eq(r.Tailoring.max, 75, "max")
     eq(r.Tailoring.at, c.now, "when")
+    eq(table.concat(r.Tailoring.mats[2568], ","), "2589,2,2320,1", "required reagents only")
+    eq(r.Tailoring.mats[2572], nil, "no reagents listed, none recorded")
 
     -- Not opened this session: the last scan carries forward.
     local again = client()
