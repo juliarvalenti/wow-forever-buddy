@@ -66,7 +66,7 @@ export function LoginNotes({
   return (
     <Panel>
       <PanelHeader title="Login notes">
-        <span className="d-dim">{all ? "shown in the login briefing" : "shown in chat at login"}</span>
+        <span className="d-dim">{all ? "in the login briefing" : "shown in chat at login"}</span>
       </PanelHeader>
       <PanelBody>
         {mine.length === 0 && !adding && (
@@ -82,7 +82,7 @@ export function LoginNotes({
                   {c.name}
                 </div>
               )}
-              <div className="t">“{n.text}”</div>
+              <div className="t">{n.text}</div>
               <div className="m">
                 <span>{meta(n)}</span>
                 {!done && (
