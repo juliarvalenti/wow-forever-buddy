@@ -266,6 +266,7 @@ export function installMockIpc(): void {
   const listsView = (): ListsView => ({
     lists: noAddon ? [] : lists,
     delivery: { state: "synced", since: iso(18) },
+    briefing: { state: "pending", written_at: iso(4) },
     scan_at: iso(60 * 24 * 3),
   });
   const seen: SeenItem[] = [

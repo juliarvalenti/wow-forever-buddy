@@ -223,6 +223,21 @@ pub fn due(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<Due>> {
     })
 }
 
+/// When `flavor`'s notes last changed (added, deleted or archived), as
+/// RFC 3339, for the Briefing slot's "Sent to the game" row; empty if never.
+pub fn changed_at(db: &Db, flavor: &str) -> AppResult<String> {
+    db.with_conn(|c| {
+        let t: Option<i64> = c.query_row(
+            "SELECT max(max(n.created_at, coalesce(n.archived_at, 0)))
+             FROM login_notes n JOIN characters ch ON ch.id = n.character_id
+             WHERE ch.flavor = ?1",
+            [flavor],
+            |r| r.get(0),
+        )?;
+        Ok(t.map(rfc3339).unwrap_or_default())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

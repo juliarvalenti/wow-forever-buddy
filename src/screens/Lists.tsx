@@ -17,7 +17,9 @@ import {
 } from "@/components/d";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useLists } from "@/hooks/useLists";
+import { useNotes } from "@/hooks/useNotes";
 import { ago, coins, plural } from "@/lib/format";
+import { LoginNotes } from "@/screens/LoginNotes";
 import "@/styles/lists.css";
 
 // B2 (IMPLEMENTING §15): lists of what you're gathering across characters,
@@ -74,8 +76,12 @@ export function Lists() {
   const [selected, setSelected] = useState<number | null>(null);
   const [editing, setEditing] = useState<List | "new" | null>(null);
 
+  const { notes } = useNotes();
   const all = lists.view?.lists ?? [];
   const list = all.find((l) => l.id === selected) ?? all[0] ?? null;
+  const errands = all.reduce((n, l) => n + l.items.reduce((m, i) => m + i.errands.length, 0), 0);
+  // Notes still to show: not yet shown once.
+  const waiting = (notes ?? []).filter((n) => !(n.once && n.shown_at)).length;
 
   if (!lists.view) return <Page />;
 
@@ -132,9 +138,22 @@ export function Lists() {
           )}
 
           <div className="ls-side">
+            <LoginNotes characters={characters} onChange={lists.reload} />
             <Panel>
               <PanelHeader title="Sent to the game" />
-              <SentRow delivery={lists.view.delivery} all={all} />
+              <SentRow
+                label="Lists and errands"
+                delivery={lists.view.delivery}
+                summary={[
+                  plural(all.length, "list", "lists"),
+                  errands ? plural(errands, "errand", "errands") : null,
+                ]}
+              />
+              <SentRow
+                label="Login briefing"
+                delivery={lists.view.briefing}
+                summary={[waiting ? plural(waiting, "note", "notes") : "no notes waiting"]}
+              />
             </Panel>
           </div>
         </section>
@@ -169,18 +188,23 @@ export function Lists() {
   );
 }
 
-function SentRow({ delivery, all }: { delivery: Delivery; all: List[] }) {
+/** One Bridge slot this screen feeds, in bridge.html's four states. */
+function SentRow({
+  label,
+  delivery,
+  summary,
+}: {
+  label: string;
+  delivery: Delivery;
+  summary: (string | null)[];
+}) {
   const s = sent(delivery);
-  const errands = all.reduce((n, l) => n + l.items.reduce((m, i) => m + i.errands.length, 0), 0);
-  const summary = [plural(all.length, "list", "lists"), errands ? plural(errands, "errand", "errands") : null]
-    .filter(Boolean)
-    .join(" · ");
   return (
     <div className="ls-sent">
       {s.live ? <LiveDot /> : <StatusDot />}
-      <span>Lists and errands</span>
+      <span>{label}</span>
       <span className={`st${s.live ? " wait" : ""}`}>{s.text}</span>
-      <small>{[summary, s.hint].filter(Boolean).join(" · ")}</small>
+      <small>{[...summary, s.hint].filter(Boolean).join(" · ")}</small>
     </div>
   );
 }

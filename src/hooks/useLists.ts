@@ -32,6 +32,7 @@ export function useLists() {
   return {
     view,
     error,
+    reload: load,
     create: (name: string, forCharacter: number | null) => run(commands.listCreate(name, forCharacter)),
     update: (id: number, name: string, forCharacter: number | null) =>
       run(commands.listUpdate(id, name, forCharacter)),

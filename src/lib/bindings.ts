@@ -1405,6 +1405,11 @@ export type ListItem = {
 export type ListsView = {
 	lists: List[],
 	delivery: Delivery,
+	/**
+	 *  The login notes' way to the game (B1's Briefing slot), for the
+	 *  screen's second "Sent to the game" row.
+	 */
+	briefing: Delivery,
 	/**  When the AH was last scanned (RFC 3339), for the prices' age. */
 	scan_at: string | null,
 };

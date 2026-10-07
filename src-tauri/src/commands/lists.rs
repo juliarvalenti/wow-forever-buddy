@@ -7,6 +7,7 @@ use crate::applog;
 use crate::bridge::{self, Delivery, Slot};
 use crate::error::{AppError, AppResult};
 use crate::lists::{self, List, NewItem, SeenItem};
+use crate::notes;
 use crate::state::AppState;
 
 /// The Lists screen (B2): every list, and where they are on the way to the
@@ -15,6 +16,9 @@ use crate::state::AppState;
 pub struct ListsView {
     pub lists: Vec<List>,
     pub delivery: Delivery,
+    /// The login notes' way to the game (B1's Briefing slot), for the
+    /// screen's second "Sent to the game" row.
+    pub briefing: Delivery,
     /// When the AH was last scanned (RFC 3339), for the prices' age.
     pub scan_at: Option<String>,
 }
@@ -29,16 +33,33 @@ pub fn lists_get(state: State<'_, AppState>) -> AppResult<ListsView> {
             return Ok(ListsView {
                 lists: Vec::new(),
                 delivery: Delivery::Waiting,
+                briefing: Delivery::Waiting,
                 scan_at: None,
             })
         }
         Err(e) => return Err(e),
     };
-    let listed = addon::listed_slots(&game.root).contains(&Slot::Lists);
+    let listed = addon::listed_slots(&game.root);
     let changed = lists::changed_at(&core.db, &game.flavor)?.unwrap_or_default();
+    let notes_changed = notes::changed_at(&core.db, &game.flavor)?;
     Ok(ListsView {
         lists: lists::lists(&core.db, &game.flavor)?,
-        delivery: bridge::delivery(&core.db, &game.flavor, Slot::Lists, None, &changed, listed)?,
+        delivery: bridge::delivery(
+            &core.db,
+            &game.flavor,
+            Slot::Lists,
+            None,
+            &changed,
+            listed.contains(&Slot::Lists),
+        )?,
+        briefing: bridge::delivery(
+            &core.db,
+            &game.flavor,
+            Slot::Briefing,
+            None,
+            &notes_changed,
+            listed.contains(&Slot::Briefing),
+        )?,
         scan_at: ah::status(&core.db, &game.flavor)?.last_scan_at,
     })
 }
