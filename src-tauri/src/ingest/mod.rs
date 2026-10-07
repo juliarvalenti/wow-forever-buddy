@@ -641,6 +641,71 @@ mod tests {
         assert_eq!(note, "my note");
     }
 
+    /// BUG-SATCHELS: addon 0.8.0 on Forever read the character at logout
+    /// after the client had torn it down, so its snapshot has no backpack,
+    /// money 0, nothing worn and no quests. Such a file keeps the bags, gold,
+    /// quests and marks we had; its lockouts (kept apart from the logout)
+    /// still land.
+    #[test]
+    fn a_hollow_snapshot_never_wipes_what_we_had() {
+        let db = Db::open_in_memory().unwrap();
+        let t = target("Ellygie-Vargur");
+        let good = r#"ForeverBuddyDB = {
+  _meta = { schema = 1, written = 1000, counts = { sessions = 0, events = 0, items = 0, bag_items = 1, quests_done = 2 } },
+  character = { name = "Ellygie", surname = "Vargur", level = 10 },
+  snapshot = { at = 1000, money = 500, equipped = { [1] = "|Hitem:7413:|h[x]|h" },
+    bags = { [0] = { size = 16, free = 15, items = { { link = "|Hitem:2589:|h[x]|h", count = 20 } } } },
+    quests_done = { 176, 783 } },
+  sessions = {},
+}
+"#;
+        let hollow = r#"ForeverBuddyDB = {
+  _meta = { schema = 1, written = 2000, counts = { sessions = 0, events = 0, items = 0, bag_items = 0, quests_done = 0 } },
+  character = { name = "Ellygie", surname = "Vargur", level = 10 },
+  snapshot = { at = 2000, money = 0, xp = 0, equipped = {}, bags = {}, professions = {}, quests_done = {},
+    lockouts = { { name = "Molten Core", difficulty = "Normal", reset_at = 9999, raid = true } } },
+  sessions = {},
+}
+"#;
+        ingest_bytes(&db, &t, good.as_bytes()).unwrap();
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO cleanup_marks (character_id, item_id, action, created_at)
+                 VALUES (1, 2589, 'sell', 'x')",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let out = ingest_bytes(&db, &t, hollow.as_bytes()).unwrap();
+        assert!(matches!(out, Outcome::Applied(_)), "{out:?}");
+
+        let q = |sql: &str| count(&db, sql);
+        assert_eq!(
+            q("SELECT count(*) FROM char_items WHERE location = 'bag'"),
+            1,
+            "bags kept"
+        );
+        assert_eq!(
+            q("SELECT count(*) FROM char_items WHERE location = 'equipped'"),
+            1,
+            "gear kept"
+        );
+        assert_eq!(
+            q("SELECT money FROM gold_points ORDER BY at DESC LIMIT 1"),
+            500,
+            "no 0 gold point"
+        );
+        assert_eq!(
+            q("SELECT money FROM char_snapshots ORDER BY at DESC LIMIT 1"),
+            500,
+            "no hollow snapshot row"
+        );
+        assert_eq!(q("SELECT count(*) FROM char_quests_done"), 2, "quests kept");
+        assert_eq!(q("SELECT count(*) FROM cleanup_marks"), 1, "the mark stays");
+        assert_eq!(q("SELECT count(*) FROM lockouts"), 1, "lockouts still land");
+    }
+
     /// Every section of the real addon's snapshot lands in its table, read
     /// from the harness-generated fixture (tools/addon-test), so a change in
     /// what the addon writes breaks this test.

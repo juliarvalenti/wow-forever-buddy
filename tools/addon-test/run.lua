@@ -381,6 +381,43 @@ scenario("snapshot", function()
     return text
 end)
 
+-- BUG-SATCHELS and BUG-ADV (Julia's first logouts): on Forever the bags load
+-- a moment after login, and by PLAYER_LOGOUT the client has torn the
+-- character down, so bags, gear and money read empty then. Logging in isn't
+-- a gain, and the file holds what was seen during play.
+scenario("forever", function()
+    local c = stocked({ forever = true })
+    local t0 = wow.EPOCH
+    c.login(nil)
+    c.advance(10 * MINUTE)
+    c.give(117, 2) -- the last change before logging out
+    c.advance(MINUTE)
+    local db = file(c.logout())
+
+    local s = db.sessions[1]
+    eq(s.events[1].kind, "gain", "the jerky is the first gain")
+    eq(s.events[1].item, 117, "not the whole inventory at login")
+    eq(s.events[2], nil, "and the only one")
+
+    local snap = db.snapshot
+    eq(snap.at, t0 + 1 + 10 * MINUTE, "as of the last good look, not the logout")
+    eq(snap.money, 25000, "money from play, not the teardown's 0")
+    eq(snap.bags[0].size, 16, "the backpack")
+    eq(snap.bags[0].items[1].link, wow.link(6948), "its items")
+    eq(snap.equipped[16], wow.link(25), "worn gear")
+    eq(db._meta.counts.bag_items > 0, true, "counted")
+    eq(snap.lockouts and #snap.lockouts, 2, "kept apart from it, still there")
+    eq(snap.played.total ~= nil, true, "played, as of the logout")
+
+    -- With nothing seen during play (the bags never loaded), no snapshot:
+    -- the app keeps what it had rather than empty bags.
+    local early = client({ forever = true })
+    early.world.bags = {}
+    early.login(nil)
+    local text = early.logout()
+    eq(file(text).snapshot, nil, "no hollow snapshot")
+end)
+
 -- The bank and mailbox can only be read there, so a session without a visit
 -- carries the last ones forward instead of wiping them (probe runs 2-3).
 scenario("carry_forward", function()

@@ -32,7 +32,7 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     let id = upsert_character(tx, target, file, at)?;
     if let Some(snap) = &file.snapshot {
         apply_snapshot(tx, id, snap)?;
-        if let Some(done) = &snap.quests_done {
+        if let Some(done) = snap.quests_done.as_ref().filter(|_| !hollow(snap)) {
             apply_quests_done(tx, id, snap.at, done)?;
         }
     }
@@ -168,7 +168,25 @@ fn upsert_character(tx: &Transaction<'_>, t: &Target, file: &AddonFile, at: i64)
     )?)
 }
 
+/// A snapshot read after the client tore the character down (BUG-SATCHELS:
+/// addon 0.8.0 and older on Forever read everything at PLAYER_LOGOUT): bags
+/// without the backpack, which always has slots, money 0, nothing worn, no
+/// quests. Only what the addon keeps apart from the logout (bank and mail
+/// visits, lockouts) is applied from it; the rest keeps what we had.
+fn hollow(s: &Snapshot) -> bool {
+    s.bags.is_some() && !s.bag_info.iter().any(|c| c.container == 0)
+}
+
 fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> {
+    let live = !hollow(s);
+    if live {
+        apply_live(tx, id, s)?;
+    }
+    apply_kept(tx, id, s, live)
+}
+
+/// What's read at the moment of the snapshot: money, XP, where, gear, bags.
+fn apply_live(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> {
     tx.execute(
         "INSERT OR IGNORE INTO char_snapshots (character_id, at, money, xp, xp_max, rested,
             rest_state, level, ilvl_avg, ilvl_equipped, played_total, played_level, zone,
@@ -206,6 +224,12 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             replace_containers(tx, id, "bag", s.at, &s.bag_info)?;
         }
     }
+    Ok(())
+}
+
+/// The rest: bank and mail (their own visits), professions and recipes, and
+/// lockouts. Professions and recipes only from a `live` snapshot.
+fn apply_kept(tx: &Transaction<'_>, id: i64, s: &Snapshot, live: bool) -> AppResult<()> {
     // Bank and mail carry their own time: the last visit, carried forward
     // by the addon when this session had none.
     if let Some(bank) = &s.bank {
@@ -235,7 +259,7 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             }
         }
     }
-    if let Some(professions) = &s.professions {
+    if let Some(professions) = s.professions.as_ref().filter(|_| live) {
         if newer(tx, "professions", id, s.at)? {
             tx.execute("DELETE FROM professions WHERE character_id = ?1", [id])?;
             for p in professions {
@@ -257,7 +281,7 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
     // Recipes (C1): per profession, a newer scan replaces an older one; a
     // profession the file has no scan for keeps its rows (not looked at
     // since).
-    for r in s.recipes.iter().flatten() {
+    for r in s.recipes.iter().flatten().filter(|_| live) {
         let stored: Option<i64> = tx.query_row(
             "SELECT max(scanned_at) FROM char_recipes WHERE character_id = ?1 AND profession = ?2",
             params![id, r.profession],
@@ -313,7 +337,7 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
     }
     // B3: a mark goes once its item has left the character (sold, sent,
     // used): nowhere in what we now know it holds.
-    if s.bags.is_some() {
+    if live && s.bags.is_some() {
         tx.execute(
             "DELETE FROM cleanup_marks WHERE character_id = ?1
              AND item_id NOT IN (SELECT item_id FROM char_items WHERE character_id = ?1)",
