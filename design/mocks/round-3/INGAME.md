@@ -235,6 +235,21 @@ When you enter a dungeon or raid, one quiet chat line names your *other* charact
 - **Off switch:** a "Lockouts at the entrance" checkbox in the compartment menu, on by default and saved per account.
 - **Never:** a popup or sound, other players or your group, anything that suggests leaving or resetting, or advice ("you should").
 
+## 14. B3: bag cleanup (marks in your bags)
+You mark items in the app ("sell" or "send to Sela"); the addon shows the marks where you act on them. **Selling and sending stay manual:** no sell button, no auto-sell at a vendor, no attaching. The app side is IMPLEMENTING §18. Data: one Bridge slot ("Cleanup"), per character, `item id → { "sell" }` or `{ "send", altIndex }`. Ids and our own names only.
+- **In your bags** (Blizzard's own bag frames, combined or separate):
+  - A marked item's button gets a small corner tag in the top-left: a coin (`Interface\MoneyFrame\UI-GoldIcon`, 12 px) for sell, or a letter (`Interface\Minimap\Tracking\Mailbox`, 12 px) for send. It's kept in a side table, like B2's merchant mark, and nothing is written onto Blizzard's buttons beyond our own child texture.
+  - Bag addons (Baganator, Bagnon and so on) don't get tags in v1. The tooltip line below still works there.
+- **Tooltip line** (the §8 post-call, own line, after the price line):
+  - Sell: `Marked to sell in Forever Buddy`, gold, plus ` · 2s 40c each at a vendor` when the game gives a sell price.
+  - Send: `Marked to send to Sela`, with "Marked to send to" gold and the name in class colour.
+  - Send, but the item is soulbound (the tooltip's `ITEM_SOULBOUND` line): `Marked to send to Sela, but it's soulbound`, with the last part grey. Never hide the mark; the app learns at the next sync and drops it.
+- **At a vendor:** one grey line under the B2 list panel, or alone in a small docked panel when there's no list: `5 marked to sell · ~1g 20s at the vendor`. No button. The tags in the bags show which. With nothing marked, nothing shows.
+- **At the mailbox:** marked sends join the B2 Errands panel as ordinary rows, `Truestrike Shoulders to Kaelor`, with the grey line `in your bags · marked in Forever Buddy` and the same Fill recipient button (it only types the name).
+- **When an item is gone** (sold, sent, used), its tag disappears right away. The app clears the mark at the next sync, after it sees the item has left this character.
+- **Commands:** `/fb cleanup` prints `Forever Buddy: 5 marked to sell, 2 to send.` or `Forever Buddy: nothing marked on Thrandor.`
+- **Never:** a sell or send button, auto-selling greys, deleting items, or marks on another player's items.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/

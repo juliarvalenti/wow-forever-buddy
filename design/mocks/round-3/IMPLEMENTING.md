@@ -374,3 +374,18 @@ One place for everything agents propose: quest plans, login notes and list chang
 - **Empty:** "Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here."
 - **Off:** a lock: "Agent access is off, so agents can't read your characters or suggest anything.", with a stone **Open Settings › Agents** button. The Agent access panel reads "Off. Every request is refused, and nothing new is queued."
 - **Never:** a bare "Claude", a verified-looking identity (no checkmarks or avatars for clients), HTML in any proposed string, or anything that acts in game.
+
+## 18. B3: bag cleanup, the app side
+You mark items on the character sheet; the addon shows the marks in game (INGAME §14). Marks are app data, not a game-file write, so there's no write gate and no stage/apply bar.
+- **Marking:** wherever the sheet lists this character's bag items, each row gets a small ghost "Mark" menu on hover: **Sell**, **Send to…** (the account's other characters, names in class colour), and **Clear mark** when marked. A marked row shows a muted tag after the name: "sell", or "→ Sela" with the name in class colour.
+- **Mark all greys:** a ghost button on the Bag cleanup panel marks every poor-quality item in this character's bags to sell. It's a one-off action, not a rule, so new greys aren't marked automatically.
+- **Bag cleanup panel:** a stone panel in the side column right after Satchels. It shows only when something is marked, or when the bags hold greys (to offer the button).
+  - Header "Bag cleanup", meta "7 marked".
+  - Rows: tile, name, count, and the mark ("sell" or "→ Sela"), with a small × to clear.
+  - Footer line: "5 to sell · ~1g 20s at a vendor · 2 to send". Use the vendor sell price only when the game gave one. Never an AH price here, and never "you'll make".
+  - The status line for the Cleanup slot, using the four `bridge.html` states.
+  - Empty, with greys in the bags: "Nothing marked." plus the ghost **Mark all greys (6)**.
+- **Send rules:** "Send to…" never lists the character itself. If the addon has reported the item soulbound, Send is disabled with the title "Soulbound, so it can't be mailed".
+- **Clearing:** a mark clears itself once the item has left this character (seen at the next sync). Marks on items that are still there survive syncs.
+- **Agents (later):** an agent could propose marks through Approvals as a new kind. That isn't in B3.
+- **Never:** marking another account's or another player's items, prices that read like advice, or anything that sells or sends.
