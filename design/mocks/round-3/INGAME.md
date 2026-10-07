@@ -211,6 +211,23 @@ Two additions to the shipped item tooltip (§8), using the same rules: `TooltipD
 - **Nothing to say:** no line, no head. These lines can appear alone (no alt holds the item), like the upgrade hint.
 - **Never:** "used in…" on reagents, other players or guild crafters, prices beyond the existing scan line, or anything that opens the profession window or crafts.
 
+## 13. L2: lockouts at the entrance (one chat line)
+When you enter a dungeon or raid, one quiet chat line names your *other* characters already saved there this week. It comes from F3's lockouts (`name`, `difficulty`, `reset_at`), which have no boss progress, so never show any.
+- **When:** on `PLAYER_ENTERING_WORLD` while `IsInInstance()` is true and the instance type is `party` or `raid`. Once per instance per session, so a ghost run back in, a /reload or zoning back after a wipe stays silent. If you're in combat, wait for `PLAYER_REGEN_ENABLED`.
+- **Matching:** the instance name and difficulty from `GetInstanceInfo()` against each alt's lockouts, by name and difficulty. Drop any lockout whose `reset_at` has passed (`GetServerTime()`), since it's already gone.
+- **The line** (gold prefix, names in class colour, the reset as the game shows days):
+  - One: `|cffffd100Forever Buddy:|r Velyra is saved to Molten Core (resets Tue).`
+  - Two: `… Velyra and Kaelor are saved to Molten Core (resets Tue).`
+  - Three: `… Velyra, Kaelor and Sela are saved to Molten Core (resets Tue).`
+  - Past three: `… Velyra, Kaelor, Sela +2 are saved to Molten Core (resets Tue).`
+  - Under a day to reset, use the time instead: `(resets in 5 h)`.
+  - With a difficulty that isn't the normal one, name it as the game does: `Molten Core (Heroic)`.
+- **Stale:** a lockout is as of that alt's last login. That's fine for a weekly reset, so no date and no grey. Expired lockouts are already dropped.
+- **Nothing to say** (no other alt saved, or no lockout data): no line.
+- **The current character:** never named. The game's own Raid Info covers the character you're on.
+- **Off switch:** a "Lockouts at the entrance" checkbox in the compartment menu, on by default and saved per account.
+- **Never:** a popup or sound, other players or your group, anything that suggests leaving or resetting, or advice ("you should").
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
