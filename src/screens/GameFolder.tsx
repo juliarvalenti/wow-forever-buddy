@@ -11,7 +11,6 @@ import {
   PanelHeader,
   Pill,
   PrimaryButton,
-  Record,
   StatusDot,
 } from "@/components/d";
 import { errorText, plural } from "@/lib/format";
@@ -77,8 +76,141 @@ function InstallSummary({ install }: { install: Install }) {
   );
 }
 
+/** Step 1 of setup (onboarding.html, IMPLEMENTING §20): find the game. The
+ *  letter's contents, inside the setup frame (`Onboarding`). On a rerun with
+ *  a folder already set, it's shown as found with Continue. */
+export function FindGame({
+  install: inst,
+  onContinue,
+}: {
+  install: ReturnType<typeof useInstall>;
+  onContinue: () => void;
+}) {
+  const { state, report, detecting, detectError, detect, choose, pick } = inst;
+  const [error, setError] = useState<string | null>(null);
+
+  const use = async (path: string, flavor: string | null = null) => {
+    setError(null);
+    try {
+      await choose(path, flavor);
+      onContinue();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+  const chooseFolder = async () => {
+    setError(null);
+    try {
+      const path = await pick();
+      if (path) await use(path);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  // First run: look straight away rather than show an empty letter.
+  const autoDetected = useRef(false);
+  useEffect(() => {
+    if (state.kind === "none" && !autoDetected.current) {
+      autoDetected.current = true;
+      detect();
+    }
+  }, [state.kind, detect]);
+
+  const looked = report?.looked_in ?? [];
+  const notFound =
+    state.kind !== "ok" &&
+    ((report != null && report.candidates.length === 0) || (detectError != null && !detecting));
+  const looking = detecting || (state.kind === "none" && !report && !detectError);
+
+  return (
+    <>
+      <h1>Well met.</h1>
+      <p className="d-muted">
+        Forever Buddy keeps your WoW: Forever settings backed up, and later keeps a ledger of your
+        characters. First, let's find the game.
+      </p>
+
+      {state.kind === "ok" && !report && (
+        <div className="d-found">
+          <div className="d-letter-label">Using this folder</div>
+          <div className="d-found-path">
+            <span className="d-mono">{state.install.root}</span>
+            <span className="d-grow" />
+            <span className="d-dim">saved</span>
+          </div>
+          <InstallSummary install={state.install} />
+          <div className="d-letter-acts">
+            <PrimaryButton onClick={onContinue}>Continue</PrimaryButton>
+            <Button variant="ghost" onClick={chooseFolder}>
+              Choose another folder…
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {looking && !report && state.kind !== "ok" && (
+        <p className="d-letter-status">
+          <LiveDot /> Looking for World of Warcraft…
+        </p>
+      )}
+      {detectError && !detecting && (
+        <p className="d-letter-bad">
+          Looking for the game didn't work, but you can still choose the folder yourself.{" "}
+          <span className="d-dim">({detectError})</span>
+        </p>
+      )}
+      {error && <p className="d-letter-bad">{error}</p>}
+
+      {report?.candidates.map((c) => (
+        <div key={c.install.root} className="d-found">
+          <div className="d-letter-label">Found World of Warcraft</div>
+          <div className="d-found-path">
+            <span className="d-mono">{c.install.root}</span>
+            <span className="d-grow" />
+            <span className="d-dim">{SOURCE[c.source]}</span>
+          </div>
+          <InstallSummary install={c.install} />
+          <div className="d-letter-acts">
+            <PrimaryButton onClick={() => use(c.install.root, c.install.active)}>Use this folder</PrimaryButton>
+            <Button variant="ghost" onClick={chooseFolder}>
+              Choose another folder…
+            </Button>
+          </div>
+        </div>
+      ))}
+
+      {notFound && (
+        <div className="d-found">
+          <div className="d-letter-head">We couldn't find World of Warcraft</div>
+          <p className="d-muted">That's fine; point us at it and we'll take it from there.</p>
+          {looked.length > 0 && (
+            <p className="d-dim" title={looked.map((l) => l.path).join("\n")}>
+              Looked in: {lookedInSummary(looked)}.
+            </p>
+          )}
+          <div className="d-hints">
+            <div><span className="d-mono">World of Warcraft\</span>the main folder</div>
+            <div><span className="d-mono">_classic_beta_\</span>the Forever folder</div>
+            <div><span className="d-mono">WTF\</span>even just this works</div>
+          </div>
+          <div className="d-letter-acts">
+            <PrimaryButton onClick={chooseFolder}>Choose folder…</PrimaryButton>
+            <Button variant="ghost" onClick={detect} disabled={detecting}>
+              {detecting ? "Looking…" : "Look again"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <p className="d-letter-note">We only read here. Nothing is changed until you ask.</p>
+    </>
+  );
+}
+
 /** Finding the game: the current folder, detection with sources, the
- *  picker, and where we looked when nothing was found. */
+ *  picker, and where we looked when nothing was found. (First run is
+ *  setup's step 1, `FindGame`, shown by `Onboarding`.) */
 export function GameFolder({ install: inst }: { install: ReturnType<typeof useInstall> }) {
   const { state, report, detecting, detectError, detect, choose, pick } = inst;
   const [error, setError] = useState<string | null>(null);
@@ -104,112 +236,12 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
     }
   };
 
-  // First run: look straight away rather than show an empty screen.
-  const autoDetected = useRef(false);
-  useEffect(() => {
-    if (state.kind === "none" && !autoDetected.current) {
-      autoDetected.current = true;
-      detect();
-    }
-  }, [state.kind, detect]);
-
   const looked = report?.looked_in ?? [];
   // A failed search leaves the same way out as finding nothing: pick by hand.
   const notFound =
     state.kind !== "ok" &&
     ((report != null && report.candidates.length === 0) || (detectError != null && !detecting));
   const looking = detecting || (state.kind === "none" && !report && !detectError);
-
-  // First run: a letter on parchment (onboarding.html), with the actions inside it.
-  if (state.kind === "none") {
-    return (
-      <Page>
-        <div className="d-letter-wrap">
-          <ol className="d-stepper" aria-label="Setup">
-            <li className="on">
-              <span>1</span>Find the game
-            </li>
-            <li>
-              <span>2</span>First backup
-            </li>
-            <li>
-              <span>3</span>Companion addon <i>optional</i>
-            </li>
-          </ol>
-          <Record>
-            <div className="d-letter">
-              <h1>Well met.</h1>
-              <p className="d-muted">
-                Forever Buddy keeps your WoW: Forever settings backed up, and later keeps a ledger
-                of your characters. First, let's find the game.
-              </p>
-
-              {looking && !report && (
-                <p className="d-letter-status">
-                  <LiveDot /> Looking for World of Warcraft…
-                </p>
-              )}
-              {detectError && !detecting && (
-                <p className="d-letter-bad">
-                  Looking for the game didn't work, but you can still choose the folder yourself.{" "}
-                  <span className="d-dim">({detectError})</span>
-                </p>
-              )}
-              {error && <p className="d-letter-bad">{error}</p>}
-
-              {report?.candidates.map((c) => (
-                <div key={c.install.root} className="d-found">
-                  <div className="d-letter-label">Found World of Warcraft</div>
-                  <div className="d-found-path">
-                    <span className="d-mono">{c.install.root}</span>
-                    <span className="d-grow" />
-                    <span className="d-dim">{SOURCE[c.source]}</span>
-                  </div>
-                  <InstallSummary install={c.install} />
-                  <div className="d-letter-acts">
-                    <PrimaryButton onClick={() => use(c.install.root, c.install.active)}>
-                      Use this folder
-                    </PrimaryButton>
-                    <Button variant="ghost" onClick={chooseFolder}>
-                      Choose another folder…
-                    </Button>
-                  </div>
-                </div>
-              ))}
-
-              {notFound && (
-                <div className="d-found">
-                  <div className="d-letter-head">We couldn't find World of Warcraft</div>
-                  <p className="d-muted">That's fine; point us at it and we'll take it from there.</p>
-                  {looked.length > 0 && (
-                    <p className="d-dim" title={looked.map((l) => l.path).join("\n")}>
-                      Looked in: {lookedInSummary(looked)}.
-                    </p>
-                  )}
-                  <div className="d-hints">
-                    <div><span className="d-mono">World of Warcraft\</span>the main folder</div>
-                    <div><span className="d-mono">_classic_beta_\</span>the Forever folder</div>
-                    <div><span className="d-mono">WTF\</span>even just this works</div>
-                  </div>
-                  <div className="d-letter-acts">
-                    <PrimaryButton onClick={chooseFolder}>Choose folder…</PrimaryButton>
-                    <Button variant="ghost" onClick={detect} disabled={detecting}>
-                      {detecting ? "Looking…" : "Look again"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <p className="d-letter-note">We only read here. Nothing is changed until you ask.</p>
-            </div>
-          </Record>
-          <p className="d-dim d-letter-after">
-            Next, Forever Buddy takes a first backup of your settings, before anything else happens.
-          </p>
-        </div>
-      </Page>
-    );
-  }
 
   return (
     <Page>

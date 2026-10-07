@@ -101,7 +101,11 @@ export function installMockIpc(): void {
   const s = new URLSearchParams(location.search).get("mock") ?? "dashboard";
   const now = Date.now();
   const iso = (minsAgo: number) => new Date(now - minsAgo * 60000).toISOString();
-  const running = s === "dashboard" || s === "noaddon" || s === "dashboard-missing";
+  // O1 setup at a saved step: "setup-backup" (no backup yet, so it takes
+  // one), "setup-addon", "setup-addon-running", "setup-extras" (Finish
+  // there shows the summary).
+  const setup = s.startsWith("setup-") ? s.slice("setup-".length) : null;
+  const running = s === "dashboard" || s === "noaddon" || s === "dashboard-missing" || s === "setup-addon-running";
   // No ForeverBuddy data yet: the v0.1 screens.
   const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
   // No Auctionator prices on this machine: no AH screen, no worth (F5d).
@@ -643,6 +647,8 @@ export function installMockIpc(): void {
     sum("S5", "game_exit", "Auto", 60 * 52),
     sum("S6", "scheduled", "Auto", 60 * 74),
   ];
+  // O1: no backups yet, so setup's step 2 takes the first one.
+  if (s === "setup-backup") list.length = 0;
 
   const cats = (n: number): CategoryNode[] => [
     { category: "BindingsMacros", totals: { files: 2, bytes: 3.1e4 } },
@@ -794,7 +800,7 @@ export function installMockIpc(): void {
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
     agent_access: ["settings-agents", "approvals", "approvals-empty", "lists-proposal"].includes(s),
-    ui: {} as Record<string, string>,
+    ui: (setup ? { "onboarding.step": setup === "addon-running" ? "addon" : setup } : {}) as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
     ["curseforge", s.startsWith("settings")],
@@ -1233,7 +1239,12 @@ export function installMockIpc(): void {
             skipped: 0,
           }
         : null,
-    backup_create: () => sum("S0", "manual", "Manual", 0),
+    backup_create: () => {
+      const made = sum("S0", "manual", "Manual", 0);
+      // O1: the first backup lands in the (empty) list.
+      if (s === "setup-backup") list.unshift(made);
+      return made;
+    },
     // In backups-corrupt only the newest snapshot (S1) is damaged. In
     // backups-locked, checking again finds the lock released.
     backup_verify: ({ id }): VerifyReport => {

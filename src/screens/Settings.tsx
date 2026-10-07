@@ -120,9 +120,12 @@ function AhNote({ status }: { status: AhStatus | null }) {
 export function Settings({
   install,
   onOpenGameFolder,
+  onRunSetup,
 }: {
   install: ReturnType<typeof useInstall>;
   onOpenGameFolder: () => void;
+  /** O1: reopens setup at step 1 (IMPLEMENTING §20). */
+  onRunSetup: () => void;
 }) {
   const { settings, error, update, reload } = useSettings();
   const { storage, refresh: refreshBackups } = useBackups();
@@ -188,6 +191,15 @@ export function Settings({
               onChange={(v) => update({ item_icons: v })}
             />
             <GameDataCache enabled={settings?.item_icons ?? false} />
+            <div className="st-set">
+              <div className="t">Setup</div>
+              <div className="d">The first-launch guide: game folder, first backup, the addon and the extras.</div>
+              <div className="ctl">
+                <Button variant="ghost" onClick={onRunSetup}>
+                  Run setup again
+                </Button>
+              </div>
+            </div>
           </Panel>
 
           <Panel>

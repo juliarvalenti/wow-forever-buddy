@@ -24,6 +24,7 @@ import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
+import { useSettings } from "@/hooks/useSettings";
 import { duration } from "@/lib/format";
 import { Addons } from "@/screens/Addons";
 import { Adventure } from "@/screens/Adventure";
@@ -37,6 +38,7 @@ import { Ledger } from "@/screens/Ledger";
 import { Lists } from "@/screens/Lists";
 import { Macros } from "@/screens/Macros";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
+import { Onboarding, SETUP_KEY, type SetupStep, STEPS } from "@/screens/Onboarding";
 import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
 
@@ -52,7 +54,8 @@ type Screen =
   | "game"
   | "addons"
   | "macros"
-  | "settings";
+  | "settings"
+  | "setup";
 
 type NavRow =
   | { group: string }
@@ -112,10 +115,9 @@ function Shell() {
   useEffect(() => {
     if (!recovery.pending) setDeferred(false);
   }, [recovery.pending]);
-  // First run: no game folder yet, so start there.
-  useEffect(() => {
-    if (install.state.kind === "none") setScreen("game");
-  }, [install.state.kind]);
+  // Setup reopened from Settings › Game (O1).
+  const [rerun, setRerun] = useState(false);
+  const { settings, update: updateSettings } = useSettings();
   // Keep "session 1h 42m" current.
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 60_000);
@@ -148,7 +150,19 @@ function Shell() {
   // Until a game folder has been set at all, that's the screen.
   // (Settings stays reachable: keys and backup options don't need one.)
   const shown: Screen = screen === "ah" && !hasPrices ? "dashboard" : screen;
-  const current: Screen = folderOk || folderMissing != null || shown === "settings" ? shown : "game";
+  // O1 setup (IMPLEMENTING §20): on first run (no folder yet), when a
+  // restart finds it unfinished, or reopened from Settings › Game. Existing
+  // users have no saved step and a folder, so they never see it uninvited.
+  const saved = settings?.ui?.[SETUP_KEY];
+  const unfinished = folderOk && saved != null && saved !== "done" && (STEPS as readonly string[]).includes(saved);
+  const setupOpen = install.state.kind === "none" || rerun || unfinished;
+  const setupStart: SetupStep = install.state.kind === "none" || rerun || !unfinished ? "find" : (saved as SetupStep);
+  const current: Screen =
+    setupOpen && shown !== "settings"
+      ? "setup"
+      : folderOk || folderMissing != null || shown === "settings"
+        ? shown
+        : "game";
 
   return (
     <div className="d-app">
@@ -177,7 +191,12 @@ function Shell() {
                 key={row.id}
                 title={row.label}
                 aria-current={current === row.id ? "page" : undefined}
-                onClick={() => (row.id === "adventures" ? openAdventure(null) : setScreen(row.id))}
+                onClick={() => {
+                  // Leaving a reopened setup by the sidebar closes it.
+                  setRerun(false);
+                  if (row.id === "adventures") openAdventure(null);
+                  else setScreen(row.id);
+                }}
               >
                 <Icon size={16} aria-hidden />
                 <span className="lbl">{row.label}</span>
@@ -244,6 +263,17 @@ function Shell() {
             <RecoveryBanner status={recovery.status} onReview={() => setDeferred(false)} />
           </div>
         )}
+        {current === "setup" && (
+          <Onboarding
+            key={setupStart}
+            install={install}
+            start={setupStart}
+            onFinish={() => {
+              setRerun(false);
+              setScreen("dashboard");
+            }}
+          />
+        )}
         {current === "dashboard" && (
           <Dashboard
             game={game}
@@ -292,7 +322,14 @@ function Shell() {
           />
         )}
         {current === "settings" && (
-          <SettingsScreen install={install} onOpenGameFolder={() => setScreen("game")} />
+          <SettingsScreen
+            install={install}
+            onOpenGameFolder={() => setScreen("game")}
+            onRunSetup={() => {
+              void updateSettings({ ui: { [SETUP_KEY]: "find" } });
+              setRerun(true);
+            }}
+          />
         )}
       </main>
 

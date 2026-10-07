@@ -35,6 +35,13 @@ SCENARIOS=(
   "backups-corrupt|backups-corrupt|$NAV;$OPEN;$CONFIRM;click:css=.d-dialog button >> text=Restore;wait:text=This snapshot is damaged|backups-corrupt"
   "backups-error|backup-failed|$NAV|backups-error"
   "onboarding-notfound|nogame|wait:text=couldn't find World of Warcraft|onboarding-notfound"
+  # O1: setup's later steps (onboarding.html ?state=backup|addon|addon-running|extras|done).
+  # (No stored shots of these yet: they sit next to step 1.)
+  "setup-backup|setup-backup|wait:text=files copied|onboarding-found"
+  "setup-addon|setup-addon|wait:text=The companion addon|onboarding-found"
+  "setup-addon-running|setup-addon-running|wait:text=This step waits for you|onboarding-found"
+  "setup-extras|setup-extras|wait:text=Two extras|onboarding-found"
+  "setup-done|setup-extras|wait:text=Two extras;click:Finish;wait:text=Open the dashboard|onboarding-found"
   "startup-error|startup-error||startup-error"
   "characters|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card|characters"
   "ledger|dashboard|click:css=nav button[title=\"Ledger\"];wait:css=.d-worth|gold"
