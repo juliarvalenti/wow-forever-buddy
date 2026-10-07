@@ -1,6 +1,9 @@
 //! The Briefing slot (B1, INGAME §9): what the login line needs from the
 //! app, since the game can't see other characters. Which alts have letters
 //! waiting (how many, the soonest expiry), and each character's login note.
+//! Also, for the entrance line (L2, INGAME §13), each character's saved
+//! instances that haven't reset yet: `lockouts = { { name, surname, class,
+//! saves = { "Molten Core", "40 Player", resetAt, … } } }`.
 //!
 //! The only strings are the account's own character names and the notes
 //! Julia wrote (or approved); the addon escapes `|` at display. Mail is
@@ -30,7 +33,7 @@ struct Who {
 }
 
 pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
-    let (who, mail) = db.with_conn(|c| {
+    let (who, mail, saves) = db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT id, name, coalesce(surname, ''), upper(coalesce(class, ''))
              FROM characters WHERE flavor = ?1",
@@ -61,7 +64,34 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
             .collect::<Result<_, _>>()?;
         // Soonest expiry first (none last), then the most letters.
         mail.sort_by_key(|&(id, n, exp)| (exp.is_none(), exp, -n, id));
-        Ok((who, mail))
+        // Saves that haven't reset by now (an expired one is already gone).
+        let mut stmt = c.prepare(
+            "SELECT l.character_id, l.name, l.difficulty, l.reset_at
+             FROM lockouts l JOIN characters ch ON ch.id = l.character_id
+             WHERE ch.flavor = ?1 AND l.reset_at > ?2
+             ORDER BY l.character_id, l.name, l.difficulty",
+        )?;
+        let mut saves: Vec<(i64, Vec<LuaValue>)> = Vec::new();
+        for row in stmt.query_map(rusqlite::params![flavor, stamp], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })? {
+            let (id, name, difficulty, reset) = row?;
+            let entry = [
+                LuaValue::str(name),
+                LuaValue::str(difficulty),
+                LuaValue::Int(reset),
+            ];
+            match saves.last_mut() {
+                Some((last, flat)) if *last == id => flat.extend(entry),
+                _ => saves.push((id, entry.into())),
+            }
+        }
+        Ok((who, mail, saves))
     })?;
 
     let person = |id: i64, extra: Vec<(LuaValue, LuaValue)>| -> Option<LuaValue> {
@@ -99,9 +129,16 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
         })
         .collect();
 
+    let lockout_rows: Vec<LuaValue> = saves
+        .into_iter()
+        .filter_map(|(id, flat)| person(id, vec![(key("saves"), table(flat, Vec::new()))]))
+        .collect();
+
     let mut body = header(stamp);
     body.hash.push((key("mail"), table(mail_rows, Vec::new())));
     body.hash.push((key("notes"), table(note_rows, Vec::new())));
+    body.hash
+        .push((key("lockouts"), table(lockout_rows, Vec::new())));
     render(Slot::Briefing, body)
 }
 
@@ -190,5 +227,50 @@ mod tests {
             n.get("text").and_then(|v| v.as_bytes()),
             Some(&b"Train poisons"[..])
         );
+    }
+
+    /// L2: each character's saves that haven't reset, grouped; an expired
+    /// one is left out, and so is a character with none.
+    #[test]
+    fn lockouts_not_yet_reset() {
+        let db = Db::open_in_memory().unwrap();
+        db.with_conn(|c| {
+            for name in ["Velyra", "Kaelor"] {
+                c.execute(
+                    "INSERT INTO characters (flavor, account, group_dir, char_dir, name, class,
+                                             first_seen, last_seen)
+                     VALUES (?1, 'A', '70', ?2, ?2, 'DRUID', 0, 0)",
+                    params![FLAVOR, name],
+                )?;
+            }
+            for (character, name, difficulty, reset) in [
+                (1, "Molten Core", "40 Player", 9_000),
+                (1, "Onyxia's Lair", "40 Player", 9_000),
+                (2, "Molten Core", "40 Player", 4_000), // reset already
+            ] {
+                c.execute(
+                    "INSERT INTO lockouts (character_id, name, difficulty, reset_at, raid, as_of)
+                     VALUES (?1, ?2, ?3, ?4, 1, 1)",
+                    params![character, name, difficulty, reset],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        let bytes = build(&db, FLAVOR, 5_000).unwrap();
+        let LuaValue::Table(t) = check(Slot::Briefing, &bytes).unwrap() else {
+            unreachable!()
+        };
+        let lockouts = t.get("lockouts").unwrap().as_table().unwrap();
+        assert_eq!(lockouts.array.len(), 1, "Kaelor's has reset");
+        let velyra = lockouts.array[0].as_table().unwrap();
+        assert_eq!(
+            velyra.get("name").and_then(|v| v.as_bytes()),
+            Some(&b"Velyra"[..])
+        );
+        let saves = velyra.get("saves").unwrap().as_table().unwrap();
+        assert_eq!(saves.array.len(), 6, "two saves, three values each");
+        assert_eq!(saves.array[0].as_bytes(), Some(&b"Molten Core"[..]));
+        assert_eq!(saves.array[2], LuaValue::Int(9_000));
     }
 }
