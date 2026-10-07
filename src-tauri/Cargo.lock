@@ -5439,6 +5439,7 @@ dependencies = [
  "blake3",
  "chrono",
  "ciborium",
+ "dirs",
  "dunce",
  "flate2",
  "full_moon",

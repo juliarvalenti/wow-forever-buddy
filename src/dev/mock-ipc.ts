@@ -459,6 +459,8 @@ export function installMockIpc(): void {
         : { root: "C:\\Program Files (x86)\\World of Warcraft", flavor: "_classic_beta_", links: [] },
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
+    // P2a: off by default ("settings-agents": on, with some activity).
+    agent_access: s === "settings-agents",
     ui: {} as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
@@ -679,8 +681,13 @@ export function installMockIpc(): void {
       const b = (patch as { backup?: Record<string, unknown> }).backup ?? {};
       for (const [k, v] of Object.entries(b))
         if (v !== null || k === "location") Object.assign(settings.backup, { [k]: v });
-      const p = patch as { item_icons?: boolean | null; ui?: Record<string, string | null> };
+      const p = patch as {
+        item_icons?: boolean | null;
+        agent_access?: boolean | null;
+        ui?: Record<string, string | null>;
+      };
       if (p.item_icons != null) settings.item_icons = p.item_icons;
+      if (p.agent_access != null) settings.agent_access = p.agent_access;
       for (const [k, v] of Object.entries(p.ui ?? {}))
         if (v === null) delete settings.ui[k];
         else settings.ui[k] = v;
@@ -702,6 +709,18 @@ export function installMockIpc(): void {
       secrets.delete(id as IntegrationId);
       return null;
     },
+    agent_status: () => ({
+      command: "C:\\Program Files\\WoW Forever Buddy\\wow-forever-buddy.exe",
+      flag: "--mcp",
+      activity:
+        s === "settings-agents"
+          ? [
+              { at: new Date(Date.now() - 2 * 60_000).toISOString(), client: "Claude Desktop", tool: "get_quests", ok: true },
+              { at: new Date(Date.now() - 3 * 60_000).toISOString(), client: "Claude Desktop", tool: "list_characters", ok: true },
+              { at: new Date(Date.now() - 26 * 3600_000).toISOString(), client: "claude-code", tool: "get_character", ok: false },
+            ]
+          : [],
+    }),
     app_info: () => ({
       version: "0.2.0",
       paths: {

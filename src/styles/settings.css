@@ -40,6 +40,19 @@
 .st-moving { display: grid; grid-template-columns: minmax(60px, 1fr) auto; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; color: var(--ash); }
 .st-locked { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--warn); }
 
+/* Settings › Agents (P2a): config to paste, and the recent calls */
+.st-code { margin: 6px 0 0; padding: 8px 10px; border-radius: var(--r); font: 11px/1.45 ui-monospace, Consolas, monospace;
+  color: #cdbfa9; white-space: pre-wrap; word-break: break-all;
+  background: rgba(0, 0, 0, .28); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .55), 0 1px 0 rgba(255, 255, 255, .04); }
+.st-activity { list-style: none; display: grid; gap: 3px; margin: 6px 0 0; padding: 0; font-size: 11.5px; }
+.st-activity li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; color: var(--chalk); }
+.st-activity li span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.st-codebox { position: relative; }
+.st-codebox .st-code { padding-right: 64px; }
+.st-codebox > button { position: absolute; top: 4px; right: 4px; height: 22px; padding: 0 8px; font-size: 11px; }
+.st-activity .tool { color: var(--soot); }
+.st-activity li.refused { color: var(--soot); }
+
 .st-keep { list-style: none; display: grid; gap: 4px; margin: 6px 0 10px; padding: 0; font-size: 12px; }
 .st-keep li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; }
 .st-keep span { color: var(--soot); }
