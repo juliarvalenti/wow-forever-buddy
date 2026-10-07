@@ -863,6 +863,17 @@ export type BackupSettings = {
 	schedule_hours?: number,
 };
 
+/**  "Bag marks for Thrandor": the same rows the panel shows, with reasons. */
+export type BagMarksView = {
+	character_id: number,
+	character: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	rows: Marked[],
+	/**  Items the character no longer holds: left out when approved. */
+	gone: number[],
+};
+
 export type BagView = {
 	container: number,
 	name: string | null,
@@ -1785,6 +1796,8 @@ export type Proposal = {
 	note: NoteView | null,
 	plan: PlanView | null,
 	list: ListView | null,
+	/**  "Bag marks for Thrandor" (B3b). */
+	bags: BagMarksView | null,
 };
 
 /**  What a prune did. */

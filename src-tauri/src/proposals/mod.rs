@@ -10,6 +10,7 @@
 //! for a quest plan (`plan`), `lists::create_list` and `add_item` for a
 //! list change (`list`).
 
+pub mod bags;
 pub mod inbox;
 pub mod list;
 pub mod plan;
@@ -36,6 +37,7 @@ const DECIDED_DAYS: i64 = 30;
 pub const LOGIN_NOTE: &str = "login_note";
 pub const QUEST_PLAN: &str = "quest_plan";
 pub const LIST: &str = "list";
+pub const BAG_MARKS: &str = "bag_marks";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -94,6 +96,8 @@ pub struct Proposal {
     pub note: Option<NoteView>,
     pub plan: Option<plan::PlanView>,
     pub list: Option<list::ListView>,
+    /// "Bag marks for Thrandor" (B3b).
+    pub bags: Option<bags::BagMarksView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -331,6 +335,14 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                     let body = list::check(db, flavor, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
+                BAG_MARKS => {
+                    let p: bags::BagProposal =
+                        serde_json::from_value(f.body.clone()).map_err(|_| {
+                            "the bag marks aren't in the form this version reads".to_string()
+                        })?;
+                    let body = bags::check(db, flavor, &p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
                 // In plain words, never the kind id (IMPLEMENTING §17).
                 _ => Err("This kind of suggestion can't be applied yet.".into()),
             }
@@ -465,6 +477,10 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         Some(b) => Some(list::view(db, flavor, &b)?),
         None => None,
     };
+    let bags = match body(&s, BAG_MARKS) {
+        Some(b) => Some(bags::view(db, &b)?),
+        None => None,
+    };
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
@@ -477,6 +493,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         note,
         plan,
         list,
+        bags,
     })
 }
 
@@ -557,6 +574,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
         LIST => {
             let b = body(&s, LIST).ok_or_else(unreadable)?;
             list::apply(db, flavor, &b, &s.producer)?;
+        }
+        BAG_MARKS => {
+            let b = body(&s, BAG_MARKS).ok_or_else(unreadable)?;
+            bags::apply(db, &b, &s.producer)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(

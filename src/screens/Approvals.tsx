@@ -1,5 +1,6 @@
-import { AlertTriangle, Check, FileText, Lock, Map as MapIcon, ShoppingBag } from "lucide-react";
-import type { Decision, ListView, LoginNote, NoteView, PlanView, Proposal, Step } from "@/lib/bindings";
+import { AlertTriangle, Backpack, Check, FileText, Lock, Map as MapIcon, ShoppingBag } from "lucide-react";
+import type { BagMarksView, Decision, ListView, LoginNote, NoteView, PlanView, Proposal, Step } from "@/lib/bindings";
+import { MarkTag } from "@/screens/BagCleanup";
 import { Button, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
 import { useApprovals } from "@/hooks/useApprovals";
 import { useSettings } from "@/hooks/useSettings";
@@ -22,9 +23,14 @@ const stamp = (iso: string) =>
 const timing = (n: { once: boolean; until: string | null }) =>
   n.once ? "next login" : n.until ? `until ${day(n.until)}` : "";
 
-const KIND: Record<string, string> = { login_note: "Login note", quest_plan: "Quest plan", list: "List change" };
+const KIND: Record<string, string> = {
+  login_note: "Login note",
+  quest_plan: "Quest plan",
+  list: "List change",
+  bag_marks: "Bag marks",
+};
 
-function Who({ n }: { n: NoteView | PlanView }) {
+function Who({ n }: { n: NoteView | PlanView | BagMarksView }) {
   return (
     <span className="ch-cc" style={classStyle({ class: n.class })}>
       {n.character}
@@ -34,7 +40,7 @@ function Who({ n }: { n: NoteView | PlanView }) {
 
 function Title({ p }: { p: Proposal }) {
   const kind = KIND[p.kind] ?? "Suggestion";
-  const who = p.note ?? p.plan;
+  const who = p.note ?? p.plan ?? p.bags;
   if (who)
     return (
       <>
@@ -126,6 +132,40 @@ function ListPreview({ v }: { v: ListView }) {
   );
 }
 
+/** B3b: the marks as the Bag cleanup panel will show them, with reasons. */
+function BagPreview({ v }: { v: BagMarksView }) {
+  return (
+    <div className="ap-cmp one">
+      <div className="ap-pv new">
+        <h3>Proposed · {plural(v.rows.length, "mark", "marks")}</h3>
+        <table className="ap-items">
+          <tbody>
+            {v.rows.map((m) => {
+              const q = m.quality != null ? `ch-q${m.quality}` : "";
+              const gone = v.gone.includes(m.item_id);
+              return (
+                <tr key={m.item_id}>
+                  <td>
+                    <div className="ap-an">
+                      <span className={`ch-ico ${q}`} aria-hidden>
+                        <b>{m.name.slice(0, 1)}</b>
+                        <ItemIcon id={m.icon} />
+                      </span>
+                      <span className={q}>{m.name}</span>
+                    </div>
+                  </td>
+                  <td>{m.count > 1 ? `× ${m.count}` : ""}</td>
+                  <td className="chg">{gone ? "no longer held" : <MarkTag mark={m} />}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /** Not part of Approve all: a note to pick for, or a list that's gone. */
 const needsYou = (p: Proposal) => (p.note?.replaces?.conflict ?? false) || (p.list?.gone ?? false);
 
@@ -157,7 +197,15 @@ function Waiting({
     <div className="ap-prop">
       <div className="ap-top">
         <span className="ap-kind" aria-hidden>
-          {p.plan ? <MapIcon size={15} /> : p.list ? <ShoppingBag size={15} /> : <FileText size={15} />}
+          {p.plan ? (
+            <MapIcon size={15} />
+          ) : p.list ? (
+            <ShoppingBag size={15} />
+          ) : p.bags ? (
+            <Backpack size={15} />
+          ) : (
+            <FileText size={15} />
+          )}
         </span>
         <div className="ap-t">
           <b>
@@ -231,6 +279,7 @@ function Waiting({
       )}
       {p.plan && <PlanPreview v={p.plan} />}
       {p.list && <ListPreview v={p.list} />}
+      {p.bags && <BagPreview v={p.bags} />}
     </div>
   );
 }

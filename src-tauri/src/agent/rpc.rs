@@ -314,7 +314,8 @@ mod tests {
             .enumerate()
             .map(|(i, t)| call(i as u32, t["name"].as_str().unwrap()))
             .collect();
-        let out = run(&p, &lines);
+        // In runs of 10, under the 10-calls-a-second cap.
+        let out: Vec<Value> = lines.chunks(10).flat_map(|batch| run(&p, batch)).collect();
         std::fs::create_dir_all(p.settings.parent().unwrap()).unwrap();
         std::fs::write(&p.settings, r#"{"agent_access": false}"#).unwrap();
         lines.truncate(1);
