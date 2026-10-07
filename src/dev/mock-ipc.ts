@@ -84,6 +84,7 @@ export const SCENARIOS = [
   "ah-empty", // no Auctionator prices yet: the AH is hidden, Settings says why (F5d)
   "ah-unreadable", // an Auctionator file this version can't read: hidden, Settings says so
   "lists-empty", // B2: no lists yet (the Lists screen has three in every other scenario)
+  "lists-proposal", // P2: an agent's change to Tailoring 300, in place (lists.html?state=proposal)
   "approvals", // P2b: a new note, a conflict, and the Decided list
   "approvals-empty", // agent access on, nothing waiting
   "approvals-off", // agent access off
@@ -173,9 +174,9 @@ export function installMockIpc(): void {
     delivery: { state: "synced", since: iso(60 * 25) },
   };
   const approvals: Approvals = {
-    waiting:
-      s === "approvals"
-        ? [
+    // "lists-proposal": only the list change, shown in place on Lists (§15).
+    waiting: (s === "approvals" || s === "lists-proposal"
+      ? [
             proposal(3, 4, "Claude Desktop", {
               kind: "quest_plan",
               reason: "Felwood is nearly done; Winterspring next for the Everlook quests at 56.",
@@ -197,7 +198,7 @@ export function installMockIpc(): void {
               kind: "list",
               reason: "for the Mooncloth Robe at 300",
               list: {
-                list_id: 2,
+                list_id: 1,
                 name: "Tailoring 300",
                 for_character: null,
                 gone: false,
@@ -214,7 +215,8 @@ export function installMockIpc(): void {
               },
             }),
           ]
-        : [],
+      : []
+    ).filter((p) => s !== "lists-proposal" || p.kind === "list"),
     decided:
       s === "approvals"
         ? [

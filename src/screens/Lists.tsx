@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
-import type { CharacterCard, Delivery, List, ListItem, SeenItem } from "@/lib/bindings";
+import type {
+  CharacterCard,
+  Decision,
+  Delivery,
+  List,
+  ListChange,
+  ListItem,
+  Proposal,
+  SeenItem,
+} from "@/lib/bindings";
 import { commands } from "@/lib/bindings";
 import {
   Button,
@@ -15,6 +24,7 @@ import {
   PrimaryButton,
   StatusDot,
 } from "@/components/d";
+import { useApprovals } from "@/hooks/useApprovals";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useLists } from "@/hooks/useLists";
 import { useNotes } from "@/hooks/useNotes";
@@ -69,11 +79,19 @@ function sent(d: Delivery): { live: boolean; text: string; hint?: string } {
   }
 }
 
-export function Lists() {
+export function Lists({ focus, onReview }: { focus?: number | null; onReview: () => void }) {
   const lists = useLists();
+  // P2 (§15): agents' list proposals also show in place. Same queue entries
+  // as Approvals; new lists stay there until approved.
+  const { approvals, decide } = useApprovals();
+  const proposalsFor = (id: number) =>
+    (approvals?.waiting ?? []).filter((p) => p.list?.list_id === id && !p.list.gone);
   const { overview } = useCharacters();
   const characters = overview?.characters ?? [];
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(focus ?? null);
+  useEffect(() => {
+    if (focus != null) setSelected(focus);
+  }, [focus]);
   const [editing, setEditing] = useState<List | "new" | null>(null);
 
   const { notes } = useNotes();
@@ -116,14 +134,21 @@ export function Lists() {
           <Panel>
             <PanelHeader title="Your lists" />
             <ul className="ls-ll">
-              {all.map((l) => (
-                <li key={l.id}>
-                  <button aria-current={l.id === list?.id ? "true" : undefined} onClick={() => setSelected(l.id)}>
-                    <span className="nm">{l.name}</span>
-                    <span className="n">{plural(l.items.length, "item", "items")}</span>
-                  </button>
-                </li>
-              ))}
+              {all.map((l) => {
+                const pending = proposalsFor(l.id).length;
+                return (
+                  <li key={l.id}>
+                    <button aria-current={l.id === list?.id ? "true" : undefined} onClick={() => setSelected(l.id)}>
+                      <span className="nm">{l.name}</span>
+                      {pending > 0 ? (
+                        <span className="pend">{plural(pending, "proposal", "proposals")}</span>
+                      ) : (
+                        <span className="n">{plural(l.items.length, "item", "items")}</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </Panel>
 
@@ -134,6 +159,12 @@ export function Lists() {
               scanAt={lists.view.scan_at}
               onEdit={() => setEditing(list)}
               lists={lists}
+              proposals={proposalsFor(list.id)}
+              onDecide={async (ids, d) => {
+                await decide(ids, d);
+                lists.reload();
+              }}
+              onReview={onReview}
             />
           )}
 
@@ -209,17 +240,56 @@ function SentRow({
   );
 }
 
+/** An agent's proposed item: ember-tinted, with who proposed it and why. */
+function ProposedRow({ p, c, item }: { p: Proposal; c: ListChange; item?: ListItem }) {
+  const q = c.quality != null ? `ch-q${c.quality}` : "";
+  return (
+    <tr className="prop">
+      <td>
+        <div className="ls-an">
+          <span className={`ch-ico ${q}`} aria-hidden>
+            <b>{c.name.slice(0, 1)}</b>
+            <ItemIcon id={c.icon_file_id} />
+          </span>
+          <span className={`nm ${q}`}>{c.name}</span>
+        </div>
+      </td>
+      <td className="num need">
+        {c.was != null && <s className="was">{c.was}</s>}
+        {c.need}
+      </td>
+      <td className="have">
+        {item ? item.have.toLocaleString() : ""}
+        <small className="chg">
+          proposed · from "{p.producer}"{p.reason ? `: "${p.reason}"` : ""}
+        </small>
+      </td>
+      <td className="num">{item?.price != null ? price(item.price) : ""}</td>
+      <td />
+    </tr>
+  );
+}
+
 function ListTable({
   list,
   scanAt,
   onEdit,
   lists,
+  proposals,
+  onDecide,
+  onReview,
 }: {
   list: List;
   scanAt: string | null;
   onEdit: () => void;
   lists: ReturnType<typeof useLists>;
+  proposals: Proposal[];
+  onDecide: (ids: number[], d: Decision) => Promise<void>;
+  onReview: () => void;
 }) {
+  const changes = proposals.flatMap((p) => (p.list?.changes ?? []).map((c) => ({ p, c })));
+  const ids = proposals.map((p) => p.id);
+  const producers = [...new Set(proposals.map((p) => p.producer))];
   const meta = [
     list.for_character ? (
       <span key="for">
@@ -259,9 +329,27 @@ function ListTable({
           {list.items.map((i) => (
             <Row key={i.id} item={i} list={list} lists={lists} />
           ))}
+          {changes.map(({ p, c }) => (
+            <ProposedRow key={`${p.id}-${c.item_id}`} p={p} c={c} item={list.items.find((i) => i.item_id === c.item_id)} />
+          ))}
           <AddRow listId={list.id} lists={lists} />
         </tbody>
       </table>
+      {changes.length > 0 && (
+        <div className="ls-applybar">
+          <span className="grow">
+            <b>{plural(changes.length, "proposed change", "proposed changes")}</b> from{" "}
+            {producers.map((p) => `"${p}"`).join(", ")}. Nothing changes until you apply it.{" "}
+            <button className="d-link" onClick={onReview}>
+              Review in Approvals
+            </button>
+          </span>
+          <Button variant="ghost" onClick={() => onDecide(ids, "decline")}>
+            Discard
+          </Button>
+          <PrimaryButton onClick={() => onDecide(ids, "approve")}>Apply</PrimaryButton>
+        </div>
+      )}
     </Panel>
   );
 }
