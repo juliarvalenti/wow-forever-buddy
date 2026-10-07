@@ -851,4 +851,38 @@ mod tests {
         let held = item.get("held").unwrap().as_table().unwrap();
         assert_eq!(held.array.len(), 10, "two holders, five numbers each");
     }
+
+    /// The harness's lists scenario: the addon's receipt for the Lists slot
+    /// comes back at logout, and "Sent to the game" reads it.
+    #[test]
+    fn the_receipt_comes_back() {
+        use crate::bridge::{delivery, Delivery, Slot};
+        use crate::ingest::{ingest_bytes, target_for};
+        let bytes = std::fs::read(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/addon/lists.lua"),
+        )
+        .unwrap();
+        let db = Db::open_in_memory().unwrap();
+        let t = target_for(
+            FLAVOR,
+            "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
+        )
+        .unwrap();
+        ingest_bytes(&db, &t, &bytes).unwrap();
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO bridge_slots (flavor, slot, stamp, written_at, bytes, status)
+                 VALUES (?1, 'Lists', 1790960000, '2026-10-01T00:00:00+00:00', 10, 'written')",
+                [FLAVOR],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let changed = "2026-09-30T00:00:00+00:00";
+        assert!(matches!(
+            delivery(&db, FLAVOR, Slot::Lists, None, changed, true).unwrap(),
+            Delivery::Synced { .. }
+        ));
+    }
 }
