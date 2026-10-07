@@ -60,12 +60,17 @@
   </header>
 
   <div class="toolbar">
-    <label class="field"><i data-i="search"></i><input id="q" placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite, ilvl>60"><kbd>Ctrl K</kbd></label>
+    <label class="field"><i data-i="search"></i><input id="q" placeholder="Search every satchel, bank and mailbox…  e.g. Runecloth, Arcanite"><kbd>Ctrl K</kbd></label>
     <div class="right">Sort <div class="seg"><button>Level</button><button class="on">Gold</button><button>Last seen</button></div></div>
   </div>
 
   <section class="panel results">
     <div class="ph"><h2>Runecloth</h2><span class="meta"><b style="color:var(--chalk-hi)">452</b> on 4 characters · ≈ <span class="coins"><span class="g">506</span></span> at last scan (3 days ago)</span></div>
+    <!-- TIP3 (b): filters, IMPLEMENTING §19 -->
+    <div class="filters" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px;color:var(--ash)">
+      <span>Quality</span><div class="seg"><button class="on">Any</button><button>Uncommon+</button><button>Rare+</button><button>Epic</button></div>
+      <span style="margin-left:8px">Item level at least</span><label class="field" style="width:64px;height:26px"><input placeholder="any" aria-label="Minimum item level"></label>
+    </div>
     <table class="grid">
       <thead><tr><th>Item</th><th>Character</th><th>Where</th><th class="r">Count</th><th class="r">Value</th></tr></thead>
       <tbody>
