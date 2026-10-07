@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game window · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* U1: the Forever Buddy window and minimap button, inside WoW. Blizzard templates only (INGAME §2), so the
+     drawing here is a stand-in for ButtonFrameTemplate + PanelTemplates tabs. ?tab=plan|lists|errands|cleanup|settings,
+     ?skin=classic. Rules: INGAME §17. */
+  :root { --gold: #ffd100; --white: #f1ece0; --grey: #8f8a7c; --dim: #a9a291; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: var(--white); font: 13px/1.4 "Friz Quadrata TT", Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; color: #d8cfc0; margin-bottom: 4px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 14px; }
+  .lede a { color: #ffb15c; }
+  .world { position: relative; height: 640px; max-width: 1100px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+
+  /* minimap + our button on its edge */
+  .mini { position: absolute; right: 22px; top: 22px; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, #4a5741, #222a20); box-shadow: 0 0 0 4px #4a4438, 0 0 0 5px #000; }
+  .mmb { position: absolute; right: 152px; top: 128px; width: 31px; height: 31px; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 45% 40%, #2b2620, #121010); box-shadow: 0 0 0 2px #8a7348, 0 0 0 3px #000, 0 2px 4px rgba(0,0,0,.6); }
+  .mmb svg { width: 19px; height: 19px; }
+  .mmtip { position: absolute; right: 190px; top: 120px; width: 230px; padding: 7px 9px; font-size: 11.5px; background: rgba(6,10,28,.94); border-radius: 3px; box-shadow: 0 0 0 1px #6c7a9a; }
+  .mmtip b { display: block; color: #fff; font-weight: 400; font-size: 12.5px; }
+  .mmtip span { display: block; color: var(--dim); }
+  .mmtip span em { color: #4ec9ff; font-style: normal; }
+
+  /* the window: ButtonFrameTemplate stand-in */
+  .win { position: absolute; left: 60px; top: 40px; width: 360px; }
+  .frame { background: rgba(10,10,12,.92); border-radius: 6px; box-shadow: 0 0 0 1px #4d4a44, 0 8px 22px rgba(0,0,0,.7); }
+  .classic .frame { border-radius: 8px; box-shadow: 0 0 0 2px #8a7a55, 0 0 0 4px #2b241a, 0 0 0 5px #a8956a, 0 8px 18px rgba(0,0,0,.7); }
+  .hd { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 56px; position: relative; background: linear-gradient(180deg, #2a2824, #1a1917); border-radius: 6px 6px 0 0; border-bottom: 1px solid #3a3731; min-height: 32px; }
+  .portrait { position: absolute; left: -8px; top: -10px; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 45% 40%, #2b2620, #0e0d0b); box-shadow: 0 0 0 3px #8a7348, 0 0 0 4px #000, 0 3px 8px rgba(0,0,0,.7); }
+  .portrait svg { width: 32px; height: 32px; }
+  .hd b { font-weight: 400; color: var(--gold); font-size: 13.5px; text-shadow: 0 1px 1px #000; }
+  .hd .x { margin-left: auto; width: 18px; height: 18px; display: grid; place-items: center; font: 13px sans-serif; color: #e2c46a; border-radius: 3px;
+    background: linear-gradient(180deg, #7a1a10, #3e0b06); box-shadow: inset 0 0 0 1px #b8913a; }
+  .body { padding: 10px 12px 8px; min-height: 330px; font-size: 12px; display: grid; align-content: start; gap: 6px; }
+  .sec { font-size: 11.5px; color: var(--gold); margin-top: 4px; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+  .row .r { font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .row small { grid-column: 1 / -1; color: var(--dim); font-size: 11px; margin-top: -2px; }
+  .row.done .t { color: var(--grey); text-decoration: line-through; }
+  .row.cur { box-shadow: inset 2px 0 0 var(--gold); padding-left: 6px; }
+  .here { color: var(--gold); }
+  .pal { color: #f48cba; } .dru { color: #ff7c0a; } .war { color: #c69b6d; } .pri { color: #fff; } .rog { color: #fff468; }
+  .q2 { color: #1eff00; } .q3 { color: #0070dd; } .q0 { color: #9d9d9d; }
+  .cb { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; align-items: start; }
+  .cb i { width: 14px; height: 14px; margin-top: 1px; border-radius: 2px; background: rgba(0,0,0,.6); box-shadow: inset 0 0 0 1px #8a8474; position: relative; }
+  .cb i.on::after { content: "✓"; position: absolute; left: 1px; top: -4px; font: 700 15px sans-serif; color: var(--gold); text-shadow: 0 1px 1px #000; }
+  .cb small { display: block; color: var(--dim); font-size: 11px; }
+  .gbtn { height: 22px; padding: 0 12px; font: 12px "Friz Quadrata TT", Georgia, serif; color: var(--gold); border-radius: 3px; border: 0;
+    background: linear-gradient(180deg, #9a2314, #4a0d07); box-shadow: inset 0 0 0 1px #c9a23a, inset 0 1px 0 rgba(255,255,255,.25); }
+  .gbtn.off { color: #8a8170; background: linear-gradient(180deg, #4a4540, #26231f); box-shadow: inset 0 0 0 1px #6a6358; }
+  .empty { color: var(--dim); text-align: center; padding: 40px 10px; }
+  .ft { display: flex; align-items: center; gap: 8px; padding: 7px 12px 9px; border-top: 1px solid rgba(255,255,255,.1); font-size: 11px; color: var(--dim); }
+  .ft .gbtn { margin-left: auto; }
+  /* PanelTemplates tabs under the frame */
+  .tabs { display: flex; gap: 2px; padding-left: 10px; }
+  .tab { padding: 5px 10px 7px; font-size: 11.5px; color: var(--gold); background: linear-gradient(180deg, #1c1a17, #0f0e0c); border-radius: 0 0 6px 6px; box-shadow: 0 0 0 1px #4d4a44; }
+  .tab.on { color: #fff; background: linear-gradient(180deg, #2c2925, #1b1916); transform: translateY(-1px); }
+  .pane { display: none; } body[data-tab="plan"] .pane.plan, body[data-tab="lists"] .pane.lists, body[data-tab="errands"] .pane.errands,
+  body[data-tab="cleanup"] .pane.cleanup, body[data-tab="settings"] .pane.settings { display: grid; }
+  .note { position: absolute; right: 22px; bottom: 18px; width: 300px; font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+</style>
+</head>
+<body>
+<h1>In-game window and minimap button</h1>
+<p class="lede">U1 mock: <a href="?tab=plan">Plan</a> · <a href="?tab=lists">Lists</a> · <a href="?tab=errands">Errands</a> · <a href="?tab=cleanup">Cleanup</a> · <a href="?tab=settings">Settings</a> · <a href="?tab=settings&skin=classic">classic skin</a>. Rules in <a href="INGAME.md">INGAME.md</a> §17.</p>
+
+<div class="world" id="world">
+  <div class="mini"></div>
+  <!-- our art: a small shield, gold on dark; no Blizzard logos -->
+  <div class="mmb" title="Forever Buddy"><svg viewBox="0 0 24 24"><path d="M12 2.5l8 3v6c0 5.4-3.6 8.9-8 10.5-4.4-1.6-8-5.1-8-10.5v-6z" fill="#c9a23a" stroke="#3a2a10" stroke-width="1"/><path d="M8 9l4 4 4-4M8 13l4 4 4-4" fill="none" stroke="#2a1b0e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="mmtip"><b>Forever Buddy</b><span><em>Click</em> to open · <em>Drag</em> to move</span><span><em>Right-click</em> to hide this button</span><span>From Forever Buddy · 21:04</span></div>
+
+  <div class="win">
+    <div class="frame">
+      <div class="hd"><span class="portrait"><svg viewBox="0 0 24 24"><path d="M12 2.5l8 3v6c0 5.4-3.6 8.9-8 10.5-4.4-1.6-8-5.1-8-10.5v-6z" fill="#c9a23a" stroke="#3a2a10" stroke-width="1"/><path d="M8 9l4 4 4-4M8 13l4 4 4-4" fill="none" stroke="#2a1b0e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b id="title">Forever Buddy</b><span class="x">×</span></div>
+
+      <div class="body">
+        <!-- PLAN -->
+        <div class="pane plan" style="gap:6px">
+          <div class="sec">Tonight's plan · Winterspring</div>
+          <div class="row done"><span class="t">1  Fly to Everlook</span><span class="r"></span></div>
+          <div class="row cur"><span class="t">2  Accept "Are We There, Yeti?"</span><span class="r">→</span><small>Everlook</small></div>
+          <div class="row"><span class="t">3  Collect 10 Thick Yeti Fur</span><span class="r">→</span><small>Owl Wing Thicket</small></div>
+          <div class="row"><span class="t">4  Turn in "Are We There, Yeti?"</span><span class="r">→</span><small>Everlook</small></div>
+          <div class="cb" style="margin-top:8px"><i class="on"></i><span>Show the plan tracker on screen</span></div>
+        </div>
+        <!-- LISTS -->
+        <div class="pane lists">
+          <div class="sec">Tailoring · for <span class="pri">Sela</span></div>
+          <div class="row"><span class="t">Runecloth</span><span class="r">need 26</span><small><span class="pri">Sela</span> has 4 in bank · ~1g 12s at last scan</small></div>
+          <div class="row"><span class="t">Rune Thread</span><span class="r">need 6</span><small>your alts have 0</small></div>
+          <div class="row"><span class="t" style="color:var(--grey)">Felcloth</span><span class="r">done</span></div>
+          <div class="sec">Raid night</div>
+          <div class="row"><span class="t">Tough Jerky</span><span class="r">done</span><small><span class="rog">Kaelor</span> has 25 in bags</small></div>
+        </div>
+        <!-- ERRANDS -->
+        <div class="pane errands">
+          <div class="sec">From <span class="pal">Thrandor</span></div>
+          <div class="row"><span class="t">Runecloth ×20 to <span class="pri">Sela</span></span><span class="r"></span><small>20 in your bank · visit the bank first</small></div>
+          <div class="row"><span class="t"><span class="q3">Felcloth Hood</span> to <span class="pri">Sela</span></span><span class="r"></span><small>in your bags · marked in Forever Buddy</small></div>
+          <div style="margin-top:8px;color:var(--dim);font-size:11px">Fill recipient works at a mailbox. Nothing is attached or sent for you.</div>
+        </div>
+        <!-- CLEANUP -->
+        <div class="pane cleanup">
+          <div class="sec">Marked on <span class="pal">Thrandor</span></div>
+          <div class="row"><span class="t"><span class="q0">Broken Fang</span> ×6</span><span class="r">sell · grey</span></div>
+          <div class="row"><span class="t"><span class="q3">Truestrike Shoulders</span></span><span class="r">→ <span class="rog">Kaelor</span> · +9 item level</span></div>
+          <div style="margin-top:8px;color:var(--dim);font-size:11px">6 to sell · ~36c at a vendor · 1 to send. Mark items in the Forever Buddy app.</div>
+        </div>
+        <!-- SETTINGS (also in Esc > Options > AddOns) -->
+        <div class="pane settings" style="gap:7px">
+          <div class="sec">In game</div>
+          <div class="cb"><i class="on"></i><span>Login briefing<small>One chat line at login. /fb brief repeats it.</small></span></div>
+          <div class="cb"><i class="on"></i><span>Lockouts at the entrance</span></div>
+          <div class="cb"><i></i><span>Session coach<small>A small strip while you play.</small></span></div>
+          <div class="cb" style="padding-left:18px"><i></i><span>Hide the coach in combat</span></div>
+          <div class="cb"><i class="on"></i><span>Session card at logout</span></div>
+          <div class="cb"><i class="on"></i><span>Marks in your bags</span></div>
+          <div class="sec">Tooltips</div>
+          <div class="cb"><i class="on"></i><span>Your alts on item tooltips</span></div>
+          <div class="sec">This window</div>
+          <div class="cb"><i class="on"></i><span>Minimap button</span></div>
+        </div>
+      </div>
+
+      <div class="ft"><span>From Forever Buddy · 21:04</span><button class="gbtn">Sync</button></div>
+    </div>
+    <div class="tabs"><span class="tab" data-t="plan">Plan</span><span class="tab" data-t="lists">Lists</span><span class="tab" data-t="errands">Errands</span><span class="tab" data-t="cleanup">Cleanup</span><span class="tab" data-t="settings">Settings</span></div>
+  </div>
+
+  <div class="note">Opened from the minimap button, the addon compartment, or /fb. Moves by its title, remembers its tab and position, and Esc closes it. Lists and goals are edited in the app; this window only shows them.</div>
+</div>
+<script>
+  const p = new URLSearchParams(location.search);
+  const tab = p.get('tab') || 'plan';
+  document.body.dataset.tab = tab;
+  if (p.get('skin') === 'classic') document.getElementById('world').classList.add('classic');
+  document.querySelectorAll('.tab').forEach(t => { if (t.dataset.t === tab) t.classList.add('on'); });
+</script>
+</body>
+</html>

@@ -286,6 +286,31 @@ Goals are made in the app (IMPLEMENTING §21). In game they appear in two places
   - Gold: `500g goal | 288g to go`.
 - **Never:** a pop-up, a sound, nagging ("you're behind"), or a goal for another player.
 
+## 17. U1: the Forever Buddy window and minimap button (`ingame-window.html?tab=…`)
+One window gathers what's slash-only today. Everything in it is display-only, the same as the panels it borrows from. This replaces §3's "use no other commands" rule: the slash commands stay as shortcuts.
+- **Minimap button:**
+  - 31 px, on the minimap's edge, with our own art: a small gold shield with a double chevron on dark (the icon in the mock), never a Blizzard logo. Hand-rolled (no LibDBIcon) unless the coder finds that worse.
+  - **Click** opens or closes the window. **Drag** moves it around the minimap edge, and the angle is saved per account. **Right-click** hides it, with one chat line: `Forever Buddy: minimap button hidden. /fb minimap or the Settings tab brings it back.`
+  - Tooltip: "Forever Buddy", then "Click to open · Drag to move", "Right-click to hide this button" (the verbs in the game's blue), then the freshness line "From Forever Buddy · 21:04".
+- **Addon compartment:** the existing entry stays. A click opens the window now. Its checkboxes move to the Settings tab, and the compartment tooltip keeps only the name and freshness line.
+- **The window:**
+  - `ButtonFrameTemplate` with the portrait showing the same shield, titled "Forever Buddy", about 360 × 420. Movable by the title, with position and last tab saved per account. Esc closes it (`UISpecialFrames`). It never opens by itself.
+  - Five `PanelTemplates` tabs along the bottom: **Plan · Lists · Errands · Cleanup · Settings**.
+  - Footer on every tab: the §4 freshness line and the §5 Sync control (button, typed hint or next-login line, per probe run 4).
+- **Tabs** reuse the existing panels' rows and copy:
+  - **Plan:** the §7 steps (current step with the gold edge, done struck through, → waypoints), and a checkbox "Show the plan tracker on screen". Empty: "No plan for Thrandor. Make one in Forever Buddy, or ask Claude for one."
+  - **Lists:** every list, as in §10's panel, with "· here" when at a vendor or the AH. Empty: "No lists yet. Make one in Forever Buddy."
+  - **Errands:** §10's errand rows for this character, plus marked sends from §14. Fill recipient only works at a mailbox; elsewhere the footer line reads "Fill recipient works at a mailbox. Nothing is attached or sent for you." Empty: "No errands for Thrandor."
+  - **Cleanup:** §14's marks for this character, with reasons and the "5 to sell · ~36c at a vendor · 1 to send" line, then "Mark items in the Forever Buddy app." Empty: "Nothing marked on Thrandor."
+  - **Settings:** every toggle as a `UICheckButtonTemplate`, in three groups:
+    - **In game:** Login briefing, Lockouts at the entrance, Session coach (with an indented "Hide the coach in combat"), Session card at logout, Marks in your bags.
+    - **Tooltips:** Your alts on item tooltips.
+    - **This window:** Minimap button.
+    - The same panel is registered in Esc › Options › AddOns as "Forever Buddy" (`Settings.RegisterCanvasLayoutCategory`), so both places change the same saved settings.
+- **Slash commands:** `/fb` alone opens the window on its last tab. `/fb plan`, `/fb list`, `/fb errands` and `/fb cleanup` open it on that tab (`/fb list` no longer opens the floating panel; the vendor and AH docking stay). `/fb brief`, `/fb coach`, `/fb card` and `/fb minimap` keep their current behaviour.
+- **Combat:** the window can open and close. Nothing in it changes, and Sync is disabled, as in §4.
+- **Never:** buttons that buy, sell, send, craft or mark; editing lists, plans or goals in game (that's the app's job); or opening by itself.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
