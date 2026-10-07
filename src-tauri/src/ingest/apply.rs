@@ -240,6 +240,36 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
                     params![id, p.name, p.skill, p.max, p.line, p.spec, s.at],
                 )?;
             }
+            // A profession the character no longer has takes its recipes.
+            tx.execute(
+                "DELETE FROM char_recipes WHERE character_id = ?1
+                 AND profession NOT IN (SELECT name FROM professions WHERE character_id = ?1)",
+                [id],
+            )?;
+        }
+    }
+    // Recipes (C1): per profession, a newer scan replaces an older one; a
+    // profession the file has no scan for keeps its rows (not looked at
+    // since).
+    for r in s.recipes.iter().flatten() {
+        let stored: Option<i64> = tx.query_row(
+            "SELECT max(scanned_at) FROM char_recipes WHERE character_id = ?1 AND profession = ?2",
+            params![id, r.profession],
+            |row| row.get(0),
+        )?;
+        if stored.is_some_and(|at| at > r.at) {
+            continue;
+        }
+        tx.execute(
+            "DELETE FROM char_recipes WHERE character_id = ?1 AND profession = ?2",
+            params![id, r.profession],
+        )?;
+        for item in &r.made {
+            tx.execute(
+                "INSERT OR IGNORE INTO char_recipes (character_id, profession, item_id, scanned_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![id, r.profession, item, r.at],
+            )?;
         }
     }
     if let Some(lockouts) = &s.lockouts {

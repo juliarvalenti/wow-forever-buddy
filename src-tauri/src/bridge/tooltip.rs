@@ -11,8 +11,13 @@
 //! Each alt also carries its level and `worn`: the base item level of what
 //! it wears in each of the 19 inventory slots (0 for empty), so the addon
 //! can say which alt a hovered item would upgrade (TIP2, INGAME §8 (b)).
+//!
+//! C1 (INGAME §12): each half also has `makes = { [itemID] = { altIndex, … } }`
+//! for the items an alt's recipes make, and each alt has `prof = { [name] =
+//! { skill, at } }`, `at` being when its recipes were last read (for the
+//! stale greying). An addon from before C1 ignores both.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::ah;
 use crate::db::Db;
@@ -175,6 +180,54 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
         .map(|d| d.timestamp());
 
+    // C1: who can make what (item → alt indices), and each alt's
+    // professions with their skill and when their recipes were read.
+    let (made, profs) = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT DISTINCT r.item_id, r.character_id
+             FROM char_recipes r JOIN characters ch ON ch.id = r.character_id
+             WHERE ch.flavor = ?1",
+        )?;
+        let made = stmt
+            .query_map([flavor], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut stmt = c.prepare(
+            "SELECT r.character_id, r.profession, p.skill, max(r.scanned_at)
+             FROM char_recipes r JOIN characters ch ON ch.id = r.character_id
+             LEFT JOIN professions p ON p.character_id = r.character_id AND p.name = r.profession
+             WHERE ch.flavor = ?1
+             GROUP BY r.character_id, r.profession",
+        )?;
+        let profs = stmt
+            .query_map([flavor], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((made, profs))
+    })?;
+    let mut makes: BTreeMap<i64, BTreeSet<i64>> = BTreeMap::new();
+    for (item_id, character_id) in made {
+        if let Some(&alt) = index_of.get(&character_id) {
+            makes.entry(item_id).or_default().insert(alt);
+        }
+    }
+    let mut prof_of: HashMap<i64, Vec<(LuaValue, LuaValue)>> = HashMap::new();
+    for (character_id, name, skill, at) in profs {
+        let mut p = vec![(key("at"), LuaValue::Int(at))];
+        if let Some(skill) = skill {
+            p.push((key("skill"), LuaValue::Int(skill)));
+        }
+        prof_of
+            .entry(character_id)
+            .or_default()
+            .push((LuaValue::str(name), table(Vec::new(), p)));
+    }
+
     let alts_value = table(
         alts.iter()
             .map(|a| {
@@ -201,6 +254,9 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                         Vec::new(),
                     ),
                 ));
+                if let Some(p) = prof_of.get(&a.id) {
+                    hash.push((key("prof"), table(Vec::new(), p.clone())));
+                }
                 table(Vec::new(), hash)
             })
             .collect(),
@@ -219,6 +275,13 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
             .or_default()
             .push((LuaValue::Int(*item_id), table(entry, Vec::new())));
     }
+    let mut makers: HashMap<Slot, Vec<(LuaValue, LuaValue)>> = HashMap::new();
+    for (item_id, alts) in &makes {
+        makers.entry(slot_for(*item_id)).or_default().push((
+            LuaValue::Int(*item_id),
+            table(alts.iter().map(|&a| LuaValue::Int(a)).collect(), Vec::new()),
+        ));
+    }
 
     let head = |extra: Vec<(LuaValue, LuaValue)>| {
         let mut t = header(stamp);
@@ -230,13 +293,17 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
     };
     let mut slots = Vec::with_capacity(TOOLTIP_SLOTS.len());
     for slot in TOOLTIP_SLOTS {
-        let body = head(vec![
+        let mut fields = vec![
             (key("alts"), alts_value.clone()),
             (
                 key("items"),
                 table(Vec::new(), halves.remove(&slot).unwrap_or_default()),
             ),
-        ]);
+        ];
+        if let Some(m) = makers.remove(&slot) {
+            fields.push((key("makes"), table(Vec::new(), m)));
+        }
+        let body = head(fields);
         match render_capped(slot, body)? {
             Some(bytes) => slots.push((slot, bytes)),
             None => return too_large(&head),
@@ -476,5 +543,48 @@ mod tests {
             assert_eq!(t.get("tooLarge"), Some(&LuaValue::Bool(true)));
             assert_eq!(t.get("items"), None);
         }
+    }
+
+    /// C1: the harness's recipes scenario (Thrandor's Tailoring makes 2568
+    /// and 2572) goes through ingest into `makes` and the alt's `prof`.
+    #[test]
+    fn who_can_make_what() {
+        use crate::ingest::{ingest_bytes, target_for};
+        let bytes = std::fs::read(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/addon/recipes.lua"),
+        )
+        .unwrap();
+        let db = Db::open_in_memory().unwrap();
+        let t = target_for(
+            FLAVOR,
+            "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
+        )
+        .unwrap();
+        ingest_bytes(&db, &t, &bytes).unwrap();
+        let built = build(&db, FLAVOR, 1).unwrap();
+        let even = parsed(&built, Slot::Tooltip1);
+        let makes = even.get("makes").unwrap().as_table().unwrap();
+        assert_eq!(ints(makes.get_index(2568).unwrap()), [1]);
+        assert_eq!(ints(makes.get_index(2572).unwrap()), [1]);
+        assert_eq!(makes.get_index(2575), None, "not learned");
+        assert_eq!(
+            parsed(&built, Slot::Tooltip2).get("makes"),
+            None,
+            "no odd ids"
+        );
+        let alts = even.get("alts").unwrap().as_table().unwrap();
+        let prof = alts.get_index(1).unwrap().as_table().unwrap();
+        let tailoring = prof
+            .get("prof")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("Tailoring")
+            .unwrap()
+            .as_table()
+            .unwrap();
+        assert_eq!(tailoring.get("skill"), Some(&LuaValue::Int(34)));
+        assert!(matches!(tailoring.get("at"), Some(LuaValue::Int(_))));
     }
 }
