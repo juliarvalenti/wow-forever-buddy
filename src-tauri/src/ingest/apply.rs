@@ -68,7 +68,13 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
         )?;
     }
     for session in &file.sessions {
-        apply_session(tx, id, &target.flavor, session)?;
+        apply_session(
+            tx,
+            id,
+            &target.flavor,
+            session,
+            had_login_burst_bug(file.addon.as_deref()),
+        )?;
     }
     for r in &file.receipts {
         tx.execute(
@@ -459,11 +465,19 @@ fn login_burst(s: &crate::ingest::file::Session) -> std::collections::HashSet<i6
         .collect()
 }
 
+/// Whether the addon that wrote a file had the login baseline bug: before
+/// 0.9.0, or unknown. A fixed addon's burst is real loot (a container
+/// opened right after login), so it's kept.
+fn had_login_burst_bug(addon: Option<&str>) -> bool {
+    addon.is_none_or(|v| crate::addon::version_key(v) < crate::addon::version_key("0.9.0"))
+}
+
 fn apply_session(
     tx: &Transaction<'_>,
     id: i64,
     flavor: &str,
     s: &crate::ingest::file::Session,
+    old_addon: bool,
 ) -> AppResult<()> {
     let last = |kind: &str, field: &str| {
         s.events
@@ -511,7 +525,11 @@ fn apply_session(
             "DELETE FROM adventure_events WHERE adventure_id = ?1",
             [adventure],
         )?;
-        let burst = login_burst(s);
+        let burst = if old_addon {
+            login_burst(s)
+        } else {
+            Default::default()
+        };
         for e in s.events.iter().filter(|e| !burst.contains(&e.seq)) {
             tx.execute(
                 "INSERT INTO adventure_events (adventure_id, seq, at, kind, data)
@@ -604,5 +622,15 @@ mod tests {
             ..s.clone()
         };
         assert!(login_burst(&late).is_empty());
+    }
+
+    /// Only files from an addon with the bug (before 0.9.0, or unknown) have
+    /// their burst dropped; a fixed addon's is real loot.
+    #[test]
+    fn only_old_addons_had_the_burst() {
+        assert!(had_login_burst_bug(None));
+        assert!(had_login_burst_bug(Some("0.8.0")));
+        assert!(!had_login_burst_bug(Some("0.9.0")));
+        assert!(!had_login_burst_bug(Some("0.10.1")));
     }
 }

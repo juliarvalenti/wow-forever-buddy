@@ -249,6 +249,8 @@ pub struct Session {
 pub struct AddonFile {
     /// `_meta.written`: when the addon wrote the file.
     pub written: Option<i64>,
+    /// `_meta.addon`: the version of the addon that wrote it ("0.8.0").
+    pub addon: Option<String>,
     pub character: CharacterInfo,
     pub snapshot: Option<Snapshot>,
     pub items: Vec<ItemInfo>,
@@ -488,6 +490,7 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
     });
     Ok(AddonFile {
         written: int(meta, "written"),
+        addon: text(meta, "addon"),
         character,
         snapshot,
         items,

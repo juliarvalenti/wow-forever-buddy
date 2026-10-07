@@ -105,7 +105,7 @@ pub fn bundled_version() -> String {
 
 /// "0.2.0" < "0.10.0": numeric parts compared in order, anything that isn't
 /// a number counted as 0.
-fn version_key(v: &str) -> Vec<u64> {
+pub(crate) fn version_key(v: &str) -> Vec<u64> {
     v.split('.')
         .map(|p| p.trim().parse().unwrap_or(0))
         .collect()
