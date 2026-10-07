@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario adventure). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.4.0",
+		["addon"] = "0.4.1",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
@@ -129,10 +129,14 @@ ForeverBuddyDB = {
 				{
 					["id"] = 176,
 					["kind"] = "quest",
+					["map"] = 1429,
 					["money"] = 1200,
 					["t"] = 1790965390,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
 					["xp"] = 1350,
+					["y"] = 0.657,
+					["zone"] = "Westfall",
 				}, -- [10]
 				{
 					["kind"] = "money",

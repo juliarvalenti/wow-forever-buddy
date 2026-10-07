@@ -623,9 +623,9 @@ scenario("quests", function()
     local c = client()
     c.login(nil)
     c.advance(10 * MINUTE)
-    c.accept(176)
+    c.accept(176, { name = "Marshal Dughan" })
     c.advance(20 * MINUTE)
-    c.turnIn(176, 450, 75)
+    c.turnIn(176, 450, 75, { name = "Marshal Dughan" })
     c.advance(5 * MINUTE)
     local text = c.logout()
     local db = file(text)
@@ -637,6 +637,23 @@ scenario("quests", function()
     local accepted = db.sessions[1].events[1]
     eq(accepted.id, 176, "accepted id")
     eq(accepted.title, "Wanted: Hogger", "accepted title")
+    -- Where and from whom (Q1b): zone, map, position to 0.1%, the giver.
+    eq(accepted.zone, "Elwynn Forest", "zone")
+    eq(accepted.map, 1429, "map")
+    eq(accepted.x, 0.412, "x")
+    eq(accepted.y, 0.657, "y")
+    eq(accepted.giver, "Marshal Dughan", "giver")
+    eq(db.sessions[1].events[2].giver, "Marshal Dughan", "turned in to")
+
+    -- A quest shared by another player keeps no name; an instance, no position.
+    local shared = client()
+    shared.login(nil)
+    shared.world.instance = true
+    shared.accept(176, { name = "Someoneelse", player = true })
+    local e = file(shared.logout()).sessions[1].events[1]
+    eq(e.giver, nil, "no player's name")
+    eq(e.x, nil, "no position in an instance")
+    eq(e.zone, "Elwynn Forest", "zone still")
     eq(table.concat(db.snapshot.quests_done, ","), "7,176,783", "quests_done, sorted")
     eq(db._meta.counts.quests_done, 3, "counted")
 

@@ -145,6 +145,8 @@ function M.new(opts)
         combat = false, -- InCombatLockdown
         shift = false, -- IsShiftKeyDown
         quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
+        pos = { 0.41234, 0.65678 }, -- on map 1429 (Elwynn), outside instances
+        npc = nil, -- { name, player } the quest window is open on
     }
     client.world = world
 
@@ -175,6 +177,24 @@ function M.new(opts)
             -- Forever returns the surname second, where retail puts the realm.
             if unit == "player" then
                 return char.name, char.surname
+            elseif unit == "npc" and world.npc then
+                return world.npc.name
+            end
+        end,
+        UnitIsPlayer = function(unit)
+            if unit == "player" then
+                return true
+            end
+            return unit == "npc" and world.npc ~= nil and world.npc.player == true
+        end,
+        -- A position object, as the client returns; nil in an instance.
+        ["C_Map.GetPlayerMapPosition"] = function(map, unit)
+            if unit == "player" and map == 1429 and not world.instance then
+                return {
+                    GetXY = function()
+                        return world.pos[1], world.pos[2]
+                    end,
+                }
             end
         end,
         UnitGUID = function(unit)
@@ -656,14 +676,20 @@ function M.new(opts)
         client.fire("PLAYER_DEAD")
     end
 
-    function client.accept(id)
+    -- `from`: { name, player } the quest window is open on (the "npc"
+    -- unit), or nil for none.
+    function client.accept(id, from)
+        world.npc = from
         client.fire("QUEST_ACCEPTED", id)
+        world.npc = nil
     end
 
-    function client.turnIn(id, xp, money)
+    function client.turnIn(id, xp, money, to)
         world.xp = world.xp + xp
         table.insert(world.quests_done, id)
+        world.npc = to
         client.fire("QUEST_TURNED_IN", id, xp, money)
+        world.npc = nil
         client.setMoney(world.money + money)
     end
 

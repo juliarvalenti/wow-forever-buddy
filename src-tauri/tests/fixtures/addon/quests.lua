@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario quests). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.4.0",
+		["addon"] = "0.4.1",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
@@ -66,18 +66,28 @@ ForeverBuddyDB = {
 		{
 			["events"] = {
 				{
+					["giver"] = "Marshal Dughan",
 					["id"] = 176,
 					["kind"] = "quest_accepted",
+					["map"] = 1429,
 					["t"] = 1790964600,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [1]
 				{
+					["giver"] = "Marshal Dughan",
 					["id"] = 176,
 					["kind"] = "quest",
+					["map"] = 1429,
 					["money"] = 75,
 					["t"] = 1790965800,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
 					["xp"] = 450,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [2]
 				{
 					["kind"] = "money",
