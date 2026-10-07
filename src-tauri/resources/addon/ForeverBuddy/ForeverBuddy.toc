@@ -12,4 +12,5 @@ Data/Tooltip1.lua
 Data/Tooltip2.lua
 Data/Plan.lua
 Data/Briefing.lua
+Data/Lists.lua
 ForeverBuddy.lua

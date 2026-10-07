@@ -18,6 +18,7 @@ mod icons;
 mod ingest;
 mod install;
 mod ledger;
+mod lists;
 mod macros;
 mod notes;
 mod plans;
@@ -106,6 +107,14 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::quests_available,
             commands::plans::plans_list,
             commands::plans::plan_clear,
+            commands::lists::lists_get,
+            commands::lists::list_create,
+            commands::lists::list_update,
+            commands::lists::list_delete,
+            commands::lists::list_item_add,
+            commands::lists::list_item_need,
+            commands::lists::list_item_remove,
+            commands::lists::items_seen_search,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,

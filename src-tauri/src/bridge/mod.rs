@@ -46,9 +46,17 @@ pub enum Slot {
     /// The login briefing's app-side facts: alts' waiting mail and each
     /// character's login note (B1, INGAME §9).
     Briefing,
+    /// Shopping lists and alt errands (B2, INGAME §10).
+    Lists,
 }
 
-pub const SLOTS: [Slot; 4] = [Slot::Tooltip1, Slot::Tooltip2, Slot::Plan, Slot::Briefing];
+pub const SLOTS: [Slot; 5] = [
+    Slot::Tooltip1,
+    Slot::Tooltip2,
+    Slot::Plan,
+    Slot::Briefing,
+    Slot::Lists,
+];
 
 impl Slot {
     pub fn name(self) -> &'static str {
@@ -57,6 +65,7 @@ impl Slot {
             Slot::Tooltip2 => "Tooltip2",
             Slot::Plan => "Plan",
             Slot::Briefing => "Briefing",
+            Slot::Lists => "Lists",
         }
     }
 
@@ -190,13 +199,14 @@ pub enum Delivery {
     Failed,
 }
 
-/// `slot`'s delivery to `character_id`, for content that last changed at
+/// `slot`'s delivery to `character_id`, or with `None` to any of `flavor`'s
+/// characters (the newest receipt), for content that last changed at
 /// `changed_at` (RFC 3339). `listed`: whether the installed TOC lists it.
 pub fn delivery(
     db: &Db,
     flavor: &str,
     slot: Slot,
-    character_id: u32,
+    character_id: Option<u32>,
     changed_at: &str,
     listed: bool,
 ) -> AppResult<Delivery> {
@@ -224,8 +234,11 @@ pub fn delivery(
         }
         let receipt: Option<(Option<i64>, i64)> = c
             .query_row(
-                "SELECT stamp, seen_at FROM bridge_receipts WHERE character_id = ?1 AND slot = ?2",
-                params![character_id, slot.name()],
+                "SELECT r.stamp, r.seen_at FROM bridge_receipts r
+                 JOIN characters ch ON ch.id = r.character_id
+                 WHERE ch.flavor = ?3 AND r.slot = ?2 AND (?1 IS NULL OR r.character_id = ?1)
+                 ORDER BY r.stamp DESC, r.seen_at LIMIT 1",
+                params![character_id, slot.name(), flavor],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
@@ -309,6 +322,11 @@ pub(crate) fn send(
     }
     if has(Slot::Briefing) {
         slots.push((Slot::Briefing, briefing::build(db, flavor, stamp)?));
+    }
+    if has(Slot::Lists) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::lists::slot_entries(db, flavor)?);
+        slots.push((Slot::Lists, render(Slot::Lists, body)?));
     }
     let built = tooltip::Built { slots, too_large };
     if built
@@ -498,9 +516,9 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let flavor = "_classic_beta_";
         let changed = "2026-10-06T21:02:00+00:00";
-        let state = || delivery(&db, flavor, Slot::Plan, 1, changed, true).unwrap();
+        let state = || delivery(&db, flavor, Slot::Plan, Some(1), changed, true).unwrap();
         assert_eq!(
-            delivery(&db, flavor, Slot::Plan, 1, changed, false).unwrap(),
+            delivery(&db, flavor, Slot::Plan, Some(1), changed, false).unwrap(),
             Delivery::Restart,
             "an addon without the slot"
         );
@@ -538,6 +556,20 @@ mod tests {
         })
         .unwrap();
         assert!(matches!(state(), Delivery::Synced { .. }), "loaded");
+        assert!(
+            matches!(
+                delivery(&db, flavor, Slot::Plan, None, changed, true).unwrap(),
+                Delivery::Synced { .. }
+            ),
+            "any character"
+        );
+        assert!(
+            matches!(
+                delivery(&db, flavor, Slot::Plan, Some(2), changed, true).unwrap(),
+                Delivery::Pending { .. }
+            ),
+            "another character hasn't"
+        );
         write(300, "2026-10-06T21:10:00+00:00", "failed");
         assert_eq!(state(), Delivery::Failed);
     }
@@ -551,6 +583,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip2.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Plan.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Briefing.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Lists.lua",
             ]
         );
         for slot in SLOTS {

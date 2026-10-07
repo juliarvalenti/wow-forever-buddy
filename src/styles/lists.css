@@ -1,0 +1,59 @@
+/* B2 Lists (design/mocks/round-3/lists.html, IMPLEMENTING §15). Prefixed ls-. */
+
+.ls-split { display: grid; grid-template-columns: 200px minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
+.ls-side { display: grid; gap: 12px; }
+
+.ls-ll { list-style: none; margin: 0; padding: 0; }
+.ls-ll li + li { border-top: 1px solid rgba(0, 0, 0, .45); }
+.ls-ll button { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 12px; background: none; border: 0; color: var(--chalk); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.ls-ll button:hover { background: rgba(255, 255, 255, .02); }
+.ls-ll button[aria-current] { background: rgba(255, 177, 92, .06); box-shadow: inset 2px 0 0 var(--ember-2); color: var(--chalk-hi); }
+.ls-ll .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-ll .n { margin-left: auto; font-size: 11px; color: var(--soot); white-space: nowrap; }
+
+.ls-meta { font-size: 11.5px; }
+.ls-grid { table-layout: fixed; }
+.ls-grid th:nth-child(1) { width: 34%; }
+.ls-grid th:nth-child(2) { width: 13%; }
+.ls-grid th:nth-child(4) { width: 15%; }
+.ls-grid th:nth-child(5) { width: 36px; }
+.ls-grid tbody tr { cursor: default; }
+.ls-grid td { padding: 0 10px; }
+.ls-grid th { padding: 8px 10px; }
+.ls-grid td.have { padding-top: 6px; padding-bottom: 6px; white-space: normal; }
+.ls-grid .have small { display: block; font-size: 11px; color: var(--soot); }
+.ls-an { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ls-an .ch-ico { width: 22px; height: 22px; font-size: 10px; flex-shrink: 0; }
+.ls-an .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-grid .need { font-weight: 600; color: var(--chalk-hi); }
+.ls-grid tr.done td, .ls-grid tr.done .nm { color: var(--soot); }
+.ls-grid tr.done .need, .ls-grid tr.done .ls-needbtn { color: var(--ok); font-weight: 500; }
+.ls-needbtn { background: none; border: 0; padding: 2px 0; color: inherit; font: inherit; cursor: pointer; }
+.ls-needbtn:hover { text-decoration: underline dotted; }
+.ls-needin { width: 64px; text-align: right; background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 177, 92, .35); border-radius: 4px; color: var(--chalk-hi); font: inherit; padding: 2px 6px; }
+.ls-x { display: grid; place-items: center; width: 24px; height: 24px; background: none; border: 0; border-radius: 4px; color: var(--soot); cursor: pointer; opacity: 0; }
+.ls-grid tr:hover .ls-x, .ls-x:focus-visible { opacity: 1; }
+.ls-x:hover { color: var(--chalk-hi); background: rgba(255, 255, 255, .05); }
+
+.ls-add td { height: 40px; font-size: 12px; }
+.ls-addform { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.ls-addform .ls-q { position: relative; flex: 1; min-width: 0; }
+.ls-addform .ls-n { width: 72px; }
+.ls-found { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px 0; background: #1d1813; border: 1px solid rgba(255, 255, 255, .08); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); max-height: 240px; overflow: auto; }
+.ls-found button { display: block; width: 100%; padding: 6px 10px; background: none; border: 0; font: inherit; font-size: 12.5px; text-align: left; color: var(--chalk); cursor: pointer; }
+.ls-found button:hover { background: rgba(255, 177, 92, .08); }
+
+.ls-sent { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 8px 12px; font-size: 12.5px; }
+.ls-sent + .ls-sent { border-top: 1px solid rgba(255, 255, 255, .05); }
+.ls-sent small { grid-column: 2 / -1; font-size: 11px; color: var(--soot); }
+.ls-sent .st { font-size: 11.5px; color: var(--ok); white-space: nowrap; }
+.ls-sent .st.wait { color: var(--ember-2); }
+
+.ls-empty { display: grid; justify-items: start; gap: 12px; padding: 8px 0; font-size: 13px; color: var(--ash); max-width: 52ch; }
+.ls-err { margin-top: 8px; }
+.ls-form { display: grid; gap: 12px; min-width: 340px; }
+.ls-form label { display: grid; gap: 4px; }
+.ls-form .k { font-size: 11.5px; color: var(--soot); }
+.ls-form select { flex: 1; background: none; border: 0; outline: 0; color: inherit; font: inherit; }
+.ls-form select option { background: #1d1813; }
+.ls-form p { margin: 0; font-size: 12px; }

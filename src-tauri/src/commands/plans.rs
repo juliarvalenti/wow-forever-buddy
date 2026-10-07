@@ -25,7 +25,7 @@ pub fn plans_list(state: State<'_, AppState>) -> AppResult<Vec<Plan>> {
             &core.db,
             &game.flavor,
             Slot::Plan,
-            p.character_id,
+            Some(p.character_id),
             &p.created_at,
             listed,
         )?;

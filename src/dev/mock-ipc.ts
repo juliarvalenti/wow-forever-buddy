@@ -25,6 +25,9 @@ import type {
   JournalEntry,
   Ledger,
   LedgerRange,
+  List,
+  ListItem,
+  ListsView,
   Macro,
   MacrosList,
   Plan,
@@ -33,6 +36,7 @@ import type {
   RestorePlan,
   SearchResults,
   SecretStatus,
+  SeenItem,
   Sellable,
   SnapshotDetail,
   SnapshotKind,
@@ -76,6 +80,7 @@ export const SCENARIOS = [
   "ah", // F5: ah.html's market (any scenario has it; this one opens on it in shots)
   "ah-empty", // no Auctionator prices yet: the AH is hidden, Settings says why (F5d)
   "ah-unreadable", // an Auctionator file this version can't read: hidden, Settings says so
+  "lists-empty", // B2: no lists yet (the Lists screen has three in every other scenario)
 ] as const;
 
 type Args = Record<string, unknown>;
@@ -181,6 +186,95 @@ export function installMockIpc(): void {
       progress_at: new Date(now - 5 * 60_000).toISOString(),
       delivery: { state: "synced", since: new Date(now - 16 * 60_000).toISOString() },
     },
+  ];
+  // B2: lists.html, Sela's Tailoring list with an errand from Coinpurse.
+  const listWho = (id: number) => {
+    const a = alts.find((x) => x[0] === id)!;
+    return { id, name: a[1], class: a[3] };
+  };
+  const held = (id: number, bags: number, bank: number, mail = 0, days = 1) => ({
+    character: listWho(id),
+    bags,
+    bank,
+    mail,
+    as_of: iso(60 * 24 * days),
+  });
+  let listItemId = 100;
+  const listItem = (
+    item_id: number | null,
+    name: string,
+    quality: number,
+    need: number,
+    holders: ListItem["holders"],
+    price: number | null,
+    errands: ListItem["errands"] = [],
+  ): ListItem => ({
+    id: ++listItemId,
+    item_id,
+    name,
+    quality,
+    icon_file_id: null,
+    need,
+    have: holders.reduce((n, h) => n + h.bags + h.bank + h.mail, 0),
+    holders,
+    price,
+    errands,
+  });
+  let lists: List[] =
+    s === "lists-empty"
+      ? []
+      : [
+          {
+            id: 1,
+            name: "Tailoring 300",
+            for_character: listWho(6),
+            producer: "app",
+            created_at: iso(60 * 72),
+            items: [
+              listItem(14341, "Rune Thread", 1, 6, [], null),
+              listItem(8343, "Heavy Silken Thread", 1, 6, [held(6, 0, 4)], null),
+              listItem(14047, "Runecloth", 1, 20, [held(1, 34, 306)], 11_200, [
+                { from: listWho(1), count: 20, in_bags: 20 },
+              ]),
+              listItem(14256, "Felcloth", 2, 8, [held(6, 8, 0)], 41_000),
+            ],
+          },
+          {
+            id: 2,
+            name: "Onyxia attunement",
+            for_character: listWho(3),
+            producer: "app",
+            created_at: iso(60 * 200),
+            items: [
+              listItem(16309, "Drakefire Amulet", 3, 1, [], null),
+              listItem(null, "Blackhand's Command", 1, 1, [], null),
+            ],
+          },
+          {
+            id: 3,
+            name: "Raid consumables",
+            for_character: null,
+            producer: "agent:Claude Desktop",
+            created_at: iso(60 * 30),
+            items: [
+              listItem(13446, "Major Healing Potion", 1, 20, [held(2, 6, 0), held(1, 0, 12, 0, 9)], 3_400),
+              listItem(13510, "Flask of the Titans", 1, 2, [], 680_000),
+              listItem(13461, "Greater Arcane Protection Potion", 1, 5, [held(3, 5, 0)], 21_500),
+            ],
+          },
+        ];
+  const listsView = (): ListsView => ({
+    lists: noAddon ? [] : lists,
+    delivery: { state: "synced", since: iso(18) },
+    briefing: { state: "pending", written_at: iso(4) },
+    scan_at: iso(60 * 24 * 3),
+  });
+  const seen: SeenItem[] = [
+    { item_id: 14047, name: "Runecloth", quality: 1, icon_file_id: null },
+    { item_id: 14048, name: "Bolt of Runecloth", quality: 1, icon_file_id: null },
+    { item_id: 14342, name: "Mooncloth", quality: 2, icon_file_id: null },
+    { item_id: 12359, name: "Thorium Bar", quality: 1, icon_file_id: null },
+    { item_id: 13446, name: "Major Healing Potion", quality: 1, icon_file_id: null },
   ];
   // F6: addon toggles made in this page load ("Addon/CharacterFolder" → on),
   // and what the last one replaced, for Undo.
@@ -1004,6 +1098,53 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
+    lists_get: listsView,
+    list_create: ({ name, forCharacter }) => {
+      lists = [
+        ...lists,
+        {
+          id: Math.max(0, ...lists.map((l) => l.id)) + 1,
+          name: String(name),
+          for_character: forCharacter == null ? null : listWho(Number(forCharacter)),
+          producer: "app",
+          created_at: new Date().toISOString(),
+          items: [],
+        },
+      ];
+      return listsView();
+    },
+    list_update: ({ id, name, forCharacter }) => {
+      lists = lists.map((l) =>
+        l.id === id
+          ? { ...l, name: String(name), for_character: forCharacter == null ? null : listWho(Number(forCharacter)) }
+          : l,
+      );
+      return listsView();
+    },
+    list_delete: ({ id }) => {
+      lists = lists.filter((l) => l.id !== id);
+      return listsView();
+    },
+    list_item_add: ({ listId, item, need }) => {
+      const it = item as { id?: number; name?: string };
+      const known = seen.find((x) => x.item_id === it.id);
+      lists = lists.map((l) =>
+        l.id === listId
+          ? { ...l, items: [...l.items, listItem(it.id ?? null, known?.name ?? it.name ?? "", known?.quality ?? 1, Number(need), [], null)] }
+          : l,
+      );
+      return listsView();
+    },
+    list_item_need: ({ id, need }) => {
+      lists = lists.map((l) => ({ ...l, items: l.items.map((i) => (i.id === id ? { ...i, need: Number(need) } : i)) }));
+      return listsView();
+    },
+    list_item_remove: ({ id }) => {
+      lists = lists.map((l) => ({ ...l, items: l.items.filter((i) => i.id !== id) }));
+      return listsView();
+    },
+    items_seen_search: ({ query }): SeenItem[] =>
+      seen.filter((x) => x.name.toLowerCase().includes(String(query).toLowerCase())),
     character_quests: ({ id }): QuestLog => {
       if (id !== 2) return { done: 0, done_as_of: null, entries: [] };
       const day = (d: number, hh: number, mm: number) => {

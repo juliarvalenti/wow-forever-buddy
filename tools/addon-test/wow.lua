@@ -172,6 +172,10 @@ function M.new(opts)
         pos = { 0.41234, 0.65678 }, -- on map 1429 (Elwynn), outside instances
         npc = nil, -- { name, player } the quest window is open on
         complete = {}, -- quest id -> objectives done (C_QuestLog.IsComplete)
+        merchant = {}, -- item ids the open vendor sells, in its order (B2)
+        merchant_page = 1,
+        ah_browse = {}, -- item ids in the AH's browse results
+        ah_search = {}, -- item id -> buyouts per unit, cheapest first
     }
     client.world = world
 
@@ -362,6 +366,40 @@ function M.new(opts)
                 client.fire("ITEM_DATA_LOAD_RESULT", id, M.ITEMS[id] ~= nil)
             end)
         end,
+        -- Carried, or with `bank` the bank too (the client's cached count).
+        ["C_Item.GetItemCount"] = function(id, bank)
+            local n = 0
+            for b, bag in pairs(world.bags) do
+                if (b >= 0 and b <= 5) or bank then
+                    for _, item in pairs(bag.slots) do
+                        if item.id == id then
+                            n = n + item.count
+                        end
+                    end
+                end
+            end
+            return n
+        end,
+        GetMerchantNumItems = function()
+            return #world.merchant
+        end,
+        GetMerchantItemID = function(index)
+            return world.merchant[index]
+        end,
+        ["C_AuctionHouse.GetBrowseResults"] = function()
+            local out = {}
+            for i, id in ipairs(world.ah_browse) do
+                out[i] = { itemKey = { itemID = id }, minPrice = 1 }
+            end
+            return out
+        end,
+        ["C_AuctionHouse.GetNumItemSearchResults"] = function(key)
+            return #(world.ah_search[key.itemID] or {})
+        end,
+        ["C_AuctionHouse.GetItemSearchResultInfo"] = function(key, i)
+            local p = (world.ah_search[key.itemID] or {})[i]
+            return p and { buyoutAmount = p, quantity = 1 } or nil
+        end,
         ["C_Map.GetBestMapForUnit"] = function(unit)
             if unit == "player" then
                 return world.map or 1429
@@ -517,11 +555,19 @@ function M.new(opts)
     function Frame:CreateFontString()
         return newWidget(self)
     end
+    function Frame:CreateTexture()
+        return newWidget(self)
+    end
+    -- The last anchor, { point, relativeTo, relativePoint }, so a scenario
+    -- can tell what a panel docked to.
+    function Frame:SetPoint(point, rel, relPoint)
+        self.point = { point, rel, relPoint }
+    end
     function Frame:SetText(text)
         self.text = text
     end
     function Frame:GetText()
-        return self.text
+        return rawget(self, "text")
     end
     function Frame:SetTextColor(r, g, b)
         self.color = { r, g, b }
@@ -583,6 +629,17 @@ function M.new(opts)
             return f
         end
         env.UIParent = newWidget(nil)
+        -- The game's windows B2 docks beside, the vendor's item buttons (ten a
+        -- page), and the Send tab's To field.
+        env.MerchantFrame = newWidget(env.UIParent)
+        env.MerchantFrame.page = 1
+        env.MERCHANT_ITEMS_PER_PAGE = 10
+        for i = 1, 10 do
+            env["MerchantItem" .. i .. "ItemButton"] = newWidget(env.MerchantFrame)
+        end
+        env.AuctionHouseFrame = newWidget(env.UIParent)
+        env.MailFrame = newWidget(env.UIParent)
+        env.SendMailNameEditBox = newWidget(env.MailFrame)
         env.DEFAULT_CHAT_FRAME = {
             AddMessage = function(_, msg)
                 table.insert(client.chat, msg)
@@ -832,8 +889,48 @@ function M.new(opts)
         client.fire("ENCOUNTER_END", id, name, 1, 5, success and 1 or 0)
     end
 
-    function client.openMerchant()
+    -- `items`: the ids the vendor sells (B2's highlights), none if not given.
+    function client.openMerchant(items)
+        world.merchant = items or {}
         client.fire("MERCHANT_SHOW")
+    end
+
+    -- The auction house: opened, browsed (ids in the results), one item's
+    -- listings (buyouts per unit, cheapest first), closed.
+    function client.openAuctionHouse()
+        client.fire("AUCTION_HOUSE_SHOW")
+    end
+
+    function client.browseAuctions(ids)
+        world.ah_browse = ids
+        client.fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+    end
+
+    function client.searchAuctions(id, buyouts)
+        world.ah_search[id] = buyouts
+        client.fire("ITEM_SEARCH_RESULTS_UPDATED", { itemID = id })
+    end
+
+    function client.closeAuctionHouse()
+        client.fire("AUCTION_HOUSE_CLOSED")
+    end
+
+    -- The mailbox, held open (client.mail opens and closes it in one go).
+    function client.openMailbox()
+        world.mail_open = true
+        client.fire("MAIL_SHOW")
+        client.fire("MAIL_INBOX_UPDATE")
+    end
+
+    function client.closeMailbox()
+        client.fire("MAIL_CLOSED")
+        world.mail_open = false
+    end
+
+    -- Puts items in the bags (bought, taken from mail): the bags update.
+    function client.give(id, count)
+        put(id, count)
+        bagsChanged()
     end
 
     function client.sell(id, count, price)

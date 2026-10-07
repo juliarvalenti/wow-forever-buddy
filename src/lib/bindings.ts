@@ -348,6 +348,15 @@ export const commands = {
 	 *  the game at the next slot write.
 	 */
 	planClear: (characterId: number) => __TAURI_INVOKE<Plan[]>("plan_clear", { characterId }),
+	listsGet: () => __TAURI_INVOKE<ListsView>("lists_get"),
+	listCreate: (name: string, forCharacter: number | null) => __TAURI_INVOKE<ListsView>("list_create", { name, forCharacter }),
+	listUpdate: (id: number, name: string, forCharacter: number | null) => __TAURI_INVOKE<ListsView>("list_update", { id, name, forCharacter }),
+	listDelete: (id: number) => __TAURI_INVOKE<ListsView>("list_delete", { id }),
+	listItemAdd: (listId: number, item: NewItem, need: number) => __TAURI_INVOKE<ListsView>("list_item_add", { listId, item, need }),
+	listItemNeed: (id: number, need: number) => __TAURI_INVOKE<ListsView>("list_item_need", { id, need }),
+	listItemRemove: (id: number) => __TAURI_INVOKE<ListsView>("list_item_remove", { id }),
+	/**  "+ Add an item…": items your characters have seen. */
+	itemsSeenSearch: (query: string) => __TAURI_INVOKE<SeenItem[]>("items_seen_search", { query }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1019,6 +1028,14 @@ export type Earner = {
 	sessions: number,
 };
 
+/**  An alt that can send some of what the list's character still needs. */
+export type Errand = {
+	from: Who,
+	count: number,
+	/**  How many of `count` are in its bags, the rest in its bank. */
+	in_bags: number,
+};
+
 /**  Emitted while an export runs. */
 export type ExportProgress = {
 	done: number,
@@ -1367,6 +1384,62 @@ export type LinkedFolder = {
 	target: string,
 };
 
+export type List = {
+	id: number,
+	name: string,
+	for_character: Who | null,
+	/**  "app" or "agent:<client name>", as a claim. */
+	producer: string,
+	created_at: string,
+	items: ListItem[],
+};
+
+/**  What one character holds of an item, as of its last logout. */
+export type ListHolding = {
+	character: Who,
+	bags: number,
+	bank: number,
+	mail: number,
+	/**
+	 *  When the addon last saw these (RFC 3339, UTC): the oldest of the
+	 *  places counted.
+	 */
+	as_of: string,
+};
+
+export type ListItem = {
+	id: number,
+	/**  `None` for an item typed as free text that no character has seen. */
+	item_id: number | null,
+	name: string,
+	quality: number | null,
+	icon_file_id: number | null,
+	need: number,
+	/**  All characters together, bags, bank and mail. */
+	have: number,
+	/**  Most first. */
+	holders: ListHolding[],
+	/**  The last scan's lowest buyout, in copper. */
+	price: number | null,
+	errands: Errand[],
+};
+
+/**
+ *  The Lists screen (B2): every list, and where they are on the way to the
+ *  game.
+ */
+export type ListsView = {
+	lists: List[],
+	delivery: Delivery,
+	/**
+	 *  The login notes' way to the game (B1's Briefing slot), for the
+	 *  screen's second "Sent to the game" row.
+	 */
+	briefing: Delivery,
+	/**  When the AH was last scanned (RFC 3339), for the prices' age. */
+	scan_at: string | null,
+};
+
 /**  A raid or dungeon save that hasn't reset yet (F3). */
 export type Lockout = {
 	/**  The instance, as the game names it ("Molten Core"). */
@@ -1470,6 +1543,9 @@ export type MoveReport = {
 	 */
 	left_behind: string | null,
 };
+
+/**  What to add: an item your characters have seen, or free text. */
+export type NewItem = ({ id: number }) & { name?: never } | ({ name: string }) & { id?: never };
 
 /**  What the app's form sends. */
 export type NewNote = {
@@ -1763,6 +1839,14 @@ export type SecretStatus = {
 	error: string | null,
 };
 
+/**  An item some character has seen, for "+ Add an item…". */
+export type SeenItem = {
+	item_id: number,
+	name: string,
+	quality: number | null,
+	icon_file_id: number | null,
+};
+
 export type Sellable = {
 	item: AhItem,
 	count: number,
@@ -2026,6 +2110,16 @@ export type Visited = {
 	/**  When it was last seen (RFC 3339), `None` if never. */
 	as_of: string | null,
 	bags: BagView[],
+};
+
+export type Who = {
+	id: number,
+	name: string,
+	/**
+	 *  File token, lowercase (`warrior`), for the class colour; empty if
+	 *  unknown.
+	 */
+	class: string,
 };
 
 /**  A character found in the WTF folder. */

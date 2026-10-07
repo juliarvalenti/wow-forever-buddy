@@ -106,7 +106,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -985,11 +985,110 @@ local function hookTooltips()
     end)
 end
 
+-- Lists and errands: the data (B2, INGAME §10) ---------------------------------------
+--
+-- The Lists slot carries every list, what each alt held of its items at its
+-- last logout, and the errands the app worked out (an alt that can send
+-- what the list's character is short of). The one live part is this
+-- character: its own counts come from the game as they are now. Nothing
+-- here acts; the panels further down only show it.
+
+local listErrors = 0
+
+local function num(v)
+    return type(v) == "number" and v or 0
+end
+
+local function listsSlot()
+    local s = slots.Lists
+    if type(s) == "table" and type(s.lists) == "table" and type(s.alts) == "table" then
+        return s
+    end
+    return nil
+end
+
+-- This character's index in the slot's alts, if it's there.
+local function myAlt(s)
+    for i, a in ipairs(s.alts) do
+        if type(a) == "table" and isMe(a) then
+            return i
+        end
+    end
+    return nil
+end
+
+-- What this character holds of `id` right now: in its bags, and in its bank
+-- (the client keeps the bank's count once it's been opened).
+local function liveCount(id)
+    local bags = num(read("C_Item.GetItemCount", id))
+    local all = read("C_Item.GetItemCount", id, true)
+    return bags, math.max(0, (type(all) == "number" and all or bags) - bags)
+end
+
+-- An item's holdings by alt index, { bags, bank, mail, asOf, live }; this
+-- character's from the game.
+local function holdings(item, me)
+    local out = {}
+    local held = type(item.held) == "table" and item.held or {}
+    for k = 1, #held - 4, 5 do
+        if type(held[k]) == "number" then
+            out[held[k]] = { bags = num(held[k + 1]), bank = num(held[k + 2]), mail = num(held[k + 3]), asOf = held[k + 4] }
+        end
+    end
+    if me and type(item.id) == "number" then
+        local bags, bank = liveCount(item.id)
+        out[me] = { bags = bags, bank = bank, mail = out[me] and out[me].mail or 0, live = true }
+    end
+    return out
+end
+
+local function total(h)
+    return h.bags + h.bank + h.mail
+end
+
+local function heldIn(h)
+    if h.bags >= h.bank and h.bags >= h.mail then
+        return "bags"
+    end
+    return h.bank >= h.mail and "bank" or "mail"
+end
+
+local function altName(s, i)
+    local a = s.alts[i]
+    return type(a) == "table" and colorName(a.name, a.class) or "?"
+end
+
+-- This character's errands: what it can send to whom, from every list for
+-- another character. { list, item, to, count }.
+local function myErrands()
+    local s = listsSlot()
+    local me = s and myAlt(s)
+    local out = {}
+    if not me then
+        return out
+    end
+    for _, list in ipairs(s.lists) do
+        local to = type(list) == "table" and list["for"]
+        if type(to) == "number" and to ~= me and type(list.items) == "table" then
+            for _, item in ipairs(list.items) do
+                local e = type(item) == "table" and type(item.errands) == "table" and item.errands or {}
+                for k = 1, #e - 2, 3 do
+                    if e[k] == me and num(e[k + 1]) > 0 then
+                        out[#out + 1] = { list = list, item = item, to = to, count = e[k + 1] }
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- Login briefing (B1, INGAME §9) ---------------------------------------------------
 --
 -- One chat line at login, only when there's something to say: quests ready
 -- to hand in and repairs (live), an alt's waiting mail (from the Briefing
--- slot), then this character's note on a line of its own. Nothing acts:
+-- slot), errands (the Lists slot), then this character's note on a line of
+-- its own. Nothing acts:
 -- it's text in the chat frame, every slot string escaped with plain().
 
 local GOLD_PREFIX = "|cffffd100Forever Buddy:|r "
@@ -1077,6 +1176,10 @@ local function briefing()
                 break
             end
         end
+    end
+    local ok, errands = pcall(myErrands)
+    if ok and #errands > 0 then
+        facts[#facts + 1] = #errands .. (#errands == 1 and " errand" or " errands") .. " at the mailbox"
     end
     if planIsNew then
         facts[#facts + 1] = "tonight's plan is ready"
@@ -1390,9 +1493,478 @@ local function planObjectives()
     end
 end
 
+-- Lists and errands: the panels (B2, INGAME §10) -------------------------------------
+--
+-- "Your list" docks beside the merchant and the auction house while they're
+-- open (and opens anywhere with /fb list); "Errands" docks beside the
+-- mailbox. They read item ids off the game's own frames to say what's here,
+-- and the one button only types a name into the To field. Nothing is
+-- bought, attached, clicked or sent.
+
+local LIST_ROWS = 12
+local listFrame, errandFrame
+local listDocked = false -- beside a vendor or the AH, rather than from /fb list
+local here = {} -- item id or lower-case name -> true: sold here, or in the AH results
+local under = {} -- item id -> how many of the first AH rows are under the last scan
+local WORDS = { "one", "two", "three", "four", "five" }
+
+local function itemName(item)
+    return type(item.name) == "string" and item.name or ("Item " .. num(item.id))
+end
+
+local function isHere(item)
+    return (type(item.id) == "number" and here[item.id])
+        or (type(item.name) == "string" and here[string.lower(item.name)]) or false
+end
+
+-- An item's row: its name ("· here" in gold when it's here), what's needed
+-- on the right, and a grey line saying where your characters stand.
+local function itemRow(s, list, item, me)
+    local hold = holdings(item, me)
+    local need = num(item.need)
+    local target = type(list["for"]) == "number" and list["for"] or nil
+    local have = 0
+    for alt, h in pairs(hold) do
+        if not target or alt == target then
+            have = have + total(h)
+        end
+    end
+    local done = have >= need
+    local label = plain(itemName(item)) .. (isHere(item) and " |cffffd100· here|r" or "")
+    local right = done and "done" or ("need " .. (need - have))
+    -- On the list's own character, an errand reads as what's coming.
+    local e = type(item.errands) == "table" and item.errands or {}
+    if not done and target == me and type(e[1]) == "number" and num(e[2]) > 0 then
+        right = plain(s.alts[e[1]] and s.alts[e[1]].name or "?") .. " can send " .. num(e[2])
+    end
+    if done then
+        return label, right, "done", true
+    end
+    local parts = {}
+    local short = need - have
+    local own = target and hold[target]
+    if own and total(own) > 0 then
+        parts[1] = (target == me and "you have " or (altName(s, target) .. " has ")) .. total(own) .. " in "
+            .. heldIn(own) .. ", still " .. short .. " short"
+    else
+        local best, bestAlt
+        for alt = 1, #s.alts do
+            local h = hold[alt]
+            if h and alt ~= target and total(h) > 0 and (not best or total(h) > total(best)) then
+                best, bestAlt = h, alt
+            end
+        end
+        if best then
+            parts[1] = bestAlt == me and ("you have " .. total(best) .. " in " .. heldIn(best))
+                or (altName(s, bestAlt) .. " has " .. total(best) .. " in " .. heldIn(best))
+            if not best.live and stale(best.asOf) then
+                parts[1] = parts[1] .. " (as of " .. shortDate(best.asOf) .. ")"
+            end
+        else
+            parts[1] = "your alts have 0"
+        end
+    end
+    local price = num(item.price)
+    if price > 0 then
+        local n = type(item.id) == "number" and under[item.id]
+        if n and n > 0 then
+            parts[#parts + 1] = n == 1 and "the first row is under it"
+                or ("first " .. (WORDS[n] or n) .. " rows are under it")
+        else
+            parts[#parts + 1] = "~" .. coins(price) .. " at last scan"
+        end
+    end
+    return label, right, table.concat(parts, " · "), false
+end
+
+local function panel(name, title)
+    local f = CreateFrame("Frame", name, UIParent, "DefaultPanelFlatTemplate")
+    f:SetSize(300, 80)
+    f:SetFrameStrata("HIGH")
+    f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.heading:SetPoint("TOPLEFT", 12, -8)
+    f.heading:SetText(title)
+    f.meta = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.meta:SetPoint("TOPRIGHT", -12, -10)
+    f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.footer:SetPoint("BOTTOMLEFT", 12, 8)
+    f.rows = {}
+    f:Hide()
+    return f
+end
+
+-- A row: name, what's needed on the right, a grey line under; with
+-- `height` 56, an errand row, which also gets its "Fill recipient" button.
+local function listRow(f, i, height)
+    height = height or 32
+    local row = f.rows[i]
+    if not row then
+        row = CreateFrame("Frame", nil, f)
+        row:SetSize(280, height - 2)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.label:SetPoint("TOPLEFT", 0, 0)
+        row.right = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.right:SetPoint("TOPRIGHT", 0, 0)
+        row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
+        if height > 32 then
+            local fill = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            fill:SetSize(110, 20)
+            fill:SetPoint("TOPLEFT", row.detail, "BOTTOMLEFT", 0, -3)
+            fill:SetText("Fill recipient")
+            fill:SetScript("OnEnter", function(b)
+                if type(GameTooltip) == "table" then
+                    GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(b.tip, 1, 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            fill:SetScript("OnLeave", function()
+                if type(GameTooltip) == "table" then
+                    GameTooltip:Hide()
+                end
+            end)
+            row.fill = fill
+        end
+        f.rows[i] = row
+    end
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28 - (i - 1) * height)
+    row:Show()
+    return row
+end
+
+-- Fills the list panel. Docked (at a vendor or the AH), lists with
+-- something here come first and the rest fold into "+N lists"; undocked,
+-- every list shows.
+local function renderLists(docked)
+    local f = listFrame
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+    end
+    local s = listsSlot()
+    if not s or #s.lists == 0 then
+        f.meta:SetText("")
+        f.footer:SetText("No lists yet. Make one in Forever Buddy.")
+        f:SetHeight(56)
+        return
+    end
+    local me = myAlt(s)
+    local shown, folded = {}, 0
+    for _, list in ipairs(s.lists) do
+        if type(list) == "table" and type(list.items) == "table" then
+            local anyHere = false
+            for _, item in ipairs(list.items) do
+                anyHere = anyHere or (type(item) == "table" and isHere(item))
+            end
+            if anyHere or not docked then
+                shown[#shown + 1] = list
+            else
+                folded = folded + 1
+            end
+        end
+    end
+    if #shown == 0 then
+        -- Nothing on any list is here: show them all rather than nothing.
+        for _, list in ipairs(s.lists) do
+            if type(list) == "table" and type(list.items) == "table" then
+                shown[#shown + 1] = list
+            end
+        end
+        folded = 0
+    end
+    local names = {}
+    for _, list in ipairs(shown) do
+        names[#names + 1] = plain(list.name or "")
+    end
+    f.meta:SetText(table.concat(names, " · "))
+    local n = 0
+    for _, list in ipairs(shown) do
+        for _, item in ipairs(list.items) do
+            if type(item) == "table" and n < LIST_ROWS then
+                n = n + 1
+                local row = listRow(f, n)
+                local label, right, detail, done = itemRow(s, list, item, me)
+                row.label:SetText(label)
+                row.right:SetText(right)
+                row.detail:SetText(detail)
+                if done then
+                    row.label:SetTextColor(0.5, 0.5, 0.5)
+                    row.right:SetTextColor(0.5, 0.5, 0.5)
+                else
+                    row.label:SetTextColor(1, 1, 1)
+                    row.right:SetTextColor(1, 0.82, 0)
+                end
+            end
+        end
+    end
+    local at = type(s.stamp) == "number" and read(date, "%H:%M", s.stamp)
+    local foot = "From Forever Buddy" .. (at and (" · " .. at) or "") .. " · /fb list"
+    if folded > 0 then
+        foot = "+" .. folded .. (folded == 1 and " list" or " lists") .. " · " .. foot
+    end
+    f.footer:SetText(foot)
+    f:SetHeight(48 + n * 32)
+end
+
+local function showLists(anchor)
+    if not listFrame then
+        listFrame = panel("ForeverBuddyListFrame", "Your list")
+    end
+    listFrame:ClearAllPoints()
+    if anchor then
+        listFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 6, 0)
+    else
+        listFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -60, -160)
+    end
+    listDocked = anchor ~= nil
+    renderLists(listDocked)
+    listFrame:Show()
+end
+
+local listPinned = false -- opened with /fb list: stays after a vendor closes
+
+-- The vendor or AH it docked beside closed: back to where /fb list had it,
+-- or gone.
+local function undock()
+    if not listFrame or not listDocked then
+        return
+    end
+    if listPinned then
+        showLists(nil)
+    else
+        listFrame:Hide()
+    end
+end
+
+-- Every listed item id and name, for the highlights.
+local function wanted()
+    local s = listsSlot()
+    local ids, names = {}, {}
+    for _, list in ipairs(s and s.lists or {}) do
+        for _, item in ipairs(type(list) == "table" and type(list.items) == "table" and list.items or {}) do
+            if type(item) == "table" then
+                if type(item.id) == "number" then
+                    ids[item.id] = true
+                elseif type(item.name) == "string" then
+                    names[string.lower(item.name)] = true
+                end
+            end
+        end
+    end
+    return ids, names
+end
+
+-- A merchant item button on a list: a gold edge and a small "list" tag.
+-- Kept here by button, so nothing is written onto the game's own frames.
+local marks = setmetatable({}, { __mode = "k" })
+
+local function mark(button, on)
+    local m = marks[button]
+    if not m then
+        if not on then
+            return
+        end
+        local glow = button:CreateTexture(nil, "OVERLAY")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 0.82, 0, 0.25)
+        local tag = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        tag:SetPoint("BOTTOMRIGHT", -1, 1)
+        tag:SetText("list")
+        m = { glow = glow, tag = tag }
+        marks[button] = m
+    end
+    m.glow:SetShown(on)
+    m.tag:SetShown(on)
+end
+
+-- What this vendor sells, and which of its buttons on this page to mark.
+local function merchantUpdate()
+    here = {}
+    local ids, names = wanted()
+    for index = 1, num(read("GetMerchantNumItems")) do
+        local id = read("GetMerchantItemID", index)
+        if type(id) == "number" then
+            here[id] = true
+            local name = read("C_Item.GetItemInfo", id)
+            if type(name) == "string" then
+                here[string.lower(name)] = true
+            end
+        end
+    end
+    local perPage = num(rawget(_G, "MERCHANT_ITEMS_PER_PAGE"))
+    local page = type(MerchantFrame) == "table" and num(MerchantFrame.page) or 1
+    for i = 1, perPage do
+        local button = rawget(_G, "MerchantItem" .. i .. "ItemButton")
+        if type(button) == "table" then
+            local id = read("GetMerchantItemID", (math.max(page, 1) - 1) * perPage + i)
+            local name = type(id) == "number" and read("C_Item.GetItemInfo", id)
+            mark(button, (type(id) == "number" and ids[id])
+                or (type(name) == "string" and names[string.lower(name)]) or false)
+        end
+    end
+    if listFrame and listFrame:IsShown() then
+        renderLists(listDocked)
+    end
+end
+
+local merchantHooked = false
+
+local function atMerchant()
+    if not merchantHooked and type(hooksecurefunc) == "function" and rawget(_G, "MerchantFrame_Update") then
+        merchantHooked = pcall(hooksecurefunc, "MerchantFrame_Update", function()
+            if not pcall(merchantUpdate) then
+                listErrors = listErrors + 1
+            end
+        end)
+    end
+    merchantUpdate()
+    if listsSlot() then
+        showLists(MerchantFrame)
+    end
+end
+
+-- The AH's browse results: which listed items show there.
+local function auctionBrowse()
+    here = {}
+    local results = read("C_AuctionHouse.GetBrowseResults")
+    for _, r in ipairs(type(results) == "table" and results or {}) do
+        local id = type(r) == "table" and type(r.itemKey) == "table" and r.itemKey.itemID
+        if type(id) == "number" then
+            here[id] = true
+        end
+    end
+    if listFrame and listFrame:IsShown() then
+        renderLists(true)
+    end
+end
+
+-- One item's AH rows (cheapest first): how many lead under the last scan.
+local function auctionItem(itemKey)
+    local id = type(itemKey) == "table" and itemKey.itemID
+    if type(id) ~= "number" then
+        return
+    end
+    local s = listsSlot()
+    local price
+    for _, list in ipairs(s and s.lists or {}) do
+        for _, item in ipairs(type(list) == "table" and type(list.items) == "table" and list.items or {}) do
+            if type(item) == "table" and item.id == id and num(item.price) > 0 then
+                price = item.price
+            end
+        end
+    end
+    if not price then
+        return
+    end
+    local n = 0
+    for i = 1, num(read("C_AuctionHouse.GetNumItemSearchResults", itemKey)) do
+        local r = read("C_AuctionHouse.GetItemSearchResultInfo", itemKey, i)
+        if type(r) ~= "table" or type(r.buyoutAmount) ~= "number" or r.buyoutAmount >= price then
+            break
+        end
+        n = n + 1
+    end
+    under[id] = n
+    here[id] = true
+    if listFrame and listFrame:IsShown() then
+        renderLists(true)
+    end
+end
+
+-- The errands panel: one row per errand, a "Fill recipient" button that
+-- only types the name, disabled when the goods are in the bank.
+local function renderErrands(errands, s, me)
+    local f = errandFrame
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+    end
+    f.meta:SetText("from " .. altName(s, me))
+    for i, e in ipairs(errands) do
+        local row = listRow(f, i, 56)
+        local to = s.alts[e.to]
+        local toName = type(to) == "table" and type(to.name) == "string" and to.name or "?"
+        local name = itemName(e.item)
+        row.label:SetText(plain(name) .. " ×" .. e.count .. " to " .. colorName(toName, to and to.class))
+        row.right:SetText("")
+        local bags, bank = 0, 0
+        if type(e.item.id) == "number" then
+            bags, bank = liveCount(e.item.id)
+        end
+        local whose = plain(toName) .. "'s " .. plain(e.list.name or "") .. " list"
+        if bags > 0 then
+            row.detail:SetText("you have " .. bags .. " in bags · " .. whose)
+        elseif bank > 0 then
+            row.detail:SetText(bank .. " in your bank · visit the bank first")
+        else
+            row.detail:SetText("none in your bags now · " .. whose)
+        end
+        row.fill:SetEnabled(bags > 0)
+        row.fill.tip = "Types \"" .. plain(toName) .. "\" in the To field. Attach the "
+            .. plain(name) .. " yourself, then press Send."
+        row.fill:SetScript("OnClick", function()
+            local box = rawget(_G, "SendMailNameEditBox")
+            if bags > 0 and type(box) == "table" then
+                box:SetText(toName)
+            end
+        end)
+    end
+    f.footer:SetText("Nothing is attached or sent for you.")
+    f:SetHeight(48 + #errands * 56)
+end
+
+local function atMailbox()
+    local errands = myErrands()
+    if #errands == 0 then
+        return
+    end
+    local s = listsSlot()
+    if not errandFrame then
+        errandFrame = panel("ForeverBuddyErrandFrame", "Errands")
+    end
+    errandFrame:ClearAllPoints()
+    errandFrame:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
+    renderErrands(errands, s, myAlt(s))
+    errandFrame:Show()
+end
+
+local function toggleLists()
+    if listFrame and listFrame:IsShown() then
+        listPinned = false
+        listFrame:Hide()
+    else
+        listPinned = true
+        showLists(nil)
+    end
+end
+
+-- /fb errands: the same, as text, anywhere.
+local function sayErrands()
+    local errands = myErrands()
+    if #errands == 0 then
+        say(GOLD_PREFIX .. "no errands for this character.")
+        return
+    end
+    local s = listsSlot()
+    for _, e in ipairs(errands) do
+        local to = s.alts[e.to]
+        local bags = type(e.item.id) == "number" and (liveCount(e.item.id)) or 0
+        say(GOLD_PREFIX .. plain(itemName(e.item)) .. " ×" .. e.count .. " to "
+            .. altName(s, e.to) .. " (" .. bags .. " in bags) · " .. plain(type(to) == "table" and to.name or "?")
+            .. "'s " .. plain(e.list.name or "") .. " list")
+    end
+end
+
+local function guarded(fn, ...)
+    if not pcall(fn, ...) then
+        listErrors = listErrors + 1
+    end
+end
+
 -- /fb ------------------------------------------------------------------------------
 --
--- /fb plan opens the plan frame; /fb brief repeats this login's briefing in
+-- /fb plan opens the plan frame; /fb list the list panel; /fb errands says
+-- this character's errands; /fb brief repeats this login's briefing in
 -- full; /fb brief off|on.
 local function slash(msg)
     local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
@@ -1414,9 +1986,13 @@ local function slash(msg)
     elseif cmd == "brief off" or cmd == "brief on" then
         setBriefing(cmd == "brief on")
         say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
+    elseif cmd == "list" then
+        guarded(toggleLists)
+    elseif cmd == "errands" then
+        guarded(sayErrands)
     else
-        say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb brief repeats the login briefing; "
-            .. "/fb brief off turns it off.")
+        say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
+            .. "/fb brief repeats the login briefing; /fb brief off turns it off.")
     end
 end
 
@@ -1607,6 +2183,7 @@ end
 handlers.MERCHANT_SHOW = function()
     merchantOpen = true
     repairCost = repairCostNow()
+    guarded(atMerchant)
 end
 
 handlers.UPDATE_INVENTORY_DURABILITY = function()
@@ -1622,12 +2199,43 @@ end
 
 handlers.MERCHANT_CLOSED = function()
     merchantOpen, repairCost = false, nil
+    here = {}
+    undock()
+end
+
+-- The AH (B2): the list panel docks beside it, and what's in its results
+-- counts as here.
+handlers.AUCTION_HOUSE_SHOW = function()
+    here, under = {}, {}
+    if listsSlot() then
+        guarded(showLists, rawget(_G, "AuctionHouseFrame"))
+    end
+end
+
+handlers.AUCTION_HOUSE_BROWSE_RESULTS_UPDATED = function()
+    guarded(auctionBrowse)
+end
+
+handlers.ITEM_SEARCH_RESULTS_UPDATED = function(itemKey)
+    guarded(auctionItem, itemKey)
+end
+
+handlers.AUCTION_HOUSE_CLOSED = function()
+    here, under = {}, {}
+    undock()
 end
 
 handlers.BAG_UPDATE_DELAYED = function()
     scanBags()
     if bankOpen then
         scanBank()
+    end
+    -- Live counts in the panels that are open.
+    if mailOpen and errandFrame and errandFrame:IsShown() then
+        guarded(atMailbox)
+    end
+    if listFrame and listFrame:IsShown() then
+        guarded(renderLists, listDocked)
     end
 end
 
@@ -1650,10 +2258,14 @@ end
 
 handlers.MAIL_SHOW = function()
     mailOpen = true
+    guarded(atMailbox)
 end
 
 handlers.MAIL_CLOSED = function()
     mailOpen = false
+    if errandFrame then
+        errandFrame:Hide()
+    end
 end
 
 handlers.MAIL_INBOX_UPDATE = function()
@@ -1751,6 +2363,7 @@ handlers.PLAYER_LOGOUT = function()
         secret_hits = secretHits,
         tooltip_errors = tooltipErrors > 0 and tooltipErrors or nil,
         plan_errors = planErrors > 0 and planErrors or nil,
+        list_errors = listErrors > 0 and listErrors or nil,
         missing_events = missingEvents,
         errors = errors,
     }

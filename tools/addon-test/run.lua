@@ -594,7 +594,8 @@ scenario("toc", function()
     eq(fields.SavedVariables, "ForeverBuddySettings", "account-wide SavedVariables")
     eq(fields.AddonCompartmentFunc, "ForeverBuddy_OnAddonCompartmentClick", "compartment")
     -- The bridge slots load first, so their globals exist when the addon runs.
-    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, ForeverBuddy.lua", "files")
+    eq(table.concat(files, ", "),
+        "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -1003,8 +1004,8 @@ scenario("briefing", function()
     quiet.slash("/fb brief")
     eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
     quiet.slash("/fb")
-    eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb brief repeats the login briefing; "
-        .. "/fb brief off turns it off.", "/fb help")
+    eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
+        .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
 
     -- Not in combat.
     local fighting = client({ slots = { ["Data/Briefing.lua"] = briefingSlot(NOTES) } })
@@ -1012,6 +1013,156 @@ scenario("briefing", function()
     fighting.world.combat = true
     fighting.advance(5)
     eq(#fighting.chat, 0, "nothing in combat")
+    return text
+end)
+
+-- Shopping lists and alt errands (B2, INGAME §10). Thrandor (alt 1) has 4
+-- Linen Cloth in bags and 20 Runecloth in the bank; Sela (2) gathers for
+-- Tailoring; Kaelor (3) holds the raid's jerky.
+local LISTS = 'ForeverBuddyData_Lists = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
+    .. '\t["alts"] = {\n'
+    .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "WARRIOR", ["seen"] = ' .. wow.EPOCH .. ' },\n'
+    .. '\t\t{ ["name"] = "Sela", ["surname"] = "", ["class"] = "PRIEST", ["seen"] = ' .. (wow.EPOCH - 10 * DAY) .. ' },\n'
+    .. '\t\t{ ["name"] = "Kaelor", ["surname"] = "", ["class"] = "ROGUE", ["seen"] = ' .. wow.EPOCH .. ' },\n'
+    .. '\t},\n'
+    .. '\t["lists"] = {\n'
+    .. '\t\t{ ["id"] = 1, ["name"] = "Tailoring", ["for"] = 2, ["items"] = {\n'
+    .. '\t\t\t{ ["id"] = 14047, ["name"] = "Runecloth", ["need"] = 30, ["price"] = 11200,'
+    .. ' ["held"] = { 1, 0, 20, 0, ' .. (wow.EPOCH - DAY) .. ', 2, 0, 4, 0, ' .. (wow.EPOCH - 10 * DAY) .. ' },'
+    .. ' ["errands"] = { 1, 20, 0 } },\n'
+    .. '\t\t\t{ ["id"] = 2589, ["name"] = "Linen Cloth", ["need"] = 6,'
+    .. ' ["held"] = { 1, 4, 0, 0, ' .. wow.EPOCH .. ' }, ["errands"] = { 1, 4, 4 } },\n'
+    .. '\t\t\t{ ["name"] = "Mooncloth", ["need"] = 2, ["held"] = {} },\n'
+    .. '\t\t} },\n'
+    .. '\t\t{ ["id"] = 2, ["name"] = "Raid night ]] |cffff0000x", ["items"] = {\n'
+    .. '\t\t\t{ ["id"] = 117, ["name"] = "Tough Jerky", ["need"] = 20, ["price"] = 50,'
+    .. ' ["held"] = { 3, 25, 0, 0, ' .. wow.EPOCH .. ' } },\n'
+    .. '\t\t} },\n'
+    .. '\t},\n}\n'
+
+scenario("lists", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local SELA = "|cffffffffSela|r"
+    local c = client({ slots = { ["Data/Lists.lua"] = LISTS } })
+    c.login(nil)
+    c.advance(5)
+    eq(c.chat[1], PREFIX .. "2 errands at the mailbox", "the briefing counts this character's errands")
+    c.chat = {}
+
+    -- A vendor that sells the jerky: that list docks beside it, the other
+    -- folds away, and the jerky's button is marked.
+    c.openMerchant({ 117, 6948 })
+    local f = c.global("ForeverBuddyListFrame")
+    eq(f.shown, true, "docks at a vendor")
+    eq(f.point[2], c.global("MerchantFrame"), "beside the merchant")
+    eq(f.heading.text, "Your list", "heading")
+    eq(f.meta.text, "Raid night ]] ||cffff0000x", "list names are escaped")
+    eq(f.rows[1].label.text, "Tough Jerky |cffffd100· here|r", "here")
+    eq(f.rows[1].right.text, "done", "Kaelor's 25 cover it")
+    eq(f.rows[2] and f.rows[2].shown, nil, "one row")
+    eq(f.footer.text:match("^%+1 list · From Forever Buddy"), "+1 list · From Forever Buddy", "the rest fold")
+    -- The mark is the glow and the tag the addon adds to the button.
+    local button = c.global("MerchantItem1ItemButton")
+    eq(button.children[1].shown, true, "the vendor's button is marked")
+    eq(button.children[2].text, "list", "with a tag")
+    eq(#c.global("MerchantItem2ItemButton").children, 0, "not the hearthstone")
+    c.closeMerchant()
+    eq(f.shown, false, "closes with the vendor")
+
+    -- One that sells linen: Sela's list, with where everyone stands.
+    c.openMerchant({ 2589 })
+    eq(f.meta.text, "Tailoring", "Sela's list")
+    eq(f.rows[1].label.text, "Runecloth", "not here")
+    eq(f.rows[1].right.text, "need 26", "Sela's own 4 count")
+    eq(f.rows[1].detail.text, SELA .. " has 4 in bank, still 26 short · ~1g 12s at last scan", "where Sela stands")
+    eq(f.rows[2].label.text, "Linen Cloth |cffffd100· here|r", "here")
+    eq(f.rows[2].detail.text, "you have 4 in bags", "live counts for this character")
+    eq(f.rows[3].detail.text, "your alts have 0", "a free-text item")
+    c.closeMerchant()
+
+    -- The AH: browse results count as here; listings under the last scan
+    -- are counted, never called a buy.
+    c.openAuctionHouse()
+    eq(f.shown, true, "docks at the AH")
+    eq(f.point[2], c.global("AuctionHouseFrame"), "beside the AH")
+    c.browseAuctions({ 14047 })
+    eq(f.meta.text, "Tailoring", "the list with something in the results")
+    eq(f.rows[1].label.text, "Runecloth |cffffd100· here|r", "in the results")
+    c.searchAuctions(14047, { 9000, 10000, 12000 })
+    eq(f.rows[1].detail.text, SELA .. " has 4 in bank, still 26 short · first two rows are under it", "under the scan")
+    c.closeAuctionHouse()
+    eq(f.shown, false, "closes with the AH")
+
+    -- /fb list: anywhere, every list, until /fb list again.
+    c.slash("/fb list")
+    eq(f.shown, true, "/fb list")
+    eq(f.point[2], c.global("UIParent"), "undocked")
+    eq(f.meta.text, "Tailoring · Raid night ]] ||cffff0000x", "every list")
+    -- A vendor docks it for a while; closing it puts it back.
+    c.openMerchant({})
+    eq(f.point[2], c.global("MerchantFrame"), "docked at the vendor")
+    c.closeMerchant()
+    eq(f.shown, true, "still open")
+    eq(f.point[2], c.global("UIParent"), "back where it was")
+    c.slash("/fb list")
+    eq(f.shown, false, "/fb list again")
+
+    -- The mailbox: Sela's errands. Linen is in the bags; the Runecloth is in
+    -- the bank, so its button waits.
+    c.openMailbox()
+    local e = c.global("ForeverBuddyErrandFrame")
+    eq(e.shown, true, "errands at the mailbox")
+    eq(e.point[2], c.global("MailFrame"), "beside the mailbox")
+    eq(e.meta.text, "from |cffc79c6eThrandor|r", "from this character")
+    eq(e.rows[1].label.text, "Runecloth ×20 to " .. SELA, "errand")
+    eq(e.rows[1].detail.text, "20 in your bank · visit the bank first", "in the bank")
+    eq(e.rows[1].fill.enabled, false, "waits for the bank")
+    eq(e.rows[2].label.text, "Linen Cloth ×4 to " .. SELA, "errand")
+    eq(e.rows[2].detail.text, "you have 4 in bags · Sela's Tailoring list", "by name, never a pronoun")
+    eq(e.rows[2].fill.enabled, true, "ready")
+    eq(e.rows[2].fill.tip, "Types \"Sela\" in the To field. Attach the Linen Cloth yourself, then press Send.", "tip")
+    eq(e.footer.text, "Nothing is attached or sent for you.", "footer")
+    local box = c.global("SendMailNameEditBox")
+    c.click(e.rows[1].fill)
+    eq(box:GetText(), nil, "a waiting errand types nothing")
+    c.click(e.rows[2].fill)
+    eq(box:GetText(), "Sela", "only the To field")
+    -- Fetched from the bank: the bags update and the button is ready.
+    c.bank(nil, { [14047] = 20 })
+    eq(e.rows[1].detail.text, "you have 20 in bags · Sela's Tailoring list", "live")
+    eq(e.rows[1].fill.enabled, true, "ready now")
+    c.closeMailbox()
+    eq(e.shown, false, "closes with the mailbox")
+
+    c.slash("/fb errands")
+    eq(c.chat[1], PREFIX .. "Runecloth ×20 to " .. SELA .. " (20 in bags) · Sela's Tailoring list", "/fb errands")
+    eq(#c.chat, 2, "one line each")
+    local text = c.logout()
+    eq(file(text).bridge.Lists.stamp, 1790960000, "receipt")
+
+    -- On Sela, the errand reads as what's coming, and the mailbox has none.
+    local sela = client({
+        slots = { ["Data/Lists.lua"] = LISTS },
+        character = { name = "Sela", surname = "", realm = "Classic Beta PvP 2", guid = "Player-2" },
+    })
+    sela.login(nil)
+    sela.advance(5)
+    eq(#sela.chat, 0, "no errands, no briefing")
+    sela.slash("/fb list")
+    local g = sela.global("ForeverBuddyListFrame")
+    eq(g.rows[1].right.text, "Thrandor can send 20", "coming from Thrandor")
+    sela.openMailbox()
+    eq(sela.global("ForeverBuddyErrandFrame"), nil, "no errands panel")
+    sela.slash("/fb errands")
+    eq(sela.chat[1], PREFIX .. "no errands for this character.", "says so")
+
+    -- Without the slot: a vendor shows nothing, /fb list says there are none.
+    local none = client()
+    none.login(nil)
+    none.openMerchant({ 117 })
+    eq(none.global("ForeverBuddyListFrame"), nil, "no panel without lists")
+    none.slash("/fb list")
+    eq(none.global("ForeverBuddyListFrame").footer.text, "No lists yet. Make one in Forever Buddy.", "empty")
     return text
 end)
 
