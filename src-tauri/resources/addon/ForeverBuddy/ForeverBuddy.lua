@@ -284,8 +284,15 @@ local function zoneNow()
 end
 
 -- Item counts by id across the bags and everything worn, or nil if any of it
--- couldn't be read (a secret anywhere would make items seem to vanish).
+-- couldn't be read (a secret anywhere would make items seem to vanish). The
+-- backpack always has slots: before the bags load at login (and after the
+-- teardown at logout) it reports none, and that's unknown, not empty, or the
+-- first real read would log the whole inventory as gained (BUG-ADV).
 local function carried()
+    local backpack = read("C_Container.GetContainerNumSlots", 0)
+    if type(backpack) ~= "number" or backpack <= 0 then
+        return nil
+    end
     local before = secretHits
     local counts = {}
     for bag = 0, 5 do
@@ -4001,6 +4008,13 @@ end
 -- The logout countdown (and /quit's): the card, until it's cancelled.
 handlers.PLAYER_CAMPING = function()
     S.guarded(S.showCard)
+    pcall(S.takeGood, true) -- still readable during the countdown
+end
+
+-- Before the teardown, where the client still answers (an inn's instant
+-- logout has no countdown).
+handlers.PLAYER_LEAVING_WORLD = function()
+    pcall(S.takeGood, true)
 end
 
 handlers.PLAYER_QUITING = function()
@@ -4036,6 +4050,7 @@ handlers.PLAYER_MONEY = function()
     else
         lastMoney = addEvent("money", { money = money })
     end
+    pcall(S.takeGood)
 end
 
 -- Where a quest was taken or handed in, and who to (the quest log, Q1b):
@@ -4173,6 +4188,7 @@ handlers.BAG_UPDATE_DELAYED = function()
     if merchantOpen then
         guarded(C.atVendor)
     end
+    pcall(S.takeGood)
 end
 
 handlers.BANKFRAME_OPENED = function()
@@ -4260,6 +4276,54 @@ handlers.ITEM_DATA_LOAD_RESULT = function(itemID, success)
 end
 
 -- Builds the whole file from this session plus the sessions carried forward.
+-- Forever tears the character's state down before PLAYER_LOGOUT: bags, worn
+-- gear, money and quests read empty then (Julia's first logouts,
+-- BUG-SATCHELS). So snapshots are also taken during play, and the latest
+-- one whose backpack could be read is kept in S.good. The backpack (bag 0)
+-- always has slots, so a snapshot without it is hollow, not "no bags".
+S.GOOD_EVERY = 10 -- seconds between snapshots during play
+
+function S.takeGood(force)
+    local t = now()
+    if not t or not session or read("InCombatLockdown") then
+        return
+    end
+    if not force and S.goodAt and t - S.goodAt < S.GOOD_EVERY then
+        -- Throttled: one more once the burst is over, so the last change
+        -- before logging out is in it.
+        if not S.goodLater then
+            S.goodLater = true
+            read("C_Timer.After", S.GOOD_EVERY, function()
+                S.goodLater = false
+                S.takeGood(true)
+            end)
+        end
+        return
+    end
+    S.goodAt = t
+    local s = snapshot(t)
+    if s.bags[0] then
+        S.good = s
+    end
+end
+
+-- The snapshot to write at logout: the live one, or when that's hollow the
+-- last good one from play (with its own `at`), with what's kept apart from
+-- it (bank, mail, lockouts, played) brought up to date. With neither, none:
+-- the app keeps what it had.
+function S.logoutSnapshot(t)
+    local s = snapshot(t)
+    if s.bags[0] then
+        return s
+    end
+    local g = S.good
+    if not g then
+        return nil
+    end
+    g.bank, g.mail, g.lockouts, g.played = s.bank, s.mail, s.lockouts, s.played
+    return g
+end
+
 -- If anything here fails, ForeverBuddyDB keeps what the client loaded, so the
 -- file is never left half-built.
 handlers.PLAYER_LOGOUT = function()
@@ -4293,7 +4357,7 @@ handlers.PLAYER_LOGOUT = function()
 
     local db = {
         character = character,
-        snapshot = snapshot(session.logout),
+        snapshot = S.logoutSnapshot(session.logout),
         items = items,
         sessions = sessions,
         bridge = receipts and next(receipts) and receipts or nil,

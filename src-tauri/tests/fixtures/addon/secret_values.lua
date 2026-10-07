@@ -12,7 +12,7 @@ ForeverBuddyDB = {
 		["missing_events"] = {
 		},
 		["schema"] = 1,
-		["secret_hits"] = 82,
+		["secret_hits"] = 101,
 		["truncated"] = false,
 		["written"] = 1790967600,
 	},
@@ -30,22 +30,5 @@ ForeverBuddyDB = {
 			["start"] = {
 			},
 		}, -- [1]
-	},
-	["snapshot"] = {
-		["at"] = 1790967600,
-		["bags"] = {
-		},
-		["equipped"] = {
-		},
-		["ilvl"] = {
-		},
-		["played"] = {
-			["level"] = 4074,
-			["total"] = 23151,
-		},
-		["professions"] = {
-		},
-		["zone"] = {
-		},
 	},
 }

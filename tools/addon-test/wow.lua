@@ -205,6 +205,9 @@ function M.new(opts)
     end
 
     local function readable(bag)
+        if world.torn then
+            return false
+        end
         return bag >= 0 and bag <= 5 or world.bank_open
     end
 
@@ -258,7 +261,7 @@ function M.new(opts)
             return "1.60.1", "70009", "Sep 30 2026", 16001
         end,
         GetMoney = function()
-            return world.money
+            return world.torn and 0 or world.money
         end,
         UnitXP = function()
             return world.xp
@@ -284,7 +287,7 @@ function M.new(opts)
             return d.name, d.kind, d.difficulty, d.difficultyName
         end,
         GetInventoryItemID = function(_, slot)
-            return world.equipped[slot]
+            return not world.torn and world.equipped[slot] or nil
         end,
         GetRepairAllCost = function()
             return world.repair, world.repair > 0
@@ -546,8 +549,8 @@ function M.new(opts)
             return world.subzone or ""
         end,
         GetInventoryItemLink = function(_, slot)
-            local id = world.equipped[slot]
-            return id and M.link(id)
+            local id = not world.torn and world.equipped[slot]
+            return id and M.link(id) or nil
         end,
         GetProfessions = function()
             local p = world.professions
@@ -922,15 +925,28 @@ function M.new(opts)
         end
         -- The account-wide settings, kept across logins like the client does.
         state.env.ForeverBuddySettings = client.settings
+        -- opts.forever: like Julia's client (BUG-SATCHELS), the bags,
+        -- gear and money read empty until the bags load, a moment after
+        -- entering the world.
+        world.torn = opts.forever and true or nil
         client.fire("ADDON_LOADED", "ForeverBuddy")
         client.fire("PLAYER_LOGIN")
         client.fire("PLAYER_ENTERING_WORLD", not o.reload, o.reload == true)
+        if opts.forever then
+            client.advance(1)
+            world.torn = nil
+            client.fire("BAG_UPDATE_DELAYED")
+        end
     end
 
     -- Types a slash command, as the chat box would.
     -- Logs out and returns the file the client would write.
     function client.logout()
+        -- opts.forever: torn down before the addon hears about it.
+        world.torn = opts.forever and true or nil
+        client.fire("PLAYER_LEAVING_WORLD")
         client.fire("PLAYER_LOGOUT")
+        world.torn = nil
         client.settings = state.env.ForeverBuddySettings
         local db = state.env.ForeverBuddyDB
         if db == nil then
