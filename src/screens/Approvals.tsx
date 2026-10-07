@@ -1,16 +1,16 @@
-import { AlertTriangle, Check, FileText, Lock } from "lucide-react";
-import type { Decision, LoginNote, NoteView, Proposal } from "@/lib/bindings";
-import { Button, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
+import { AlertTriangle, Check, FileText, Lock, Map as MapIcon, ShoppingBag } from "lucide-react";
+import type { Decision, ListView, LoginNote, NoteView, PlanView, Proposal, Step } from "@/lib/bindings";
+import { Button, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
 import { useApprovals } from "@/hooks/useApprovals";
 import { useSettings } from "@/hooks/useSettings";
-import { ago } from "@/lib/format";
+import { ago, plural } from "@/lib/format";
 import { classStyle } from "@/screens/Characters";
 
 // design/mocks/round-3/approvals.html, IMPLEMENTING §17; rules from
 // docs/specs/agent-mcp.md §4. Every proposed string (note text, reason, the
 // producer) is React text, never HTML. The producer is quoted as a claim.
-// Only the kinds that exist are shown: login notes now; plans and lists
-// join the same list when they land.
+// Three kinds: login notes, quest plans (the active plan alongside) and list
+// changes (only the items that change, the old need struck through).
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -22,9 +22,9 @@ const stamp = (iso: string) =>
 const timing = (n: { once: boolean; until: string | null }) =>
   n.once ? "next login" : n.until ? `until ${day(n.until)}` : "";
 
-const KIND: Record<string, string> = { login_note: "Login note" };
+const KIND: Record<string, string> = { login_note: "Login note", quest_plan: "Quest plan", list: "List change" };
 
-function Who({ n }: { n: NoteView }) {
+function Who({ n }: { n: NoteView | PlanView }) {
   return (
     <span className="ch-cc" style={classStyle({ class: n.class })}>
       {n.character}
@@ -34,14 +34,100 @@ function Who({ n }: { n: NoteView }) {
 
 function Title({ p }: { p: Proposal }) {
   const kind = KIND[p.kind] ?? "Suggestion";
-  return p.note ? (
-    <>
-      {kind} for <Who n={p.note} />
-    </>
-  ) : (
-    <>{kind}</>
+  const who = p.note ?? p.plan;
+  if (who)
+    return (
+      <>
+        {kind} for <Who n={who} />
+      </>
+    );
+  if (p.list) return <>{p.list.list_id == null ? `New list ${p.list.name}` : `Changes to ${p.list.name}`}</>;
+  return <>{kind}</>;
+}
+
+/** A plan's steps, crossed out where done. */
+function Steps({ steps, done = [] }: { steps: Step[]; done?: number[] }) {
+  return (
+    <ol className="ap-steps">
+      {steps.map((s, i) => (
+        <li key={i} className={done.includes(i + 1) ? "done" : undefined}>
+          {s.text}
+          {s.zone && <small>{s.zone}</small>}
+        </li>
+      ))}
+    </ol>
   );
 }
+
+function PlanPreview({ v }: { v: PlanView }) {
+  const r = v.replaces;
+  return (
+    <div className={`ap-cmp${r ? "" : " one"}`}>
+      {r && (
+        <div className="ap-pv">
+          <h3>
+            Active now · {r.title} · {r.done.length} of {r.steps.length} done
+          </h3>
+          <Steps steps={r.steps} done={r.done} />
+        </div>
+      )}
+      <div className="ap-pv new">
+        <h3>
+          Proposed · {v.title} · {plural(v.steps.length, "step", "steps")}
+        </h3>
+        <Steps steps={v.steps} />
+      </div>
+    </div>
+  );
+}
+
+function ListPreview({ v }: { v: ListView }) {
+  return (
+    <div className="ap-cmp one">
+      <div className="ap-pv new">
+        <h3>
+          {v.list_id == null ? "New list" : plural(v.changes.length, "change", "changes")}
+          {v.for_character && (
+            <>
+              {" "}
+              · for{" "}
+              <span className="ch-cc" style={classStyle({ class: v.for_character.class || null })}>
+                {v.for_character.name}
+              </span>
+            </>
+          )}
+        </h3>
+        <table className="ap-items">
+          <tbody>
+            {v.changes.map((c) => {
+              const q = c.quality != null ? `ch-q${c.quality}` : "";
+              return (
+                <tr key={c.item_id}>
+                  <td>
+                    <div className="ap-an">
+                      <span className={`ch-ico ${q}`} aria-hidden>
+                        <b>{c.name.slice(0, 1)}</b>
+                        <ItemIcon id={c.icon_file_id} />
+                      </span>
+                      <span className={q}>{c.name}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {c.was != null && <span className="old">{c.was}</span>}need {c.need}
+                  </td>
+                  <td className="chg">{c.was == null ? "added" : "changed"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Not part of Approve all: a note to pick for, or a list that's gone. */
+const needsYou = (p: Proposal) => (p.note?.replaces?.conflict ?? false) || (p.list?.gone ?? false);
 
 function Mine({ now }: { now: LoginNote | null }) {
   if (!now) return <div className="ap-notetxt ap-gone">Removed since. Using the proposal adds it as a new note.</div>;
@@ -63,7 +149,7 @@ function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decisi
     <div className="ap-prop">
       <div className="ap-top">
         <span className="ap-kind" aria-hidden>
-          <FileText size={15} />
+          {p.plan ? <MapIcon size={15} /> : p.list ? <ShoppingBag size={15} /> : <FileText size={15} />}
         </span>
         <div className="ap-t">
           <b>
@@ -72,6 +158,7 @@ function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decisi
           <small>
             from "{p.producer}" · {ago(p.created_at)}
             {r && !conflict ? " · replaces a note" : ""}
+            {p.plan?.replaces ? " · replaces the active plan" : ""}
           </small>
         </div>
         <div className="ap-acts">
@@ -87,11 +174,19 @@ function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decisi
               <Button variant="ghost" onClick={() => decide([p.id], "decline")}>
                 Decline
               </Button>
-              <Button onClick={() => decide([p.id], "approve")}>Approve</Button>
+              <Button onClick={() => decide([p.id], "approve")} disabled={p.list?.gone}>
+                Approve
+              </Button>
             </>
           )}
         </div>
       </div>
+      {p.list?.gone && (
+        <div className="ap-conflict">
+          <AlertTriangle size={13} aria-hidden />
+          You deleted this list after "{p.producer}" suggested this, so there's nothing to change.
+        </div>
+      )}
       {conflict && (
         <div className="ap-conflict">
           <AlertTriangle size={13} aria-hidden />
@@ -118,6 +213,8 @@ function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decisi
           </div>
         </div>
       )}
+      {p.plan && <PlanPreview v={p.plan} />}
+      {p.list && <ListPreview v={p.list} />}
     </div>
   );
 }
@@ -144,8 +241,8 @@ export function Approvals({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { settings } = useSettings();
   const on = settings?.agent_access ?? false;
   const waiting = approvals?.waiting ?? [];
-  const together = waiting.filter((p) => !p.note?.replaces?.conflict);
-  const picks = waiting.length - together.length;
+  const together = waiting.filter((p) => !needsYou(p));
+  const picks = waiting.filter((p) => p.note?.replaces?.conflict).length;
 
   return (
     <Page>
@@ -201,8 +298,9 @@ export function Approvals({ onOpenSettings }: { onOpenSettings: () => void }) {
               <span className="ap-kind" aria-hidden>
                 <Check size={18} />
               </span>
-              {/* Name more kinds here as agents can propose them (P2c). */}
-              <span>Nothing waiting. When an agent suggests a login note, it shows up here.</span>
+              <span>
+                Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here.
+              </span>
             </div>
           ) : (
             <div className="ap-blank">

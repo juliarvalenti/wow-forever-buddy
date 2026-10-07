@@ -1424,6 +1424,16 @@ export type List = {
 	items: ListItem[],
 };
 
+export type ListChange = {
+	item_id: number,
+	name: string,
+	quality: number | null,
+	icon_file_id: number | null,
+	need: number,
+	/**  The need on the list now; `None` means it's added. */
+	was: number | null,
+};
+
 /**  What one character holds of an item, as of its last logout. */
 export type ListHolding = {
 	character: Who,
@@ -1452,6 +1462,20 @@ export type ListItem = {
 	/**  The last scan's lowest buyout, in copper. */
 	price: number | null,
 	errands: Errand[],
+};
+
+export type ListView = {
+	list_id: number | null,
+	name: string,
+	/**  A new list's character. */
+	for_character: Who | null,
+	/**
+	 *  The list was deleted after the agent proposed changes to it; Approve
+	 *  refuses.
+	 */
+	gone: boolean,
+	/**  Only the items that change: unchanged needs are left out. */
+	changes: ListChange[],
 };
 
 /**
@@ -1647,6 +1671,17 @@ export type PlanFolder = {
 	bytes: number | null,
 };
 
+export type PlanView = {
+	character_id: number,
+	character: string,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	title: string,
+	steps: Step[],
+	/**  The character's active plan, which approving replaces. */
+	replaces: Plan | null,
+};
+
 export type PlaySession = {
 	/**
 	 *  A row id; `u32` because specta won't send an `i64` to TypeScript, and
@@ -1703,8 +1738,10 @@ export type Proposal = {
 	/**  Rejected: why, in plain words. */
 	status_reason: string | null,
 	decided_at: string | null,
-	/**  The preview for a login note: every field Approve applies. */
+	/**  The preview, one per kind: every field Approve applies. */
 	note: NoteView | null,
+	plan: PlanView | null,
+	list: ListView | null,
 };
 
 /**  What a prune did. */

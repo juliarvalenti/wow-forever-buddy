@@ -478,6 +478,8 @@ const TOOL_WORDS: Record<string, string> = {
   get_prices: "read prices",
   get_recent_play: "read recent play",
   propose_note: "suggested a login note",
+  propose_quest_plan: "suggested a quest plan",
+  propose_list_change: "suggested a list change",
   list_proposals: "checked its suggestions",
 };
 

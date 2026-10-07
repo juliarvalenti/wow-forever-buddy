@@ -1,6 +1,6 @@
-//! The proposal tools (spec §3, P2b). `propose_note` checks the proposal
-//! against the app's data (read-only, so the agent hears about a typo at
-//! once) and writes it to the inbox. Nothing applies until the player
+//! The proposal tools (spec §3; P2b notes, P2c plans and lists). Each checks
+//! the proposal against the app's data (read-only, so the agent hears about
+//! a typo at once) and writes it to the inbox. Nothing applies until the player
 //! approves it in the app, which checks the file again from scratch.
 //! `list_proposals` tells the agent what became of its suggestions.
 
@@ -10,6 +10,8 @@ use serde_json::{json, Value};
 use super::Paths;
 use crate::db::Db;
 use crate::proposals::inbox::{self, InboxFile};
+use crate::proposals::list::{ListProposal, ProposedItem};
+use crate::proposals::plan::{PlanProposal, ProposedStep};
 use crate::proposals::{self, NoteProposal};
 
 const WAITING: &str =
@@ -22,7 +24,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 2] = [
+const TOOLS: [Tool; 4] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -37,6 +39,40 @@ const TOOLS: [Tool; 2] = [
                     "required": ["id", "text"], "additionalProperties": false },
                 "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
               "required": ["character", "text"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "propose_quest_plan",
+        description: "Suggests tonight's quest plan for one character: a short checklist the player sees in game (/fb plan) and ticks off. Approving it replaces the character's current plan, which the player sees side by side first. Give each step's quest id where there is one; the app adds the quest giver and map position from what the character has actually seen, so don't invent coordinates.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "character": { "type": "string", "description": "The character's name as list_characters gives it." },
+                "title": { "type": "string", "maxLength": 120 },
+                "steps": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "object", "properties": {
+                    "text": { "type": "string", "maxLength": 200, "description": "What to do, in plain words." },
+                    "quest_id": { "type": "integer" },
+                    "zone": { "type": "string" },
+                    "kind": { "type": "string", "enum": ["accept", "turn_in", "objective"],
+                              "description": "What finishes it: taking the quest, handing it in, or the player ticking it. Accept and turn_in need a quest_id." } },
+                    "required": ["text"], "additionalProperties": false } },
+                "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+              "required": ["character", "title", "steps"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "propose_list_change",
+        description: "Suggests a new shopping list, or items to add to (or new amounts for) one of the player's lists. Lists track what the player is gathering across characters. Use item ids from find_items or get_character. Nothing is ever removed this way.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "list": { "type": "string", "maxLength": 60, "description": "The name of one of the player's lists, or of a new one." },
+                "for_character": { "type": "string", "description": "A new list only: the character it's for." },
+                "items": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "object", "properties": {
+                    "item_id": { "type": "integer" }, "need": { "type": "integer", "minimum": 1, "maximum": 9999 } },
+                    "required": ["item_id", "need"], "additionalProperties": false } },
+                "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+              "required": ["list", "items"], "additionalProperties": false })
         },
     },
     Tool {
@@ -77,7 +113,65 @@ struct NoteArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PlanArgs {
+    character: String,
+    title: String,
+    steps: Vec<ProposedStep>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListArgs {
+    list: String,
+    for_character: Option<String>,
+    items: Vec<ProposedItem>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NoArgs {}
+
+/// Writes a checked proposal to the inbox for the app to pick up.
+fn stage(
+    db: &Db,
+    paths: &Paths,
+    flavor: &str,
+    client: &str,
+    kind: &str,
+    reason: Option<String>,
+    body: Value,
+) -> Result<Value, String> {
+    if reason
+        .as_ref()
+        .is_some_and(|r| r.chars().count() > proposals::MAX_REASON)
+    {
+        return Err(format!(
+            "The reason is longer than {} characters.",
+            proposals::MAX_REASON
+        ));
+    }
+    if proposals::waiting_count(db, flavor).map_err(|e| e.to_string())? >= proposals::MAX_PENDING {
+        return Err(format!(
+            "{} suggestions are already waiting for the player. Try again once they've decided some.",
+            proposals::MAX_PENDING
+        ));
+    }
+    let id = inbox::write(
+        &paths.dir,
+        &InboxFile {
+            v: inbox::VERSION,
+            producer: client.to_string(),
+            kind: kind.into(),
+            created_at: chrono::Utc::now().timestamp(),
+            reason,
+            body,
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(json!({ "proposal": id, "status": WAITING }))
+}
 
 fn args<T: for<'de> Deserialize<'de>>(v: &Value) -> Result<T, String> {
     let v = if v.is_null() { json!({}) } else { v.clone() };
@@ -111,38 +205,48 @@ pub fn call(
                 until: a.until,
                 replaces: a.replaces,
             };
-            if a.reason
-                .as_ref()
-                .is_some_and(|r| r.chars().count() > proposals::MAX_REASON)
-            {
-                return Err(format!(
-                    "The reason is longer than {} characters.",
-                    proposals::MAX_REASON
-                ));
-            }
-            if proposals::waiting_count(&db, flavor).map_err(|e| e.to_string())?
-                >= proposals::MAX_PENDING
-            {
-                return Err(format!(
-                    "{} suggestions are already waiting for the player. Try again once they've decided some.",
-                    proposals::MAX_PENDING
-                ));
-            }
             // The app checks again on pickup; this tells the agent now.
             proposals::check_note(&db, flavor, &note, now)?;
-            let id = inbox::write(
-                &paths.dir,
-                &InboxFile {
-                    v: inbox::VERSION,
-                    producer: client.to_string(),
-                    kind: proposals::LOGIN_NOTE.into(),
-                    created_at: now,
-                    reason: a.reason,
-                    body: serde_json::to_value(&note).map_err(|e| e.to_string())?,
-                },
+            let body = serde_json::to_value(&note).map_err(|e| e.to_string())?;
+            stage(
+                &db,
+                paths,
+                flavor,
+                client,
+                proposals::LOGIN_NOTE,
+                a.reason,
+                body,
             )
-            .map_err(|e| e.to_string())?;
-            Ok(json!({ "proposal": id, "status": WAITING }))
+        }
+        "propose_quest_plan" => {
+            let a: PlanArgs = args(raw)?;
+            let p = PlanProposal {
+                character: a.character,
+                title: a.title,
+                steps: a.steps,
+            };
+            proposals::plan::check(&db, flavor, &p)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(
+                &db,
+                paths,
+                flavor,
+                client,
+                proposals::QUEST_PLAN,
+                a.reason,
+                body,
+            )
+        }
+        "propose_list_change" => {
+            let a: ListArgs = args(raw)?;
+            let p = ListProposal {
+                list: a.list,
+                for_character: a.for_character,
+                items: a.items,
+            };
+            proposals::list::check(&db, flavor, &p)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::LIST, a.reason, body)
         }
         "list_proposals" => {
             args::<NoArgs>(raw)?;
@@ -159,8 +263,11 @@ pub fn call(
                     "why_not_queued": p.status_reason,
                     "proposed_at": p.created_at,
                     "decided_at": p.decided_at,
-                    "character": p.note.as_ref().map(|n| n.character.clone()),
+                    "character": p.note.as_ref().map(|n| n.character.clone())
+                        .or_else(|| p.plan.as_ref().map(|n| n.character.clone())),
                     "text": p.note.as_ref().map(|n| n.text.clone()),
+                    "plan_title": p.plan.as_ref().map(|n| n.title.clone()),
+                    "list": p.list.as_ref().map(|l| l.name.clone()),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();
@@ -246,6 +353,19 @@ mod tests {
         assert_eq!(seen["proposals"][0]["status"], "waiting");
         assert_eq!(seen["proposals"][0]["text"], "Post the bars");
         assert_eq!(seen["not_yet_picked_up"], 0);
+    }
+
+    #[test]
+    fn plans_and_list_changes_are_checked_then_written() {
+        let (_tmp, paths) = setup();
+        let plan = json!({ "character": "Coinpurse", "title": "Tonight", "steps": [{ "text": "Hearth" }] });
+        call(&paths, FLAVOR, "c", "propose_quest_plan", &plan).unwrap();
+        let bad_plan = json!({ "character": "Coinpurse", "title": "Tonight", "steps": [] });
+        assert!(call(&paths, FLAVOR, "c", "propose_quest_plan", &bad_plan).is_err());
+        let unknown_item = json!({ "list": "Raid", "items": [{ "item_id": 99999, "need": 1 }] });
+        let e = call(&paths, FLAVOR, "c", "propose_list_change", &unknown_item).unwrap_err();
+        assert_eq!(e, "item 99999 isn't one we know");
+        assert_eq!(inbox::waiting(&paths.dir).len(), 1, "only the valid plan");
     }
 
     #[test]

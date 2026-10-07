@@ -12,9 +12,7 @@
 //! handed in, so a waypoint is never a position an agent made up. Every
 //! string is checked for length here and shown as plain text in game.
 //!
-//! `set_plan`'s only caller is P2c's approval step, which comes next; until
-//! then only tests call it.
-#![cfg_attr(not(test), allow(dead_code))]
+//! `set_plan`'s only caller is the queue's approval step (`proposals`, P2c).
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -77,7 +75,8 @@ fn fits(s: &str, max: usize) -> bool {
     !s.trim().is_empty() && s.chars().count() <= max
 }
 
-fn validate(title: &str, steps: &[Step]) -> AppResult<()> {
+/// The spec's limits on a plan, also checked when a proposal arrives.
+pub fn validate(title: &str, steps: &[Step]) -> AppResult<()> {
     if !fits(title, MAX_TITLE) {
         return Err(invalid("a title of 1 to 120 characters"));
     }
