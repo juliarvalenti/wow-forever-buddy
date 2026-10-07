@@ -430,19 +430,18 @@ Two kinds in G1: **level** (a character reaches level N) and **gold** (a charact
 
 ## 22. O2: tidying old characters, and the app's database size
 Some characters disappear from WTF (deleted, renamed or moved). They can be **hidden** or **forgotten**. Either way, only Forever Buddy's own data changes, **never WTF and never a backup**.
-- **Characters screen:** characters that are gone from WTF move to a collapsed group at the bottom: "Not in your WTF folder any more (2)", with a chevron. Cards in it are dimmed with "last seen 3 Aug" and a small "more" menu with **Hide** and **Forget…**.
-  - When a gone character shows up in WTF again, it moves back to the main grid by itself, with its history intact (unless it was forgotten).
-  - A character that's still in WTF can be hidden too (the same menu, from its card), for alts you don't care about. Forget is only offered for gone characters.
-- **Hide:** immediate and reversible. The character leaves Characters, the Dashboard, search, Lists' character pickers and the agents' read tools. Nothing is deleted. Hidden means hidden everywhere, so "your characters have" totals, tooltips and gold totals leave them out too. A grey line under Characters' header reads "2 hidden · Show" and opens Settings › Data.
-- **Forget…** (a dialog, because it can't be undone):
+"Gone" is a fact: the character's WTF folder no longer exists on disk.
+- **On the Characters screen:** a gone character's card is dimmed, with "Not in your WTF folder any more · last seen 3 Aug" and a link, **Manage in Settings**. Gone cards sort after the others. If the folder comes back, the card is normal again by itself.
+- **Hide** (from any character card's "more" menu, gone or not): immediate and reversible. The character leaves Characters, the Dashboard, sidebar, search, Ledger lines, Lists' pickers and the agents' read tools. Totals and tooltips leave them out too. Nothing is deleted. A grey line under Characters' header reads "2 hidden · Show", which opens Settings › Data.
+- **Settings › Data** (a new stone panel after Backups) is the one place to forget:
+  - **"Forever Buddy's own data":** the database file "48.2 MB" (database plus its journal), and "Daily copies 7 · 310 MB". Then counts in a two-column list: characters, days of gold, adventures, items seen, and days of auction prices. A ghost **Compact** with "Frees space the database no longer uses. Takes a few seconds." It's a `LockedAction` while a backup or ingest is running.
+  - **"Hidden (2)":** class-coloured names, "hidden 3 Oct", and a ghost **Unhide**.
+  - **"Not in your WTF folder (1)":** gone characters, each with "last seen 3 Aug" and a red-text **Forget…**.
+  - **"Forgotten (1)":** name, "forgotten 7 Oct", and a ghost **Remember again**. That only lets the character be read again from WTF or a backup; it doesn't bring old history back.
+- **Forget…** (a dialog):
   - Title: "Forget Oldmain?"
-  - Body: "This removes Forever Buddy's history for Oldmain: 212 adventures, gold since March, 1,340 item records, 3 notes. Your WTF folder and your backups aren't touched, so restoring an old backup still brings Oldmain's settings back."
-  - Buttons: a ghost **Cancel** and a red-text **Forget Oldmain** (not bronze; this isn't the screen's main action).
-  - After: a green line on Characters, "Oldmain's history was removed.", with no undo.
-  - If the character later appears in WTF again, they start fresh like a new character.
-- **Settings › Data** (a new stone panel after Backups):
-  - "Forever Buddy's own data" with the database size: "48.2 MB", then a short breakdown with bars: Adventures 12.4 MB, Item records 9.8 MB, Auction prices 21.6 MB, Everything else 4.4 MB.
-  - "Hidden characters (2)": each with class colour, "hidden 3 Oct", and a ghost **Unhide**.
-  - The note: "This is the app's own data, separate from your backups (Backups shows their size)."
-  - No "Compact" or "Delete old prices" buttons in O2. If the database gets large, that's a later ticket.
-- **Never:** touching WTF, backups or SavedVariables, forgetting a character that's still in WTF, or forgetting without the dialog.
+  - Body: "This removes Oldmain from Forever Buddy: 212 adventures, gold since March (the Ledger's past totals drop by it), bags, bank, quests, recipes, lockouts, 3 notes and a plan. Lists made for Oldmain stay, unassigned. Your WTF folder and backups aren't touched, and Forever Buddy won't read Oldmain from them again unless you choose Remember again."
+  - A small grey line: "The app's daily copies keep the old history for up to 7 days, until they roll off."
+  - Buttons: a ghost **Cancel** and a red-text **Forget Oldmain** (not bronze).
+  - After: a green line in the panel, "Oldmain was removed from Forever Buddy.", and Oldmain moves to Forgotten.
+- **Never:** touching WTF, backups or SavedVariables, forgetting a character whose folder still exists, forgetting from a card, or forgetting without the dialog.
