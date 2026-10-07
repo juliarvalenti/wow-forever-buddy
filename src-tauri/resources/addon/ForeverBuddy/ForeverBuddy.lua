@@ -930,11 +930,13 @@ do
 
     -- "Sela can make this" · "Sela and Kaelor …" · "Sela, Kaelor and
     -- Velyra …" · "Sela, Kaelor, Velyra +2 …", names in class colour on a
-    -- gold line.
+    -- gold line; a crafter whose recipes were read over a week ago is grey
+    -- (its date is in the Shift view).
     function R.line(makers)
         local names = {}
         for k = 1, math.min(#makers, COMPACT_NAMES) do
-            names[k] = colorName(makers[k].alt.name, makers[k].alt.class)
+            local m = makers[k]
+            names[k] = stale(m.at) and (GREY .. plain(m.alt.name) .. "|r") or colorName(m.alt.name, m.alt.class)
         end
         local who
         if #makers > COMPACT_NAMES then
