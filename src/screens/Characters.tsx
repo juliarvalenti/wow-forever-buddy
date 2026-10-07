@@ -43,6 +43,7 @@ import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/ho
 import { useQuestLog, useQuestPlan, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
+import { LoginNotes } from "@/screens/LoginNotes";
 import {
   ago,
   characterName,
@@ -1187,6 +1188,7 @@ function Sheet({
               </PanelBody>
             </Panel>
             {plan && <QuestPlan plan={plan} onClear={clearPlan} />}
+            <LoginNotes characterId={id} />
             <Panel>
               <PanelHeader title="Lockouts">
                 {sheet.lockouts_as_of && (

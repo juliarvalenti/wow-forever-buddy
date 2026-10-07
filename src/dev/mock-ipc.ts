@@ -7,6 +7,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
+  LoginNote,
   AddonChange,
   AddonInfo,
   AddonsList,
@@ -92,6 +93,19 @@ export function installMockIpc(): void {
   // F8: the game data cache in Settings. Empty until icons are turned on
   // ("settings-icons": on with a full cache; "-unreadable": on, can't read).
   let iconFiles = s === "settings-icons" ? 412 : 0;
+  // B1 login notes.
+  let loginNotes: LoginNote[] = [
+    {
+      id: 1,
+      character_id: 2,
+      text: "Hand in the Onyxia attunement before raid on Thursday.",
+      once: false,
+      until: iso(-60 * 24 * 3),
+      author: "you",
+      created_at: iso(60 * 24),
+      shown_at: null,
+    },
+  ];
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
   type Alt = [number, string, string | null, string, string, number, number, string, number, Partial<CharacterCard>?];
@@ -941,6 +955,27 @@ export function installMockIpc(): void {
       };
     },
     lockouts_list: (): AltLockout[] => (noAddon ? [] : saves),
+    // B1: login notes; Thrandor (id 2) has one waiting.
+    notes_list: () => loginNotes,
+    notes_add: ({ note }) => {
+      const n = note as { character_id: number; text: string; once: boolean; until: number | null };
+      const id = loginNotes.length + 10;
+      loginNotes.unshift({
+        id,
+        character_id: n.character_id,
+        text: n.text,
+        once: n.once,
+        until: n.until ? new Date(n.until * 1000).toISOString() : null,
+        author: "you",
+        created_at: iso(0),
+        shown_at: null,
+      });
+      return id;
+    },
+    notes_delete: ({ id }) => {
+      loginNotes = loginNotes.filter((n) => n.id !== id);
+      return null;
+    },
     // Q1b: character.html?tab=quests for Thrandor (id 2); the other alts have
     // none yet. Dark (no tab) before the addon has written anything.
     quests_available: () => !noAddon,

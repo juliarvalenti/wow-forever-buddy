@@ -207,6 +207,9 @@ pub struct AddonFile {
     /// Bridge receipts (`bridge`): what each data slot carried when this
     /// character's addon loaded it. Only the known slots are kept.
     pub receipts: Vec<Receipt>,
+    /// Login notes the briefing showed (`briefed = { [note id] = time }`,
+    /// addon 0.6.0 on), so the app archives the once notes.
+    pub briefed: Vec<(i64, i64)>,
     /// Quest plan progress (`plan`, P1): the plan id and its steps done.
     pub plan: Option<PlanProgress>,
 }
@@ -408,6 +411,7 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
     let items = tbl(db, "items").map(items).unwrap_or_default();
     let sessions = tbl(db, "sessions").map(sessions).unwrap_or_default();
     let receipts = tbl(db, "bridge").map(receipts).unwrap_or_default();
+    let briefed = tbl(db, "briefed").map(briefed).unwrap_or_default();
     let plan = tbl(db, "plan").and_then(|p| {
         let mut done: Vec<u32> = tbl(p, "done")
             .map(|d| {
@@ -432,8 +436,20 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         items,
         sessions,
         receipts,
+        briefed,
         plan,
     })
+}
+
+/// `briefed = { [note id] = time shown }`: positive ids and times only, and
+/// at most 100 (a character sees one note per login).
+fn briefed(t: &LuaTable) -> Vec<(i64, i64)> {
+    let mut out: Vec<(i64, i64)> = pairs(t)
+        .filter_map(|(id, v)| Some((id.filter(|&i| i > 0)?, as_int(v).filter(|&t| t > 0)?)))
+        .collect();
+    out.sort_unstable();
+    out.truncate(100);
+    out
 }
 
 /// `bridge = { Tooltip1 = { stamp, schema, seen }, … }`; unknown slots and
@@ -753,6 +769,17 @@ mod tests {
         assert!(decode(&fixture("first_login.lua"))
             .unwrap()
             .receipts
+            .is_empty());
+    }
+
+    #[test]
+    fn briefed_note_receipts_are_read() {
+        // Addon 0.6.0's login briefing showed note 7 five seconds in.
+        let file = decode(&fixture("briefing.lua")).unwrap();
+        assert_eq!(file.briefed, [(7, 1790964005)]);
+        assert!(decode(&fixture("first_login.lua"))
+            .unwrap()
+            .briefed
             .is_empty());
     }
 

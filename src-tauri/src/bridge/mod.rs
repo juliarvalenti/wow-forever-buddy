@@ -11,6 +11,7 @@
 //!
 //! The first producer is the tooltip index (`tooltip`, spec §5).
 
+pub mod briefing;
 pub mod tooltip;
 
 use rusqlite::{params, OptionalExtension};
@@ -42,9 +43,12 @@ pub enum Slot {
     Tooltip2,
     /// Sent quest plans, one per character at most (P1, INGAME §7).
     Plan,
+    /// The login briefing's app-side facts: alts' waiting mail and each
+    /// character's login note (B1, INGAME §9).
+    Briefing,
 }
 
-pub const SLOTS: [Slot; 3] = [Slot::Tooltip1, Slot::Tooltip2, Slot::Plan];
+pub const SLOTS: [Slot; 4] = [Slot::Tooltip1, Slot::Tooltip2, Slot::Plan, Slot::Briefing];
 
 impl Slot {
     pub fn name(self) -> &'static str {
@@ -52,6 +56,7 @@ impl Slot {
             Slot::Tooltip1 => "Tooltip1",
             Slot::Tooltip2 => "Tooltip2",
             Slot::Plan => "Plan",
+            Slot::Briefing => "Briefing",
         }
     }
 
@@ -245,7 +250,7 @@ pub enum Sent {
     TooLarge,
     /// Nothing changed since the last write.
     Unchanged,
-    /// The installed addon doesn't list the slots (not installed, or older
+    /// The installed addon lists none of the slots (not installed, or older
     /// than 0.4.0), so the game wouldn't load them.
     NoAddon,
     /// WoW is running; the next ingest after it exits sends it.
@@ -301,6 +306,9 @@ pub(crate) fn send(
         let mut body = header(stamp);
         body.hash.extend(crate::plans::slot_entries(db, flavor)?);
         slots.push((Slot::Plan, render(Slot::Plan, body)?));
+    }
+    if has(Slot::Briefing) {
+        slots.push((Slot::Briefing, briefing::build(db, flavor, stamp)?));
     }
     let built = tooltip::Built { slots, too_large };
     if built
@@ -542,6 +550,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip1.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip2.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Plan.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Briefing.lua",
             ]
         );
         for slot in SLOTS {

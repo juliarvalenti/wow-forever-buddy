@@ -14,6 +14,7 @@ pub mod ingest;
 pub mod install;
 pub mod ledger;
 pub mod macros;
+pub mod notes;
 pub mod plans;
 pub mod restore;
 pub mod secrets;

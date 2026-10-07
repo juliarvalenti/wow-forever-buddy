@@ -110,7 +110,8 @@ function M.new(opts)
         now = M.EPOCH,
         errors = {}, -- errors that escaped the addon's own OnEvent
         unknown = {},
-        chat = {}, -- lines added to the default chat frame
+        chat = {}, -- lines the addon added to the chat frame
+        settings = nil, -- ForeverBuddySettings, the account-wide file
         waypoints = {}, -- C_Map.SetUserWaypoint calls
     }
     for _, e in ipairs(opts.unknown_events or {}) do
@@ -164,6 +165,10 @@ function M.new(opts)
         shift = false, -- IsShiftKeyDown
         bound = {}, -- id -> the bind line its tooltip shows ("Soulbound")
         quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
+        -- The quest log (B1): { questID, header = bool, done = bool }.
+        questlog = {},
+        -- Worn durability (B1): slot -> { current, max }.
+        durability = {},
         pos = { 0.41234, 0.65678 }, -- on map 1429 (Elwynn), outside instances
         npc = nil, -- { name, player } the quest window is open on
         complete = {}, -- quest id -> objectives done (C_QuestLog.IsComplete)
@@ -305,6 +310,31 @@ function M.new(opts)
         ["C_QuestLog.GetTitleForQuestID"] = function(id)
             return M.QUESTS[id]
         end,
+        ["C_QuestLog.GetNumQuestLogEntries"] = function()
+            return #world.questlog
+        end,
+        ["C_QuestLog.GetInfo"] = function(i)
+            local q = world.questlog[i]
+            return q and { questID = q.questID, isHeader = q.header == true }
+        end,
+        -- Objectives done: in the log, or by client.questComplete.
+        ["C_QuestLog.IsComplete"] = function(id)
+            if world.complete[id] then
+                return true
+            end
+            for _, q in ipairs(world.questlog) do
+                if q.questID == id then
+                    return q.done == true
+                end
+            end
+            return false
+        end,
+        GetInventoryItemDurability = function(slot)
+            local d = world.durability[slot]
+            if d then
+                return d[1], d[2]
+            end
+        end,
         ["C_QuestLog.GetAllCompletedQuestIDs"] = function()
             local copy = {}
             for i, id in ipairs(world.quests_done) do
@@ -342,10 +372,6 @@ function M.new(opts)
         end,
         ["C_Map.ClearUserWaypoint"] = function()
             table.insert(client.waypoints, "cleared")
-        end,
-        -- Objectives done in the log (client.questComplete).
-        ["C_QuestLog.IsComplete"] = function(id)
-            return world.complete[id] == true
         end,
         UnitClass = function(unit)
             if unit == "player" then
@@ -541,10 +567,13 @@ function M.new(opts)
         env.issecrettable = function()
             return false
         end
-        -- Rule 5: the addon never talks in chat.
+        -- Rule 5: the addon never prints. Its only chat is the login
+        -- briefing and /fb's reply, straight to the chat frame (INGAME §9),
+        -- recorded in client.chat.
         env.print = function()
             error("ForeverBuddy must not print")
         end
+        env.SlashCmdList = {}
         env.CreateFrame = function(_, name, parent)
             local f = newWidget(parent)
             table.insert(state.frames, f)
@@ -554,8 +583,6 @@ function M.new(opts)
             return f
         end
         env.UIParent = newWidget(nil)
-        env.date = os.date
-        -- The one chat line a new plan gets (INGAME §7); print stays banned.
         env.DEFAULT_CHAT_FRAME = {
             AddMessage = function(_, msg)
                 table.insert(client.chat, msg)
@@ -667,14 +694,18 @@ function M.new(opts)
         if text and o.readback ~= false then
             state.env.ForeverBuddyDB = M.parse(text, "ForeverBuddyDB")
         end
+        -- The account-wide settings, kept across logins like the client does.
+        state.env.ForeverBuddySettings = client.settings
         client.fire("ADDON_LOADED", "ForeverBuddy")
         client.fire("PLAYER_LOGIN")
         client.fire("PLAYER_ENTERING_WORLD", not o.reload, o.reload == true)
     end
 
+    -- Types a slash command, as the chat box would.
     -- Logs out and returns the file the client would write.
     function client.logout()
         client.fire("PLAYER_LOGOUT")
+        client.settings = state.env.ForeverBuddySettings
         local db = state.env.ForeverBuddyDB
         if db == nil then
             return nil

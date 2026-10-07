@@ -26,7 +26,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// there WoW doesn't see the folder, so a half-finished install is ignored.
 /// `Data/` holds the bridge's slot stubs (`bridge::Slot::stub`), which the
 /// app replaces with generated data.
-const FILES: [(&str, &[u8]); 5] = [
+const FILES: [(&str, &[u8]); 6] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -42,6 +42,10 @@ const FILES: [(&str, &[u8]); 5] = [
     (
         "Data/Plan.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Plan.lua"),
+    ),
+    (
+        "Data/Briefing.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/Briefing.lua"),
     ),
     (
         TOC,
@@ -150,9 +154,9 @@ fn read_if_there(path: &Path) -> Option<Vec<u8>> {
 }
 
 /// The bridge slots the installed TOC lists, so the game loads what the app
-/// writes there (tooltips from 0.4.0, the plan from 0.6.0). WoW reads the
-/// TOC only at client start, which is why a slot a newer addon adds needs
-/// an update and a restart first. Empty when the addon isn't installed.
+/// writes there (tooltips from 0.4.0, the plan and briefing from 0.6.0). WoW
+/// reads the TOC only at client start, which is why a slot a newer addon adds
+/// needs an update and a restart first. Empty when the addon isn't installed.
 pub fn listed_slots(game: &GameRoot) -> Vec<crate::bridge::Slot> {
     let Some(toc) = rel(TOC)
         .resolve(game)
@@ -574,5 +578,32 @@ mod tests {
             })
             .unwrap();
         assert_eq!(status, "written");
+    }
+
+    /// An addon a version behind (0.5.0's TOC lists the tooltips but not
+    /// the briefing) keeps getting its tooltips; the slot it can't load
+    /// isn't written.
+    #[test]
+    fn only_the_slots_the_installed_toc_lists_are_sent() {
+        use bridge::Sent;
+        let t = setup();
+        let db = Db::open_in_memory().unwrap();
+        let dir = t.flavor.join(FOLDER);
+        std::fs::create_dir_all(dir.join(DATA)).unwrap();
+        std::fs::write(
+            dir.join(TOC),
+            "## Version: 0.5.0\nData/Tooltip1.lua\nData/Tooltip2.lua\nForeverBuddy.lua\n",
+        )
+        .unwrap();
+        assert_eq!(
+            listed_slots(&t.target.game),
+            [Slot::Tooltip1, Slot::Tooltip2]
+        );
+        assert_eq!(
+            bridge::send(&db, &t.gate, &t.target, "_classic_beta_", 1).unwrap(),
+            Sent::Written
+        );
+        assert!(t.flavor.join(Slot::Tooltip1.path().as_string()).exists());
+        assert!(!t.flavor.join(Slot::Briefing.path().as_string()).exists());
     }
 }

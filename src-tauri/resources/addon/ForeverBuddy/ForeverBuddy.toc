@@ -4,8 +4,12 @@
 ## Author: WoW Forever Buddy
 ## Version: 0.6.0
 ## SavedVariablesPerCharacter: ForeverBuddyDB
+## SavedVariables: ForeverBuddySettings
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+## AddonCompartmentFunc: ForeverBuddy_OnAddonCompartmentClick
 
 Data/Tooltip1.lua
 Data/Tooltip2.lua
 Data/Plan.lua
+Data/Briefing.lua
 ForeverBuddy.lua

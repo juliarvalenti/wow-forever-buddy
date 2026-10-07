@@ -10,9 +10,10 @@
 -- * This session is built from live APIs. What the client loaded from disk
 --   is only trusted if it validates, and only old sessions come from it.
 -- * Nothing visible but lines added to the game's own item tooltip, through
---   TooltipDataProcessor (bridge spec §5), and the plan frame the player
---   opens with /fb plan, with one chat line when a new plan arrives (INGAME
---   §7). No Blizzard function replaced, nothing protected, no automation.
+--   TooltipDataProcessor (bridge spec §5), the plan frame the player opens
+--   with /fb plan (INGAME §7), and the login briefing: at most two chat
+--   lines once per login, and /fb's reply (INGAME §9). No popups, no
+--   Blizzard function replaced, nothing protected, no automation.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
 -- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
@@ -39,6 +40,8 @@ local secretHits = 0
 local truncated = false
 local missingEvents = {}
 local errors -- handler errors by event, if any
+local briefed = {} -- login note id -> when the briefing showed it (B1)
+local MAX_BRIEFED = 20
 
 -- Guarded reads ----------------------------------------------------------------
 
@@ -103,7 +106,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -220,6 +223,20 @@ handlers.ADDON_LOADED = function(name)
     if name == ADDON_NAME then
         loaded = validate(ForeverBuddyDB)
         loadSlots()
+        -- The account-wide settings (ForeverBuddySettings): only the
+        -- briefing toggle, and only what we expect.
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        -- Notes already shown keep their receipt until the app has read it.
+        local prev = loaded and loaded.briefed
+        if type(prev) == "table" then
+            for id, t in pairs(prev) do
+                if type(id) == "number" and type(t) == "number" then
+                    briefed[id] = t
+                end
+            end
+        end
     end
 end
 
@@ -968,6 +985,161 @@ local function hookTooltips()
     end)
 end
 
+-- Login briefing (B1, INGAME §9) ---------------------------------------------------
+--
+-- One chat line at login, only when there's something to say: quests ready
+-- to hand in and repairs (live), an alt's waiting mail (from the Briefing
+-- slot), then this character's note on a line of its own. Nothing acts:
+-- it's text in the chat frame, every slot string escaped with plain().
+
+local GOLD_PREFIX = "|cffffd100Forever Buddy:|r "
+local BRIEF_FACTS = 4
+local REPAIR_AT = 0.30
+local lastBrief -- { facts, note } of this login, for /fb brief
+-- Set at login when this character's plan is one it hasn't seen (the plan
+-- section below): the briefing mentions it, P1 itself prints nothing.
+local planIsNew = false
+
+local function say(text)
+    local f = DEFAULT_CHAT_FRAME
+    if type(f) == "table" and type(f.AddMessage) == "function" then
+        pcall(f.AddMessage, f, text)
+    end
+end
+
+local function briefingOn()
+    return type(ForeverBuddySettings) ~= "table" or ForeverBuddySettings.briefing ~= false
+end
+
+local function setBriefing(on)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    -- Saved only when off, so the file stays empty for most players.
+    if on then
+        ForeverBuddySettings.briefing = nil
+    else
+        ForeverBuddySettings.briefing = false
+    end
+end
+
+-- Quests in the log whose objectives are done.
+local function questsReady()
+    local n = read("C_QuestLog.GetNumQuestLogEntries")
+    if type(n) ~= "number" then
+        return 0
+    end
+    local ready = 0
+    for i = 1, math.min(n, 100) do
+        local info = read("C_QuestLog.GetInfo", i)
+        local id = type(info) == "table" and not info.isHeader and info.questID
+        if type(id) == "number" and (read("C_QuestLog.ReadyForTurnIn", id) == true
+            or read("C_QuestLog.IsComplete", id) == true) then
+            ready = ready + 1
+        end
+    end
+    return ready
+end
+
+-- The lowest durability across worn gear, 0 to 1, or nil.
+local function lowestDurability()
+    local low
+    for slot = 1, 19 do
+        local cur, max = read(GetInventoryItemDurability, slot)
+        if type(cur) == "number" and type(max) == "number" and max > 0 then
+            local p = cur / max
+            if not low or p < low then
+                low = p
+            end
+        end
+    end
+    return low
+end
+
+-- Every fact that's true now, in §9's order, and this character's note.
+local function briefing()
+    local facts = {}
+    local ready = questsReady()
+    if ready > 0 then
+        facts[#facts + 1] = ready .. (ready == 1 and " quest" or " quests") .. " ready to hand in"
+    end
+    local low = lowestDurability()
+    if low and low < REPAIR_AT then
+        facts[#facts + 1] = "repair due (" .. math.floor(low * 100 + 0.5) .. "%)"
+    end
+    local slot = slots.Briefing
+    if type(slot) == "table" and type(slot.mail) == "table" then
+        -- The app sends them soonest-expiring first; the first other alt.
+        for _, m in ipairs(slot.mail) do
+            if type(m) == "table" and type(m.letters) == "number" and m.letters > 0 and not isMe(m) then
+                facts[#facts + 1] = colorName(m.name, m.class) .. " has " .. m.letters
+                    .. (m.letters == 1 and " letter" or " letters") .. " waiting"
+                break
+            end
+        end
+    end
+    if planIsNew then
+        facts[#facts + 1] = "tonight's plan is ready"
+    end
+    local note
+    if type(slot) == "table" and type(slot.notes) == "table" then
+        for _, n in ipairs(slot.notes) do
+            if type(n) == "table" and isMe(n) and type(n.text) == "string" and type(n.id) == "number"
+                and not (n.once == true and briefed[n.id]) then
+                note = n
+                break
+            end
+        end
+    end
+    return facts, note
+end
+
+-- The two lines; `all` lists every fact (for /fb brief) instead of four.
+local function show(facts, note, all)
+    if #facts > 0 then
+        local shown = facts
+        if not all and #facts > BRIEF_FACTS then
+            shown = {}
+            for k = 1, BRIEF_FACTS do
+                shown[k] = facts[k]
+            end
+            shown[#shown + 1] = "and more: /fb brief"
+        end
+        say(GOLD_PREFIX .. table.concat(shown, " · "))
+    end
+    if note then
+        say("|cffffd100Note:|r \"" .. plain(note.text) .. "\"")
+    end
+end
+
+local function briefNow()
+    if not briefingOn() or read("InCombatLockdown") then
+        return
+    end
+    local facts, note = briefing()
+    lastBrief = { facts = facts, note = note }
+    show(facts, note, false)
+    if note then
+        briefed[note.id] = now()
+    end
+end
+
+-- The note receipts to save: the newest MAX_BRIEFED, so the table can't grow.
+local function briefedKept()
+    local ids = {}
+    for id in pairs(briefed) do
+        ids[#ids + 1] = id
+    end
+    table.sort(ids, function(a, b)
+        return briefed[a] > briefed[b]
+    end)
+    local kept = {}
+    for k = 1, math.min(#ids, MAX_BRIEFED) do
+        kept[ids[k]] = briefed[ids[k]]
+    end
+    return kept
+end
+
 -- Tonight's plan (P1, INGAME §7) -----------------------------------------------------
 --
 -- This character's quest plan from the Plan slot, in a small movable frame
@@ -1040,13 +1212,6 @@ local function setWaypoint(i, step)
     end
 end
 
-local function chat(msg)
-    local frame = rawget(_G, "DEFAULT_CHAT_FRAME")
-    if frame and frame.AddMessage then
-        pcall(frame.AddMessage, frame, msg)
-    end
-end
-
 local renderPlan
 
 -- After any tick: the ticked step's waypoint goes, and finishing the plan
@@ -1058,7 +1223,7 @@ local function afterTick()
     end
     if doneCount() == #plan.steps and not progress.finished then
         progress.finished = true
-        chat("Forever Buddy: tonight's plan is done.")
+        say(GOLD_PREFIX .. "tonight's plan is done.")
     end
     if planFrame and planFrame:IsShown() then
         renderPlan()
@@ -1180,10 +1345,6 @@ local function togglePlan()
     end
 end
 
--- Set at login when this character's plan is one it hasn't seen: the B1
--- login briefing (INGAME §9) mentions it there; P1 itself prints nothing.
-local planIsNew = false
-
 -- At login: this character's plan and its saved progress.
 local function loadPlan()
     plan = myPlan()
@@ -1229,14 +1390,58 @@ local function planObjectives()
     end
 end
 
-SLASH_FOREVERBUDDY1 = "/fb"
-SlashCmdList = SlashCmdList or {}
-SlashCmdList.FOREVERBUDDY = function(msg)
-    if type(msg) == "string" and msg:lower():match("^%s*plan") then
+-- /fb ------------------------------------------------------------------------------
+--
+-- /fb plan opens the plan frame; /fb brief repeats this login's briefing in
+-- full; /fb brief off|on.
+local function slash(msg)
+    local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
+    if cmd == "plan" then
         if not pcall(togglePlan) then
             planErrors = planErrors + 1
         end
+    elseif cmd == "brief" then
+        local b = lastBrief
+        if not b then
+            local facts, note = briefing()
+            b = { facts = facts, note = note }
+        end
+        if #b.facts == 0 and not b.note then
+            say(GOLD_PREFIX .. "nothing to report.")
+        else
+            show(b.facts, b.note, true)
+        end
+    elseif cmd == "brief off" or cmd == "brief on" then
+        setBriefing(cmd == "brief on")
+        say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
+    else
+        say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb brief repeats the login briefing; "
+            .. "/fb brief off turns it off.")
     end
+end
+
+if type(SlashCmdList) == "table" then
+    SLASH_FOREVERBUDDY1 = "/fb"
+    SlashCmdList.FOREVERBUDDY = slash
+end
+
+-- The addon compartment (the TOC's AddonCompartmentFunc): a menu with the
+-- briefing toggle, or a plain toggle where the menu API isn't there.
+function ForeverBuddy_OnAddonCompartmentClick(_, _, owner)
+    local toggle = function()
+        setBriefing(not briefingOn())
+    end
+    if type(MenuUtil) == "table" and type(MenuUtil.CreateContextMenu) == "function" then
+        local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
+            root:CreateTitle("Forever Buddy")
+            root:CreateCheckbox("Login briefing", briefingOn, toggle)
+        end)
+        if ok then
+            return
+        end
+    end
+    toggle()
+    say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
 end
 
 handlers.PLAYER_LOGIN = function()
@@ -1273,6 +1478,13 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     end
     entered = true
     read(RequestRaidInfo)
+    -- The login briefing, once per login (not after /reload), once the
+    -- quest log has filled in.
+    if not isReloadingUi then
+        read("C_Timer.After", 5, function()
+            pcall(briefNow)
+        end)
+    end
     -- Played time is asked for once per login (it prints the two "Total time
     -- played" lines). After /reload the file just written has it.
     local p = prior("played")
@@ -1526,6 +1738,7 @@ handlers.PLAYER_LOGOUT = function()
         sessions = sessions,
         bridge = receipts and next(receipts) and receipts or nil,
         plan = progress,
+        briefed = next(briefed) and briefedKept() or nil,
     }
     local version, build = read(GetBuildInfo)
     db._meta = {

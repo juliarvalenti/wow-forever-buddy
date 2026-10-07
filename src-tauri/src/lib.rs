@@ -18,6 +18,7 @@ mod ingest;
 mod install;
 mod ledger;
 mod macros;
+mod notes;
 mod plans;
 mod quests;
 mod secrets;
@@ -59,6 +60,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
             commands::macros::macros_list,
+            commands::notes::notes_list,
+            commands::notes::notes_add,
+            commands::notes::notes_delete,
             commands::ah::ah_status,
             commands::ah::ah_search,
             commands::ah::ah_history,

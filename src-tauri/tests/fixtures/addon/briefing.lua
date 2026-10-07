@@ -1,13 +1,13 @@
--- Written by tools/addon-test/run.lua (scenario plan). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario briefing). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.6.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
-			["events"] = 3,
+			["events"] = 0,
 			["items"] = 3,
-			["quests_done"] = 3,
+			["quests_done"] = 2,
 			["sessions"] = 1,
 		},
 		["loaded_prior"] = false,
@@ -19,11 +19,14 @@ ForeverBuddyDB = {
 		["written"] = 1790964005,
 	},
 	["bridge"] = {
-		["Plan"] = {
+		["Briefing"] = {
 			["schema"] = 1,
 			["seen"] = 1790964000,
 			["stamp"] = 1790960000,
 		},
+	},
+	["briefed"] = {
+		[7] = 1790964005,
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -69,47 +72,9 @@ ForeverBuddyDB = {
 			["subclass"] = 5,
 		},
 	},
-	["plan"] = {
-		["done"] = {
-			true, -- [1]
-			true, -- [2]
-			true, -- [3]
-			true, -- [4]
-		},
-		["finished"] = true,
-		["id"] = 7,
-	},
 	["sessions"] = {
 		{
 			["events"] = {
-				{
-					["giver"] = "Marshal Dughan",
-					["id"] = 176,
-					["kind"] = "quest_accepted",
-					["map"] = 1429,
-					["t"] = 1790964005,
-					["title"] = "Wanted: Hogger",
-					["x"] = 0.412,
-					["y"] = 0.657,
-					["zone"] = "Elwynn Forest",
-				}, -- [1]
-				{
-					["id"] = 176,
-					["kind"] = "quest",
-					["map"] = 1429,
-					["money"] = 75,
-					["t"] = 1790964005,
-					["title"] = "Wanted: Hogger",
-					["x"] = 0.412,
-					["xp"] = 450,
-					["y"] = 0.657,
-					["zone"] = "Elwynn Forest",
-				}, -- [2]
-				{
-					["kind"] = "money",
-					["money"] = 25075,
-					["t"] = 1790964005,
-				}, -- [3]
 			},
 			["id"] = 1790964000,
 			["login"] = 1790964000,
@@ -150,7 +115,7 @@ ForeverBuddyDB = {
 		},
 		["lockouts"] = {
 		},
-		["money"] = 25075,
+		["money"] = 25000,
 		["played"] = {
 			["level"] = 479,
 			["total"] = 19556,
@@ -178,12 +143,11 @@ ForeverBuddyDB = {
 		},
 		["quests_done"] = {
 			7, -- [1]
-			176, -- [2]
-			783, -- [3]
+			783, -- [2]
 		},
 		["rest_state"] = "Rested",
 		["rested"] = 674,
-		["xp"] = 1650,
+		["xp"] = 1200,
 		["xp_max"] = 8800,
 		["zone"] = {
 			["map"] = 1429,
