@@ -378,14 +378,15 @@ One place for everything agents propose: quest plans, login notes and list chang
 ## 18. B3: bag cleanup, the app side
 You mark items on the character sheet; the addon shows the marks in game (INGAME §14). Marks are app data, not a game-file write, so there's no write gate and no stage/apply bar.
 - **Marking:** wherever the sheet lists this character's bag items, each row gets a small ghost "Mark" menu on hover: **Sell**, **Send to…** (the account's other characters, names in class colour), and **Clear mark** when marked. A marked row shows a muted tag after the name: "sell", or "→ Sela" with the name in class colour.
-- **Suggestions** (worked out by the app, never applied by themselves): greys in bags → sell (reason "grey"); gear another character could use by TIP2's upgrade rules (+5 or more, the class can wear it, not bound) → send to them (reason "+9 item level for Kaelor"); gear below what this character wears in that slot and no one else wants → sell (reason "outgrown"). An unknown bind state never gets "send".
-- **Bag cleanup panel:** a stone panel in the side column right after Satchels, on the character sheet (marks are per character, so it doesn't live on Lists). It shows only when something is marked or suggested.
+- **Mark all greys (B3):** a ghost button on the Bag cleanup panel marks every poor-quality item in this character's bags to sell. It's a one-off action, not a rule, so new greys aren't marked automatically.
+- **Bag cleanup panel:** a stone panel in the side column right after Satchels, on the character sheet (marks are per character, so it doesn't live on Lists). It shows only when something is marked, or when the bags hold greys (to offer the button).
   - Header "Bag cleanup", meta "7 marked".
-  - **Marked** rows: tile, name, count, and the mark ("sell", or "→ Sela" in class colour) with its reason in grey, plus a small × to clear.
-  - **Suggested** (a grey sub-head under them): the same rows in ash with "suggested", each with a ghost **Mark** and a small × to dismiss. At the top right of the sub-head, a ghost **Mark all 6**. Dismissed suggestions don't come back for that item.
+  - **Marked** rows: tile, name, count, and the mark ("sell", or "→ Sela" in class colour), plus a small × to clear. In B3b, the reason follows in grey.
   - Footer line: "5 to sell · ~1g 20s at a vendor · 2 to send". Use the vendor sell price only when the game gave one. Never an AH price here, and never "you'll make".
-  - The status line for the Lists slot, using the four `bridge.html` states.
-  - Empty: the panel is hidden.
+  - The status line for the Cleanup slot, using the four `bridge.html` states.
+  - Empty, with greys in the bags: "Nothing marked." plus the ghost **Mark all greys (6)**.
+- **B3b, suggestions (after B3):** the app works these out and never applies them by itself. Greys in bags → sell (reason "grey"). Gear another character could use by TIP2's upgrade rules (+5 or more, the class can wear it, not bound) → send to them (reason "+9 item level for Kaelor"). Gear below what this character wears in that slot that no one else wants → sell (reason "outgrown"). An unknown bind state never gets "send".
+  - In the panel, a grey "Suggested" sub-head under the marked rows: the same rows in ash with "suggested", each with a ghost **Mark** and a small × to dismiss, plus a ghost **Mark all 6** at the top right of the sub-head. It replaces "Mark all greys". Dismissed suggestions don't come back for that item.
 - **Send rules:** "Send to…" never lists the character itself. If the addon has reported the item soulbound, Send is disabled with the title "Soulbound, so it can't be mailed".
 - **Clearing:** a mark clears itself once the item has left this character (seen at the next sync). Marks on items that are still there survive syncs.
 - **Agents (after the app side):** an agent can propose marks through Approvals as a new kind ("Bag marks for Thrandor", previewed as these same rows with reasons). Approved marks show "from "Claude Desktop", approved" in the reason line.

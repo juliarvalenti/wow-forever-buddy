@@ -236,13 +236,13 @@ When you enter a dungeon or raid, one quiet chat line names your *other* charact
 - **Never:** a popup or sound, other players or your group, anything that suggests leaving or resetting, or advice ("you should").
 
 ## 14. B3: bag cleanup (marks in your bags)
-You mark items in the app ("sell" or "send to Sela"); the addon shows the marks where you act on them. **Selling and sending stay manual:** no sell button, no auto-sell at a vendor, no attaching. The app side is IMPLEMENTING §18. Data: marks ride the existing Lists slot (no new slot, no restart) as `marks = { [characterIndex] = { itemID, "sell"|"send", toAltIndex, reason, … } }`. `reason` is one of a few fixed codes (`grey`, `outgrown`, `upgrade` with its +N), never free text, and the addon turns it into the words below.
+You mark items in the app ("sell" or "send to Sela"); the addon shows the marks where you act on them. **Selling and sending stay manual:** no sell button, no auto-sell at a vendor, no attaching. The app side is IMPLEMENTING §18. Data: one Bridge slot ("Cleanup"), per character, `item id → { "sell" }` or `{ "send", altIndex }`. Ids and our own names only. **B3b** adds a `reason`, one of a few fixed codes (`grey`, `outgrown`, `upgrade` with its +N), never free text, and the addon turns it into the words below.
 - **In your bags** (Blizzard's own bag frames, combined or separate):
   - A marked item's button gets a small corner tag in the top-left: a coin (`Interface\MoneyFrame\UI-GoldIcon`, 12 px) for sell, or a letter (`Interface\Minimap\Tracking\Mailbox`, 12 px) for send. It's kept in a side table, like B2's merchant mark, and nothing is written onto Blizzard's buttons beyond our own child texture.
   - Bag addons (Baganator, Bagnon and so on) don't get tags in v1. The tooltip line below still works there.
 - **Tooltip line** (the §8 post-call, own line, after the price line):
-  - Sell: `Marked to sell in Forever Buddy`, gold, then the reason in grey when there is one (` · grey`, ` · outgrown`), then ` · 2s 40c each at a vendor` when the game gives a sell price.
-  - Send: `Marked to send to Sela`, with "Marked to send to" gold and the name in class colour, then ` (+9 item level)` in grey for an upgrade.
+  - Sell: `Marked to sell in Forever Buddy`, gold, then (B3b) the reason in grey when there is one (` · grey`, ` · outgrown`), then ` · 2s 40c each at a vendor` when the game gives a sell price.
+  - Send: `Marked to send to Sela`, with "Marked to send to" gold and the name in class colour, then (B3b) ` (+9 item level)` in grey for an upgrade.
   - Send, but the item is soulbound (the tooltip's `ITEM_SOULBOUND` line): `Marked to send to Sela, but it's soulbound`, with the last part grey. Never hide the mark; the app learns at the next sync and drops it.
 - **At a vendor:** one grey line under the B2 list panel, or alone in a small docked panel when there's no list: `5 marked to sell · ~1g 20s at the vendor`. No button. The tags in the bags show which. With nothing marked, nothing shows.
 - **At the mailbox:** marked sends join the B2 Errands panel as ordinary rows, `Truestrike Shoulders to Kaelor`, with the grey line `in your bags · marked in Forever Buddy` and the same Fill recipient button (it only types the name).
