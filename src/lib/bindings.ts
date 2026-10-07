@@ -328,7 +328,7 @@ export const commands = {
 	 *  flavor's characters, searched by item name words and `ilvl>60`-style
 	 *  filters. Nothing before a game folder is set.
 	 */
-	charactersSearch: (query: string) => __TAURI_INVOKE<SearchResults>("characters_search", { query }),
+	charactersSearch: (query: string, filters: SearchFilters) => __TAURI_INVOKE<SearchResults>("characters_search", { query, filters }),
 	/**
 	 *  Raid and dungeon saves across the active flavor's characters that haven't
 	 *  reset yet, soonest first (the Dashboard's "Lockouts this week"). Empty
@@ -1956,6 +1956,17 @@ export type ScopeItem =
 { kind: "AddonData"; addon: string; target: AddonTarget } | 
 /**  Exact files or folders, relative to the flavor folder. */
 { kind: "Paths"; paths: RelPath[] };
+
+/**  The search panel's filters (TIP3 (b), IMPLEMENTING §19). */
+export type SearchFilters = {
+	/**
+	 *  "Item level at least": an item with no known item level (reagents,
+	 *  other non-gear) is left out while it's set.
+	 */
+	min_ilvl?: number | null,
+	/**  2 uncommon, 3 rare, 4 epic, and anything better. */
+	min_quality?: number | null,
+};
 
 /**  One item stack total on one character, in one place. */
 export type SearchHit = {

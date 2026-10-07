@@ -87,7 +87,7 @@ fn table(array: Vec<LuaValue>, hash: Vec<(LuaValue, LuaValue)>) -> LuaValue {
 /// Builds both slots for `flavor`, every character the app knows there (the
 /// AddOns folder is shared by all the folder's WTF accounts).
 pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
-    let (alts, rows, worn) = db.with_conn(|c| {
+    let (alts, rows, worn, hands) = db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT c.id, c.name, coalesce(c.surname, ''), upper(coalesce(c.class, '')),
                     c.last_seen,
@@ -115,7 +115,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
             .collect::<Result<Vec<_>, _>>()?;
         // What each alt wears: base item level by inventory slot.
         let mut stmt = c.prepare(
-            "SELECT i.character_id, i.slot, max(coalesce(it.ilvl, 0))
+            "SELECT i.character_id, i.slot, max(coalesce(it.ilvl, 0)), max(i.item_id)
              FROM char_items i
              JOIN characters c ON c.id = i.character_id
              LEFT JOIN items it ON it.item_id = i.item_id
@@ -123,19 +123,26 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
              GROUP BY i.character_id, i.slot",
         )?;
         let mut worn: HashMap<i64, [i64; WORN_SLOTS]> = HashMap::new();
+        // TIP3 (a): what's in each hand, as item ids (main, off, ranged), so
+        // the addon can tell a two-hander from a one-hander.
+        let mut hands: HashMap<i64, [i64; 3]> = HashMap::new();
         for row in stmt.query_map([flavor], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, i64>(1)?,
                 r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
             ))
         })? {
-            let (character, slot, ilvl) = row?;
+            let (character, slot, ilvl, item) = row?;
             if let Some(at) = usize::try_from(slot)
                 .ok()
                 .filter(|s| (1..=WORN_SLOTS).contains(s))
             {
                 worn.entry(character).or_insert([0; WORN_SLOTS])[at - 1] = ilvl.max(0);
+            }
+            if (16..=18).contains(&slot) && item > 0 {
+                hands.entry(character).or_insert([0; 3])[(slot - 16) as usize] = item;
             }
         }
         let mut stmt = c.prepare(
@@ -154,7 +161,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok((alts, rows, worn))
+        Ok((alts, rows, worn, hands))
     })?;
 
     // item → alt index (1-based, in `alts` order) → counts by location.
@@ -298,6 +305,12 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
                         Vec::new(),
                     ),
                 ));
+                if let Some(h) = hands.get(&a.id) {
+                    hash.push((
+                        key("hands"),
+                        table(h.iter().map(|&n| LuaValue::Int(n)).collect(), Vec::new()),
+                    ));
+                }
                 if let Some(p) = prof_of.get(&a.id) {
                     hash.push((key("prof"), table(Vec::new(), p.clone())));
                 }
@@ -524,7 +537,9 @@ mod tests {
                  INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
                  SELECT id, 'equipped', 0, 12, 101, '', 1, 0 FROM characters WHERE name = 'Kaelor';
                  INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
-                 SELECT id, 'equipped', 0, 19, 102, '', 1, 0 FROM characters WHERE name = 'Kaelor';",
+                 SELECT id, 'equipped', 0, 19, 102, '', 1, 0 FROM characters WHERE name = 'Kaelor';
+                 INSERT INTO char_items (character_id, location, container, slot, item_id, link, count, as_of)
+                 SELECT id, 'equipped', 0, 16, 103, '', 1, 0 FROM characters WHERE name = 'Kaelor';",
             )?;
             Ok(())
         })
@@ -540,11 +555,14 @@ mod tests {
         want[11] = 44; // second finger
                        // An item with no known ilvl reads as 0, like an empty slot.
         assert_eq!(ints(kaelor.get("worn").unwrap()), want);
+        // TIP3 (a): the main hand's item id, nothing in the other two.
+        assert_eq!(ints(kaelor.get("hands").unwrap()), [103, 0, 0]);
 
         // Nothing worn and no level yet: all zeros, no level key.
         let sela = alts.get_index(2).unwrap().as_table().unwrap();
         assert_eq!(sela.get("level"), None);
         assert_eq!(ints(sela.get("worn").unwrap()), [0; 19]);
+        assert_eq!(sela.get("hands"), None);
     }
 
     /// Synthetic accounts to check spec §5's size table against what the

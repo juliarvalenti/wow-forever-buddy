@@ -852,6 +852,89 @@ local function day(t)
     return (os.date("!%d %b", t):gsub("^0", ""))
 end
 
+-- TIP3 (a), INGAME §15: weapons in the upgrade hint. `hands` are the item
+-- ids in main hand, off hand and ranged; the addon asks the game whether the
+-- main hand is a two-hander.
+scenario("weapons", function()
+    local W = "|cffffffff"
+    local function hands(mh, oh, r)
+        return ', ["hands"] = { ' .. mh .. ', ' .. oh .. ', ' .. r .. ' }'
+    end
+    local alts = '\t["alts"] = {\n'
+        .. alt("Thrandor", "PALADIN", 60, {}, nil, "Vargur") -- this character
+        -- Two one-handers, 40 and 30; a dual wielder.
+        .. alt("Kaelor", "ROGUE", 60, { [16] = 40, [17] = 30 }, hands(10021, 10021, 0))
+        -- A two-hander at 50.
+        .. alt("Coinpurse", "WARRIOR", 60, { [16] = 50 }, hands(10020, 0, 0))
+        -- A 30 mace, a 20 off hand, a 10 wand.
+        .. alt("Sela", "PRIEST", 60, { [16] = 30, [17] = 20, [18] = 10 }, hands(10021, 0, 0))
+        -- Two one-handers, 40 and 35; a dual wielder.
+        .. alt("Brannic", "HUNTER", 60, { [16] = 40, [17] = 35 }, hands(10021, 10021, 0))
+        -- A 48 one-hander and nothing in the off hand (no dual wield).
+        .. alt("Grom", "PALADIN", 60, { [16] = 48 }, hands(10021, 0, 0))
+        .. '\t},\n'
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", alts .. '\t["items"] = {},\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", alts .. '\t["items"] = {},\n'),
+        },
+    })
+    -- The same index with Sela holding a Reaper and a sword in her bags, so
+    -- the Shift view (which needs a holder) can be checked.
+    local held = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", alts
+                .. '\t["items"] = { [10010] = { 0, 4, 1, 0, 0, 0 } },\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", alts
+                .. '\t["items"] = { [10011] = { 0, 4, 1, 0, 0, 0 } },\n'),
+        },
+    })
+    held.login(nil)
+    held.world.equipped[16] = 10010
+    c.login(nil)
+    -- This character holds the Reaper itself, so it's never the best fit.
+    c.world.equipped[16] = 10010
+    local KAELOR, SELA, GROM = "|cfffff569Kaelor|r", "|cffffffffSela|r", "|cfff58cbaGrom|r"
+
+    -- A two-handed axe: Brannic against the average of 40 and 35 (+25), Grom
+    -- against its main hand alone, the off hand being empty (+15, not +39),
+    -- Coinpurse against its two-hander (+13, third: dropped). Rogues and
+    -- priests can't.
+    eq(c.hover(10010)[3], "Upgrade for Brannic" .. W .. " (+25 item level|r" .. W .. ")|r · " .. GROM .. W
+        .. " (+15|r" .. W .. ")|r", "two-hander")
+    -- A one-hand sword: dual wielders take the better hand (Kaelor's off
+    -- hand, +33; Brannic's off hand, +28). Coinpurse wears a two-hander:
+    -- skipped. Priests can't use swords.
+    eq(c.hover(10011)[3], "Upgrade for " .. KAELOR .. W .. " (+33 item level|r" .. W .. ")|r · Brannic" .. W
+        .. " (+28|r" .. W .. ")|r", "one-hander")
+    -- A shield: only warriors, paladins and shamans. Coinpurse wears a
+    -- two-hander (skipped); Grom, a paladin, has an empty off hand, and an
+    -- empty off hand isn't compared with (§15). Nobody.
+    eq(#c.hover(10012), 1, "shield: not over an empty off hand")
+    -- A wand: the ranged slot, casters only. Sela +50.
+    eq(c.hover(10013)[3], "Upgrade for " .. SELA .. W .. " (+50 item level|r" .. W .. ")|r", "wand")
+
+    -- Shift says what a weapon was set against.
+    held.world.shift = true
+    local function upgradeRow(id)
+        for _, l in ipairs(held.hover(id)) do
+            if l:find("^Upgrade for | ") then
+                return l
+            end
+        end
+    end
+    eq(upgradeRow(10010), "Upgrade for | Brannic +25 " .. G .. "(over main and off hand)|r · " .. GROM .. " +15",
+        "Shift: averaged, and the main hand alone (no suffix)")
+    eq(upgradeRow(10011), "Upgrade for | " .. KAELOR .. " +33 " .. G .. "(over the off hand)|r · Brannic +28 "
+        .. G .. "(over the off hand)|r", "Shift: off hand")
+
+    -- A main hand the client hasn't cached (Brannic's and Grom's sword): no
+    -- guess for those alts, so only Coinpurse is left.
+    c.world.uncached[10021] = true
+    eq(c.hover(10010)[3], "Upgrade for |cffc79c6eCoinpurse|r" .. W .. " (+13 item level|r" .. W .. ")|r",
+        "unknown hand: skipped")
+end)
+
 scenario("tooltip_v2", function()
     local alts = '\t["alts"] = {\n'
         -- Bank seen 15 days ago: stale.

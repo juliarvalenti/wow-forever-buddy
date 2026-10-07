@@ -1469,7 +1469,8 @@ export function installMockIpc(): void {
     },
     // F2: the characters-search mock's Runecloth rows, plus a few others to
     // find. Every word must be in the name, like the backend.
-    characters_search: ({ query }): SearchResults => {
+    characters_search: ({ query, filters }): SearchResults => {
+      const f = (filters ?? {}) as { min_quality?: number | null; min_ilvl?: number | null };
       const words = String(query).toLowerCase().split(/\s+/).filter((w) => w && !w.startsWith("ilvl"));
       const stock: [number, string, string, string, string, number, number][] = [
         [1, "Coinpurse", "warrior", "bank", "Runecloth", 1, 340],
@@ -1495,7 +1496,9 @@ export function installMockIpc(): void {
           count,
           // Velyra's bank visit is 12 days old, so its Where shows ember.
           as_of: location === "bag" ? null : iso(60 * 24 * (character_id === 3 ? 12 : 2)),
-        }));
+        }))
+        // TIP3 (b): the panel's filters (every mock item is level 50).
+        .filter((h) => (f.min_quality == null || h.quality >= f.min_quality) && (f.min_ilvl == null || h.ilvl >= f.min_ilvl));
       return {
         hits,
         total: hits.reduce((n, h) => n + h.count, 0),

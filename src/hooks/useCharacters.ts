@@ -34,11 +34,19 @@ export function useCharacters() {
 /** The search box (F2): results for `query`, a moment after typing stops,
  *  and again when new notes are read. `null` while the query is empty. A
  *  reply for an older query is dropped. */
-export function useItemSearch(query: string) {
+/** TIP3 (b): the search panel's filters. */
+export type Filters = { minQuality: number | null; minIlvl: number | null };
+export const NO_FILTERS: Filters = { minQuality: null, minIlvl: null };
+
+export function useItemSearch(query: string, filters: Filters = NO_FILTERS) {
   const [results, setResults] = useState<SearchResults | null>(null);
+  // With filters on and nothing left: whether the text alone finds anything
+  // ("Nothing matches these filters" vs "Nothing matches").
+  const [filteredOut, setFilteredOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   useEvent(events.ingestCompleted, () => setTick((n) => n + 1));
+  const { minQuality, minIlvl } = filters;
   useEffect(() => {
     if (!query.trim()) {
       setResults(null);
@@ -46,22 +54,28 @@ export function useItemSearch(query: string) {
       return;
     }
     let live = true;
-    const t = setTimeout(() => {
-      commands.charactersSearch(query).then(
-        (r) => {
-          if (!live) return;
-          setResults(r);
-          setError(null);
-        },
-        (e) => live && setError(errorText(e)),
-      );
+    const t = setTimeout(async () => {
+      try {
+        const r = await commands.charactersSearch(query, { min_quality: minQuality, min_ilvl: minIlvl });
+        const filtered = minQuality != null || minIlvl != null;
+        const hidden =
+          filtered && r.hits.length === 0
+            ? (await commands.charactersSearch(query, { min_quality: null, min_ilvl: null })).hits.length > 0
+            : false;
+        if (!live) return;
+        setResults(r);
+        setFilteredOut(hidden);
+        setError(null);
+      } catch (e) {
+        if (live) setError(errorText(e));
+      }
     }, 150);
     return () => {
       live = false;
       clearTimeout(t);
     };
-  }, [query, tick]);
-  return { results, error };
+  }, [query, minQuality, minIlvl, tick]);
+  return { results, filteredOut, error };
 }
 
 /** The characters found in the WTF folder (older settings folders left
