@@ -2076,7 +2076,10 @@ export type Visited = {
 export type Who = {
 	id: number,
 	name: string,
-	/**  Class file token, e.g. "WARRIOR". */
+	/**
+	 *  File token, lowercase (`warrior`), for the class colour; empty if
+	 *  unknown.
+	 */
 	class: string,
 };
 
