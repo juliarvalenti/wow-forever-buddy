@@ -28,6 +28,10 @@ pub struct Settings {
     /// the game's art archive is the user's choice, and while it's off the
     /// app never opens the game's `Data` folder.
     pub item_icons: bool,
+    /// "Let AI agents read my characters and suggest plans" (P2). Off by
+    /// default; the agent connection (`agent`) re-reads it on every call and
+    /// refuses everything while it's off.
+    pub agent_access: bool,
     /// Free-form UI preferences (remembered tabs, filters). The backend never reads it.
     /// Strings only; the frontend JSON-encodes anything structured.
     pub ui: BTreeMap<String, String>,
@@ -42,6 +46,7 @@ impl Default for Settings {
             process_names_extra: Vec::new(),
             integrations: Integrations::default(),
             item_icons: false,
+            agent_access: false,
             ui: BTreeMap::new(),
         }
     }
@@ -203,6 +208,7 @@ pub struct SettingsPatch {
     pub process_names_extra: Option<Vec<String>>,
     pub integrations: Option<IntegrationsPatch>,
     pub item_icons: Option<bool>,
+    pub agent_access: Option<bool>,
     /// Set keys to a string to store them, or to null to remove them.
     pub ui: Option<BTreeMap<String, Option<String>>>,
 }
@@ -254,6 +260,7 @@ impl SettingsPatch {
         }
         set(&mut s.process_names_extra, self.process_names_extra);
         set(&mut s.item_icons, self.item_icons);
+        set(&mut s.agent_access, self.agent_access);
         if let Some(i) = self.integrations {
             set(&mut s.integrations.curseforge, i.curseforge);
             set(&mut s.integrations.wago, i.wago);

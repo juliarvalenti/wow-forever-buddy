@@ -4,6 +4,7 @@
 pub mod addon;
 pub mod addons;
 pub mod adventures;
+pub mod agent;
 pub mod ah;
 pub mod app;
 pub mod backup;

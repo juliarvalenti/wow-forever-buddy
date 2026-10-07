@@ -55,6 +55,9 @@ ciborium = "0.2"
 # re-encoded as PNG. Both were already in the tree (zip, tauri).
 flate2 = "1"
 png = "0.18"
+# The agent connection (P2) finds the app's data folders without Tauri, the
+# same way Tauri does. Already in the tree through it.
+dirs = "7"
 
 [dev-dependencies]
 full_moon = "3"

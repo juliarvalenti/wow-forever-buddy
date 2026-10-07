@@ -108,6 +108,11 @@ export const commands = {
 	 *  own database changes; nothing is written to the game folder.
 	 */
 	adventureSetNote: (id: number, note: string) => __TAURI_INVOKE<null>("adventure_set_note", { id, note }),
+	/**
+	 *  Settings › Agents (P2): the command to give an agent client, and what
+	 *  agents have called lately. The switch itself is `settings.agent_access`.
+	 */
+	agentStatus: () => __TAURI_INVOKE<AgentStatus>("agent_status"),
 	/**  App version and data locations, for the Settings/about panel and bug reports. */
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**
@@ -570,6 +575,27 @@ export type AdventureLink = {
 	id: number,
 	name: string,
 	login: string,
+};
+
+export type AgentCall = {
+	/**  RFC 3339, UTC. */
+	at: string,
+	/**
+	 *  The client's own name for itself (MCP `clientInfo.name`): a claim,
+	 *  not a verified identity.
+	 */
+	client: string,
+	tool: string,
+	/**  False when the tool refused or failed (access off, unknown character). */
+	ok: boolean,
+};
+
+export type AgentStatus = {
+	/**  This app's own executable: what an agent client starts, with `--mcp`. */
+	command: string,
+	flag: string,
+	/**  The last calls an agent made, newest first. */
+	activity: AgentCall[],
 };
 
 /**  The Auctionator files seen for this flavor, by their last read. */
@@ -1755,6 +1781,12 @@ export type Settings = {
 	 */
 	item_icons?: boolean,
 	/**
+	 *  "Let AI agents read my characters and suggest plans" (P2). Off by
+	 *  default; the agent connection (`agent`) re-reads it on every call and
+	 *  refuses everything while it's off.
+	 */
+	agent_access?: boolean,
+	/**
 	 *  Free-form UI preferences (remembered tabs, filters). The backend never reads it.
 	 *  Strings only; the frontend JSON-encodes anything structured.
 	 */
@@ -1780,6 +1812,7 @@ export type SettingsPatch_Deserialize = {
 	process_names_extra?: string[] | null,
 	integrations?: IntegrationsPatch | null,
 	item_icons?: boolean | null,
+	agent_access?: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui?: { [key in string]: string | null } | null,
 };
@@ -1795,6 +1828,7 @@ export type SettingsPatch_Serialize = {
 	process_names_extra: string[] | null,
 	integrations: IntegrationsPatch | null,
 	item_icons: boolean | null,
+	agent_access: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui: { [key in string]: string | null } | null,
 };

@@ -1,6 +1,6 @@
 # Spec: P2, connecting an AI agent (MCP)
 
-Status: draft, 2026-10-07 (@coder). Spec only; nothing here is built yet.
+Status: 2026-10-07 (@coder). P2a (the read side) is built; P2b and P2c are not yet.
 
 **What it's for.** Julia's idea: plan outside the game with an agent ("set up a questing plan for Kaelor tonight"), approve it in Forever Buddy, then see it in game. The agent can read what the app knows about your characters and can **propose** a plan, a note or a shopping list. Nothing it proposes takes effect until you approve it in the app.
 
@@ -16,29 +16,35 @@ Status: draft, 2026-10-07 (@coder). Spec only; nothing here is built yet.
 
 ## 1. How an agent connects
 
-**A sidecar binary, `forever-buddy-mcp`,** ships with the app (a Tauri `externalBin`). The agent client starts it as a local MCP server over stdio. Claude Desktop, Claude Code and most MCP clients support this out of the box.
+**The app's own executable, started with `--mcp`.** The agent client starts it as a local MCP server over stdio. Claude Desktop, Claude Code and most MCP clients support this out of the box. Below, "the agent process" means the app started this way.
 
-Why a separate binary, not the app itself:
+As built in P2a, this is a flag rather than a separate `externalBin`:
 
-- **Single instance.** The app runs `tauri-plugin-single-instance`: a second launch only focuses the running window and exits, so `wow-forever-buddy.exe --mcp` can't serve a session.
+- **Single instance.** `main` checks for `--mcp` before Tauri and `tauri-plugin-single-instance` start. The agent process never becomes a second app instance, and it never focuses the running window.
+- **One file to ship and sign.** There's no sidecar to bundle per target triple.
 - **No port.** A localhost HTTP server would be a listening socket any local process, or a web page through DNS rebinding, could reach. Stdio is a private pipe to the client that started it.
-- **Least privilege.** The sidecar opens the app's database read-only and can write in exactly one folder (§4). It has no game paths, no write gate and no Tauri.
+- **Least privilege, the same as a sidecar would have.** The agent process:
+  - opens the app's database read-only;
+  - writes only in its own folder, `<local data>/agent/`;
+  - has no window, no game paths, no write gate and no Tauri.
 
-It's built with `rmcp` (the official Rust MCP SDK) and reuses the app's own query code (`characters`, `quests`, `ah`, `ledger`) from the library crate, so answers match the screens.
+It uses a small JSON-RPC loop of its own (`agent/rpc.rs`: `initialize`, `ping`, `tools/list`, `tools/call`) rather than `rmcp`, so there's no async runtime or new dependency to review. It reuses the app's own query code (`characters`, `quests`, `ah`, `adventures`), so answers match the screens.
 
 **Setup, in Settings › Agents:**
 
 - A switch: "Let AI agents read my characters and suggest plans", off by default.
 - Under it, the config to paste, with a Copy button:
   ```json
-  { "mcpServers": { "forever-buddy": { "command": "C:\\…\\forever-buddy-mcp.exe" } } }
+  { "mcpServers": { "forever-buddy": { "command": "C:\\…\\wow-forever-buddy.exe", "args": ["--mcp"] } } }
   ```
-  and the Claude Code one-liner `claude mcp add forever-buddy -- "C:\…\forever-buddy-mcp.exe"`.
+  and the Claude Code one-liner `claude mcp add forever-buddy -- "C:\…\wow-forever-buddy.exe" --mcp`.
 - "Recent agent activity": the last 20 tool calls (client name, tool, time; never the arguments' text), and the pending proposals count with a link to Approvals.
 
-**Turning it off** takes effect on the next tool call. The sidecar re-reads `settings.json` on every call and refuses with "Agent access is off in Forever Buddy". There's nothing to revoke beyond that: no token or key exists.
+The activity list is `<local data>/agent/activity.json`, written by the agent process. It holds only the client name, the tool, the time and whether the call worked.
 
-**Threat model.** Anyone who can start the sidecar as Julia can already read `buddy.db` directly, so a local secret would add nothing. The real risk is the agent: a model that's wrong, or that a web page or document has prompt-injected. That's why it gets read-only data, can only propose, and every proposal waits for a click.
+**Turning it off** takes effect on the next tool call. The agent process re-reads `settings.json` on every call and refuses with "Agent access is off in Forever Buddy". There's nothing to revoke beyond that: no token or key exists.
+
+**Threat model.** Anyone who can start the agent process as Julia can already read `buddy.db` directly, so a local secret would add nothing. The real risk is the agent: a model that's wrong, or that a web page or document has prompt-injected. That's why it gets read-only data, can only propose, and every proposal waits for a click.
 
 ---
 
@@ -54,7 +60,9 @@ All are annotated `readOnlyHint: true`. Each answers from the app's database ope
 | `get_quests` | `character`, optional `since` | Completed quest ids (Q1b's `char_quests_done`), plus recent accepts and turn-ins with titles and zones from our own events. |
 | `get_prices` | `items` (ids) | Last scan price, 30-day median, scan age, from Auctionator data. |
 | `get_recent_play` | optional `character`, `days` (max 30) | Sessions: time played, zones, gold change, levels, notable loot (the Adventures data). |
-| `list_proposals` | optional `status` | The agent's own proposals and whether each was approved, declined or is still pending. |
+| `list_proposals` (P2b) | optional `status` | The agent's own proposals and whether each was approved, declined or is still pending. |
+
+**Built in P2a:** the first six tools. `get_quests` returns completed quest ids as a plain number list, up to 10,000, since a planner needs the whole set and ids are tiny. Every other list is capped at 500 rows with `more`. `list_proposals` arrives with the queue in P2b.
 
 **What's left out on purpose:**
 
@@ -74,7 +82,7 @@ All are annotated `readOnlyHint: false, destructiveHint: false`. Each one **stag
 
 | Tool | Arguments | On approval |
 |---|---|---|
-| `propose_quest_plan` | `character`, `title`, `steps`: up to 50 × { `text` (≤ 200 chars), optional `quest_id`, `zone` } | It becomes that character's quest plan (P1's table), and the next slot write sends it to the game as a checklist the player ticks off by hand. |
+| `propose_quest_plan` | `character`, `title`, `steps`: up to 50 × { `text` (≤ 200 chars), optional `quest_id`, `zone` } | It becomes that character's quest plan through P1's own `plans::set_plan`, replacing any current one, and the next slot write sends it to the game. P1 has no "proposed" state of its own: the proposal lives in this queue until approved. |
 | `propose_note` | `target`: { `adventure` id } or { `character` }, `text` (≤ 2,000 chars) | Sets that note, as the Adventure screen's note field does. An existing note is shown side by side and replaced only on approval. |
 | `propose_shopping_list` | `name`, `items`: up to 100 × { `item_id`, `count` } | It becomes a shopping list (B2), tracked across alts and shown on tooltips (TIP2 (c)). |
 
@@ -84,18 +92,18 @@ All are annotated `readOnlyHint: false, destructiveHint: false`. Each one **stag
 
 ## 4. How a proposal reaches the app
 
-The app stays the only writer of its database. The sidecar never writes to `buddy.db`.
+The app stays the only writer of its database. The agent process never writes to `buddy.db`.
 
-1. **The inbox.** The sidecar writes the proposal as one JSON file, `<local data>/agent-inbox/<ulid>.json`, via `atomic_replace`. The folder path comes from the app's own data directory, never from the agent. The file is the producer (the MCP client's `clientInfo.name`), the kind, the body and the time.
+1. **The inbox.** The agent process writes the proposal as one JSON file, `<local data>/agent/inbox/<ulid>.json`, via `atomic_replace`. The folder path comes from the app's own data directory, never from the agent. The file is the producer (the MCP client's `clientInfo.name`), the kind, the body and the time.
 2. **Ingest.** The app picks up new inbox files on start, on window focus and every 10 seconds while open.
 
-   **While agent access is off, nothing is staged.** The switch is checked here too, not only in the sidecar, because any local process can write the inbox. Each file found while off is recorded `rejected: agent access is off` (so the agent can tell why) and deleted unread past its header. Test: switch off, drop a valid file in the inbox, and confirm nothing reaches the Approvals panel.
+   **While agent access is off, nothing is staged.** The switch is checked here too, not only in the agent process, because any local process can write the inbox. Each file found while off is recorded `rejected: agent access is off` (so the agent can tell why) and deleted unread past its header. Test: switch off, drop a valid file in the inbox, and confirm nothing reaches the Approvals panel.
 
    For each file, it:
    - parses it with `deny_unknown_fields` against the kind's schema;
    - applies the limits;
    - resolves every `character`, `adventure` and `item_id` against its own data, refusing unknown ones;
-   - stores the result in the **staged-changes queue** (migration **010**; bridge §7 named 009, which Q1b's quests table took), with status `staged`;
+   - stores the result in the **staged-changes queue** (migration **012**: bridge §7 named 009, which Q1b's quests took; 010 is P1's quest plans and 011 B1's login notes), with status `staged`;
    - deletes the inbox file.
 
    A file that fails any check is stored as `rejected` with the reason, so `list_proposals` can tell the agent why, and is deleted too.
@@ -125,26 +133,26 @@ The app stays the only writer of its database. The sidecar never writes to `budd
 
 ## 5. Limits
 
-These are enforced in the sidecar, and again at ingest, since the inbox is a folder any local process could write.
+These are enforced in the agent process, and again at ingest, since the inbox is a folder any local process could write.
 
 | What | Limit |
 |---|---|
 | Pending proposals | 50. Past that, proposal tools refuse until some are approved or declined. |
-| Inbox file | 64 KB; the sidecar won't write past 200 unprocessed files. |
+| Inbox file | 64 KB; the agent process won't write past 200 unprocessed files. |
 | Text fields | As in §3, UTF-8, no control characters. |
 | Read results | 500 rows per call, with a `more` flag; `get_recent_play` up to 30 days. |
-| Call rate | 10 calls a second per sidecar, as a guard against a looping agent. |
+| Call rate | 10 calls a second per agent process, as a guard against a looping agent. |
 
 ---
 
 ## 6. Build order
 
-1. **P2a, read side:** the sidecar with the read tools, the Settings › Agents section (switch, config snippet, activity), and bundling it as `externalBin`. Tests:
+1. **P2a, read side:** the `--mcp` agent process with the read tools, and the Settings › Agents section (switch, config snippet, activity). Tests:
    - each tool against a fixture db;
    - "off refuses everything";
    - the db is opened read-only (a write attempt fails);
    - mail text never appears in any result.
-2. **P2b, proposals:** the inbox, ingest with validation, migration 010, and the Approvals panel, with **notes** first since they're the simplest and already exist in the app. Tests:
+2. **P2b, proposals:** the inbox, ingest with validation, migration 012, and the Approvals panel, with **notes** first since they're the simplest and already exist in the app. Tests:
    - malformed, oversized and unknown-target files are rejected with a reason;
    - with agent access off, a valid inbox file never reaches Approvals;
    - the preview shows every applied field, as text;

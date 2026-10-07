@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, KeyRound, Lock } from "lucide-react";
-import type { AhStatus, AppInfo, IconCacheStatus, IntegrationId, StorageInfo } from "@/lib/bindings";
+import type { AgentStatus, AhStatus, AppInfo, IconCacheStatus, IntegrationId, StorageInfo } from "@/lib/bindings";
 import { commands, events } from "@/lib/bindings";
 import {
   Button,
@@ -20,7 +20,7 @@ import { useBackups } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
 import { useAppInfo, useSecrets, useSettings } from "@/hooks/useSettings";
-import { bytes, errorText, plural } from "@/lib/format";
+import { ago, bytes, errorText, plural } from "@/lib/format";
 
 // Copy and layout from design/mocks/round-3/settings.html (F1).
 
@@ -271,6 +271,12 @@ export function Settings({
             ))}
           </Panel>
 
+          <Agents
+            on={settings?.agent_access ?? false}
+            ready={settings != null}
+            onChange={(v) => update({ agent_access: v })}
+          />
+
           <Panel>
             <PanelHeader title="About" />
             <div className="st-set full">
@@ -459,6 +465,90 @@ function SwitchRow({
         <Switch checked={checked} onChange={onChange} label={title} disabled={disabled} />
       </div>
     </div>
+  );
+}
+
+/** P2a (docs/specs/agent-mcp.md §1): the switch, what to paste into an agent
+ *  client, and the agent's recent calls. Every string from the activity list
+ *  (the client's name for itself) is shown as text. */
+function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange: (v: boolean) => void }) {
+  const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [copied, setCopied] = useState<"json" | "cli" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = () => commands.agentStatus().then(setStatus, (e) => setError(errorText(e)));
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [on]);
+
+  const json = status
+    ? JSON.stringify({ mcpServers: { "forever-buddy": { command: status.command, args: [status.flag] } } }, null, 2)
+    : "";
+  const cli = status ? `claude mcp add forever-buddy -- "${status.command}" ${status.flag}` : "";
+  const copy = async (what: "json" | "cli") => {
+    try {
+      await navigator.clipboard.writeText(what === "json" ? json : cli);
+      setCopied(what);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  return (
+    <Panel>
+      <PanelHeader title="Agents" />
+      <SwitchRow
+        title="Let AI agents read my characters and suggest plans"
+        desc="An agent like Claude Desktop can read your characters, gear, quests and prices. It can't change anything. Off: every request is refused."
+        checked={on}
+        disabled={!ready}
+        onChange={onChange}
+      />
+      {on && status && (
+        <>
+          <div className="st-set full">
+            <div className="t">Claude Desktop and other clients</div>
+            <div className="d">Add this to the client's MCP settings.</div>
+            <pre className="st-code">{json}</pre>
+            <div className="ctl">
+              <Button variant="ghost" onClick={() => copy("json")}>
+                {copied === "json" ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+          <div className="st-set full">
+            <div className="t">Claude Code</div>
+            <pre className="st-code">{cli}</pre>
+            <div className="ctl">
+              <Button variant="ghost" onClick={() => copy("cli")}>
+                {copied === "cli" ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+      {status && status.activity.length > 0 && (
+        <div className="st-set full">
+          <div className="t">Recent agent activity</div>
+          <ul className="st-activity">
+            {status.activity.map((c, i) => (
+              <li key={i} className={c.ok ? undefined : "refused"}>
+                <span>“{c.client}”</span>
+                <span className="tool">{c.tool}</span>
+                <span className="d-dim">{c.ok ? ago(c.at) : `refused · ${ago(c.at)}`}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error && (
+        <div className="st-set full">
+          <div className="d err">{error}</div>
+        </div>
+      )}
+    </Panel>
   );
 }
 
