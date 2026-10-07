@@ -54,6 +54,22 @@ M.ITEMS = {
     [2589] = "Linen Cloth",
     [6948] = "Hearthstone",
     [14047] = "Runecloth",
+    [10001] = "Shadowcraft Cap",
+    [10002] = "Coif of Elements",
+    [10003] = "Band of the Unicorn",
+    [10004] = "Lionheart Helm",
+    [10005] = "Felcloth Hood",
+}
+
+-- Gear for the upgrade hint: GetItemInfo's ilvl, required level, equip
+-- location, item class and subclass (4 = armour; 1 cloth, 2 leather,
+-- 3 mail, 4 plate, 0 misc).
+M.GEAR = {
+    [10001] = { 63, 58, "INVTYPE_HEAD", 4, 2 },
+    [10002] = { 61, 56, "INVTYPE_HEAD", 4, 3 },
+    [10003] = { 55, 50, "INVTYPE_FINGER", 4, 0 },
+    [10004] = { 63, 50, "INVTYPE_HEAD", 4, 4 },
+    [10005] = { 40, 35, "INVTYPE_HEAD", 4, 1 },
 }
 
 M.QUESTS = { [176] = "Wanted: Hogger" }
@@ -144,6 +160,7 @@ function M.new(opts)
         requests = { played = 0, raid = 0, items = 0 },
         combat = false, -- InCombatLockdown
         shift = false, -- IsShiftKeyDown
+        bound = {}, -- id -> the bind line its tooltip shows ("Soulbound")
         quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
     }
     client.world = world
@@ -279,6 +296,10 @@ function M.new(opts)
             end
             -- name, link, quality, ilvl, min level, type, subtype, stack,
             -- equip slot, icon, sell price, class id, subclass id
+            local g = M.GEAR[id]
+            if g then
+                return name, M.link(id), 3, g[1], g[2], "Armor", "", 1, g[3], 133070, 5000, g[4], g[5]
+            end
             return name, M.link(id), 1, 10, 0, "Trade Goods", "Cloth", 20, "", 132889, 13, 7, 5
         end,
         ["C_Item.RequestLoadItemDataByID"] = function(id)
@@ -468,7 +489,16 @@ function M.new(opts)
         env.RAID_CLASS_COLORS = {
             WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
             PALADIN = { r = 0.96, g = 0.55, b = 0.73 },
+            ROGUE = { r = 1, g = 0.96, b = 0.41 },
+            PRIEST = { r = 1, g = 1, b = 1 },
         }
+        -- The client's own strings for bound items (GlobalStrings).
+        env.ITEM_SOULBOUND = "Soulbound"
+        env.ITEM_BIND_ON_PICKUP = "Binds when picked up"
+        -- The game's date(), in UTC so fixtures don't depend on the machine.
+        env.date = function(fmt, t)
+            return os.date("!" .. fmt, t)
+        end
         for name, f in pairs(api) do
             if not applies(opts.missing, name) then
                 -- "C_Container.GetContainerNumSlots" goes in env.C_Container.
@@ -749,8 +779,14 @@ function M.new(opts)
                 table.insert(lines, left .. " | " .. right)
             end,
         }
+        -- The tooltip's data, as TooltipDataProcessor passes it: the id and
+        -- the game's own lines (a bind line for world.bound[id]).
+        local data = { id = id, lines = { { leftText = lines[1] } } }
+        if world.bound[id] then
+            table.insert(data.lines, { leftText = world.bound[id] })
+        end
         for _, fn in ipairs(state.tooltip[0] or {}) do
-            local ok, err = pcall(fn, tooltip, { id = id })
+            local ok, err = pcall(fn, tooltip, data)
             if not ok then
                 table.insert(client.errors, "tooltip: " .. tostring(err))
             end

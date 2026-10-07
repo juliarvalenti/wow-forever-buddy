@@ -25,7 +25,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.4.0"
+local VERSION = "0.5.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -578,6 +578,27 @@ local COMPACT_NAMES = 3 -- in the default line
 local PLACES = { "bags", "bank", "mail", "worn" }
 local tooltipErrors = 0
 
+-- TIP2 (INGAME §8): grey for stale data, white for the hint's numbers.
+local GREY, WHITE = "|cff808080", "|cffffffff"
+local STALE = 7 * 86400 -- older than a week reads grey
+local MIN_GAIN = 5 -- the upgrade hint ignores sidegrades
+local UPGRADE_NAMES = 2
+
+-- Inventory slots an equip location is compared against (v2: armour and
+-- jewellery only; weapons need proficiency rules). Rings and trinkets take
+-- the lower of their two slots.
+local SLOTS_FOR = {
+    INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 },
+    INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 },
+    INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 },
+    INVTYPE_HAND = { 10 }, INVTYPE_CLOAK = { 15 },
+    INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 },
+}
+local ARMOR = 4 -- item class; its subclasses 0 misc, 1 cloth, 2 leather, 3 mail, 4 plate
+local NO_LEATHER = { MAGE = true, PRIEST = true, WARLOCK = true }
+local MAIL_ALWAYS = { WARRIOR = true, PALADIN = true }
+local MAIL_AT_40 = { HUNTER = true, SHAMAN = true }
+
 -- Slot text shown as text: every "|" doubled, so a name can't carry an item
 -- link, a texture or a colour code.
 local function plain(s)
@@ -614,6 +635,17 @@ local function classColor(class)
     return RAID_CLASS_COLORS and RAID_CLASS_COLORS[class or ""]
 end
 
+-- A name in its class colour: our own code around the escaped name, so the
+-- line's own colour comes back after it.
+local function colorName(name, class)
+    local c = classColor(class)
+    if not c then
+        return plain(name)
+    end
+    return string.format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5),
+        math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) .. plain(name) .. "|r"
+end
+
 -- An alt's place for the compact line: where most of its stack is.
 local function mainPlace(row)
     local best = 1
@@ -625,35 +657,183 @@ local function mainPlace(row)
     return PLACES[best]
 end
 
--- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
--- with names in class colour, at most three, then the price and a hint.
-local function compactLines(tooltip, others, price)
-    local parts = {}
-    for k = 1, math.min(#others, COMPACT_NAMES) do
-        local row = others[k]
-        local name, c = plain(row.name), classColor(row.class)
-        if c then
-            -- Our own colour code around the escaped name; |r returns to gold.
-            name = string.format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5),
-                math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) .. name .. "|r"
+-- When a place was last seen: bags and worn as of the last logout, the bank
+-- and mail as of their last visit.
+local function placeTime(alt, place)
+    if place == "bank" then
+        return alt.bank
+    elseif place == "mail" then
+        return alt.mail
+    end
+    return alt.seen
+end
+
+local function stale(t)
+    local n = now()
+    return type(t) == "number" and type(n) == "number" and n - t > STALE
+end
+
+-- "5 Oct": day without a leading zero.
+local function shortDate(t)
+    local s = read("date", "%d %b", t)
+    return type(s) == "string" and (string.gsub(s, "^0", "")) or "?"
+end
+
+-- Can a class wear this? Jewellery, cloaks and cloth: anyone. Leather: all
+-- but the cloth classes. Mail and plate open up at 40 (INGAME §8 (b)).
+local function canWear(class, level, classID, subclassID, required)
+    if classID ~= ARMOR or subclassID == 0 or subclassID == 1 then
+        return true
+    end
+    local at40 = (tonumber(level) or 0) >= 40 or (tonumber(required) or 0) >= 40
+    if subclassID == 2 then
+        return type(class) == "string" and class ~= "" and not NO_LEATHER[class]
+    elseif subclassID == 3 then
+        return MAIL_ALWAYS[class] == true or (MAIL_AT_40[class] == true and at40)
+    elseif subclassID == 4 then
+        return MAIL_ALWAYS[class] == true and at40
+    end
+    return false
+end
+
+-- The lower item level across `slots`, an empty slot counting as 0.
+local function lowest(slots, ilvlIn)
+    local low
+    for _, s in ipairs(slots) do
+        local n = tonumber(ilvlIn(s)) or 0
+        if not low or n < low then
+            low = n
         end
-        parts[#parts + 1] = name .. " " .. row.total .. " " .. mainPlace(row)
     end
-    if #others > COMPACT_NAMES then
-        parts[#parts + 1] = "+" .. (#others - COMPACT_NAMES) .. " more"
+    return low or 0
+end
+
+-- A soulbound or bind-on-pickup item can't reach another character: the
+-- tooltip's own lines say which, in the game's own words.
+local function isBound(data)
+    local lines = type(data) == "table" and data.lines
+    if type(lines) ~= "table" then
+        return false
     end
+    for _, line in ipairs(lines) do
+        local text = type(line) == "table" and line.leftText
+        if type(text) == "string" and not isSecret(text)
+            and (text == ITEM_SOULBOUND or text == ITEM_BIND_ON_PICKUP) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Which other characters the item would upgrade, by base item level: best
+-- first (ties to the higher level), at most two, none when this character
+-- is the best fit (the game's own comparison covers that).
+local function upgrades(id, data, alts)
+    local _, _, _, ilvl, required, _, _, _, equipLoc, _, _, classID, subclassID =
+        read("C_Item.GetItemInfo", id)
+    local slotsFor = type(equipLoc) == "string" and SLOTS_FOR[equipLoc]
+    if not slotsFor or type(ilvl) ~= "number" or isBound(data) then
+        return {}
+    end
+    required = tonumber(required) or 0
+    local mine = -math.huge
+    local myLevel = read(UnitLevel, "player")
+    if character and canWear(character.class, myLevel, classID, subclassID, required) then
+        mine = ilvl - lowest(slotsFor, function(s)
+            local worn = read(GetInventoryItemID, "player", s)
+            return type(worn) == "number" and select(4, read("C_Item.GetItemInfo", worn)) or 0
+        end)
+    end
+    local found = {}
+    for _, alt in ipairs(alts) do
+        if type(alt) == "table" and not isMe(alt) and type(alt.worn) == "table" then
+            local level = tonumber(alt.level)
+            if canWear(alt.class, level, classID, subclassID, required) then
+                local gain = ilvl - lowest(slotsFor, function(s)
+                    return alt.worn[s]
+                end)
+                if gain >= MIN_GAIN then
+                    found[#found + 1] = {
+                        alt = alt,
+                        gain = gain,
+                        level = level or 0,
+                        under = level and level < required and required or nil,
+                    }
+                end
+            end
+        end
+    end
+    table.sort(found, function(a, b)
+        if a.gain ~= b.gain then
+            return a.gain > b.gain
+        end
+        return a.level > b.level
+    end)
+    if not found[1] or mine >= found[1].gain then
+        return {}
+    end
+    while #found > UPGRADE_NAMES do
+        table.remove(found)
+    end
+    return found
+end
+
+-- "Upgrade for Kaelor (+9 item level, once level 58) · Sela (+6)": gold
+-- lead, class-coloured names, white numbers, the level note grey.
+local function upgradeLine(found)
+    local parts = {}
+    for k, u in ipairs(found) do
+        local text = colorName(u.alt.name, u.alt.class) .. WHITE .. " (+" .. u.gain
+            .. (k == 1 and " item level" or "") .. "|r"
+        if u.under then
+            text = text .. GREY .. ", once level " .. u.under .. "|r"
+        end
+        parts[k] = text .. WHITE .. ")|r"
+    end
+    return "Upgrade for " .. table.concat(parts, " · ")
+end
+
+-- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
+-- with names in class colour, at most three, then the price, the upgrade
+-- hint and a hint about Shift. An alt whose place is stale is grey, dated.
+local function compactLines(tooltip, slot, others, price, found)
     tooltip:AddLine(" ")
-    tooltip:AddLine("Your alts: " .. table.concat(parts, " · "), 1, 0.82, 0)
+    if #others > 0 then
+        local parts = {}
+        for k = 1, math.min(#others, COMPACT_NAMES) do
+            local row = others[k]
+            local place = mainPlace(row)
+            local t = placeTime(row.alt, place)
+            if stale(t) then
+                parts[#parts + 1] = GREY .. plain(row.name) .. " " .. row.total .. " " .. place
+                    .. " (as of " .. shortDate(t) .. ")|r"
+            else
+                parts[#parts + 1] = colorName(row.name, row.class) .. " " .. row.total .. " " .. place
+            end
+        end
+        if #others > COMPACT_NAMES then
+            parts[#parts + 1] = "+" .. (#others - COMPACT_NAMES) .. " more"
+        end
+        tooltip:AddLine("Your alts: " .. table.concat(parts, " · "), 1, 0.82, 0)
+    end
     if price > 0 then
         -- "~", not "≈": the game's fonts may not have the glyph.
-        tooltip:AddLine("~" .. coins(price) .. " each at your last scan", 1, 1, 1)
+        local scan = slot.scanAt
+        local old = stale(scan) and (GREY .. " · " .. ago(scan) .. "|r") or ""
+        tooltip:AddLine("~" .. coins(price) .. " each at your last scan" .. old, 1, 1, 1)
     end
-    tooltip:AddLine("Shift for details", 0.5, 0.6, 0.8)
+    if #found > 0 then
+        tooltip:AddLine(upgradeLine(found), 1, 0.82, 0)
+    end
+    -- Only when Shift has more to show than this.
+    if #others > 0 then
+        tooltip:AddLine("Shift for details", 0.5, 0.6, 0.8)
+    end
 end
 
 -- The Shift view: a head, this character first with its live count, then
--- each alt by place and date, the total and the scan.
-local function fullLines(tooltip, slot, id, others, price)
+-- each alt by place and date, the total, the scan and the upgrade hint.
+local function fullLines(tooltip, slot, id, others, price, found)
     local rows, total = {}, 0
     local mine = read("C_Item.GetItemCount", id, true)
     if type(mine) == "number" and mine > 0 and character and character.name then
@@ -678,7 +858,12 @@ local function fullLines(tooltip, slot, id, others, price)
                     where[#where + 1] = row.places[p] .. " " .. PLACES[p]
                 end
             end
-            right = table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
+            local t = placeTime(row.alt, mainPlace(row))
+            if stale(t) then
+                right = GREY .. table.concat(where, ", ") .. " · " .. ago(t) .. "|r"
+            else
+                right = table.concat(where, ", ") .. " · " .. ago(row.alt.seen or 0)
+            end
         end
         local c = classColor(row.class)
         if c then
@@ -695,12 +880,25 @@ local function fullLines(tooltip, slot, id, others, price)
     end
     if price > 0 then
         local scan = type(slot.scanAt) == "number" and (" · " .. ago(slot.scanAt)) or ""
-        tooltip:AddDoubleLine("Last scan", "~" .. coins(price) .. " each" .. scan, 1, 0.82, 0, 1, 1, 1)
+        local right = "~" .. coins(price) .. " each" .. scan
+        if stale(slot.scanAt) then
+            right = GREY .. right .. "|r"
+        end
+        tooltip:AddDoubleLine("Last scan", right, 1, 0.82, 0, 1, 1, 1)
+    end
+    if #found > 0 then
+        local parts = {}
+        for k, u in ipairs(found) do
+            parts[k] = colorName(u.alt.name, u.alt.class) .. " +" .. u.gain
+                .. (u.under and (" " .. GREY .. "(level " .. u.under .. ")|r") or "")
+        end
+        tooltip:AddDoubleLine("Upgrade for", table.concat(parts, " · "), 1, 0.82, 0, 1, 1, 1)
     end
     tooltip:AddLine("As of each alt's last logout", 0.5, 0.5, 0.5)
 end
 
-local function addItemLines(tooltip, id)
+local function addItemLines(tooltip, data)
+    local id = type(data) == "table" and data.id
     if type(id) ~= "number" or isSecret(id) or read("InCombatLockdown") then
         return
     end
@@ -740,16 +938,19 @@ local function addItemLines(tooltip, id)
             end
         end
     end
-    -- Nothing when only this character has it, or nobody does: never an
-    -- empty head (INGAME §8).
-    if #others == 0 then
+    -- The upgrade hint stands on its own: vendors, the AH and loot are where
+    -- nobody holds the item yet.
+    local found = upgrades(id, data, alts)
+    -- Nothing when only this character has it or nobody does, and there's
+    -- no hint: never an empty head (INGAME §8).
+    if #others == 0 and #found == 0 then
         return
     end
     local price = type(entry) == "table" and tonumber(entry[1]) or 0
-    if read("IsShiftKeyDown") then
-        fullLines(tooltip, slot, id, others, price)
+    if #others > 0 and read("IsShiftKeyDown") then
+        fullLines(tooltip, slot, id, others, price, found)
     else
-        compactLines(tooltip, others, price)
+        compactLines(tooltip, slot, others, price, found)
     end
 end
 
@@ -760,7 +961,7 @@ local function hookTooltips()
     end
     hooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if not pcall(addItemLines, tooltip, data and data.id) then
+        if not pcall(addItemLines, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
     end)

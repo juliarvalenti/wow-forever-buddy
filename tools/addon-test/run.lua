@@ -716,6 +716,98 @@ scenario("tooltip", function()
     eq(file(c.logout())._meta.tooltip_errors, nil, "no tooltip errors")
 end)
 
+-- TIP2 (INGAME §8): stale places and scans in grey, and the upgrade hint
+-- from each alt's level and worn item levels.
+local function worn(set)
+    local t = {}
+    for s = 1, 19 do
+        t[s] = set[s] or 0
+    end
+    return "{ " .. table.concat(t, ", ") .. " }"
+end
+local function alt(name, class, level, gear, extra, surname)
+    return '\t\t{ ["name"] = "' .. name .. '", ["surname"] = "' .. (surname or "") .. '", ["class"] = "' .. class
+        .. '", ["seen"] = ' .. (wow.EPOCH - DAY) .. ', ["level"] = ' .. level
+        .. ', ["worn"] = ' .. worn(gear) .. (extra or "") .. ' },\n'
+end
+local G = "|cff808080"
+local function day(t)
+    return (os.date("!%d %b", t):gsub("^0", ""))
+end
+
+scenario("tooltip_v2", function()
+    local alts = '\t["alts"] = {\n'
+        -- Bank seen 15 days ago: stale.
+        .. alt("Coinpurse", "WARRIOR", 30, { [1] = 60, [11] = 50, [12] = 50 }, ', ["bank"] = ' .. (wow.EPOCH - 15 * DAY))
+        .. alt("Thrandor", "PALADIN", 60, {}, nil, "Vargur") -- this character: never in the hint
+        .. alt("Kaelor", "ROGUE", 52, { [1] = 50, [11] = 44, [12] = 52 })
+        .. alt("Sela", "PRIEST", 60, { [1] = 30 }, ', ["mail"] = ' .. (wow.EPOCH - 2 * DAY))
+        .. '\t},\n'
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", alts .. '\t["items"] = {},\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", alts
+                .. '\t["scanAt"] = ' .. (wow.EPOCH - 12 * DAY) .. ',\n'
+                -- Runecloth: Coinpurse 340 in the (stale) bank, Sela 3 in the (fresh) mail.
+                .. '\t["items"] = {\n\t\t[14047] = { 11200, 1, 0, 340, 0, 0, 4, 0, 0, 3, 0 },\n\t},\n'),
+        },
+    })
+    c.login(nil)
+    -- This character wears a 63 helm and two 55 rings: neither is an upgrade for it.
+    c.world.equipped[1], c.world.equipped[11], c.world.equipped[12] = 10004, 10003, 10003
+
+    -- (a) The stale bank alt is grey whole, dated; the fresh one keeps its
+    -- colour. The 12-day-old scan gets a grey age.
+    eq(table.concat(c.hover(14047), "\n"), table.concat({
+        "Runecloth",
+        " ",
+        "Your alts: " .. G .. "Coinpurse 340 bank (as of " .. day(wow.EPOCH - 15 * DAY) .. ")|r · |cffffffffSela|r 3 mail",
+        "~1g 12s each at your last scan" .. G .. " · 12 days ago|r",
+        "Shift for details",
+    }, "\n"), "stale compact")
+    c.world.shift = true
+    local shift = c.hover(14047)
+    eq(shift[5], "Coinpurse | " .. G .. "340 bank · 15 days ago|r", "stale Shift row")
+    eq(shift[6], "Sela | 3 mail · 1 day ago", "fresh row unchanged")
+    eq(shift[8], "Last scan | " .. G .. "~1g 12s each · 12 days ago|r", "stale scan row")
+    c.world.shift = false
+
+    -- (b) Leather head 63, needs 58, held by nobody: the hint alone. Kaelor
+    -- (rogue, 52, head 50) gains 13 once level 58. Sela is a priest: no
+    -- leather. Coinpurse's 60 helm makes it a +3 sidegrade: below +5.
+    eq(table.concat(c.hover(10001), "\n"), table.concat({
+        "Shadowcraft Cap",
+        " ",
+        "Upgrade for |cfffff569Kaelor|r|cffffffff (+13 item level|r" .. G .. ", once level 58|r|cffffffff)|r",
+    }, "\n"), "hint alone, under level")
+
+    -- A ring (55, needs 50): against each alt's lower ring. Sela +55, Kaelor
+    -- +11 (44 < 52), Coinpurse +5 is third: top two only.
+    eq(c.hover(10003)[3],
+        "Upgrade for |cffffffffSela|r|cffffffff (+55 item level|r|cffffffff)|r · |cfffff569Kaelor|r|cffffffff (+11|r|cffffffff)|r",
+        "two names, best first")
+
+    -- Mail head 61: rogues and priests can't, the warrior's 60 helm is a sidegrade.
+    eq(#c.hover(10002), 1, "nobody it upgrades")
+    -- Cloth hood 40: anyone can wear it. A downgrade for this character's 63
+    -- helm, +10 for Sela (head 30).
+    eq(c.hover(10005)[3], "Upgrade for |cffffffffSela|r|cffffffff (+10 item level|r|cffffffff)|r", "cloth: anyone")
+
+    -- This character is the best fit: no hint (the game compares for it).
+    c.world.equipped[11] = nil
+    eq(#c.hover(10003), 1, "best fit is you")
+    c.world.equipped[11] = 10003
+
+    -- Soulbound or bind on pickup can't reach an alt.
+    c.world.bound[10003] = "Soulbound"
+    eq(#c.hover(10003), 1, "soulbound")
+    c.world.bound[10003] = "Binds when picked up"
+    eq(#c.hover(10003), 1, "bind on pickup")
+    c.world.bound[10003] = nil
+
+    eq(file(c.logout())._meta.tooltip_errors, nil, "no tooltip errors")
+end)
+
 -- Runner ---------------------------------------------------------------------
 
 local check = arg and arg[1] == "--check"
