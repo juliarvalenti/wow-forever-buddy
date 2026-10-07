@@ -1005,6 +1005,7 @@ scenario("briefing", function()
     eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
     quiet.slash("/fb")
     eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
+        .. "/fb coach this session's strip; /fb card off hides the logout card; "
         .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
 
     -- Not in combat.
@@ -1164,6 +1165,101 @@ scenario("lists", function()
     none.slash("/fb list")
     eq(none.global("ForeverBuddyListFrame").footer.text, "No lists yet. Make one in Forever Buddy.", "empty")
     return text
+end)
+
+-- This session (S2, INGAME §8): the coach strip, off until /fb coach, and
+-- the card during the logout countdown. Runecloth has a last-scan price of
+-- 1g 12s in the tooltip index.
+local PRICES = tooltipSlot("Tooltip2", '\t["alts"] = {},\n\t["items"] = {\n\t\t[14047] = { 11200 },\n\t},\n')
+
+scenario("session", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local c = client({ slots = { ["Data/Tooltip2.lua"] = PRICES } })
+    c.login(nil)
+    eq(c.global("ForeverBuddyCoachFrame"), nil, "the coach is off by default")
+    c.slash("/fb coach")
+    eq(c.chat[#c.chat], PREFIX .. "session coach on.", "/fb coach")
+    local f = c.global("ForeverBuddyCoachFrame")
+    eq(f.shown, true, "shown")
+    eq(f.heading.text, "This session", "heading")
+    eq(c.settings, nil, "settings are saved at logout, not before")
+
+    -- An hour: 312g, 41 items looted (40 Runecloth priced, a hood not),
+    -- one quest, 1,000 XP.
+    c.advance(30 * MINUTE)
+    c.setMoney(c.world.money + 3120000)
+    c.loot(14047, 40)
+    c.loot(10005, 1)
+    c.gainXp(1000)
+    c.turnIn(176, 0, 75)
+    c.advance(30 * MINUTE)
+    local rows = function(frame)
+        local out = {}
+        for _, r in ipairs(frame.rows) do
+            if r.shown then
+                out[#out + 1] = r.label.text .. " | " .. r.value.text
+            end
+        end
+        return table.concat(out, "\n")
+    end
+    eq(f.meta.text, "1h 0m", "session length")
+    eq(rows(f), "Gold | +312g · 312g/hr\nExperience | 1,000/hr\nLevel 13 in | ~6h 36m\nLoot | 41 items · ~44g",
+        "the rows")
+
+    -- In combat it stands still; with the option, it hides.
+    c.combat(true)
+    c.setMoney(c.world.money + 10000000)
+    c.advance(10)
+    eq(rows(f):match("^Gold | ([^\n]*)"), "+312g · 312g/hr", "no updates in combat")
+    c.combat(false)
+    c.slash("/fb coach combat")
+    eq(c.chat[#c.chat], PREFIX .. "session coach hides in combat.", "the option")
+    c.combat(true)
+    eq(f.shown, false, "hidden in combat")
+    c.combat(false)
+    eq(f.shown, true, "back after")
+
+    -- XP across a level-up counts the rest of the old bar too.
+    c.gainXp(7000)
+    c.advance(10)
+    -- 8,000 XP in 1h 0m 20s.
+    eq(rows(f):match("Experience | ([^\n]*)"), "7,956/hr", "across the level-up")
+
+    -- The logout card: during the countdown, gone when it's cancelled.
+    c.startLogout()
+    local card = c.global("ForeverBuddyCardFrame")
+    eq(card.shown, true, "the card")
+    local h = tonumber(os.date("!%H", c.now))
+    local part = (h >= 5 and h < 12 and "morning") or (h >= 12 and h < 17 and "afternoon")
+        or (h >= 17 and h < 22 and "evening") or "night"
+    eq(card.heading.text, "Thrandor's " .. part, "title")
+    eq(card.ding.text, "Ding! Level 13", "levelled")
+    eq(rows(card), "Played | 1h 0m\nGold | |cff1eff00+1,312g|r\nBest find | |cff0070ddFelcloth Hood|r\nQuests | 1", "rows")
+    eq(card.footer.text, "Saved to your journal in Forever Buddy", "footer")
+    c.cancelLogout()
+    eq(card.shown, false, "cancelled")
+
+    c.slash("/fb card off")
+    eq(c.chat[#c.chat], PREFIX .. "session card at logout off.", "/fb card off")
+    c.startLogout()
+    eq(card.shown, false, "off")
+    c.slash("/fb card on")
+
+    -- A /reload keeps the session, so the coach keeps counting from login,
+    -- and it comes back by itself.
+    local text = c.reload()
+    eq(c.settings.coach, true, "the coach stays on")
+    eq(c.settings.coachCombat, true, "and the option")
+    eq(c.settings.card, nil, "the card's default isn't written")
+    local g = c.global("ForeverBuddyCoachFrame")
+    eq(g.shown, true, "back after /reload")
+    eq(rows(g):match("^Gold | ([^\n]*)"), "+1,312g · 1,304g/hr", "still from login (1h 0m 20s)")
+    eq(file(text)._meta.session_errors, nil, "no errors")
+
+    c.slash("/fb coach")
+    eq(g.shown, false, "/fb coach again")
+    eq(c.settings.coach, nil, "off isn't written")
+    return c.logout()
 end)
 
 -- Runner ---------------------------------------------------------------------

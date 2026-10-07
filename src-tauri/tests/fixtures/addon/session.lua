@@ -1,14 +1,14 @@
--- Written by tools/addon-test/run.lua (scenario carry_forward). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario session). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.7.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
-			["bag_items"] = 2,
-			["events"] = 0,
-			["items"] = 3,
-			["quests_done"] = 2,
-			["sessions"] = 2,
+			["bag_items"] = 4,
+			["events"] = 6,
+			["items"] = 5,
+			["quests_done"] = 3,
+			["sessions"] = 1,
 		},
 		["loaded_prior"] = true,
 		["missing_events"] = {
@@ -16,7 +16,14 @@ ForeverBuddyDB = {
 		["schema"] = 1,
 		["secret_hits"] = 0,
 		["truncated"] = false,
-		["written"] = 1791058200,
+		["written"] = 1790967620,
+	},
+	["bridge"] = {
+		["Tooltip2"] = {
+			["schema"] = 1,
+			["seen"] = 1790967620,
+			["stamp"] = 1790960000,
+		},
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -26,7 +33,7 @@ ForeverBuddyDB = {
 			["name"] = "Hearthguard",
 			["rank"] = "Officer",
 		},
-		["level"] = 12,
+		["level"] = 13,
 		["name"] = "Thrandor",
 		["race"] = "Human",
 		["realm"] = "Classic Beta PvP 2",
@@ -61,14 +68,71 @@ ForeverBuddyDB = {
 			["sell"] = 13,
 			["subclass"] = 5,
 		},
+		[10005] = {
+			["class"] = 4,
+			["icon"] = 133070,
+			["ilvl"] = 40,
+			["name"] = "Felcloth Hood",
+			["quality"] = 3,
+			["sell"] = 5000,
+			["subclass"] = 1,
+		},
+		[14047] = {
+			["class"] = 7,
+			["icon"] = 132889,
+			["ilvl"] = 10,
+			["name"] = "Runecloth",
+			["quality"] = 1,
+			["sell"] = 13,
+			["subclass"] = 5,
+		},
 	},
 	["sessions"] = {
 		{
 			["events"] = {
+				{
+					["kind"] = "money",
+					["money"] = 3145075,
+					["t"] = 1790965800,
+				}, -- [1]
+				{
+					["count"] = 40,
+					["item"] = 14047,
+					["kind"] = "gain",
+					["t"] = 1790965800,
+				}, -- [2]
+				{
+					["count"] = 1,
+					["item"] = 10005,
+					["kind"] = "gain",
+					["t"] = 1790965800,
+				}, -- [3]
+				{
+					["id"] = 176,
+					["kind"] = "quest",
+					["map"] = 1429,
+					["money"] = 75,
+					["t"] = 1790965800,
+					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
+					["xp"] = 0,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
+				}, -- [4]
+				{
+					["kind"] = "money",
+					["money"] = 13145075,
+					["t"] = 1790967600,
+				}, -- [5]
+				{
+					["kind"] = "level",
+					["level"] = 13,
+					["t"] = 1790967610,
+				}, -- [6]
 			},
 			["id"] = 1790964000,
 			["login"] = 1790964000,
-			["logout"] = 1790968200,
+			["logout"] = 1790967620,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -76,25 +140,12 @@ ForeverBuddyDB = {
 				["zone"] = "Elwynn Forest",
 			},
 		}, -- [1]
-		{
-			["events"] = {
-			},
-			["id"] = 1791054600,
-			["login"] = 1791054600,
-			["logout"] = 1791058200,
-			["start"] = {
-				["level"] = 12,
-				["money"] = 25000,
-				["xp"] = 1200,
-				["zone"] = "Elwynn Forest",
-			},
-		}, -- [2]
 	},
 	["snapshot"] = {
-		["at"] = 1791058200,
+		["at"] = 1790967620,
 		["bags"] = {
 			[0] = {
-				["free"] = 14,
+				["free"] = 12,
 				["items"] = {
 					{
 						["count"] = 1,
@@ -104,30 +155,17 @@ ForeverBuddyDB = {
 						["count"] = 4,
 						["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
 					}, -- [2]
+					{
+						["count"] = 40,
+						["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
+					}, -- [3]
+					{
+						["count"] = 1,
+						["link"] = "|cffffffff|Hitem:10005::::::::12:::::|h[Felcloth Hood]|h|r",
+					}, -- [4]
 				},
 				["name"] = "Backpack",
 				["size"] = 16,
-			},
-		},
-		["bank"] = {
-			["at"] = 1790964600,
-			["bags"] = {
-				[-1] = {
-					["free"] = 27,
-					["items"] = {
-						{
-							["count"] = 20,
-							["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
-						}, -- [1]
-					},
-					["size"] = 28,
-				},
-				[6] = {
-					["free"] = 98,
-					["items"] = {
-					},
-					["size"] = 98,
-				},
 			},
 		},
 		["equipped"] = {
@@ -138,40 +176,11 @@ ForeverBuddyDB = {
 			["equipped"] = 20.25,
 		},
 		["lockouts"] = {
-			{
-				["difficulty"] = "Normal",
-				["name"] = "The Deadmines",
-				["reset_at"] = 1791227401,
-			}, -- [1]
-			{
-				["difficulty"] = "40 Player",
-				["name"] = "Molten Core",
-				["raid"] = true,
-				["reset_at"] = 1791573001,
-			}, -- [2]
 		},
-		["mail"] = {
-			["at"] = 1790964600,
-			["items"] = {
-				{
-					["cod"] = 0,
-					["days_left"] = 29.5,
-					["items"] = {
-						{
-							["count"] = 10,
-							["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
-						}, -- [1]
-					},
-					["money"] = 500,
-					["sender"] = "Coinpurse",
-					["subject"] = "Linen for you",
-				}, -- [1]
-			},
-		},
-		["money"] = 25000,
+		["money"] = 13145075,
 		["played"] = {
-			["level"] = 94674,
-			["total"] = 113751,
+			["level"] = 4094,
+			["total"] = 23171,
 		},
 		["professions"] = {
 			{
@@ -196,11 +205,12 @@ ForeverBuddyDB = {
 		},
 		["quests_done"] = {
 			7, -- [1]
-			783, -- [2]
+			176, -- [2]
+			783, -- [3]
 		},
 		["rest_state"] = "Rested",
 		["rested"] = 674,
-		["xp"] = 1200,
+		["xp"] = 400,
 		["xp_max"] = 8800,
 		["zone"] = {
 			["map"] = 1429,

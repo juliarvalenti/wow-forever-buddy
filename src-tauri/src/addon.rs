@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn reads_versions_from_tocs() {
-        assert_eq!(bundled_version(), "0.6.0");
+        assert_eq!(bundled_version(), "0.7.0");
         assert_eq!(
             toc_version(b"## Interface: 16001\r\n##Version:  0.1.9 \r\n"),
             Some("0.1.9".into())
@@ -321,7 +321,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let after = status(&t.target.game).unwrap();
-        assert_eq!(after.installed_version.as_deref(), Some("0.6.0"));
+        assert_eq!(after.installed_version.as_deref(), Some("0.7.0"));
         assert!(!after.update_available);
         for (name, bytes) in FILES {
             let path = t.flavor.join(FOLDER).join(name);
@@ -341,7 +341,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let s = status(&t.target.game).unwrap();
-        assert_eq!(s.installed_version.as_deref(), Some("0.6.0"));
+        assert_eq!(s.installed_version.as_deref(), Some("0.7.0"));
         assert!(!s.update_available);
     }
 
