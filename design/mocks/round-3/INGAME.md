@@ -181,7 +181,7 @@ Addon only, from live events; no Bridge slot. Both read what the addon already r
   - **Moving:** shift-drag to move, with the position saved per account. Right-click shows "Hide" and "Hide in combat" (off by default).
 - **Session card (at logout):**
   - Shown on `PLAYER_CAMPING` (the logout or quit countdown), top centre above the game's countdown dialog, never covering its Cancel. It hides on `LOGOUT_CANCEL` and when the countdown ends. A × closes it. It's never shown on `/reload` or a disconnect.
-  - **Title:** "Thrandor's session" (the character's name, never a pronoun).
+  - **Title:** the character's name and the part of the day by the local clock at logout: "Thrandor's morning" (5 to 12), "afternoon" (12 to 17), "evening" (17 to 22), "night" (otherwise). Always the name, never a pronoun.
   - **Rows**, each only when true, in this order:
     - "Ding! Level 60" in gold if the character levelled; "Ding! Levels 58 to 60" for more than one level.
     - **Played:** the session length ("3h 12m").
