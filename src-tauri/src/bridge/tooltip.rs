@@ -12,12 +12,13 @@
 //! it wears in each of the 19 inventory slots (0 for empty), so the addon
 //! can say which alt a hovered item would upgrade (TIP2, INGAME §8 (b)).
 //!
-//! C1 (INGAME §12): each half also has `makes = { [itemID] = { altIndex, … } }`
-//! for the items an alt's recipes make, and each alt has `prof = { [name] =
+//! C1 (INGAME §12): each half also has `makes = { [itemID] = { altIndex,
+//! "Tailoring", … } }` for the items an alt's recipes make (which alt, with
+//! which profession), and each alt has `prof = { [name] =
 //! { skill, at } }`, `at` being when its recipes were last read (for the
 //! stale greying). An addon from before C1 ignores both.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::ah;
 use crate::db::Db;
@@ -180,16 +181,22 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
         .map(|d| d.timestamp());
 
-    // C1: who can make what (item → alt indices), and each alt's
+    // C1: who can make what (item → alt and profession), and each alt's
     // professions with their skill and when their recipes were read.
     let (made, profs) = db.with_conn(|c| {
         let mut stmt = c.prepare(
-            "SELECT DISTINCT r.item_id, r.character_id
+            "SELECT r.item_id, r.character_id, r.profession
              FROM char_recipes r JOIN characters ch ON ch.id = r.character_id
              WHERE ch.flavor = ?1",
         )?;
         let made = stmt
-            .query_map([flavor], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .query_map([flavor], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         let mut stmt = c.prepare(
             "SELECT r.character_id, r.profession, p.skill, max(r.scanned_at)
@@ -210,10 +217,15 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok((made, profs))
     })?;
-    let mut makes: BTreeMap<i64, BTreeSet<i64>> = BTreeMap::new();
-    for (item_id, character_id) in made {
+    // item → (alt index, profession), one per alt.
+    let mut makes: BTreeMap<i64, BTreeMap<i64, String>> = BTreeMap::new();
+    for (item_id, character_id, profession) in made {
         if let Some(&alt) = index_of.get(&character_id) {
-            makes.entry(item_id).or_default().insert(alt);
+            makes
+                .entry(item_id)
+                .or_default()
+                .entry(alt)
+                .or_insert(profession);
         }
     }
     let mut prof_of: HashMap<i64, Vec<(LuaValue, LuaValue)>> = HashMap::new();
@@ -277,10 +289,15 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
     }
     let mut makers: HashMap<Slot, Vec<(LuaValue, LuaValue)>> = HashMap::new();
     for (item_id, alts) in &makes {
-        makers.entry(slot_for(*item_id)).or_default().push((
-            LuaValue::Int(*item_id),
-            table(alts.iter().map(|&a| LuaValue::Int(a)).collect(), Vec::new()),
-        ));
+        // Flat: alt index, profession name, …
+        let flat = alts
+            .iter()
+            .flat_map(|(&a, p)| [LuaValue::Int(a), LuaValue::str(p)])
+            .collect();
+        makers
+            .entry(slot_for(*item_id))
+            .or_default()
+            .push((LuaValue::Int(*item_id), table(flat, Vec::new())));
     }
 
     let head = |extra: Vec<(LuaValue, LuaValue)>| {
@@ -565,8 +582,11 @@ mod tests {
         let built = build(&db, FLAVOR, 1).unwrap();
         let even = parsed(&built, Slot::Tooltip1);
         let makes = even.get("makes").unwrap().as_table().unwrap();
-        assert_eq!(ints(makes.get_index(2568).unwrap()), [1]);
-        assert_eq!(ints(makes.get_index(2572).unwrap()), [1]);
+        let maker = makes.get_index(2568).unwrap().as_table().unwrap();
+        assert_eq!(maker.array.len(), 2);
+        assert_eq!(maker.array[0], LuaValue::Int(1));
+        assert_eq!(maker.array[1].as_bytes(), Some(&b"Tailoring"[..]));
+        assert!(makes.get_index(2572).is_some());
         assert_eq!(makes.get_index(2575), None, "not learned");
         assert_eq!(
             parsed(&built, Slot::Tooltip2).get("makes"),

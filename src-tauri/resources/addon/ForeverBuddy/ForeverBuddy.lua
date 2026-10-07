@@ -512,6 +512,33 @@ do
         }
     end
 
+    -- A probe for C1b (INGAME §12 (b)): can a recipe item be mapped to its
+    -- recipe? For up to 10 recipe items seen this session (item class 9),
+    -- what C_Item.GetItemSpell and the item's tooltip data report. Numbers
+    -- only; the app doesn't read it, Julia's file answers the question.
+    local RECIPE_CLASS, PROBES = 9, 10
+    function R.probe(seen)
+        local out, n = {}, 0
+        for id, info in pairs(seen) do
+            if n >= PROBES then
+                break
+            end
+            if type(info) == "table" and info.class == RECIPE_CLASS then
+                local _, spell = read("C_Item.GetItemSpell", id)
+                local data = read("C_TooltipInfo.GetItemByID", id)
+                local kinds = {}
+                for i, line in ipairs(type(data) == "table" and type(data.lines) == "table" and data.lines or {}) do
+                    if type(line) == "table" and type(line.type) == "number" then
+                        kinds[i] = line.type
+                    end
+                end
+                out[id] = { spell = type(spell) == "number" and spell or nil, lines = kinds }
+                n = n + 1
+            end
+        end
+        return n > 0 and out or nil
+    end
+
     -- At logout: this session's scans over the last file's, for the
     -- professions the character still has. nil when there's none.
     function R.merged(prior, has)
@@ -594,6 +621,7 @@ local function snapshot(t)
         has[p.name] = true
     end
     s.recipes = R.merged(prior("recipes"), has)
+    s.recipe_probe = R.probe(items)
     s.lockouts = lockouts or prior("lockouts")
     -- Only readable at the banker and the mailbox: without a visit this
     -- session, the last one carries forward (a relog mustn't wipe it).
@@ -875,10 +903,69 @@ local function upgradeLine(found)
     return "Upgrade for " .. table.concat(parts, " · ")
 end
 
+-- Can make (C1, INGAME §12): the other characters whose recipes make an
+-- item, from the index's `makes` and each alt's `prof`.
+do
+    function R.makers(slot, id)
+        local out = {}
+        local m = type(slot.makes) == "table" and slot.makes[id]
+        local alts = type(slot.alts) == "table" and slot.alts or {}
+        if type(m) ~= "table" then
+            return out
+        end
+        for k = 1, #m - 1, 2 do
+            local alt, profession = alts[m[k]], m[k + 1]
+            if type(alt) == "table" and not isMe(alt) and type(profession) == "string" then
+                local p = type(alt.prof) == "table" and alt.prof[profession]
+                out[#out + 1] = {
+                    alt = alt,
+                    profession = profession,
+                    skill = type(p) == "table" and type(p.skill) == "number" and p.skill or nil,
+                    at = type(p) == "table" and p.at or nil,
+                }
+            end
+        end
+        return out
+    end
+
+    -- "Sela can make this" · "Sela and Kaelor …" · "Sela, Kaelor and
+    -- Velyra …" · "Sela, Kaelor, Velyra +2 …", names in class colour on a
+    -- gold line.
+    function R.line(makers)
+        local names = {}
+        for k = 1, math.min(#makers, COMPACT_NAMES) do
+            names[k] = colorName(makers[k].alt.name, makers[k].alt.class)
+        end
+        local who
+        if #makers > COMPACT_NAMES then
+            who = table.concat(names, ", ") .. " +" .. (#makers - COMPACT_NAMES)
+        elseif #names == 1 then
+            who = names[1]
+        else
+            who = table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+        end
+        return who .. " can make this"
+    end
+
+    -- Shift: "Sela | Tailoring 285", grey with "· as of 21 Sep" when the
+    -- recipes were read over a week ago.
+    function R.rows(tooltip, makers)
+        for _, m in ipairs(makers) do
+            local right = plain(m.profession) .. (m.skill and (" " .. m.skill) or "")
+            if stale(m.at) then
+                right = GREY .. right .. " · as of " .. shortDate(m.at) .. "|r"
+            end
+            local c = classColor(m.alt.class)
+            tooltip:AddDoubleLine(plain(m.alt.name), right, c and c.r or 1, c and c.g or 1, c and c.b or 1, 1, 1, 1)
+        end
+    end
+end
+
 -- The default view (INGAME §8): "Your alts: Coinpurse 340 bank · …" in gold
 -- with names in class colour, at most three, then the price, the upgrade
--- hint and a hint about Shift. An alt whose place is stale is grey, dated.
-local function compactLines(tooltip, slot, others, price, found)
+-- hint, who can make it and a hint about Shift. An alt whose place is stale
+-- is grey, dated.
+local function compactLines(tooltip, slot, others, price, found, makers)
     tooltip:AddLine(" ")
     if #others > 0 then
         local parts = {}
@@ -907,15 +994,18 @@ local function compactLines(tooltip, slot, others, price, found)
     if #found > 0 then
         tooltip:AddLine(upgradeLine(found), 1, 0.82, 0)
     end
+    if #makers > 0 then
+        tooltip:AddLine(R.line(makers), 1, 0.82, 0)
+    end
     -- Only when Shift has more to show than this.
-    if #others > 0 then
+    if #others > 0 or #makers > 0 then
         tooltip:AddLine("Shift for details", 0.5, 0.6, 0.8)
     end
 end
 
 -- The Shift view: a head, this character first with its live count, then
 -- each alt by place and date, the total, the scan and the upgrade hint.
-local function fullLines(tooltip, slot, id, others, price, found)
+local function fullLines(tooltip, slot, id, others, price, found, makers)
     local rows, total = {}, 0
     local mine = read("C_Item.GetItemCount", id, true)
     if type(mine) == "number" and mine > 0 and character and character.name then
@@ -976,6 +1066,7 @@ local function fullLines(tooltip, slot, id, others, price, found)
         end
         tooltip:AddDoubleLine("Upgrade for", table.concat(parts, " · "), 1, 0.82, 0, 1, 1, 1)
     end
+    R.rows(tooltip, makers)
     tooltip:AddLine("As of each alt's last logout", 0.5, 0.5, 0.5)
 end
 
@@ -1023,16 +1114,18 @@ local function addItemLines(tooltip, data)
     -- The upgrade hint stands on its own: vendors, the AH and loot are where
     -- nobody holds the item yet.
     local found = upgrades(id, data, alts)
+    -- Who else can make it (C1): it stands on its own too.
+    local makers = R.makers(slot, id)
     -- Nothing when only this character has it or nobody does, and there's
     -- no hint: never an empty head (INGAME §8).
-    if #others == 0 and #found == 0 then
+    if #others == 0 and #found == 0 and #makers == 0 then
         return
     end
     local price = type(entry) == "table" and tonumber(entry[1]) or 0
-    if #others > 0 and read("IsShiftKeyDown") then
-        fullLines(tooltip, slot, id, others, price, found)
+    if (#others > 0 or #makers > 0) and read("IsShiftKeyDown") then
+        fullLines(tooltip, slot, id, others, price, found, makers)
     else
-        compactLines(tooltip, slot, others, price, found)
+        compactLines(tooltip, slot, others, price, found, makers)
     end
 end
 

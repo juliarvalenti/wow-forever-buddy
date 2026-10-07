@@ -1167,6 +1167,58 @@ scenario("lists", function()
     return text
 end)
 
+-- Can make (C1, INGAME §12): other characters whose recipes make the
+-- hovered item, from the index's `makes` and each alt's `prof`. Kaelor's
+-- recipes were read ten days ago, so they're grey and dated.
+local function prof(skill, at)
+    return ', ["prof"] = { ["Tailoring"] = { ["skill"] = ' .. skill .. ', ["at"] = ' .. at .. ' } }'
+end
+local CRAFTERS = tooltipSlot("Tooltip1", '\t["alts"] = {\n'
+    .. alt("Thrandor", "PALADIN", 60, {}, prof(300, wow.EPOCH), "Vargur")
+    .. alt("Sela", "PRIEST", 40, {}, prof(285, wow.EPOCH - DAY))
+    .. alt("Kaelor", "ROGUE", 30, {}, prof(150, wow.EPOCH - 10 * DAY))
+    .. alt("Velyra", "DRUID", 60, {}, prof(300, wow.EPOCH))
+    .. alt("Brannic", "HUNTER", 52, {}, prof(300, wow.EPOCH))
+    .. '\t},\n\t["items"] = {},\n\t["makes"] = {\n'
+    .. '\t\t[2568] = { 1, "Tailoring", 2, "Tailoring", 3, "Tailoring", 4, "Tailoring", 5, "Tailoring" },\n'
+    .. '\t\t[2572] = { 2, "Tailoring" },\n'
+    .. '\t\t[2574] = { 2, "Tailoring", 3, "Tailoring" },\n'
+    .. '\t\t[2576] = { 2, "Tailoring", 3, "Tailoring", 4, "Tailoring" },\n'
+    .. '\t\t[2578] = { 1, "Tailoring" },\n'
+    .. '\t},\n')
+
+scenario("crafting", function()
+    local c = client({ slots = { ["Data/Tooltip1.lua"] = CRAFTERS } })
+    c.login(nil)
+    local SELA, KAELOR = "|cffffffffSela|r", "|cfffff569Kaelor|r"
+    local function compact(id)
+        return c.hover(id)[3]
+    end
+    eq(compact(2572), SELA .. " can make this", "one")
+    eq(compact(2574), SELA .. " and " .. KAELOR .. " can make this", "two")
+    eq(compact(2576), SELA .. ", " .. KAELOR .. " and Velyra can make this", "three")
+    -- Never this character; past three, "+N".
+    eq(compact(2568), SELA .. ", " .. KAELOR .. ", Velyra +1 can make this", "past three")
+    eq(c.hover(2568)[4], "Shift for details", "Shift has more")
+    eq(#c.hover(2578), 1, "nothing when only this character can make it")
+
+    c.world.shift = true
+    eq(table.concat(c.hover(2574), "\n"), table.concat({
+        "Item 2574",
+        " ",
+        "Forever Buddy",
+        "Sela | Tailoring 285",
+        "Kaelor | " .. G .. "Tailoring 150 · as of " .. day(wow.EPOCH - 10 * DAY) .. "|r",
+        "As of each alt's last logout",
+    }, "\n"), "Shift")
+    c.world.shift = false
+
+    -- An index from before C1 has no `makes`: no line.
+    local old = client({ slots = { ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", '\t["alts"] = {},\n\t["items"] = {},\n') } })
+    old.login(nil)
+    eq(#old.hover(2572), 1, "no makes, no line")
+end)
+
 -- Known recipes (C1): read from this character's own profession window,
 -- learned recipes only, item ids and skill; carried forward until the next
 -- look, and dropped with the profession.
@@ -1207,6 +1259,18 @@ scenario("recipes", function()
     local again = client()
     again.login(text)
     eq(table.concat(file(again.logout()).snapshot.recipes.Tailoring.made, ","), "2568,2572", "carried forward")
+
+    eq(file(text).snapshot.recipe_probe, nil, "no recipe item seen, no probe")
+
+    -- The C1b probe: a pattern looted this session gets its spell and line
+    -- types noted, numbers only.
+    local probe = client()
+    probe.login(nil)
+    probe.loot(4355, 1)
+    probe.advance(5)
+    local p = file(probe.logout()).snapshot.recipe_probe[4355]
+    eq(p.spell, 483, "GetItemSpell's spell")
+    eq(table.concat(p.lines, ","), "0,20,0", "tooltip line types")
 
     -- A dropped profession takes its recipes with it.
     local dropped = client()

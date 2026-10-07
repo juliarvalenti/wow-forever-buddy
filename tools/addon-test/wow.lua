@@ -59,7 +59,12 @@ M.ITEMS = {
     [10003] = "Band of the Unicorn",
     [10004] = "Lionheart Helm",
     [10005] = "Felcloth Hood",
+    [4355] = "Pattern: Icy Cloak",
 }
+
+-- Recipe items (item class 9): what C_Item.GetItemSpell gives for them
+-- (the "learn" spell, not the recipe) and their tooltip data's line types.
+M.RECIPES = { [4355] = { spell = 483, lines = { 0, 20, 0 } } }
 
 -- Gear for the upgrade hint: GetItemInfo's ilvl, required level, equip
 -- location, item class and subclass (4 = armour; 1 cloth, 2 leather,
@@ -357,6 +362,9 @@ function M.new(opts)
             if g then
                 return name, M.link(id), 3, g[1], g[2], "Armor", "", 1, g[3], 133070, 5000, g[4], g[5]
             end
+            if M.RECIPES[id] then
+                return name, M.link(id), 2, 50, 0, "Recipe", "Tailoring", 1, "", 134939, 1250, 9, 2
+            end
             return name, M.link(id), 1, 10, 0, "Trade Goods", "Cloth", 20, "", 132889, 13, 7, 5
         end,
         ["C_Item.RequestLoadItemDataByID"] = function(id)
@@ -385,6 +393,23 @@ function M.new(opts)
         end,
         GetMerchantItemID = function(index)
             return world.merchant[index]
+        end,
+        ["C_Item.GetItemSpell"] = function(id)
+            local r = M.RECIPES[id]
+            if r then
+                return "Learning", r.spell
+            end
+        end,
+        ["C_TooltipInfo.GetItemByID"] = function(id)
+            local r = M.RECIPES[id]
+            if not r then
+                return nil
+            end
+            local lines = {}
+            for i, t in ipairs(r.lines) do
+                lines[i] = { type = t, leftText = "line " .. i }
+            end
+            return { id = id, lines = lines }
         end,
         -- The open profession window (C1): world.tradeskill = { name, skill,
         -- max, linked, recipes = { { id, learned, out } } }.
