@@ -16,6 +16,7 @@ import {
   Switch,
 } from "@/components/d";
 import { useAhStatus } from "@/hooks/useAh";
+import { approvalsChanged } from "@/hooks/useApprovals";
 import { useBackups } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
@@ -274,7 +275,7 @@ export function Settings({
           <Agents
             on={settings?.agent_access ?? false}
             ready={settings != null}
-            onChange={(v) => update({ agent_access: v })}
+            onChange={(v) => update({ agent_access: v }).then(approvalsChanged)}
           />
 
           <Panel>
@@ -476,6 +477,8 @@ const TOOL_WORDS: Record<string, string> = {
   get_quests: "read quests",
   get_prices: "read prices",
   get_recent_play: "read recent play",
+  propose_note: "suggested a login note",
+  list_proposals: "checked its suggestions",
 };
 
 /** P2a (docs/specs/agent-mcp.md §1): the switch, what to paste into an agent

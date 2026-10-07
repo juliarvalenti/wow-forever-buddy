@@ -22,6 +22,7 @@ mod lists;
 mod macros;
 mod notes;
 mod plans;
+mod proposals;
 mod quests;
 mod secrets;
 mod sessions;
@@ -60,6 +61,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::adventures::adventure_set_note,
             commands::agent::agent_status,
             commands::app::app_info,
+            commands::approvals::approvals_list,
+            commands::approvals::approvals_waiting,
+            commands::approvals::approvals_decide,
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
             commands::macros::macros_list,
@@ -139,7 +143,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::game::GameStatusChanged,
             sessions::SessionsChanged,
             ah::PricesUpdated,
-            ingest::IngestCompleted
+            ingest::IngestCompleted,
+            proposals::ApprovalsChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -241,6 +246,17 @@ pub fn run() {
                         }
                     }
                 }
+            });
+
+            // P2b: the agent inbox, picked up on start and every 10 s. The
+            // first pass waits for the install; until then it's skipped.
+            let inbox_handle = handle.clone();
+            std::thread::spawn(move || loop {
+                let core = &inbox_handle.state::<AppState>().core;
+                if commands::approvals::ingest_inbox(core).is_ok_and(|n| n > 0) {
+                    let _ = proposals::ApprovalsChanged.emit(&inbox_handle);
+                }
+                std::thread::sleep(std::time::Duration::from_secs(10));
             });
 
             // Spec §2: poll for WoW every 2 s and tell the UI on each change.

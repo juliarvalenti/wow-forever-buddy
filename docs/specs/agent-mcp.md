@@ -1,6 +1,6 @@
 # Spec: P2, connecting an AI agent (MCP)
 
-Status: 2026-10-07 (@coder). P2a (the read side) is built; P2b and P2c are not yet.
+Status: 2026-10-07 (@coder). P2a (the read side) and P2b (the queue, login note proposals, Approvals) are built; P2c (plans, lists) is not yet.
 
 **What it's for.** Julia's idea: plan outside the game with an agent ("set up a questing plan for Kaelor tonight"), approve it in Forever Buddy, then see it in game. The agent can read what the app knows about your characters and can **propose** a plan, a note or a shopping list. Nothing it proposes takes effect until you approve it in the app.
 
@@ -60,9 +60,9 @@ All are annotated `readOnlyHint: true`. Each answers from the app's database ope
 | `get_quests` | `character`, optional `since` | Completed quest ids (Q1b's `char_quests_done`), plus recent accepts and turn-ins with titles and zones from our own events. |
 | `get_prices` | `items` (ids) | Last scan price, 30-day median, scan age, from Auctionator data. |
 | `get_recent_play` | optional `character`, `days` (max 30) | Sessions: time played, zones, gold change, levels, notable loot (the Adventures data). |
-| `list_proposals` (P2b) | optional `status` | The agent's own proposals and whether each was approved, declined or is still pending. |
+| `list_proposals` | none | Proposals from the last 30 days: waiting, approved, declined, or not queued with the reason, plus how many files the app hasn't picked up yet. |
 
-**Built in P2a:** the first six tools. `get_quests` returns completed quest ids as a plain number list, up to 10,000, since a planner needs the whole set and ids are tiny. Every other list is capped at 500 rows with `more`. `list_proposals` arrives with the queue in P2b.
+**Built in P2a:** the first six tools. `get_quests` returns completed quest ids as a plain number list, up to 10,000, since a planner needs the whole set and ids are tiny. Every other list is capped at 500 rows with `more`. P2b adds `list_proposals`, and `get_character` now lists the character's waiting login notes (id, text, timing), so an agent can propose a replacement.
 
 **What's left out on purpose:**
 
@@ -83,7 +83,9 @@ All are annotated `readOnlyHint: false, destructiveHint: false`. Each one **stag
 | Tool | Arguments | On approval |
 |---|---|---|
 | `propose_quest_plan` | `character`, `title`, `steps`: up to 50 × { `text` (≤ 200 chars), optional `quest_id`, `zone` } | It becomes that character's quest plan through P1's own `plans::set_plan`, replacing any current one, and the next slot write sends it to the game. P1 has no "proposed" state of its own: the proposal lives in this queue until approved. |
-| `propose_note` | `target`: { `adventure` id } or { `character` }, `text` (≤ 2,000 chars) | Sets that note, as the Adventure screen's note field does. An existing note is shown side by side and replaced only on approval. |
+| `propose_note` | `character`, `text` (≤ 300 chars, one line), optional `until` (YYYY-MM-DD; absent means next login only), optional `replaces` { `id`, `text` as read } | It becomes a B1 login note for that character, through `notes::add`, marked `from "<client>", approved`. A replaced note is retired. If that note changed after the agent read it, it's a conflict (below). |
+
+Every proposal tool also takes an optional `reason` (≤ 300 chars). It's shown as `Reason given: "…"` and hidden when empty (IMPLEMENTING §17). Built in P2b: `propose_note`. The login note replaced the adventure-note target the first draft had, per the design.
 | `propose_shopping_list` | `name`, `items`: up to 100 × { `item_id`, `count` } | It becomes a shopping list (B2), tracked across alts and shown on tooltips (TIP2 (c)). |
 
 **What they never do:** edit an addon's SavedVariables, ElvUI or any other game file. Those are §7's `SvEdit` and `Profile` kinds, and they stay out of P2. When they come, they'll use the same queue with the same approval, plus the write gate (WoW closed, safety snapshot).
@@ -122,7 +124,18 @@ The app stays the only writer of its database. The agent process never writes to
    - Approve all is fine for these display-only kinds. When §7's `SvEdit` and `Profile` kinds arrive, they're approved one by one.
 4. **Apply.** Approving runs the kind's normal app code path (the same functions the UI calls), records `applied` with the time, and the change shows up wherever that data lives. Declining records `discarded`. The agent sees either outcome through `list_proposals`.
 
-**The queue is the one from bridge §7**, with three new kinds: `QuestPlan`, `Note`, `ShoppingList`. The columns stay as specced there: id, kind, JSON body, producer (`app` or `agent:<client name>`), created_at, status (`staged`, `applied`, `discarded`, `conflict`), plus `rejected` and its reason.
+**The queue (as built in P2b)** is the `proposals` table, with kinds `login_note` now and `quest_plan` and `list` later. Its columns are:
+- id;
+- flavor;
+- the inbox file name (unique, so a file is stored once);
+- kind;
+- the checked body as JSON;
+- the producer (the client's self-reported name);
+- reason;
+- created_at and received_at;
+- status (`staged`, `applied`, `discarded`, `rejected`) with status_reason and decided_at.
+
+A conflict isn't a stored status. It's worked out when Approvals is shown, by comparing the note the proposal replaces with the text the agent read. Approve refuses a conflict, and only "Use proposed" or "Keep mine" (decline) settle it.
 
 **Conflicts:**
 

@@ -29,6 +29,9 @@ pub struct LoginNote {
     pub until: Option<String>,
     /// "you", or "claude" for an approved agent proposal (P2).
     pub author: String,
+    /// For an agent's note: the client's own name for itself, a claim
+    /// ("Claude Desktop").
+    pub producer: Option<String>,
     pub created_at: String,
     /// The first login that showed it (RFC 3339).
     pub shown_at: Option<String>,
@@ -76,7 +79,7 @@ pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<LoginNote>> {
     db.with_conn(|c| {
         let mut stmt = c.prepare(
             "SELECT n.id, n.character_id, n.text, n.once, n.until_at, n.author,
-                    n.created_at, n.shown_at
+                    n.created_at, n.shown_at, n.producer
              FROM login_notes n JOIN characters ch ON ch.id = n.character_id
              WHERE ch.flavor = ?1
                AND ((n.archived_at IS NULL AND (n.once = 1 OR n.until_at > ?2))
@@ -94,6 +97,7 @@ pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<LoginNote>> {
                     author: r.get(5)?,
                     created_at: rfc3339(r.get(6)?),
                     shown_at: r.get::<_, Option<i64>>(7)?.map(rfc3339),
+                    producer: r.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -101,7 +105,27 @@ pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<LoginNote>> {
     })
 }
 
-pub fn add(db: &Db, flavor: &str, note: &NewNote, author: &str, now: i64) -> AppResult<u32> {
+/// Who wrote a note: the player in the app, or an agent whose proposal the
+/// player approved.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Author<'a> {
+    You,
+    Agent { producer: &'a str },
+}
+
+/// The note `id` while it's still waiting (not archived, not expired), for
+/// a proposal that replaces it.
+pub fn active(db: &Db, flavor: &str, id: u32, now: i64) -> AppResult<Option<LoginNote>> {
+    Ok(list(db, flavor, now)?
+        .into_iter()
+        .find(|n| n.id == id && !(n.once && n.shown_at.is_some())))
+}
+
+pub fn add(db: &Db, flavor: &str, note: &NewNote, author: Author<'_>, now: i64) -> AppResult<u32> {
+    let (author, producer) = match author {
+        Author::You => ("you", None),
+        Author::Agent { producer } => ("claude", Some(producer)),
+    };
     let text = clean(&note.text)?;
     let until = if note.once {
         None
@@ -143,9 +167,9 @@ pub fn add(db: &Db, flavor: &str, note: &NewNote, author: &str, now: i64) -> App
             )));
         }
         c.execute(
-            "INSERT INTO login_notes (character_id, text, once, until_at, author, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![note.character_id, text, note.once, until, author, now],
+            "INSERT INTO login_notes (character_id, text, once, until_at, author, created_at, producer)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![note.character_id, text, note.once, until, author, now, producer],
         )?;
         Ok(c.last_insert_rowid() as u32)
     })
@@ -281,7 +305,14 @@ mod tests {
     #[test]
     fn a_once_note_is_due_until_shown_then_archived() {
         let db = db_with(&["Kaelor"]);
-        let id = add(&db, FLAVOR, &new(1, "Train skills", true, None), "you", 100).unwrap();
+        let id = add(
+            &db,
+            FLAVOR,
+            &new(1, "Train skills", true, None),
+            Author::You,
+            100,
+        )
+        .unwrap();
         assert_eq!(
             due(&db, FLAVOR, 200).unwrap(),
             [Due {
@@ -313,7 +344,7 @@ mod tests {
             &db,
             FLAVOR,
             &new(1, "Old", false, Some(1_000.0)),
-            "you",
+            Author::You,
             100,
         )
         .unwrap();
@@ -327,8 +358,20 @@ mod tests {
         // Shown once, still due: an until note isn't archived by showing.
         assert_eq!(due(&db, FLAVOR, 200).unwrap()[0].id, old as i64);
         assert!(!due(&db, FLAVOR, 200).unwrap()[0].once);
-        let newer = add(&db, FLAVOR, &new(1, "Newer", true, None), "claude", 300).unwrap();
+        let agent = Author::Agent {
+            producer: "Claude Desktop",
+        };
+        let newer = add(&db, FLAVOR, &new(1, "Newer", true, None), agent, 300).unwrap();
         assert_eq!(due(&db, FLAVOR, 400).unwrap()[0].id, newer as i64);
+        let listed = list(&db, FLAVOR, 400).unwrap();
+        assert_eq!(
+            (listed[0].author.as_str(), listed[0].producer.as_deref()),
+            ("claude", Some("Claude Desktop"))
+        );
+        assert_eq!(
+            active(&db, FLAVOR, newer, 400).unwrap().unwrap().text,
+            "Newer"
+        );
         delete(&db, FLAVOR, newer, 500).unwrap();
         assert_eq!(due(&db, FLAVOR, 600).unwrap()[0].id, old as i64);
         // Past its date: not due, not listed.
@@ -339,15 +382,22 @@ mod tests {
     fn refused_inputs() {
         let db = db_with(&["Kaelor"]);
         assert!(
-            add(&db, FLAVOR, &new(1, "x", false, None), "you", 100).is_err(),
+            add(&db, FLAVOR, &new(1, "x", false, None), Author::You, 100).is_err(),
             "until needs a date"
         );
         assert!(
-            add(&db, FLAVOR, &new(1, "x", false, Some(50.0)), "you", 100).is_err(),
+            add(
+                &db,
+                FLAVOR,
+                &new(1, "x", false, Some(50.0)),
+                Author::You,
+                100
+            )
+            .is_err(),
             "in the past"
         );
         assert!(matches!(
-            add(&db, FLAVOR, &new(9, "x", true, None), "you", 100),
+            add(&db, FLAVOR, &new(9, "x", true, None), Author::You, 100),
             Err(AppError::NotFound(_))
         ));
         for i in 0..MAX_ACTIVE {
@@ -355,11 +405,18 @@ mod tests {
                 &db,
                 FLAVOR,
                 &new(1, &format!("n{i}"), true, None),
-                "you",
+                Author::You,
                 100,
             )
             .unwrap();
         }
-        assert!(add(&db, FLAVOR, &new(1, "one too many", true, None), "you", 100).is_err());
+        assert!(add(
+            &db,
+            FLAVOR,
+            &new(1, "one too many", true, None),
+            Author::You,
+            100
+        )
+        .is_err());
     }
 }

@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use crate::characters::{self, BagView, CharacterCard, ItemRow};
 use crate::db::Db;
 use crate::error::AppError;
-use crate::{adventures, ah, quests};
+use crate::{adventures, ah, notes, quests};
 
 /// Spec §5: at most this many rows of any list in one answer, with `more`.
 const MAX_ROWS: usize = 500;
@@ -42,7 +42,7 @@ const TOOLS: [Tool; 6] = [
     },
     Tool {
         name: "get_character",
-        description: "One character in full, as of its last logout: worn gear by slot, bags, bank (as of the last bank visit), items and gold in its mailbox, professions and raid or dungeon lockouts.",
+        description: "One character in full, as of its last logout: worn gear by slot, bags, bank (as of the last bank visit), items and gold in its mailbox, professions, raid or dungeon lockouts, and the login notes waiting for it.",
         schema: || {
             json!({ "type": "object", "properties": { "character": { "type": "string", "description": CHARACTER_ARG } },
                     "required": ["character"], "additionalProperties": false })
@@ -187,29 +187,7 @@ fn display(name: &str, surname: Option<&str>) -> String {
 /// The character `key` names: its full name, or a first name only one
 /// character has.
 fn resolve(db: &Db, flavor: &str, key: &str) -> Result<CharacterCard, String> {
-    let key = key.trim();
-    let cards = characters::overview(db, flavor)
-        .map_err(db_error)?
-        .characters;
-    let full = |c: &CharacterCard| display(&c.name, c.surname.as_deref());
-    if let Some(c) = cards.iter().find(|c| full(c).eq_ignore_ascii_case(key)) {
-        return Ok(c.clone());
-    }
-    let first: Vec<&CharacterCard> = cards
-        .iter()
-        .filter(|c| c.name.eq_ignore_ascii_case(key))
-        .collect();
-    match first.as_slice() {
-        [c] => Ok((*c).clone()),
-        [] => Err(format!(
-            "No character named {key:?}. Known: {}.",
-            cards.iter().map(full).collect::<Vec<_>>().join(", ")
-        )),
-        many => Err(format!(
-            "More than one character is called {key:?}: {}. Use the full name.",
-            many.iter().map(|c| full(c)).collect::<Vec<_>>().join(", ")
-        )),
-    }
+    characters::by_name(db, flavor, key).map_err(db_error)
 }
 
 fn card(c: &CharacterCard) -> Value {
@@ -277,6 +255,14 @@ fn get_character(db: &Db, flavor: &str, key: &str) -> Result<Value, String> {
     let c = resolve(db, flavor, key)?;
     let s = characters::sheet(db, c.id).map_err(db_error)?;
     let mut more = false;
+    // The notes waiting for its next login: an agent replacing one passes
+    // its id and this text (propose_note).
+    let login_notes: Vec<Value> = notes::list(db, flavor, Utc::now().timestamp())
+        .map_err(db_error)?
+        .into_iter()
+        .filter(|n| n.character_id == c.id && !(n.once && n.shown_at.is_some()))
+        .map(|n| json!({ "id": n.id, "text": n.text, "next_login_only": n.once, "until": n.until }))
+        .collect();
     let equipped: Vec<Value> = s
         .equipped
         .iter()
@@ -305,6 +291,7 @@ fn get_character(db: &Db, flavor: &str, key: &str) -> Result<Value, String> {
         "professions": s.professions.iter().map(|p| json!({ "name": p.name, "skill": p.skill, "max": p.max })).collect::<Vec<_>>(),
         "lockouts": s.lockouts.iter().map(|l| json!({ "name": l.name, "difficulty": l.difficulty, "raid": l.raid, "resets_at": l.reset_at })).collect::<Vec<_>>(),
         "lockouts_as_of": s.lockouts_as_of,
+        "login_notes": login_notes,
         "more": more,
     }))
 }

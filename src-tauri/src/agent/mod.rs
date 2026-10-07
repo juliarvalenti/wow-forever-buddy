@@ -4,12 +4,15 @@
 //! single-instance plugin or anything else of the app starts, so this
 //! process has no window, no game paths and no write gate.
 //!
-//! P2a is the read side: each tool reads the app's database opened
-//! read-only (`Db::open_read_only`). Every call re-reads settings.json and
-//! refuses while "agent access" is off. The one file this process writes is
-//! its own activity list (`activity`), which the app shows in Settings.
+//! Every tool reads the app's database opened read-only
+//! (`Db::open_read_only`). Every call re-reads settings.json and refuses
+//! while "agent access" is off. This process writes only in its own folder:
+//! the activity list (`activity`) the app shows in Settings, and proposals
+//! (`propose`, P2b) as files in the inbox, which the app checks again and
+//! queues for the player's approval.
 
 mod activity;
+mod propose;
 mod rpc;
 mod tools;
 

@@ -408,6 +408,46 @@ fn as_of(c: &rusqlite::Connection, id: i64, location: &str) -> AppResult<Option<
     Ok(at.map(iso))
 }
 
+/// "Velyra Duskmane", or just the name without a surname.
+pub fn full_name(c: &CharacterCard) -> String {
+    match c.surname.as_deref() {
+        Some(s) if !s.is_empty() => format!("{} {s}", c.name),
+        _ => c.name.clone(),
+    }
+}
+
+/// The character an agent named (P2): its full name, or a first name only
+/// one character in `flavor` has. Not found or ambiguous is `NotFound`,
+/// with a message that lists the names to use.
+pub fn by_name(db: &Db, flavor: &str, key: &str) -> AppResult<CharacterCard> {
+    let key = key.trim();
+    let cards = overview(db, flavor)?.characters;
+    if let Some(c) = cards
+        .iter()
+        .find(|c| full_name(c).eq_ignore_ascii_case(key))
+    {
+        return Ok(c.clone());
+    }
+    let first: Vec<&CharacterCard> = cards
+        .iter()
+        .filter(|c| c.name.eq_ignore_ascii_case(key))
+        .collect();
+    let names = |cs: &mut dyn Iterator<Item = &CharacterCard>| {
+        cs.map(full_name).collect::<Vec<_>>().join(", ")
+    };
+    match first.as_slice() {
+        [c] => Ok((*c).clone()),
+        [] => Err(AppError::NotFound(format!(
+            "No character named {key:?}. Known: {}.",
+            names(&mut cards.iter())
+        ))),
+        many => Err(AppError::NotFound(format!(
+            "More than one character is called {key:?}: {}. Use the full name.",
+            names(&mut many.iter().copied())
+        ))),
+    }
+}
+
 /// Everything on one character's sheet.
 pub fn sheet(db: &Db, id: u32) -> AppResult<CharacterSheet> {
     let id = i64::from(id);
