@@ -1190,7 +1190,8 @@ local CRAFTERS = tooltipSlot("Tooltip1", '\t["alts"] = {\n'
 scenario("crafting", function()
     local c = client({ slots = { ["Data/Tooltip1.lua"] = CRAFTERS } })
     c.login(nil)
-    local SELA, KAELOR = "|cffffffffSela|r", "|cfffff569Kaelor|r"
+    -- Kaelor's recipes are ten days old: grey in the compact line.
+    local SELA, KAELOR = "|cffffffffSela|r", G .. "Kaelor|r"
     local function compact(id)
         return c.hover(id)[3]
     end
