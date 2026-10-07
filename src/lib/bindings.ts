@@ -152,6 +152,11 @@ export const commands = {
 	/**  The longest body the game allows. */
 	max: number,
 } | null>("macros_list"),
+	/**  G1: open goals, and those reached in the last 3 days. */
+	goalsList: () => __TAURI_INVOKE<Goal[]>("goals_list"),
+	/**  A goal set in the app. The briefing slot carries goals, so it's resent. */
+	goalsAdd: (goal: NewGoal) => __TAURI_INVOKE<number>("goals_add", { goal }),
+	goalsDelete: (id: number) => __TAURI_INVOKE<null>("goals_delete", { id }),
 	/**
 	 *  Login notes for the active flavor's characters: waiting ones, and the
 	 *  ones shown in the last week.
@@ -1229,6 +1234,58 @@ export type GameStatus = {
 /**  Emitted when WoW starts or stops. */
 export type GameStatusChanged = GameStatus;
 
+export type Goal = {
+	id: number,
+	/**  `None` for an account gold goal. */
+	character_id: number | null,
+	character: string | null,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	kind: GoalKind,
+	/**  A level, or copper. */
+	target: number | null,
+	label: string | null,
+	/**  The value when it was set, where the bar starts. */
+	start: number | null,
+	/**
+	 *  The value now, as of the last logout: the level with its XP fraction
+	 *  (52.4), or copper. `None` before anything's known.
+	 */
+	current: number | null,
+	/**
+	 *  Levels or copper a day since the goal was set, once it's been a day
+	 *  and there's been progress.
+	 */
+	per_day: number | null,
+	/**  When the data behind `current` was written (RFC 3339). */
+	as_of: string | null,
+	/**  RFC 3339. */
+	by: string | null,
+	/**  "app" or "agent:<client name>", as a claim. */
+	producer: string,
+	created_at: string,
+	/**  When an ingest first found it reached (RFC 3339). */
+	done_at: string | null,
+};
+
+export type GoalKind = "level" | 
+/**  The target is in copper. */
+"gold";
+
+export type GoalView = {
+	/**  `None` for an account gold goal. */
+	character_id: number | null,
+	character: string | null,
+	/**  File token, lowercase, for the class colour. */
+	class: string | null,
+	kind: GoalKind,
+	/**  A level, or copper, as stored. */
+	target: number | null,
+	label: string | null,
+	/**  RFC 3339. */
+	by: string | null,
+};
+
 export type GoldPoint = {
 	at: string,
 	money: number | null,
@@ -1716,6 +1773,19 @@ export type MoveReport = {
 	left_behind: string | null,
 };
 
+/**  What the app's form (or an approved proposal) sends. */
+export type NewGoal = {
+	/**  `None`: the whole account (gold only). */
+	character_id: number | null,
+	kind: GoalKind,
+	/**  A level, or copper. */
+	target: number | null,
+	/**  Gold only: "for the mount". */
+	label: string | null,
+	/**  Unix seconds; in the future. */
+	by: number | null,
+};
+
 /**  What to add: an item your characters have seen, or free text. */
 export type NewItem = ({ id: number }) & { name?: never } | ({ name: string }) & { id?: never };
 
@@ -1857,6 +1927,8 @@ export type Proposal = {
 	list: ListView | null,
 	/**  "Bag marks for Thrandor" (B3b). */
 	bags: BagMarksView | null,
+	/**  "Goal for Kaelor" (G1). */
+	goal: GoalView | null,
 };
 
 /**  What a prune did. */

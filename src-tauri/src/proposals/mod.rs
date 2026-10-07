@@ -11,6 +11,7 @@
 //! list change (`list`).
 
 pub mod bags;
+pub mod goal;
 pub mod inbox;
 pub mod list;
 pub mod plan;
@@ -38,6 +39,7 @@ pub const LOGIN_NOTE: &str = "login_note";
 pub const QUEST_PLAN: &str = "quest_plan";
 pub const LIST: &str = "list";
 pub const BAG_MARKS: &str = "bag_marks";
+pub const GOAL: &str = "goal";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -98,6 +100,8 @@ pub struct Proposal {
     pub list: Option<list::ListView>,
     /// "Bag marks for Thrandor" (B3b).
     pub bags: Option<bags::BagMarksView>,
+    /// "Goal for Kaelor" (G1).
+    pub goal: Option<goal::GoalView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -168,7 +172,7 @@ pub fn producer_name(s: &str) -> String {
 }
 
 /// The end of `day` in the player's time zone, as unix seconds.
-fn end_of_day(day: &str) -> Option<i64> {
+pub(crate) fn end_of_day(day: &str) -> Option<i64> {
     let d = NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()?;
     Local
         .from_local_datetime(&d.and_hms_opt(23, 59, 59)?)
@@ -335,6 +339,12 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                     let body = list::check(db, flavor, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
+                GOAL => {
+                    let p: goal::GoalProposal = serde_json::from_value(f.body.clone())
+                        .map_err(|_| "the goal isn't in the form this version reads".to_string())?;
+                    let body = goal::check(db, flavor, &p, now)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
                 BAG_MARKS => {
                     let p: bags::BagProposal =
                         serde_json::from_value(f.body.clone()).map_err(|_| {
@@ -481,6 +491,10 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         Some(b) => Some(bags::view(db, &b)?),
         None => None,
     };
+    let goal = match body(&s, GOAL) {
+        Some(b) => Some(goal::view(db, flavor, &b)?),
+        None => None,
+    };
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
@@ -494,6 +508,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         plan,
         list,
         bags,
+        goal,
     })
 }
 
@@ -578,6 +593,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
         BAG_MARKS => {
             let b = body(&s, BAG_MARKS).ok_or_else(unreadable)?;
             bags::apply(db, &b, &s.producer)?;
+        }
+        GOAL => {
+            let b = body(&s, GOAL).ok_or_else(unreadable)?;
+            goal::apply(db, flavor, &b, &s.producer, now)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -1041,5 +1060,62 @@ mod tests {
         let w = list(&db, FLAVOR, NOW).unwrap().waiting;
         assert!(w[0].list.as_ref().unwrap().gone);
         assert!(decide(&db, FLAVOR, w[0].id, Decision::Approve, NOW).is_err());
+    }
+
+    /// G1: a goal proposal is checked like one set in the app (gold in whole
+    /// gold, stored as copper) and applied through goals::add.
+    #[test]
+    fn a_goal_is_checked_staged_and_applied() {
+        let (tmp, db) = setup();
+        drop_file(
+            tmp.path(),
+            GOAL,
+            json!({ "character": "Coinpurse", "kind": "gold", "target": 500, "label": "for the mount" }),
+        );
+        drop_file(tmp.path(), GOAL, json!({ "kind": "level", "target": 60 }));
+        drop_file(
+            tmp.path(),
+            GOAL,
+            json!({ "character": "Velyra", "kind": "item", "target": 20, "item_id": 99999 }),
+        );
+        drop_file(
+            tmp.path(),
+            GOAL,
+            json!({ "character": "Velyra", "kind": "level", "target": 300 }),
+        );
+        drop_file(
+            tmp.path(),
+            GOAL,
+            json!({ "character": "Velyra", "kind": "level", "target": 60, "text": "/run" }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        assert_eq!(a.waiting.len(), 1);
+        let v = a.waiting[0].goal.clone().unwrap();
+        assert_eq!(
+            (v.character.as_deref(), v.kind, v.target, v.label.as_deref()),
+            (
+                Some("Coinpurse"),
+                crate::goals::GoalKind::Gold,
+                5_000_000.0,
+                Some("for the mount")
+            )
+        );
+        let r = reasons(&db);
+        for want in [
+            "goal: a level goal is for one character",
+            "goal: a level of 1 to 100",
+            "the goal isn't in the form this version reads",
+        ] {
+            assert!(r.iter().any(|x| x == want), "missing {want:?} in {r:?}");
+        }
+        decide(&db, FLAVOR, a.waiting[0].id, Decision::Approve, NOW).unwrap();
+        let goals = crate::goals::list(&db, FLAVOR, NOW).unwrap();
+        assert_eq!(goals.len(), 1);
+        assert_eq!(
+            goals[0].target, 5_000_000.0,
+            "what was previewed is what was applied"
+        );
+        assert_eq!(goals[0].producer, "agent:Claude Desktop");
     }
 }

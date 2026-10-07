@@ -31,6 +31,7 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/016_cleanup.sql")),
     M::up(include_str!("migrations/017_cleanup_suggestions.sql")),
     M::up(include_str!("migrations/018_tidy.sql")),
+    M::up(include_str!("migrations/019_goals.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 /// The schema version this build migrates to (`PRAGMA user_version`, which
@@ -315,6 +316,7 @@ mod tests {
                 "cleanup_marks",
                 "file_hash_cache",
                 "forgotten",
+                "goals",
                 "gold_points",
                 "ingest_state",
                 "items",
@@ -365,7 +367,7 @@ mod tests {
         std::fs::write(&path, vec![0xAB; 8192]).unwrap();
 
         let db = Db::open(&path).unwrap();
-        assert_eq!(tables(&db).len(), 36);
+        assert_eq!(tables(&db).len(), 37);
         assert_eq!(
             db.get_meta(RESTORED_FROM_COPY).unwrap(),
             None,
@@ -538,7 +540,7 @@ mod tests {
         std::fs::write(&path, bytes).unwrap();
 
         let db = Db::open(&path).expect("starts instead of failing");
-        assert_eq!(tables(&db).len(), 36);
+        assert_eq!(tables(&db).len(), 37);
         assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
         let quarantined = std::fs::read_dir(tmp.path()).unwrap().flatten().any(|e| {
             e.file_name()

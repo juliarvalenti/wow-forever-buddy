@@ -9,7 +9,9 @@ use serde_json::{json, Value};
 
 use super::Paths;
 use crate::db::Db;
+use crate::goals::{self, GoalKind};
 use crate::proposals::bags::{BagProposal, ProposedMark};
+use crate::proposals::goal::GoalProposal;
 use crate::proposals::inbox::{self, InboxFile};
 use crate::proposals::list::{ListProposal, ProposedItem};
 use crate::proposals::plan::{PlanProposal, ProposedStep};
@@ -25,7 +27,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 5] = [
+const TOOLS: [Tool; 6] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -94,6 +96,21 @@ const TOOLS: [Tool; 5] = [
         },
     },
     Tool {
+        name: "propose_goal",
+        description: "Suggests a goal: a character reaching a level, or a character (or, with no character, the whole account) having an amount of gold, optionally by a date. A goal that's already reached is refused. For collecting items, propose a list instead. Progress comes from the characters' own data after each logout, and the goal shows in the app and the in-game briefing. Nothing changes until the player approves it.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "character": { "type": "string", "description": "The character's name as list_characters gives it. Required for a level goal; omit for the whole account's gold." },
+                "kind": { "type": "string", "enum": ["level", "gold"] },
+                "target": { "type": "integer", "minimum": 1, "description": "A level, or whole gold (not copper)." },
+                "label": { "type": "string", "maxLength": goals::MAX_LABEL, "description": "Gold only: what it's for, shown after the amount, e.g. \"for the mount\"." },
+                "by": { "type": "string", "description": "Optional deadline, YYYY-MM-DD." },
+                "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+              "required": ["kind", "target"], "additionalProperties": false })
+        },
+    },
+    Tool {
         name: "list_proposals",
         description: "What became of the suggestions made through this connection in the last 30 days: waiting, approved, declined, or not queued (with the reason).",
         read_only: true,
@@ -152,6 +169,17 @@ struct ListArgs {
 struct BagArgs {
     character: String,
     marks: Vec<ProposedMark>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoalArgs {
+    character: Option<String>,
+    kind: GoalKind,
+    target: u64,
+    label: Option<String>,
+    by: Option<String>,
     reason: Option<String>,
 }
 
@@ -292,6 +320,19 @@ pub fn call(
                 body,
             )
         }
+        "propose_goal" => {
+            let a: GoalArgs = args(raw)?;
+            let p = GoalProposal {
+                character: a.character,
+                kind: a.kind,
+                target: a.target,
+                label: a.label,
+                by: a.by,
+            };
+            proposals::goal::check(&db, flavor, &p, now)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::GOAL, a.reason, body)
+        }
         "list_proposals" => {
             args::<NoArgs>(raw)?;
             let a = proposals::list(&db, flavor, now).map_err(|e| e.to_string())?;
@@ -313,6 +354,7 @@ pub fn call(
                     "plan_title": p.plan.as_ref().map(|n| n.title.clone()),
                     "list": p.list.as_ref().map(|l| l.name.clone()),
                     "bag_marks_for": p.bags.as_ref().map(|b| b.character.clone()),
+                    "goal_for": p.goal.as_ref().map(|g| g.character.clone().unwrap_or_else(|| "the account".into())),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();

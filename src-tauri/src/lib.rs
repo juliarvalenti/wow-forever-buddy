@@ -15,6 +15,7 @@ mod db;
 mod error;
 mod fsx;
 mod game;
+mod goals;
 mod icons;
 mod ingest;
 mod install;
@@ -69,6 +70,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
             commands::macros::macros_list,
+            commands::goals::goals_list,
+            commands::goals::goals_add,
+            commands::goals::goals_delete,
             commands::notes::notes_list,
             commands::notes::notes_add,
             commands::notes::notes_delete,

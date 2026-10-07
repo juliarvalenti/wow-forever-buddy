@@ -85,6 +85,8 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     }
     // Notes the login briefing showed: once notes are archived.
     crate::notes::mark_shown(tx, id, &file.briefed)?;
+    // G1: goals this file shows reached are done, as of when it was written.
+    crate::goals::mark_reached(tx, id, at)?;
     Ok(id)
 }
 

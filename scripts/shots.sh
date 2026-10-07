@@ -70,6 +70,9 @@ SCENARIOS=(
   "approvals|approvals|click:css=nav button[title=\"Approvals\"];wait:css=.ap-prop|approvals"
   "approvals-empty|approvals-empty|click:css=nav button[title=\"Approvals\"];wait:css=.ap-blank|approvals"
   "approvals-off|approvals-off|click:css=nav button[title=\"Approvals\"];wait:css=.ap-blank|approvals"
+  # G1: New goal from Characters' header (no goals yet), and a refused one.
+  "goals-new|idle|click:text=New goal;click:css=.d-dialog .d-seg button >> text=Gold;wait:css=.gl-form|dashboard"
+  "goals-refused|idle|click:text=New goal;wait:css=.gl-form;fill:55=12;click:text=Add goal;wait:css=.d-letter-bad|dashboard"
   # P2a: Settings › Agents, on, with activity (no mock yet: next to the settings shot).
   "settings-agents|settings-agents|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-activity|settings"
   "settings-move-confirm|settings|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;wait:css=.st-confirm|settings"
