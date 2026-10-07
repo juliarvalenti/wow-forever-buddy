@@ -427,3 +427,22 @@ Two kinds in G1: **level** (a character reaches level N) and **gold** (a charact
 - **Agents:** `propose_goal` through Approvals as a new kind, "Goal for Brannic", previewed as the same row. Approved goals show "from "Claude Desktop", approved" in their grey line.
 - **Progress** comes only from data we already ingest (level and XP at logout, gold snapshots), so it's "as of logout". The grey line ends with "· as of logout" when the data is older than a day.
 - **Never:** streaks, rewards or badges, "you're behind", notifications, or goals about other players.
+
+## 22. O2: tidying old characters, and the app's database size
+Some characters disappear from WTF (deleted, renamed or moved). They can be **hidden** or **forgotten**. Either way, only Forever Buddy's own data changes, **never WTF and never a backup**.
+- **Characters screen:** characters that are gone from WTF move to a collapsed group at the bottom: "Not in your WTF folder any more (2)", with a chevron. Cards in it are dimmed with "last seen 3 Aug" and a small "more" menu with **Hide** and **Forget…**.
+  - When a gone character shows up in WTF again, it moves back to the main grid by itself, with its history intact (unless it was forgotten).
+  - A character that's still in WTF can be hidden too (the same menu, from its card), for alts you don't care about. Forget is only offered for gone characters.
+- **Hide:** immediate and reversible. The character leaves Characters, the Dashboard, search, Lists' character pickers and the agents' read tools. Nothing is deleted. Hidden means hidden everywhere, so "your characters have" totals, tooltips and gold totals leave them out too. A grey line under Characters' header reads "2 hidden · Show" and opens Settings › Data.
+- **Forget…** (a dialog, because it can't be undone):
+  - Title: "Forget Oldmain?"
+  - Body: "This removes Forever Buddy's history for Oldmain: 212 adventures, gold since March, 1,340 item records, 3 notes. Your WTF folder and your backups aren't touched, so restoring an old backup still brings Oldmain's settings back."
+  - Buttons: a ghost **Cancel** and a red-text **Forget Oldmain** (not bronze; this isn't the screen's main action).
+  - After: a green line on Characters, "Oldmain's history was removed.", with no undo.
+  - If the character later appears in WTF again, they start fresh like a new character.
+- **Settings › Data** (a new stone panel after Backups):
+  - "Forever Buddy's own data" with the database size: "48.2 MB", then a short breakdown with bars: Adventures 12.4 MB, Item records 9.8 MB, Auction prices 21.6 MB, Everything else 4.4 MB.
+  - "Hidden characters (2)": each with class colour, "hidden 3 Oct", and a ghost **Unhide**.
+  - The note: "This is the app's own data, separate from your backups (Backups shows their size)."
+  - No "Compact" or "Delete old prices" buttons in O2. If the database gets large, that's a later ticket.
+- **Never:** touching WTF, backups or SavedVariables, forgetting a character that's still in WTF, or forgetting without the dialog.
