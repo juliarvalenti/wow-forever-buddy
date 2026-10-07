@@ -72,7 +72,17 @@ The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
   - Numbered gold pins for the plan, through a map data provider, as Questie does. The current stop glows, and done stops turn grey.
   - Pin tooltip: "3 · Stratholme: Ysida Harmon", then "Tonight's plan · Forever Buddy", then "Click to set a waypoint".
 - **With Questie:** Questie keeps its own givers and objectives. We add only a small number beside its icon, never a second icon.
-- **When a plan arrives:** one chat line at login: "Forever Buddy: tonight's plan is ready, 5 stops in Eastern Plaguelands. /fb plan to show it."
+- **When a plan arrives:** one chat line at login: "Forever Buddy: tonight's plan is ready, 5 stops in Eastern Plaguelands. /fb plan to show it." It's part of the B1 briefing (§9), not a separate line.
+- **Live tick-off (P1).** A step's `kind` decides what completes it:
+  - `accept`: `QUEST_ACCEPTED` for its quest id.
+  - `turn_in`: `QUEST_TURNED_IN` for its quest id.
+  - `objective`: the quest is complete in the log (`C_QuestLog.IsComplete` on `QUEST_LOG_UPDATE`).
+  - With no kind and a quest id, it ticks on hand-in.
+  - A step with **no quest id** never ticks by itself. Clicking its number marks it done or undone. This is the one manual tick allowed, because plan progress is ours: it's saved per character and goes back to the app at logout.
+  - **On a tick,** the step goes grey, the next unfinished step gets the gold edge, the footer count updates, and the step's "→" waypoint is cleared if it was the active one. There's no sound and no chat line.
+  - **Ticks are never undone by the game.** If a quest is abandoned, its accept step stays done. The current step is always the first unfinished one.
+  - **When all steps are done,** the footer reads "All 5 done · from Forever Buddy" in green, and one chat line follows: "Forever Buddy: tonight's plan is done." It stays visible until the next plan replaces it or `/fb plan` closes it.
+  - **Waypoints use our own recorded positions**, which the app fills from Q1b's accepts and hand-ins. A step with no recorded position has its "→" off, with the tooltip "No position recorded for this quest yet."
 
 ## 8. v0.4 proposals (mocked in `ingame.html`, not yet specced)
 - **Alt-aware tooltip (D2, `ingame-d2.html`):**

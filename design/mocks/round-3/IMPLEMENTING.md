@@ -315,3 +315,16 @@ A new **Lists** screen in the sidebar under Overview, after Adventures (list ico
 - **"Sent to the game":** one row per Bridge slot this screen feeds ("Lists and errands", "Login briefing"), with the four Bridge states from `bridge.html` ("in the game since 21:06", "waiting for a sync", "restart WoW once", "couldn't write") and a grey summary ("3 lists · 2 errands").
 - **Empty:** "No lists yet. Make one for anything you're gathering across characters: mats for a profession, consumables for raid night." with a stone **New list** button.
 - **Never:** prices that look like advice ("buy now"), anything about other players, or anything that acts in game.
+
+## 16. P1: the active quest plan on the character sheet (`character.html?plan`)
+**Plans are approved only in P2's Approvals panel.** There's no approval bar here. This panel shows the plan that's already active for this character. The in-game side is INGAME §7.
+- **Placement:** a stone "Quest plan" panel in the sheet's side column, after Professions and before Lockouts. Show it only when the character has an active plan.
+- **Header meta:** "2 of 5 done". Under the header, a muted line: "Eastern Plaguelands · from "Claude Desktop", approved 21:02". The producer is quoted as a claim, as in §15. A plan written in the app says "made in Forever Buddy".
+- **Steps:** numbered.
+  - Each step has its text (white), with a grey line under it for the zone or place, or the note.
+  - Done steps are struck through and grey.
+  - The current step gets the ember left edge and an ember number.
+  - Progress is **as of logout**: the app learns ticks from the addon's saved data, never live.
+- **Status line:** the Bridge state for the plan slot, using the four `bridge.html` states, with "· progress as of logout" when it's in the game.
+- **Clear plan:** a ghost button with no confirm. It sets the plan to `replaced`, and the slot is rewritten empty on the next send. The sheet then shows no panel. Approvals keeps the history.
+- **Replaced plans aren't listed here.** Approvals shows past proposals and their outcomes.
