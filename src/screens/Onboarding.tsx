@@ -44,6 +44,8 @@ export function Onboarding({
   const [step, setStep] = useState<SetupStep>(start);
   const [outcome, setOutcome] = useState<Partial<Record<SetupStep, Outcome>>>({});
   const hasFolder = install.state.kind === "ok";
+  const active = install.state.kind === "ok" ? install.state.install : null;
+  const characters = active?.flavors.find((f) => f.id === active.active)?.characters ?? null;
 
   // Remembered so a restart opens here; "done" once it's over.
   const go = (next: SetupStep, result?: Outcome) => {
@@ -58,13 +60,22 @@ export function Onboarding({
   };
 
   const current = STEPS.indexOf(step);
+  // A step passed in an earlier session: done if its job is done (a backup
+  // exists, the addon is installed), skipped otherwise.
+  const { list } = useBackups();
+  const { status } = useAddon();
+  const known: Partial<Record<SetupStep, Outcome>> = {
+    find: hasFolder ? "done" : undefined,
+    backup: list == null ? undefined : list.length > 0 ? "done" : "skipped",
+    addon: status == null ? undefined : status.installed_version != null ? "done" : "skipped",
+  };
   return (
     <Page>
       <div className="d-letter-wrap">
         <div className="ob-top">
           <ol className="d-stepper" aria-label="Setup">
             {LABELS.map((l, i) => {
-              const o = outcome[l.step] ?? (i < current ? "done" : undefined);
+              const o = outcome[l.step] ?? (i < current ? (known[l.step] ?? "done") : undefined);
               const cls = l.step === step ? "on" : o === "done" ? "done" : o === "skipped" ? "skipped" : undefined;
               return (
                 <li key={l.step} className={cls}>
@@ -101,6 +112,7 @@ export function Onboarding({
             {step === "done" && (
               <DoneStep
                 outcome={outcome}
+                characters={characters}
                 icons={settings?.item_icons ?? false}
                 agents={settings?.agent_access ?? false}
                 onOpen={onFinish}
@@ -230,7 +242,7 @@ function AddonStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void 
         <li>
           <Check size={14} className="ok" aria-hidden />
           <span className="w">Records at logout</span>
-          <span className="r">gold, bags, bank, quests and what you looted</span>
+          <span className="r">gold, bags, bank, quests and what you gained</span>
         </li>
         <li>
           <Check size={14} className="ok" aria-hidden />
@@ -334,11 +346,14 @@ function ExtrasStep({
 /** "You're set.": what happened, and what was skipped or left off. */
 function DoneStep({
   outcome,
+  characters,
   icons,
   agents,
   onOpen,
 }: {
   outcome: Partial<Record<SetupStep, Outcome>>;
+  /** In the game folder's active flavor. */
+  characters: number | null;
   icons: boolean;
   agents: boolean;
   onOpen: () => void;
@@ -356,12 +371,18 @@ function DoneStep({
   const { status } = useAddon();
   const backup = (list?.length ?? 0) > 0 && outcome.backup !== "skipped";
   const addon = status?.installed_version != null;
+  // The first backup: the oldest one kept.
+  const first = [...(list ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
   return (
     <>
       <h1>You're set.</h1>
       <ul className="ob-rows">
-        {line(true, "Game folder", "found")}
-        {line(backup, "First backup", backup ? "taken" : "skipped")}
+        {line(true, "Game folder", characters != null ? plural(characters, "character", "characters") : "found")}
+        {line(
+          backup,
+          "First backup",
+          backup && first ? `${plural(first.file_count, "file", "files")} · kept until you delete it` : "skipped",
+        )}
         {line(addon, "Companion addon", addon ? "log in once on each character" : "skipped")}
         {line(icons, "Item icons", icons ? "on" : "off")}
         {line(agents, "AI agents", agents ? "on" : "off")}
