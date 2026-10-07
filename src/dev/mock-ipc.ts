@@ -216,7 +216,7 @@ export function installMockIpc(): void {
             // B3b: "Bag marks for Thrandor", the same rows as the panel.
             proposal(6, 30, "Claude Desktop", {
               kind: "bag_marks",
-              reason: "His bags are full before Stratholme.",
+              reason: "Thrandor's bags are full before Stratholme.",
               bags: {
                 character_id: 2,
                 character: "Thrandor",
