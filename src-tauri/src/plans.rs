@@ -59,6 +59,14 @@ pub struct Plan {
     pub producer: String,
     /// When it was approved (RFC 3339, UTC).
     pub created_at: String,
+    /// The 1-based steps done, as of the character's last logout.
+    pub done: Vec<u32>,
+    /// When that progress was saved (RFC 3339, UTC); `None` before the
+    /// addon has reported any.
+    pub progress_at: Option<String>,
+    /// Where the plan is on its way to the game (filled in by the command,
+    /// which knows the installed addon).
+    pub delivery: crate::bridge::Delivery,
 }
 
 fn invalid(why: &str) -> AppError {
@@ -134,7 +142,7 @@ pub fn set_plan(
 pub fn clear_plan(db: &Db, character_id: u32) -> AppResult<()> {
     db.with_conn(|c| {
         c.execute(
-            "UPDATE quest_plans SET status = 'cleared'
+            "UPDATE quest_plans SET status = 'replaced'
              WHERE character_id = ?1 AND status = 'active'",
             [character_id],
         )?;
@@ -142,11 +150,32 @@ pub fn clear_plan(db: &Db, character_id: u32) -> AppResult<()> {
     })
 }
 
+/// Progress the addon saved at logout (`ForeverBuddyDB.plan`): the steps
+/// done in plan `plan_id`, from a file written at `at`. Only for that
+/// character's plan, and only if newer than what's stored, so a replayed
+/// older file can't take ticks away.
+pub fn record_progress(
+    tx: &rusqlite::Transaction<'_>,
+    character_id: i64,
+    plan_id: i64,
+    done: &[u32],
+    at: i64,
+) -> AppResult<()> {
+    let json = serde_json::to_string(done).unwrap_or_else(|_| "[]".into());
+    tx.execute(
+        "UPDATE quest_plans SET done = ?3, progress_at = ?4
+         WHERE id = ?1 AND character_id = ?2 AND (progress_at IS NULL OR progress_at <= ?4)",
+        params![plan_id, character_id, json, at],
+    )?;
+    Ok(())
+}
+
 /// The active plans of `flavor`'s characters.
 pub fn active(db: &Db, flavor: &str) -> AppResult<Vec<Plan>> {
     db.with_conn(|c| {
         let mut stmt = c.prepare(
-            "SELECT p.id, p.character_id, ch.name, p.title, p.steps, p.producer, p.created_at
+            "SELECT p.id, p.character_id, ch.name, p.title, p.steps, p.producer, p.created_at,
+                    p.done, p.progress_at
              FROM quest_plans p JOIN characters ch ON ch.id = p.character_id
              WHERE ch.flavor = ?1 AND p.status = 'active'
              ORDER BY p.id",
@@ -154,6 +183,8 @@ pub fn active(db: &Db, flavor: &str) -> AppResult<Vec<Plan>> {
         let rows = stmt
             .query_map([flavor], |r| {
                 let steps: String = r.get(4)?;
+                let done: String = r.get(7)?;
+                let progress_at: Option<i64> = r.get(8)?;
                 Ok(Plan {
                     id: r.get(0)?,
                     character_id: r.get(1)?,
@@ -162,6 +193,11 @@ pub fn active(db: &Db, flavor: &str) -> AppResult<Vec<Plan>> {
                     steps: serde_json::from_str(&steps).unwrap_or_default(),
                     producer: r.get(5)?,
                     created_at: r.get(6)?,
+                    done: serde_json::from_str(&done).unwrap_or_default(),
+                    progress_at: progress_at
+                        .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                        .map(|d| d.to_rfc3339()),
+                    delivery: crate::bridge::Delivery::Waiting,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -437,6 +473,54 @@ mod tests {
         assert!(
             set_plan(&db, 9, "T", &steps(), "app").is_err(),
             "unknown character"
+        );
+    }
+
+    /// Progress comes back from the addon's file at logout (the harness's
+    /// plan scenario: plan 7, all four steps done), for that plan only, and
+    /// an older file never takes ticks away.
+    #[test]
+    fn progress_as_of_logout() {
+        use crate::ingest::{ingest_bytes, target_for};
+        let fixture = |name: &str| {
+            std::fs::read(
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/addon")
+                    .join(name),
+            )
+            .unwrap()
+        };
+        let db = Db::open_in_memory().unwrap();
+        let t = target_for(
+            "_classic_beta_",
+            "WTF/Account/ACCOUNT1/70/Thrandor-Vargur/SavedVariables/ForeverBuddy.lua",
+        )
+        .unwrap();
+        ingest_bytes(&db, &t, &fixture("first_login.lua")).unwrap();
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO quest_plans (id, character_id, title, steps, producer, status, created_at)
+                 VALUES (7, 1, 'Hogger', '[]', 'app', 'active', '2026-10-01T00:00:00+00:00')",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        ingest_bytes(&db, &t, &fixture("plan.lua")).unwrap();
+        let p = &active(&db, FLAVOR).unwrap()[0];
+        assert_eq!(p.done, [1, 2, 3, 4]);
+        assert!(p.progress_at.is_some());
+        db.with_conn(|c| {
+            let tx = c.transaction()?;
+            record_progress(&tx, 1, 7, &[1], 0)?;
+            tx.commit()?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            active(&db, FLAVOR).unwrap()[0].done,
+            [1, 2, 3, 4],
+            "older progress ignored"
         );
     }
 

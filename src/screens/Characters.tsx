@@ -18,6 +18,7 @@ import {
   commands,
   type ItemRow,
   type Lockout,
+  type Plan,
   type QuestEntry,
   type SearchResults,
   type WtfCharacter,
@@ -25,6 +26,7 @@ import {
 import {
   Button,
   Callout,
+  LiveDot,
   Page,
   PageHeader,
   Panel,
@@ -32,12 +34,13 @@ import {
   PanelHeader,
   Record as Parchment,
   Segmented,
+  StatusDot,
   Switch,
   ItemIcon,
 } from "@/components/d";
 import { useAddon } from "@/hooks/useAddon";
 import { useCharacterSheet, useCharacters, useItemSearch, useRoster } from "@/hooks/useCharacters";
-import { useQuestLog, useQuestsAvailable } from "@/hooks/useQuests";
+import { useQuestLog, useQuestPlan, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
 import {
@@ -707,6 +710,76 @@ function Quests({ name, log }: { name: string; log: NonNullable<ReturnType<typeo
   );
 }
 
+/** "21:02" today, else "5 Oct, 21:02". */
+function approvedAt(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`;
+}
+
+/** The plan's Bridge state, in bridge.html's words (IMPLEMENTING §16). */
+function planDelivery(p: Plan): { live: boolean; text: string } {
+  const d = p.delivery;
+  switch (d.state) {
+    case "synced":
+      return { live: false, text: `In the game since ${approvedAt(d.since)} · progress as of logout` };
+    case "pending":
+      return { live: true, text: "Waiting for a sync: /reload or log in to see it" };
+    case "waiting":
+      return { live: true, text: "Goes to the game when WoW closes" };
+    case "restart":
+      return { live: true, text: "Needs the addon update, then restart WoW once" };
+    case "failed":
+      return { live: true, text: "Couldn't write it; the game keeps the last plan" };
+  }
+}
+
+/** P1: the active quest plan (IMPLEMENTING §16). Approval happens in P2's
+ *  Approvals panel, never here; this only shows it and can clear it. */
+function QuestPlan({ plan, onClear }: { plan: Plan; onClear: () => void }) {
+  const done = new Set(plan.done);
+  const current = plan.steps.findIndex((_, i) => !done.has(i + 1));
+  const zone = plan.steps.find((s) => s.zone)?.zone;
+  const producer = plan.producer.startsWith("agent:")
+    ? `from "${plan.producer.slice("agent:".length)}"`
+    : "made in Forever Buddy";
+  const status = planDelivery(plan);
+  return (
+    <Panel>
+      <PanelHeader title="Quest plan">
+        <span className="d-dim">
+          {done.size} of {plan.steps.length} done
+        </span>
+      </PanelHeader>
+      <div className="pmeta">
+        {[zone, `${producer}, approved ${approvedAt(plan.created_at)}`].filter(Boolean).join(" · ")}
+      </div>
+      <ol className="psteps">
+        {plan.steps.map((s, i) => (
+          <li key={i} className={done.has(i + 1) ? "done" : i === current ? "now" : undefined}>
+            <span className="no">{i + 1}</span>
+            <span>
+              <b>{s.text}</b>
+              {s.zone && <small>{s.zone}</small>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="psent">
+        {status.live ? <LiveDot /> : <StatusDot />}
+        {status.text}
+      </div>
+      <div className="pact">
+        <Button variant="ghost" onClick={onClear}>
+          Clear plan
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
 function Freshness({ asOf, place }: { asOf: string | null; place: "bank" | "mailbox" }) {
   const { text, old } = visitLine(asOf, place);
   return <p className={`ch-fresh${old ? " old" : ""}`}>{text}</p>;
@@ -890,6 +963,8 @@ function Sheet({
   // Q1b ships dark: the tab appears once any character has quest data.
   const questsOn = useQuestsAvailable();
   const quests = useQuestLog(id);
+  // P1: this character's active quest plan, if it has one.
+  const { plan, clear: clearPlan } = useQuestPlan(id);
   const at = cards.findIndex((c) => c.id === id);
   const prev = at > 0 ? cards[at - 1] : null;
   const next = at >= 0 && at < cards.length - 1 ? cards[at + 1] : null;
@@ -1111,6 +1186,7 @@ function Sheet({
                 )}
               </PanelBody>
             </Panel>
+            {plan && <QuestPlan plan={plan} onClear={clearPlan} />}
             <Panel>
               <PanelHeader title="Lockouts">
                 {sheet.lockouts_as_of && (

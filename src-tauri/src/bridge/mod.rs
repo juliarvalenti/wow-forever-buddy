@@ -13,7 +13,8 @@
 
 pub mod tooltip;
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
 
 use crate::addon;
 use crate::db::Db;
@@ -162,6 +163,76 @@ fn data_only(v: &LuaValue, depth: usize) -> Result<(), &'static str> {
 
 fn refused(slot: Slot, why: &str) -> AppError {
     AppError::SlotRefused(format!("{}: {why}", slot.name()))
+}
+
+/// Where a character's data in a slot is (bridge spec §4, `bridge.html`'s
+/// states): the app's "Sent to the game" line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Delivery {
+    /// Not written yet: changed while WoW was running, so it goes after WoW
+    /// closes.
+    Waiting,
+    /// Written (RFC 3339), and this character's addon hasn't loaded it yet:
+    /// it shows after a /reload or the next login.
+    Pending { written_at: String },
+    /// This character's addon loaded it at `since` (RFC 3339).
+    Synced { since: String },
+    /// The installed addon doesn't list the slot: update it, then restart
+    /// WoW once.
+    Restart,
+    /// The last write failed or was refused; the game keeps the last file.
+    Failed,
+}
+
+/// `slot`'s delivery to `character_id`, for content that last changed at
+/// `changed_at` (RFC 3339). `listed`: whether the installed TOC lists it.
+pub fn delivery(
+    db: &Db,
+    flavor: &str,
+    slot: Slot,
+    character_id: u32,
+    changed_at: &str,
+    listed: bool,
+) -> AppResult<Delivery> {
+    if !listed {
+        return Ok(Delivery::Restart);
+    }
+    db.with_conn(|c| {
+        let last: Option<(Option<i64>, Option<String>, String)> = c
+            .query_row(
+                "SELECT stamp, written_at, status FROM bridge_slots WHERE flavor = ?1 AND slot = ?2",
+                params![flavor, slot.name()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((stamp, written_at, status)) = last else {
+            return Ok(Delivery::Waiting);
+        };
+        if status == "failed" || status == "refused" {
+            return Ok(Delivery::Failed);
+        }
+        let written_at = written_at.unwrap_or_default();
+        // Changed since the last write (e.g. while WoW ran): not out yet.
+        if written_at.as_str() < changed_at {
+            return Ok(Delivery::Waiting);
+        }
+        let receipt: Option<(Option<i64>, i64)> = c
+            .query_row(
+                "SELECT stamp, seen_at FROM bridge_receipts WHERE character_id = ?1 AND slot = ?2",
+                params![character_id, slot.name()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        Ok(match (receipt, stamp) {
+            (Some((Some(seen_stamp), seen_at)), Some(stamp)) if seen_stamp >= stamp => Delivery::Synced {
+                since: chrono::DateTime::from_timestamp(seen_at, 0)
+                    .unwrap_or_default()
+                    .to_rfc3339(),
+            },
+            _ => Delivery::Pending { written_at },
+        })
+    })
 }
 
 /// What `send_to_game` did.
@@ -411,6 +482,56 @@ mod tests {
         let big = LuaValue::str(vec![b'x'; MAX_SLOT_BYTES]);
         let err = render(Slot::Tooltip1, body(vec![(LuaValue::str("big"), big)])).unwrap_err();
         assert!(matches!(err, AppError::SlotRefused(m) if m.contains("1 MB cap")));
+    }
+
+    /// The "Sent to the game" states, as the plan panel shows them.
+    #[test]
+    fn delivery_states() {
+        let db = Db::open_in_memory().unwrap();
+        let flavor = "_classic_beta_";
+        let changed = "2026-10-06T21:02:00+00:00";
+        let state = || delivery(&db, flavor, Slot::Plan, 1, changed, true).unwrap();
+        assert_eq!(
+            delivery(&db, flavor, Slot::Plan, 1, changed, false).unwrap(),
+            Delivery::Restart,
+            "an addon without the slot"
+        );
+        assert_eq!(state(), Delivery::Waiting, "never written");
+        let write = |stamp: i64, at: &str, status: &str| {
+            db.with_conn(|c| {
+                c.execute(
+                    "INSERT OR REPLACE INTO bridge_slots (flavor, slot, stamp, written_at, bytes, status)
+                     VALUES (?1, 'Plan', ?2, ?3, 10, ?4)",
+                    params![flavor, stamp, at, status],
+                )?;
+                Ok(())
+            })
+            .unwrap()
+        };
+        write(100, "2026-10-06T21:00:00+00:00", "written");
+        assert_eq!(state(), Delivery::Waiting, "written before the change");
+        write(200, "2026-10-06T21:04:00+00:00", "written");
+        assert!(
+            matches!(state(), Delivery::Pending { .. }),
+            "out, not loaded yet"
+        );
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO characters (id, flavor, account, group_dir, char_dir, name, first_seen, last_seen)
+                 VALUES (1, ?1, 'A', '70', 'T', 'T', 1, 1)",
+                [flavor],
+            )?;
+            c.execute(
+                "INSERT INTO bridge_receipts (character_id, slot, stamp, schema, seen_at)
+                 VALUES (1, 'Plan', 200, 1, 1791400000)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        assert!(matches!(state(), Delivery::Synced { .. }), "loaded");
+        write(300, "2026-10-06T21:10:00+00:00", "failed");
+        assert_eq!(state(), Delivery::Failed);
     }
 
     #[test]

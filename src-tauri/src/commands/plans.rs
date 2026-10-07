@@ -1,6 +1,8 @@
 use tauri::State;
 
+use crate::addon;
 use crate::applog;
+use crate::bridge::{self, Slot};
 use crate::error::{AppError, AppResult};
 use crate::plans::{self, Plan};
 use crate::state::AppState;
@@ -10,11 +12,25 @@ use crate::state::AppState;
 #[tauri::command(async)]
 #[specta::specta]
 pub fn plans_list(state: State<'_, AppState>) -> AppResult<Vec<Plan>> {
-    match state.core.active_game() {
-        Ok(game) => plans::active(&state.core.db, &game.flavor),
-        Err(AppError::NoInstall) => Ok(Vec::new()),
-        Err(e) => Err(e),
+    let core = &state.core;
+    let game = match core.active_game() {
+        Ok(game) => game,
+        Err(AppError::NoInstall) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let listed = addon::listed_slots(&game.root).contains(&Slot::Plan);
+    let mut plans = plans::active(&core.db, &game.flavor)?;
+    for p in &mut plans {
+        p.delivery = bridge::delivery(
+            &core.db,
+            &game.flavor,
+            Slot::Plan,
+            p.character_id,
+            &p.created_at,
+            listed,
+        )?;
     }
+    Ok(plans)
 }
 
 /// "Clear plan": the character has no plan any more, in the app now and in

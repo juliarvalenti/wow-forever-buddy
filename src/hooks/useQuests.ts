@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands, events, type QuestEntry, type QuestLog } from "@/lib/bindings";
+import { commands, events, type Plan, type QuestEntry, type QuestLog } from "@/lib/bindings";
 import { useEvent } from "@/hooks/useEvent";
+
+/** P1: this character's active quest plan (or none), with Clear. Progress
+ *  and the Bridge state change after an ingest, so it reloads then. */
+export function useQuestPlan(characterId: number) {
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const load = useCallback(() => {
+    commands.plansList().then(setPlans, () => setPlans([]));
+  }, []);
+  useEffect(load, [load]);
+  useEvent(events.ingestCompleted, load);
+  const clear = useCallback(() => {
+    commands.planClear(characterId).then(setPlans, () => load());
+  }, [characterId, load]);
+  return { plan: plans.find((p) => p.character_id === characterId) ?? null, clear };
+}
 
 /** Whether any character has quest data yet (Q1b): the sheet's Quests tab
  *  ships dark until then. */

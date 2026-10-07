@@ -26,6 +26,7 @@ import type {
   LedgerRange,
   Macro,
   MacrosList,
+  Plan,
   PlaySession,
   QuestLog,
   RestorePlan,
@@ -144,6 +145,29 @@ export function installMockIpc(): void {
   });
   // F3: Coinpurse is the bank alt, and this week's saves (resets ahead).
   const bankAlts = new Set<number>([1]);
+  // P1: Thrandor's plan from character.html?plan, 2 of 5 done, in the game.
+  const approved = new Date(now - 20 * 60_000).toISOString();
+  const planStep = (text: string, zone: string): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
+  let plans: Plan[] = [
+    {
+      id: 1,
+      character_id: 2,
+      character: "Thrandor",
+      title: "Stratholme run",
+      steps: [
+        planStep("Turn in: The Archivist", "Light's Hope Chapel"),
+        planStep("Pick up: Dead Man's Plea", "Stratholme gate"),
+        planStep("Stratholme: Ysida Harmon", "rescue her before the Baron"),
+        planStep("Turn in: Dead Man's Plea", "Stratholme gate"),
+        planStep("Hearth to Light's Hope", "3 turn-ins waiting"),
+      ],
+      producer: "agent:Claude Desktop",
+      created_at: approved,
+      done: [1, 2],
+      progress_at: new Date(now - 5 * 60_000).toISOString(),
+      delivery: { state: "synced", since: new Date(now - 16 * 60_000).toISOString() },
+    },
+  ];
   // F6: addon toggles made in this page load ("Addon/CharacterFolder" → on),
   // and what the last one replaced, for Undo.
   const addonToggles = new Map<string, boolean>();
@@ -920,6 +944,12 @@ export function installMockIpc(): void {
     // Q1b: character.html?tab=quests for Thrandor (id 2); the other alts have
     // none yet. Dark (no tab) before the addon has written anything.
     quests_available: () => !noAddon,
+    // P1: character.html?plan, Thrandor's active plan (IMPLEMENTING §16).
+    plans_list: (): Plan[] => (noAddon ? [] : plans),
+    plan_clear: ({ characterId }): Plan[] => {
+      plans = plans.filter((p) => p.character_id !== characterId);
+      return plans;
+    },
     character_quests: ({ id }): QuestLog => {
       if (id !== 2) return { done: 0, done_as_of: null, entries: [] };
       const day = (d: number, hh: number, mm: number) => {

@@ -749,7 +749,7 @@ scenario("plan", function()
     other.login(nil)
     eq(#other.chat, 0, "no plan, no chat")
     other.slash("/fb plan")
-    eq(other.global("ForeverBuddyPlanFrame").footer.text, "No plan for this character. Make one in Forever Buddy.", "empty")
+    eq(other.global("ForeverBuddyPlanFrame").footer.text, "No plan for this character yet.", "empty")
     return text
 end)
 
