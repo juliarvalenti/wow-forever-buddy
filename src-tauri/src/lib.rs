@@ -268,11 +268,19 @@ pub fn run() {
 
             // P2b: the agent inbox, picked up on start and every 10 s. The
             // first pass waits for the install; until then it's skipped.
+            // BUG-LISTS: on the same beat, a send to the game the write gate
+            // held goes out once nothing holds it.
             let inbox_handle = handle.clone();
             std::thread::spawn(move || loop {
                 let core = &inbox_handle.state::<AppState>().core;
                 if commands::approvals::ingest_inbox(core).is_ok_and(|n| n > 0) {
                     let _ = proposals::ApprovalsChanged.emit(&inbox_handle);
+                }
+                if let Some(Err(e)) = core.retry_waiting_send() {
+                    applog::append(
+                        &core.paths.log_dir,
+                        &format!("sending to the game failed: {e}"),
+                    );
                 }
                 std::thread::sleep(std::time::Duration::from_secs(10));
             });

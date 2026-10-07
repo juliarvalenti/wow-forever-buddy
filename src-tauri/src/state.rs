@@ -33,6 +33,9 @@ pub struct AppCore {
     /// Backup and restore work runs one job at a time (spec §5): hold this for
     /// the whole operation. A second caller waits its turn.
     pub jobs: Mutex<()>,
+    /// BUG-LISTS: the last send to the game was held by the write gate, so
+    /// it's tried again (every 10 s) until the gate lets it through.
+    pub send_waiting: std::sync::atomic::AtomicBool,
 }
 
 /// The game folder the app works with right now.
@@ -82,6 +85,7 @@ impl AppCore {
             icons,
             backups: Mutex::new(None),
             jobs: Mutex::new(()),
+            send_waiting: std::sync::atomic::AtomicBool::new(false),
         };
         // Open the store now if we can; if the drive is missing, commands
         // report it and the app still starts.
