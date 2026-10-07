@@ -1235,7 +1235,7 @@ scenario("session", function()
     eq(card.heading.text, "Thrandor's " .. part, "title")
     eq(card.ding.text, "Ding! Level 13", "levelled")
     eq(rows(card), "Played | 1h 0m\nGold | |cff1eff00+1,312g|r\nBest find | |cff0070ddFelcloth Hood|r\nQuests | 1", "rows")
-    eq(card.footer.text, "Saved to your journal in Forever Buddy", "footer")
+    eq(card.footer.text, "In Adventures after you close WoW", "footer")
     c.cancelLogout()
     eq(card.shown, false, "cancelled")
 
@@ -1259,7 +1259,19 @@ scenario("session", function()
     c.slash("/fb coach")
     eq(g.shown, false, "/fb coach again")
     eq(c.settings.coach, nil, "off isn't written")
-    return c.logout()
+    local out = c.logout()
+
+    -- A short session with nothing to say gets no card; a loss reads white.
+    local brief = client()
+    brief.login(nil)
+    brief.advance(4 * MINUTE)
+    brief.startLogout()
+    eq(brief.global("ForeverBuddyCardFrame"), nil, "no card for 4 minutes of nothing")
+    brief.setMoney(brief.world.money - 20000)
+    brief.startLogout()
+    local lost = brief.global("ForeverBuddyCardFrame")
+    eq(rows(lost), "Played | 4m\nGold | -2g", "a loss in white")
+    return out
 end)
 
 -- Runner ---------------------------------------------------------------------
