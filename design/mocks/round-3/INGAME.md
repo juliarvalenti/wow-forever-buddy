@@ -127,17 +127,7 @@ The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
     - **Compact:** appended to the price line: `~1g 12s each at your last scan · your list needs 20`. With no price, the line is just `Your list needs 20`. The count is white and "your list needs" is gold.
     - **Shift:** a row `Shopping list | 20 more (Blacksmithing 300)`, naming the list.
     - **Data:** a future `lists` slot, `item id → { need, listName }`. It's not part of TIP2's index.
-- **Session coach:**
-  - A small movable strip headed "This session", with the session length in the meta.
-  - Rows: Gold (+312g · 184g/hr), Experience (87,000/hr), "Level 60 in ≈ 41 min" (only while levelling), and Loot (47 items · ≈ 96g, the worth only with prices).
-  - It counts from login, using only out-of-combat events (`PLAYER_MONEY`, `PLAYER_XP_UPDATE`, our bag diff).
-  - It's off by default, toggled with `/fb coach` or the compartment menu.
-  - An option hides it in combat, and its position is saved.
-- **Session card at logout:**
-  - It appears during the logout countdown, above the game's own dialog, and never blocks it.
-  - Contents: a gold "Ding! Level 60" if the character levelled, then played time, gold, best find (in quality colour), and quests.
-  - Footer: "Saved to your journal in Forever Buddy".
-  - It's the same data V9 already turns into the Adventure entry. The card is only the in-game face.
+- **Session coach and session card:** now specced as S2 in §11.
 
 ## 9. B1: login briefing (`ingame-errands.html`)
 One chat line at login, once per login, only when there is something to say. It replaces the §3 checklist line, so there's never more than one Forever Buddy line at login.
@@ -175,6 +165,33 @@ Display only. The addon never buys, attaches or sends. **One Bridge slot ("Lists
   - **On the receiving alt,** the list line reads "Coinpurse can send 20" instead of "need 20".
 - **Freshness:** the same rules as §8. An alt's holdings older than 7 days are grey with "(as of 21 Sep)".
 - **Commands:** `/fb list` toggles the list panel anywhere (undocked, top right). `/fb errands` shows errands away from a mailbox, as read-only text.
+
+## 11. S2: session coach and session card (`ingame.html`, the coach and logout tiles)
+Addon only, from live events; no Bridge slot. Both read what the addon already records for the Adventure entry, so the numbers match the app's Adventures. Display only.
+- **A session** starts at login (`PLAYER_ENTERING_WORLD` with `isInitialLogin`) and survives `/reload`: keep the start time and running totals in the per-character saved table, and continue them when `isReloadingUi` is true.
+- **Session coach (a strip while you play):**
+  - **Off by default.** `/fb coach` toggles it, and the compartment menu has a "Session coach" checkbox. Saved per account.
+  - A 210px `DefaultPanelFlatTemplate` strip at top right, headed "This session" (`GameFontNormal`), with the session length in the meta ("1h 42m", "12 min").
+  - **Rows** (label gold, value white, right-aligned), each shown only when it has something true to say:
+    - **Gold:** "+312g · 184g/hr". A loss reads "-45g" (white, not red). The rate appears after 10 minutes; before that, only the total.
+    - **Experience:** "87,000/hr", only while levelling and after 10 minutes.
+    - **Level 60 in:** "~41 min", only while levelling, after 10 minutes, and under 10 hours (otherwise hide the row; never "~38 h").
+    - **Loot:** "47 items · ~96g". The worth uses the last scan from the tooltip index, counting only priced items; with no prices it's just "47 items".
+  - **Updates:** at most every 5 seconds, from `PLAYER_MONEY`, `PLAYER_XP_UPDATE` and our bag diff. **Nothing updates in combat**, so the strip freezes and catches up on `PLAYER_REGEN_ENABLED`. A secret or missing value hides its row rather than showing 0.
+  - **Moving:** shift-drag to move, with the position saved per account. Right-click shows "Hide" and "Hide in combat" (off by default).
+- **Session card (at logout):**
+  - Shown on `PLAYER_CAMPING` (the logout or quit countdown), top centre above the game's countdown dialog, never covering its Cancel. It hides on `LOGOUT_CANCEL` and when the countdown ends. A × closes it. It's never shown on `/reload` or a disconnect.
+  - **Title:** "Thrandor's session" (the character's name, never a pronoun).
+  - **Rows**, each only when true, in this order:
+    - "Ding! Level 60" in gold if the character levelled; "Ding! Levels 58 to 60" for more than one level.
+    - **Played:** the session length ("3h 12m").
+    - **Gold:** "+312g" in green, or "-45g" in white.
+    - **Best find:** the highest-quality item gained this session (uncommon or better, ties broken by last-scan worth), as its name in quality colour. With none, no row.
+    - **Quests:** the number turned in. With 0, no row.
+  - **Too short to say anything** (under 5 minutes and no rows besides Played): no card at all.
+  - **Footer:** "In Forever Buddy's Adventures after you close WoW". It's honest: the app picks the session up from saved variables after the game exits.
+  - **On by default,** because it only appears while you're already leaving. `/fb card` toggles it, and there's a "Session card at logout" checkbox in the compartment menu.
+- **Never:** comparisons with other players, damage or kill meters, advice ("you should"), a sound, or anything that delays or blocks logging out.
 
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
