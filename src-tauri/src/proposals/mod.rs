@@ -6,9 +6,13 @@
 //! stores it as `staged`, or as `rejected` with the reason in plain words.
 //! While agent access is off nothing is staged. The stored body is what the
 //! Approvals preview shows and exactly what Approve applies, through the
-//! kind's normal app code (`notes::add` for a login note).
+//! kind's normal app code: `notes::add` for a login note, `plans::set_plan`
+//! for a quest plan (`plan`), `lists::create_list` and `add_item` for a
+//! list change (`list`).
 
 pub mod inbox;
+pub mod list;
+pub mod plan;
 
 use std::path::Path;
 
@@ -30,6 +34,8 @@ const MAX_PRODUCER: usize = 64;
 const DECIDED_DAYS: i64 = 30;
 
 pub const LOGIN_NOTE: &str = "login_note";
+pub const QUEST_PLAN: &str = "quest_plan";
+pub const LIST: &str = "list";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -84,8 +90,10 @@ pub struct Proposal {
     /// Rejected: why, in plain words.
     pub status_reason: Option<String>,
     pub decided_at: Option<String>,
-    /// The preview for a login note: every field Approve applies.
+    /// The preview, one per kind: every field Approve applies.
     pub note: Option<NoteView>,
+    pub plan: Option<plan::PlanView>,
+    pub list: Option<list::ListView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -309,9 +317,21 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                     let NoteBodyChecked(body) = check_note(db, flavor, &p, now)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
+                QUEST_PLAN => {
+                    let p: plan::PlanProposal = serde_json::from_value(f.body.clone())
+                        .map_err(|_| "the plan isn't in the form this version reads".to_string())?;
+                    let body = plan::check(db, flavor, &p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
+                LIST => {
+                    let p: list::ListProposal =
+                        serde_json::from_value(f.body.clone()).map_err(|_| {
+                            "the list change isn't in the form this version reads".to_string()
+                        })?;
+                    let body = list::check(db, flavor, &p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
                 // In plain words, never the kind id (IMPLEMENTING §17).
-                "list" => Err("List changes can't be applied yet.".into()),
-                "quest_plan" => Err("Quest plans can't be applied yet.".into()),
                 _ => Err("This kind of suggestion can't be applied yet.".into()),
             }
         })();
@@ -421,9 +441,28 @@ fn note_view(db: &Db, flavor: &str, b: &NoteBody, now: i64) -> AppResult<NoteVie
     })
 }
 
+/// A stored body of `kind`, if this proposal is one; a rejected one has none.
+fn body<T: for<'de> Deserialize<'de>>(s: &Stored, kind: &str) -> Option<T> {
+    (s.kind == kind)
+        .then(|| serde_json::from_str(s.body.as_deref()?).ok())
+        .flatten()
+}
+
+fn unreadable() -> AppError {
+    AppError::Db("a stored suggestion that doesn't read".into())
+}
+
 fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
     let note = match note_body(&s) {
         Some(b) => Some(note_view(db, flavor, &b, now)?),
+        None => None,
+    };
+    let plan = match body(&s, QUEST_PLAN) {
+        Some(b) => Some(plan::view(db, flavor, &b)?),
+        None => None,
+    };
+    let list = match body(&s, LIST) {
+        Some(b) => Some(list::view(db, flavor, &b)?),
         None => None,
     };
     Ok(Proposal {
@@ -436,6 +475,8 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         status_reason: s.status_reason,
         decided_at: s.decided_at.map(rfc3339),
         note,
+        plan,
+        list,
     })
 }
 
@@ -509,10 +550,18 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
                 notes::delete(db, flavor, r.id, now)?;
             }
         }
-        other => {
-            return Err(AppError::InvalidSettings(format!(
-                "{other:?} can't be applied by this version"
-            )))
+        QUEST_PLAN => {
+            let b = body(&s, QUEST_PLAN).ok_or_else(unreadable)?;
+            plan::apply(db, &b, &s.producer)?;
+        }
+        LIST => {
+            let b = body(&s, LIST).ok_or_else(unreadable)?;
+            list::apply(db, flavor, &b, &s.producer)?;
+        }
+        _ => {
+            return Err(AppError::InvalidSettings(
+                "this kind of suggestion can't be applied by this version".into(),
+            ))
         }
     }
     set_status(db, s.id, "applied", now)
@@ -801,5 +850,175 @@ mod tests {
             a.decided[0].status_reason.as_deref(),
             Some("50 suggestions were already waiting")
         );
+    }
+
+    fn seen_items(db: &Db) {
+        db.with_conn(|c| {
+            for (id, name) in [(14342, "Mooncloth"), (14047, "Runecloth")] {
+                c.execute(
+                    "INSERT INTO items (item_id, name, quality, seen_at) VALUES (?1, ?2, 1, 0)",
+                    params![id, name],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn reasons(db: &Db) -> Vec<String> {
+        list(db, FLAVOR, NOW)
+            .unwrap()
+            .decided
+            .into_iter()
+            .filter_map(|p| p.status_reason)
+            .collect()
+    }
+
+    #[test]
+    fn a_plan_shows_the_one_it_replaces_and_becomes_active_on_approve() {
+        let (tmp, db) = setup();
+        let old = crate::plans::Step {
+            text: "Old step".into(),
+            quest_id: None,
+            zone: None,
+            kind: None,
+        };
+        crate::plans::set_plan(&db, 2, "Felwood", &[old], "app").unwrap();
+        let steps = json!([
+            { "text": "Fly to Everlook" },
+            { "text": "Take \"Are We There, Yeti?\"", "quest_id": 3783, "zone": "Everlook", "kind": "accept" },
+        ]);
+        drop_file(
+            tmp.path(),
+            QUEST_PLAN,
+            json!({ "character": "Velyra", "title": "Winterspring", "steps": steps }),
+        );
+        // Malformed: an accept step needs its quest; an unknown field.
+        drop_file(
+            tmp.path(),
+            QUEST_PLAN,
+            json!({ "character": "Velyra", "title": "x", "steps": [{ "text": "Take it", "kind": "accept" }] }),
+        );
+        drop_file(
+            tmp.path(),
+            QUEST_PLAN,
+            json!({ "character": "Velyra", "title": "x", "steps": [{ "text": "a", "x": 0.4 }] }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        assert_eq!(a.waiting.len(), 1);
+        let v = a.waiting[0].plan.clone().unwrap();
+        assert_eq!(
+            (v.character.as_str(), v.title.as_str(), v.steps.len()),
+            ("Velyra Duskmane", "Winterspring", 2)
+        );
+        assert_eq!(v.replaces.as_ref().unwrap().title, "Felwood");
+        let r = reasons(&db);
+        assert!(
+            r.contains(&"plan: accept and turn-in steps need a quest id".to_string()),
+            "{r:?}"
+        );
+        assert!(
+            r.contains(&"the plan isn't in the form this version reads".to_string()),
+            "{r:?}"
+        );
+
+        decide(&db, FLAVOR, a.waiting[0].id, Decision::Approve, NOW).unwrap();
+        let active = crate::plans::active(&db, FLAVOR).unwrap();
+        assert_eq!(active.len(), 1, "the old plan was replaced");
+        assert_eq!(active[0].title, "Winterspring");
+        assert_eq!(
+            active[0].steps, v.steps,
+            "what was previewed is what was applied"
+        );
+        assert_eq!(active[0].producer, "agent:Claude Desktop");
+    }
+
+    #[test]
+    fn a_new_list_and_changes_to_one_apply_through_lists() {
+        let (tmp, db) = setup();
+        seen_items(&db);
+        let tailoring =
+            crate::lists::create_list(&db, FLAVOR, "Tailoring 300", None, "app").unwrap();
+        crate::lists::add_item(&db, tailoring, &crate::lists::NewItem::Id(14047), 20).unwrap();
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "tailoring 300", "items": [
+                { "item_id": 14342, "need": 4 }, { "item_id": 14047, "need": 30 } ] }),
+        );
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "Raid consumables", "for_character": "Coinpurse", "items": [{ "item_id": 14047, "need": 5 }] }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let w = list(&db, FLAVOR, NOW).unwrap().waiting;
+        let (new, change) = (w[0].list.clone().unwrap(), w[1].list.clone().unwrap());
+        assert_eq!(
+            (change.name.as_str(), change.list_id),
+            ("Tailoring 300", Some(tailoring))
+        );
+        let ch: Vec<(u32, Option<u32>)> = change.changes.iter().map(|c| (c.need, c.was)).collect();
+        assert_eq!(
+            ch,
+            [(4, None), (30, Some(20))],
+            "added, and changed from 20"
+        );
+        assert_eq!(new.for_character.as_ref().unwrap().name, "Coinpurse");
+
+        decide(&db, FLAVOR, w[1].id, Decision::Approve, NOW).unwrap();
+        decide(&db, FLAVOR, w[0].id, Decision::Approve, NOW).unwrap();
+        let all = crate::lists::lists(&db, FLAVOR).unwrap();
+        let t = all.iter().find(|l| l.id == tailoring).unwrap();
+        let needs: Vec<(Option<u32>, u32)> = t.items.iter().map(|i| (i.item_id, i.need)).collect();
+        assert!(
+            needs.contains(&(Some(14047), 30)) && needs.contains(&(Some(14342), 4)),
+            "{needs:?}"
+        );
+        let raid = all.iter().find(|l| l.name == "Raid consumables").unwrap();
+        assert_eq!(raid.producer, "agent:Claude Desktop");
+        assert_eq!(raid.for_character.as_ref().unwrap().name, "Coinpurse");
+    }
+
+    #[test]
+    fn list_changes_to_unknown_items_or_a_deleted_list_are_refused() {
+        let (tmp, db) = setup();
+        seen_items(&db);
+        let t = crate::lists::create_list(&db, FLAVOR, "Tailoring 300", None, "app").unwrap();
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "Tailoring 300", "items": [{ "item_id": 99999, "need": 1 }] }),
+        );
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "Tailoring 300", "for_character": "Coinpurse", "items": [{ "item_id": 14047, "need": 1 }] }),
+        );
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "Tailoring 300", "items": [{ "item_id": 14047, "need": 0 }] }),
+        );
+        drop_file(
+            tmp.path(),
+            LIST,
+            json!({ "list": "Tailoring 300", "items": [{ "item_id": 14047, "need": 2 }] }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let r = reasons(&db);
+        for want in [
+            "item 99999 isn't one we know",
+            "who a list is for can only be set on a new list",
+            "a need is 1 to 9999",
+        ] {
+            assert!(r.iter().any(|x| x == want), "missing {want:?} in {r:?}");
+        }
+        crate::lists::delete_list(&db, t).unwrap();
+        let w = list(&db, FLAVOR, NOW).unwrap().waiting;
+        assert!(w[0].list.as_ref().unwrap().gone);
+        assert!(decide(&db, FLAVOR, w[0].id, Decision::Approve, NOW).is_err());
     }
 }

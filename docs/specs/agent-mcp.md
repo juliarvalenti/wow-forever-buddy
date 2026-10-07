@@ -1,6 +1,6 @@
 # Spec: P2, connecting an AI agent (MCP)
 
-Status: 2026-10-07 (@coder). P2a (the read side) and P2b (the queue, login note proposals, Approvals) are built; P2c (plans, lists) is not yet.
+Status: 2026-10-07 (@coder). Built: P2a (the read side), P2b (the queue, login note proposals, Approvals) and P2c (quest plan and list proposals). Still to come: showing list proposals in place on the Lists screen (IMPLEMENTING §15).
 
 **What it's for.** Julia's idea: plan outside the game with an agent ("set up a questing plan for Kaelor tonight"), approve it in Forever Buddy, then see it in game. The agent can read what the app knows about your characters and can **propose** a plan, a note or a shopping list. Nothing it proposes takes effect until you approve it in the app.
 
@@ -85,8 +85,9 @@ All are annotated `readOnlyHint: false, destructiveHint: false`. Each one **stag
 | `propose_quest_plan` | `character`, `title`, `steps`: up to 50 × { `text` (≤ 200 chars), optional `quest_id`, `zone` } | It becomes that character's quest plan through P1's own `plans::set_plan`, replacing any current one, and the next slot write sends it to the game. P1 has no "proposed" state of its own: the proposal lives in this queue until approved. |
 | `propose_note` | `character`, `text` (≤ 300 chars, one line), optional `until` (YYYY-MM-DD; absent means next login only), optional `replaces` { `id`, `text` as read } | It becomes a B1 login note for that character, through `notes::add`, marked `from "<client>", approved`. A replaced note is retired. If that note changed after the agent read it, it's a conflict (below). |
 
-Every proposal tool also takes an optional `reason` (≤ 300 chars). It's shown as `Reason given: "…"` and hidden when empty (IMPLEMENTING §17). Built in P2b: `propose_note`. The login note replaced the adventure-note target the first draft had, per the design.
-| `propose_shopping_list` | `name`, `items`: up to 100 × { `item_id`, `count` } | It becomes a shopping list (B2), tracked across alts and shown on tooltips (TIP2 (c)). |
+| `propose_list_change` | `list` (one of the player's lists by name, or a new name), optional `for_character` (new lists only), `items`: up to 100 × { `item_id` (one a character has seen), `need` 1 to 9999 } | A new list is made through B2's `lists::create_list`, and each item is added or given its new need through `lists::add_item`, with producer `agent:<client>`. It never removes anything. The preview shows only the items that change, "added" or "changed" with the old need struck through. |
+
+Every proposal tool also takes an optional `reason` (≤ 300 chars). It's shown as `Reason given: "…"` and hidden when empty (IMPLEMENTING §17). The login note replaced the adventure-note target the first draft had, per the design. Built: `propose_note` (P2b), then `propose_quest_plan` and `propose_list_change` (P2c). A plan step's `kind` (`accept`, `turn_in`, `objective`) is optional, but accept and turn-in steps need a `quest_id`.
 
 **What they never do:** edit an addon's SavedVariables, ElvUI or any other game file. Those are §7's `SvEdit` and `Profile` kinds, and they stay out of P2. When they come, they'll use the same queue with the same approval, plus the write gate (WoW closed, safety snapshot).
 
@@ -171,7 +172,7 @@ These are enforced in the agent process, and again at ingest, since the inbox is
    - the preview shows every applied field, as text;
    - nothing is applied without Approve;
    - the conflict path.
-3. **P2c:** `propose_quest_plan`, when P1's plan table and slot land (@coder2), and `propose_shopping_list`, when B2's lists land. Each is a schema plus its apply function on the same queue.
+3. **P2c:** `propose_quest_plan` and `propose_list_change`. Each is a schema plus its apply function on the same queue (`proposals/plan.rs`, `proposals/list.rs`).
 
 ---
 

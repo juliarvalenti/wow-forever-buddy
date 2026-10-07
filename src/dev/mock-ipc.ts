@@ -150,18 +150,61 @@ export function installMockIpc(): void {
     status_reason: null,
     decided_at: null,
     note: null,
+    plan: null,
+    list: null,
     ...extra,
   });
+  const step = (text: string, zone: string | null = null): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
+  const felwood: Plan = {
+    id: 4,
+    character_id: 3,
+    character: "Velyra",
+    title: "Felwood",
+    steps: [
+      step('Accept "Cleansing Felwood"'),
+      step("Kill Irontree Stompers", "Irontree Woods"),
+      step('Turn in "Cleansing Felwood"', "Emerald Sanctuary"),
+      step("Hearth to Ironforge"),
+    ],
+    producer: "app",
+    created_at: iso(60 * 26),
+    done: [1, 2],
+    progress_at: iso(60 * 20),
+    delivery: { state: "synced", since: iso(60 * 25) },
+  };
   const approvals: Approvals = {
     waiting:
       s === "approvals"
         ? [
             proposal(3, 4, "Claude Desktop", {
-              reason: "Thursday's raid needs the attunement done first.",
-              note: {
-                ...noteView(3, "Velyra Duskmane", "druid", "Hand in the Onyxia attunement before Thursday's raid."),
-                once: false,
-                until: iso(-60 * 24 * 2),
+              kind: "quest_plan",
+              reason: "Felwood is nearly done; Winterspring next for the Everlook quests at 56.",
+              plan: {
+                character_id: 3,
+                character: "Velyra Duskmane",
+                class: "druid",
+                title: "Winterspring",
+                steps: [
+                  step("Fly to Everlook"),
+                  step('Accept "Are We There, Yeti?"', "Everlook"),
+                  step("Collect 10 Thick Yeti Fur", "Owl Wing Thicket"),
+                  step('Turn in "Are We There, Yeti?"', "Everlook"),
+                ],
+                replaces: felwood,
+              },
+            }),
+            proposal(5, 60 * 22, "claude-code", {
+              kind: "list",
+              reason: "for the Mooncloth Robe at 300",
+              list: {
+                list_id: 2,
+                name: "Tailoring 300",
+                for_character: null,
+                gone: false,
+                changes: [
+                  { item_id: 14342, name: "Mooncloth", quality: 2, icon_file_id: null, need: 4, was: null },
+                  { item_id: 14047, name: "Runecloth", quality: 1, icon_file_id: null, need: 30, was: 20 },
+                ],
               },
             }),
             proposal(2, 12, "Claude Desktop", {
@@ -176,9 +219,17 @@ export function installMockIpc(): void {
       s === "approvals"
         ? [
             proposal(1, 60 * 20, "Claude Desktop", {
+              kind: "quest_plan",
               status: "applied",
               decided_at: iso(60 * 20),
-              note: noteView(6, "Sela", "priest", "Train at the Undercity on the way."),
+              plan: {
+                character_id: 6,
+                character: "Sela",
+                class: "priest",
+                title: "Desolace",
+                steps: [step("Hearth")],
+                replaces: null,
+              },
             }),
             proposal(0, 60 * 44, "Claude Desktop", {
               status: "discarded",
@@ -188,8 +239,14 @@ export function installMockIpc(): void {
             proposal(-1, 60 * 46, "claude-code", {
               kind: "list",
               status: "rejected",
-              status_reason: "List changes can't be applied yet.",
+              status_reason: "item 99999 isn't one we know",
               decided_at: null,
+            }),
+            proposal(-2, 60 * 70, "Claude Desktop", {
+              kind: "list",
+              status: "applied",
+              decided_at: iso(60 * 70),
+              list: { list_id: null, name: "Raid consumables", for_character: null, gone: false, changes: [] },
             }),
           ]
         : [],

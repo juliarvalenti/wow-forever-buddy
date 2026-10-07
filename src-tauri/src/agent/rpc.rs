@@ -245,10 +245,10 @@ mod tests {
         assert_eq!(out[0]["result"]["protocolVersion"], "2025-06-18");
         assert_eq!(out[0]["result"]["serverInfo"]["name"], "forever-buddy");
         let tools = out[1]["result"]["tools"].as_array().unwrap();
-        // Only propose_note isn't read-only, and it's never destructive.
+        // Only the propose_ tools aren't read-only, and they're never destructive.
         for t in tools {
             let a = &t["annotations"];
-            if t["name"] == "propose_note" {
+            if t["name"].as_str().unwrap().starts_with("propose_") {
                 assert_eq!(
                     (&a["readOnlyHint"], &a["destructiveHint"]),
                     (&json!(false), &json!(false))
