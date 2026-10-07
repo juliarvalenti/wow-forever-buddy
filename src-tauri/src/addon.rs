@@ -145,23 +145,26 @@ fn read_if_there(path: &Path) -> Option<Vec<u8>> {
     path.is_file().then(|| safe_read(path).ok()).flatten()
 }
 
-/// Whether the installed TOC lists every bridge slot, so the game loads
-/// what the app writes there (0.4.0 and later). WoW reads the TOC only at
-/// client start, which is why an older install needs an update and a
-/// restart first.
-pub fn lists_slots(game: &GameRoot) -> bool {
+/// The bridge slots the installed TOC lists, so the game loads what the app
+/// writes there (tooltips from 0.4.0, the plan from 0.6.0). WoW reads the
+/// TOC only at client start, which is why a slot a newer addon adds needs
+/// an update and a restart first. Empty when the addon isn't installed.
+pub fn listed_slots(game: &GameRoot) -> Vec<crate::bridge::Slot> {
     let Some(toc) = rel(TOC)
         .resolve(game)
         .ok()
         .and_then(|path| read_if_there(&path))
     else {
-        return false;
+        return Vec::new();
     };
     let toc = String::from_utf8_lossy(&toc);
-    crate::bridge::SLOTS.iter().all(|slot| {
-        let file = format!("Data/{}.lua", slot.name());
-        toc.lines().any(|line| line.trim() == file)
-    })
+    crate::bridge::SLOTS
+        .into_iter()
+        .filter(|slot| {
+            let file = format!("Data/{}.lua", slot.name());
+            toc.lines().any(|line| line.trim() == file)
+        })
+        .collect()
 }
 
 /// Installs or updates the addon: every bundled file through the write gate

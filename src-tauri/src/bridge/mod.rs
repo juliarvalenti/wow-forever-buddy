@@ -39,15 +39,18 @@ pub enum Slot {
     Tooltip1,
     /// The tooltip index, odd item ids.
     Tooltip2,
+    /// Sent quest plans, one per character at most (P1, INGAME §7).
+    Plan,
 }
 
-pub const SLOTS: [Slot; 2] = [Slot::Tooltip1, Slot::Tooltip2];
+pub const SLOTS: [Slot; 3] = [Slot::Tooltip1, Slot::Tooltip2, Slot::Plan];
 
 impl Slot {
     pub fn name(self) -> &'static str {
         match self {
             Slot::Tooltip1 => "Tooltip1",
             Slot::Tooltip2 => "Tooltip2",
+            Slot::Plan => "Plan",
         }
     }
 
@@ -209,10 +212,26 @@ pub(crate) fn send(
     flavor: &str,
     stamp: i64,
 ) -> AppResult<Sent> {
-    if !addon::lists_slots(&target.game) {
+    // Only the slots the installed addon's TOC lists: the game wouldn't load
+    // the others, and an older addon keeps getting the ones it knows.
+    let listed = addon::listed_slots(&target.game);
+    let has = |s: Slot| listed.contains(&s);
+    if listed.is_empty() {
         return Ok(Sent::NoAddon);
     }
-    let built = tooltip::build(db, flavor, stamp)?;
+    let mut slots = Vec::new();
+    let mut too_large = false;
+    if has(Slot::Tooltip1) && has(Slot::Tooltip2) {
+        let built = tooltip::build(db, flavor, stamp)?;
+        too_large = built.too_large;
+        slots.extend(built.slots);
+    }
+    if has(Slot::Plan) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::plans::slot_entries(db, flavor)?);
+        slots.push((Slot::Plan, render(Slot::Plan, body)?));
+    }
+    let built = tooltip::Built { slots, too_large };
     if built
         .slots
         .iter()
@@ -401,6 +420,7 @@ mod tests {
             [
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip1.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip2.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Plan.lua",
             ]
         );
         for slot in SLOTS {
