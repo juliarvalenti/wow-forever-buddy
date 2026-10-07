@@ -183,6 +183,7 @@ function M.new(opts)
         combat = false, -- InCombatLockdown
         shift = false, -- IsShiftKeyDown
         bound = {}, -- id -> the bind line its tooltip shows ("Soulbound")
+        cursor = { 0, 0 }, -- GetCursorPosition (U1's minimap button drag)
         quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
         -- The quest log (B1): { questID, header = bool, done = bool }.
         questlog = {},
@@ -694,6 +695,14 @@ function M.new(opts)
     function Frame:SetEnabled(on)
         self.enabled = on and true or false
     end
+    -- A check button (U1's settings): client.click flips it first, as the
+    -- game does before OnClick.
+    function Frame:SetChecked(on)
+        self.checked = on and true or false
+    end
+    function Frame:GetChecked()
+        return rawget(self, "checked")
+    end
     function Frame:RegisterEvent(event)
         if client.unknown[event] then
             error('Frame:RegisterEvent(): Attempt to register unknown event "' .. event .. '"', 2)
@@ -747,6 +756,39 @@ function M.new(opts)
         env.AuctionHouseFrame = newWidget(env.UIParent)
         env.MailFrame = newWidget(env.UIParent)
         env.SendMailNameEditBox = newWidget(env.MailFrame)
+        -- U1: the minimap the button sits on (140 wide, centred at 1000,
+        -- 700), Esc's list of frames, Esc › Options' registry and the item
+        -- tooltip's lines.
+        env.Minimap = newWidget(env.UIParent)
+        env.Minimap.GetWidth = function()
+            return 140
+        end
+        env.Minimap.GetCenter = function()
+            return 1000, 700
+        end
+        env.Minimap.GetEffectiveScale = function()
+            return 1
+        end
+        env.GetCursorPosition = function()
+            return world.cursor[1], world.cursor[2]
+        end
+        env.UISpecialFrames = {}
+        env.Settings = {
+            categories = {},
+            RegisterCanvasLayoutCategory = function(frame, name)
+                return { frame = frame, name = name }
+            end,
+            RegisterAddOnCategory = function(category)
+                table.insert(env.Settings.categories, category)
+            end,
+        }
+        env.GameTooltip = newWidget(env.UIParent)
+        env.GameTooltip.SetText = function(self, text)
+            self.lines = { text }
+        end
+        env.GameTooltip.AddLine = function(self, text)
+            table.insert(self.lines, text)
+        end
         -- Blizzard's backpack frame (B3): sixteen item buttons, bag 0.
         local backpack = newWidget(env.UIParent)
         backpack.buttons = {}
@@ -1205,10 +1247,13 @@ function M.new(opts)
     end
 
     -- Clicks a widget: its OnClick, as the client calls it.
-    function client.click(widget)
+    function client.click(widget, which)
         local fn = widget.scripts.OnClick
+        if rawget(widget, "checked") ~= nil then
+            widget.checked = not widget.checked
+        end
         if fn then
-            local ok, err = pcall(fn, widget, "LeftButton")
+            local ok, err = pcall(fn, widget, which or "LeftButton")
             if not ok then
                 table.insert(client.errors, "click: " .. tostring(err))
             end

@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.8.0"
+local VERSION = "0.9.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -490,6 +490,29 @@ local R = { scanned = nil } -- scanned: profession name -> { skill, max, at, mad
 -- Bag cleanup marks (B3), filled in by the cleanup section further down
 -- (the tooltip hook and the mailbox's errands use it).
 local C = {}
+-- The Forever Buddy window and minimap button (U1), filled in near the end;
+-- declared here so the panels above can refresh it.
+local U = { errors = 0 }
+
+-- U1's on/off settings (ForeverBuddySettings, per account), on unless
+-- turned off: "tooltips" (alts on item tooltips), "bagMarks" (the tags in
+-- the bags), "minimap" (the minimap button).
+function C.opt(key)
+    return type(ForeverBuddySettings) ~= "table" or ForeverBuddySettings[key] ~= false
+end
+
+function C.setOpt(key, on)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    -- (`(not on) and false or nil` is always nil.)
+    if on then
+        ForeverBuddySettings[key] = nil
+    else
+        ForeverBuddySettings[key] = false
+    end
+end
+
 do
     local MAX_MADE = 1000
     -- C2: a recipe's required reagents, { reagentID, qty, ... }. Basic
@@ -1388,7 +1411,8 @@ local function hookTooltips()
     end
     hooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if not pcall(addItemLines, tooltip, data) then
+        -- U1: "Your alts on item tooltips" (C.opt is filled in further down).
+        if C.opt("tooltips") and not pcall(addItemLines, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
         -- B3: a marked item's line, after ours (C is filled in further down).
@@ -1744,6 +1768,9 @@ local function afterTick()
     if planFrame and planFrame:IsShown() then
         renderPlan()
     end
+    if U.refresh then
+        pcall(U.refresh)
+    end
 end
 
 function renderPlan()
@@ -1916,7 +1943,7 @@ end
 
 local LIST_ROWS = 12
 local listFrame, errandFrame
-local listDocked = false -- beside a vendor or the AH, rather than from /fb list
+local listDocked = false -- shown beside a vendor or the AH
 local here = {} -- item id or lower-case name -> true: sold here, or in the AH results
 local under = {} -- item id -> how many of the first AH rows are under the last scan
 local WORDS = { "one", "two", "three", "four", "five" }
@@ -2047,11 +2074,11 @@ local function listRow(f, i, height)
     return row
 end
 
--- Fills the list panel. Docked (at a vendor or the AH), lists with
--- something here come first and the rest fold into "+N lists"; undocked,
--- every list shows.
-local function renderLists(docked)
-    local f = listFrame
+-- Fills the list panel, or `target` (U1's Lists tab). Docked (at a vendor
+-- or the AH), lists with something here come first and the rest fold into
+-- "+N lists"; undocked, every list shows.
+local function renderLists(docked, target)
+    local f = target or listFrame
     for _, row in ipairs(f.rows) do
         row:Hide()
     end
@@ -2113,39 +2140,30 @@ local function renderLists(docked)
     end
     local at = type(s.stamp) == "number" and read(date, "%H:%M", s.stamp)
     local foot = "From Forever Buddy" .. (at and (" · " .. at) or "") .. " · /fb list"
-    if folded > 0 then
+    if target then
+        foot = "" -- the window's own footer says where it's from
+    elseif folded > 0 then
         foot = "+" .. folded .. (folded == 1 and " list" or " lists") .. " · " .. foot
     end
     f.footer:SetText(foot)
     f:SetHeight(48 + n * 32)
 end
 
+-- Beside a vendor or the AH. Anywhere else, the lists are U1's Lists tab.
 local function showLists(anchor)
     if not listFrame then
         listFrame = panel("ForeverBuddyListFrame", "Your list")
     end
     listFrame:ClearAllPoints()
-    if anchor then
-        listFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 6, 0)
-    else
-        listFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -60, -160)
-    end
-    listDocked = anchor ~= nil
+    listFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 6, 0)
+    listDocked = true
     renderLists(listDocked)
     listFrame:Show()
 end
 
-local listPinned = false -- opened with /fb list: stays after a vendor closes
-
--- The vendor or AH it docked beside closed: back to where /fb list had it,
--- or gone.
+-- The vendor or AH it docked beside closed.
 local function undock()
-    if not listFrame or not listDocked then
-        return
-    end
-    if listPinned then
-        showLists(nil)
-    else
+    if listFrame and listDocked then
         listFrame:Hide()
     end
 end
@@ -2219,6 +2237,7 @@ local function merchantUpdate()
     if listFrame and listFrame:IsShown() then
         renderLists(listDocked)
     end
+    pcall(U.refresh) -- U1's Lists tab: "· here"
 end
 
 local merchantHooked = false
@@ -2250,6 +2269,7 @@ local function auctionBrowse()
     if listFrame and listFrame:IsShown() then
         renderLists(true)
     end
+    pcall(U.refresh)
 end
 
 -- One item's AH rows (cheapest first): how many lead under the last scan.
@@ -2283,6 +2303,7 @@ local function auctionItem(itemKey)
     if listFrame and listFrame:IsShown() then
         renderLists(true)
     end
+    pcall(U.refresh)
 end
 
 -- Who an errand goes to: a list's character (Lists slot) or a marked
@@ -2297,9 +2318,11 @@ end
 
 -- The errands panel: one row per errand, a "Fill recipient" button that
 -- only types the name, disabled when the goods are in the bank. Marked
--- sends (B3) are ordinary rows: "Truestrike Shoulders to Kaelor".
-local function renderErrands(errands, s, me)
-    local f = errandFrame
+-- sends (B3) are ordinary rows: "Truestrike Shoulders to Kaelor". Into
+-- `target` for U1's Errands tab, where Fill recipient waits for a mailbox.
+local function renderErrands(errands, s, me, target)
+    local f = target or errandFrame
+    local atMail = mailOpen or not target
     for _, row in ipairs(f.rows) do
         row:Hide()
     end
@@ -2324,17 +2347,17 @@ local function renderErrands(errands, s, me)
         else
             row.detail:SetText("none in your bags now · " .. whose)
         end
-        row.fill:SetEnabled(bags > 0)
+        row.fill:SetEnabled(bags > 0 and atMail)
         row.fill.tip = "Types \"" .. plain(toName) .. "\" in the To field. Attach the "
             .. plain(name) .. " yourself, then press Send."
         row.fill:SetScript("OnClick", function()
             local box = rawget(_G, "SendMailNameEditBox")
-            if bags > 0 and type(box) == "table" then
+            if bags > 0 and mailOpen and type(box) == "table" then
                 box:SetText(toName)
             end
         end)
     end
-    f.footer:SetText("Nothing is attached or sent for you.")
+    f.footer:SetText((atMail and "" or "Fill recipient works at a mailbox. ") .. "Nothing is attached or sent for you.")
     f:SetHeight(48 + #errands * 56)
 end
 
@@ -2361,34 +2384,6 @@ local function atMailbox()
     errandFrame:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
     renderErrands(errands, s, s and myAlt(s))
     errandFrame:Show()
-end
-
-local function toggleLists()
-    if listFrame and listFrame:IsShown() then
-        listPinned = false
-        listFrame:Hide()
-    else
-        listPinned = true
-        showLists(nil)
-    end
-end
-
--- /fb errands: the same, as text, anywhere.
-local function sayErrands()
-    local errands = C.errands()
-    if #errands == 0 then
-        say(GOLD_PREFIX .. "no errands for this character.")
-        return
-    end
-    local s = listsSlot()
-    for _, e in ipairs(errands) do
-        local toName, toClass = C.recipient(e, s)
-        local bags = type(e.item.id) == "number" and (liveCount(e.item.id)) or 0
-        local whose = e.marked and "marked in Forever Buddy"
-            or (plain(toName) .. "'s " .. plain(e.list.name or "") .. " list")
-        say(GOLD_PREFIX .. plain(itemName(e.item)) .. (e.count and (" ×" .. e.count) or "") .. " to "
-            .. colorName(toName, toClass) .. " (" .. bags .. " in bags) · " .. whose)
-    end
 end
 
 local function guarded(fn, ...)
@@ -2483,7 +2478,8 @@ do
         if type(each) ~= "function" then
             return
         end
-        local marks = C.mine()
+        -- U1: "Marks in your bags" off clears the tags.
+        local marks = C.opt("bagMarks") and C.mine() or {}
         for _, frame in each() do
             if type(frame) == "table" and type(frame.EnumerateValidItems) == "function" then
                 for _, button in frame:EnumerateValidItems() do
@@ -2598,31 +2594,44 @@ do
         return out
     end
 
-    -- /fb cleanup: "5 marked to sell, 2 to send." or "nothing marked on
-    -- Thrandor."
-    function C.say()
-        local sell, send = 0, 0
+    -- U1's Cleanup tab: one row per marked item still carried (bags or
+    -- bank), as { label, right, detail }, by name; and the line over them,
+    -- "5 to sell · ~36c at a vendor · 1 to send" (nil with nothing marked).
+    function C.rows()
+        local rows, sends = {}, 0
         for id, m in pairs(C.mine()) do
-            if num(read("C_Item.GetItemCount", id, true)) > 0 then
-                if m.sell then
-                    sell = sell + 1
-                else
-                    send = send + 1
+            local bags, bank = liveCount(id)
+            if bags + bank > 0 then
+                local name = read("C_Item.GetItemInfo", id)
+                name = type(name) == "string" and name or ("Item " .. id)
+                local reason = m.reason == "upgrade" and (m.gain or 0) > 0 and ("+" .. m.gain .. " item level")
+                    or ((m.reason == "grey" or m.reason == "outgrown") and m.reason) or ""
+                if not m.sell then
+                    sends = sends + 1
                 end
+                rows[#rows + 1] = {
+                    name = name,
+                    label = plain(name) .. (bags + bank > 1 and (" ×" .. (bags + bank)) or ""),
+                    right = m.sell and "sell" or ("→ " .. colorName(m.to.name, m.to.class)),
+                    detail = reason .. (bags == 0 and ((reason ~= "" and " · " or "") .. "in your bank") or ""),
+                }
             end
         end
-        if sell + send == 0 then
-            say(GOLD_PREFIX .. "nothing marked on " .. plain(character and character.name or "this character") .. ".")
-            return
+        table.sort(rows, function(a, b)
+            return a.name < b.name
+        end)
+        if #rows == 0 then
+            return rows, nil
         end
+        local n, total, priced = sells()
         local parts = {}
-        if sell > 0 then
-            parts[#parts + 1] = sell .. " marked to sell"
+        if n > 0 then
+            parts[#parts + 1] = n .. " to sell" .. (priced and (" · ~" .. coins(total) .. " at a vendor") or "")
         end
-        if send > 0 then
-            parts[#parts + 1] = send .. (sell > 0 and " to send" or " marked to send")
+        if sends > 0 then
+            parts[#parts + 1] = sends .. " to send"
         end
-        say(GOLD_PREFIX .. table.concat(parts, ", ") .. ".")
+        return rows, table.concat(parts, " · ")
     end
 end
 
@@ -3011,10 +3020,7 @@ do
 
     -- Written only when off.
     function L.set(on)
-        if type(ForeverBuddySettings) ~= "table" then
-            ForeverBuddySettings = {}
-        end
-        ForeverBuddySettings.lockouts = (not on) and false or nil
+        C.setOpt("lockouts", on)
     end
 
     -- "resets Tue", or "resets in 5 h" under a day.
@@ -3095,17 +3101,591 @@ do
     end
 end
 
--- /fb ------------------------------------------------------------------------------
+-- The Forever Buddy window and minimap button (U1, INGAME §17) --------------------
 --
--- /fb plan opens the plan frame; /fb list the list panel; /fb errands says
--- this character's errands; /fb brief repeats this login's briefing in
--- full; /fb brief off|on.
-local function slash(msg)
-    local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
-    if cmd == "plan" then
-        if not pcall(togglePlan) then
+-- One window with tabs Plan · Lists · Errands · Cleanup · Settings, opened by
+-- the minimap button, the addon compartment or /fb, never by itself. It
+-- shows what the other panels show; the only things it changes are our own
+-- settings. In combat it can open and close, but nothing in it changes.
+-- Sync is typed (INGAME §5 C): ReloadUI is protected on Forever, and a
+-- secure /reload button waits on probe run 4.
+
+do
+    local ICON = "Interface\\AddOns\\ForeverBuddy\\Media\\Icon"
+    local TABS = { "Plan", "Lists", "Errands", "Cleanup", "Settings" }
+    local W, H = 360, 420
+    local BLUE = "|cff4fb8ff" -- the verbs in the minimap button's tooltip
+    local win, button, optionChecks
+    local panes = {}
+
+    -- ForeverBuddySettings, per account: the window's place and tab, the
+    -- button's angle and whether the plan tracker shows.
+    local function cfg()
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        return ForeverBuddySettings
+    end
+
+    local function who()
+        return plain(character and character.name or "this character")
+    end
+
+    -- "From Forever Buddy · 21:04", "· may be out of date" past a day (§4).
+    function U.fresh(stamp)
+        if type(stamp) ~= "number" then
+            return "From Forever Buddy"
+        end
+        local at = read(date, "%H:%M", stamp)
+        return "From Forever Buddy" .. (at and (" · " .. at) or "")
+            .. (((now() or stamp) - stamp > 86400) and " · may be out of date" or "")
+    end
+
+    local function newest(names)
+        local t
+        for _, name in ipairs(names) do
+            local s = slots[name]
+            local st = type(s) == "table" and s.stamp
+            if type(st) == "number" and (not t or st > t) then
+                t = st
+            end
+        end
+        return t
+    end
+
+    -- Each tab's slots, for its freshness line.
+    local SOURCES = {
+        { "Plan" },
+        { "Lists" },
+        { "Lists", "Cleanup" },
+        { "Cleanup" },
+        { "Plan", "Lists", "Cleanup", "Briefing", "Tooltip1", "Tooltip2" },
+    }
+
+    -- Plan: §7's steps, the current one gold with an edge, done ones grey,
+    -- and the → that sets the game's own waypoint. Ticking stays on the
+    -- tracker.
+    local function planRow(p, i)
+        local row = p.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, p)
+            row:SetSize(W - 70, 30)
+            row.edge = row:CreateTexture(nil, "ARTWORK")
+            row.edge:SetSize(2, 26)
+            row.edge:SetPoint("LEFT", -6, 0)
+            row.edge:SetColorTexture(1, 0.82, 0)
+            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            row.label:SetPoint("TOPLEFT", 0, -2)
+            row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
+            row.go = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.go:SetSize(24, 18)
+            row.go:SetPoint("RIGHT", 0, 0)
+            row.go:SetText("→")
+            p.rows[i] = row
+        end
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", p, "TOPLEFT", 18, -36 - (i - 1) * 32)
+        row:Show()
+        return row
+    end
+
+    local function renderPlanTab(p)
+        for _, row in ipairs(p.rows) do
+            row:Hide()
+        end
+        p.tracker:SetChecked(planFrame ~= nil and planFrame:IsShown())
+        if not plan then
+            p.footer:SetText("No plan for " .. who() .. ". Make one in Forever Buddy, or ask Claude for one.")
+            p:SetHeight(64)
+            return
+        end
+        local current = currentStep()
+        local here = read("C_Map.GetBestMapForUnit", "player")
+        local n = math.min(#plan.steps, LIST_ROWS)
+        for i = 1, n do
+            local step = plan.steps[i]
+            local row = planRow(p, i)
+            local done = progress.done[i]
+            row.label:SetText(i .. ". " .. plain(step.text))
+            if done then
+                row.label:SetTextColor(0.5, 0.5, 0.5)
+            elseif i == current then
+                row.label:SetTextColor(1, 0.82, 0)
+            else
+                row.label:SetTextColor(1, 1, 1)
+            end
+            row.edge:SetShown(i == current)
+            local where = {}
+            if type(step.zone) == "string" then
+                where[#where + 1] = plain(step.zone)
+            end
+            if type(step.giver) == "string" then
+                where[#where + 1] = plain(step.giver)
+            end
+            row.detail:SetText(table.concat(where, " · "))
+            local canGo = hasPosition(step) and step.map == here and not done
+            row.go:SetEnabled(canGo)
+            row.go:SetScript("OnClick", function()
+                if canGo then
+                    setWaypoint(i, step)
+                end
+            end)
+        end
+        p.footer:SetText(doneCount() .. " of " .. #plan.steps .. " done")
+        p:SetHeight(64 + n * 32)
+    end
+
+    local function renderErrandsTab(p)
+        local errands = C.errands()
+        if #errands == 0 then
+            for _, row in ipairs(p.rows) do
+                row:Hide()
+            end
+            p.meta:SetText("")
+            p.footer:SetText("No errands for " .. who() .. ".")
+            p:SetHeight(56)
+            return
+        end
+        local s = listsSlot()
+        renderErrands(errands, s, s and myAlt(s), p)
+    end
+
+    -- Cleanup: §14's marks with their reasons, under the totals line.
+    local function renderCleanupTab(p)
+        for _, row in ipairs(p.rows) do
+            row:Hide()
+        end
+        local rows, line = C.rows()
+        if #rows == 0 then
+            p.top:SetText("")
+            p.footer:SetText("Nothing marked on " .. who() .. ".")
+            p:SetHeight(56)
+            return
+        end
+        p.top:SetText(line or "")
+        local n = math.min(#rows, LIST_ROWS)
+        for i = 1, n do
+            local r = rows[i]
+            local row = listRow(p, i)
+            row.label:SetText(r.label)
+            row.right:SetText(r.right)
+            row.detail:SetText(r.detail)
+            row.label:SetTextColor(1, 1, 1)
+            row.right:SetTextColor(1, 0.82, 0)
+        end
+        p.footer:SetText("Mark items in the Forever Buddy app.")
+        p:SetHeight(48 + n * 32)
+    end
+
+    local RENDER = {
+        renderPlanTab,
+        function(p)
+            renderLists(false, p)
+        end,
+        renderErrandsTab,
+        renderCleanupTab,
+        function() end, -- Settings: its checkboxes are refreshed with the rest
+    }
+
+    -- Settings: every toggle, here and in Esc › Options › AddOns.
+    local OPTIONS = {
+        { head = "In game" },
+        { label = "Login briefing", get = briefingOn, set = setBriefing },
+        { label = "Lockouts at the entrance", get = L.on, set = L.set },
+        {
+            label = "Session coach",
+            get = S.coachOn,
+            set = function(on)
+                S.guarded(S.setCoach, on)
+            end,
+        },
+        { label = "Hide the coach in combat", indent = true, get = S.hidesInCombat, set = S.setCoachCombat },
+        { label = "Session card at logout", get = S.cardOn, set = S.setCard },
+        {
+            label = "Marks in your bags",
+            get = function()
+                return C.opt("bagMarks")
+            end,
+            set = function(on)
+                C.setOpt("bagMarks", on)
+                pcall(C.tagBags)
+            end,
+        },
+        { head = "Tooltips" },
+        {
+            label = "Your alts on item tooltips",
+            get = function()
+                return C.opt("tooltips")
+            end,
+            set = function(on)
+                C.setOpt("tooltips", on)
+            end,
+        },
+        { head = "This window" },
+        {
+            label = "Minimap button",
+            get = function()
+                return C.opt("minimap")
+            end,
+            set = function(on)
+                C.setOpt("minimap", on)
+                U.placeButton()
+            end,
+        },
+    }
+
+    local function refreshChecks(checks)
+        for _, cb in ipairs(checks) do
+            cb:SetChecked(cb.option.get() and true or false)
+            if cb.option.indent then
+                cb:SetEnabled(S.coachOn())
+            end
+        end
+    end
+
+    local function buildOptions(parent, y)
+        local checks = {}
+        for _, o in ipairs(OPTIONS) do
+            if o.head then
+                local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                h:SetPoint("TOPLEFT", 14, y)
+                h:SetText(o.head)
+                y = y - 22
+            else
+                local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+                cb:SetSize(24, 24)
+                cb:SetPoint("TOPLEFT", o.indent and 34 or 14, y)
+                cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+                cb.label:SetText(o.label)
+                cb.option = o
+                cb:SetScript("OnClick", function(b)
+                    -- Nothing changes in combat: the box goes back.
+                    if not read("InCombatLockdown") and not pcall(o.set, b:GetChecked() and true or false) then
+                        U.errors = U.errors + 1
+                    end
+                    U.refresh()
+                end)
+                checks[#checks + 1] = cb
+                y = y - 26
+            end
+        end
+        return checks
+    end
+
+    -- The same toggles as a canvas in Esc › Options › AddOns.
+    local function registerOptions()
+        if type(Settings) ~= "table" or type(Settings.RegisterCanvasLayoutCategory) ~= "function" then
+            return
+        end
+        -- No parent: the Settings panel takes it and shows it.
+        local frame = CreateFrame("Frame", "ForeverBuddyOptions")
+        frame:Hide()
+        local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        title:SetPoint("TOPLEFT", 14, -14)
+        title:SetText("Forever Buddy")
+        local checks = buildOptions(frame, -48)
+        frame.checks = checks
+        frame:SetScript("OnShow", function()
+            refreshChecks(checks)
+        end)
+        optionChecks = checks
+        local category = Settings.RegisterCanvasLayoutCategory(frame, "Forever Buddy")
+        if type(Settings.RegisterAddOnCategory) == "function" then
+            Settings.RegisterAddOnCategory(category)
+        end
+    end
+
+    local function pane(i)
+        local scroll = CreateFrame("ScrollFrame", nil, win, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 10, -64)
+        scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -30, 34)
+        local p = CreateFrame("Frame", nil, scroll)
+        p:SetSize(W - 44, 64)
+        scroll:SetScrollChild(p)
+        p.rows = {}
+        p.top = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        p.top:SetPoint("TOPLEFT", 12, -8)
+        p.meta = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        p.meta:SetPoint("TOPRIGHT", -8, -8)
+        p.footer = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        p.footer:SetPoint("BOTTOMLEFT", 12, 8)
+        p.footer:SetWidth(W - 70)
+        p.footer:SetJustifyH("LEFT")
+        p.scroll = scroll
+        scroll:Hide()
+        if i == 1 then
+            p.tracker = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
+            p.tracker:SetSize(24, 24)
+            p.tracker:SetPoint("TOPLEFT", 8, -4)
+            p.tracker.label = p.tracker:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            p.tracker.label:SetPoint("LEFT", p.tracker, "RIGHT", 2, 0)
+            p.tracker.label:SetText("Show the plan tracker on screen")
+            p.tracker:SetScript("OnClick", function(b)
+                if not read("InCombatLockdown") then
+                    U.setTracker(b:GetChecked() and true or false)
+                end
+                U.refresh()
+            end)
+        elseif i == 5 then
+            p.checks = buildOptions(p, -8)
+            p:SetHeight(320)
+        end
+        panes[i] = p
+    end
+
+    local function build()
+        win = CreateFrame("Frame", "ForeverBuddyWindow", UIParent, "ButtonFrameTemplate")
+        win:SetSize(W, H)
+        win:SetFrameStrata("HIGH")
+        win:SetToplevel(true)
+        win:SetClampedToScreen(true)
+        win:SetMovable(true)
+        local at = cfg().window
+        win:ClearAllPoints()
+        if type(at) == "table" and type(at[1]) == "string" and type(at[3]) == "number" and type(at[4]) == "number" then
+            win:SetPoint(at[1], UIParent, type(at[2]) == "string" and at[2] or at[1], at[3], at[4])
+        else
+            win:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+        end
+        pcall(win.SetTitle, win, "Forever Buddy")
+        pcall(win.SetPortraitToAsset, win, ICON)
+        win.title = "Forever Buddy"
+        -- Moved by its title bar; where it was left is kept.
+        local grip = CreateFrame("Frame", nil, win)
+        grip:SetPoint("TOPLEFT", 60, 0)
+        grip:SetPoint("TOPRIGHT", -26, 0)
+        grip:SetHeight(24)
+        grip:EnableMouse(true)
+        grip:RegisterForDrag("LeftButton")
+        grip:SetScript("OnDragStart", function()
+            win:StartMoving()
+        end)
+        grip:SetScript("OnDragStop", function()
+            win:StopMovingOrSizing()
+            local point, _, rel, x, y = win:GetPoint()
+            if type(point) == "string" and type(x) == "number" and type(y) == "number" then
+                cfg().window = { point, rel, x, y }
+            end
+        end)
+        if type(UISpecialFrames) == "table" then
+            table.insert(UISpecialFrames, "ForeverBuddyWindow") -- Esc closes it
+        end
+        win.fresh = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        win.fresh:SetPoint("BOTTOMLEFT", 14, 12)
+        win.sync = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        win.sync:SetPoint("BOTTOMRIGHT", -14, 12)
+        win.Tabs = {}
+        for i, name in ipairs(TABS) do
+            local tab = CreateFrame("Button", "ForeverBuddyWindowTab" .. i, win, "PanelTabButtonTemplate")
+            tab:SetID(i)
+            tab:SetText(name)
+            if i == 1 then
+                tab:SetPoint("TOPLEFT", win, "BOTTOMLEFT", 11, 2)
+            else
+                tab:SetPoint("TOPLEFT", win.Tabs[i - 1], "TOPRIGHT", 3, 0)
+            end
+            tab:SetScript("OnClick", function()
+                U.show(i)
+            end)
+            if type(PanelTemplates_TabResize) == "function" then
+                pcall(PanelTemplates_TabResize, tab, 0)
+            end
+            win.Tabs[i] = tab
+        end
+        if type(PanelTemplates_SetNumTabs) == "function" then
+            pcall(PanelTemplates_SetNumTabs, win, #TABS)
+        end
+        for i = 1, #TABS do
+            pane(i)
+        end
+        win.panes = panes
+        win:Hide()
+    end
+
+    -- Redraws the open tab and both copies of the settings. Nothing changes
+    -- in combat (INGAME §4).
+    function U.refresh()
+        if read("InCombatLockdown") then
+            if optionChecks then
+                refreshChecks(optionChecks)
+            end
+            if win then
+                refreshChecks(panes[5].checks)
+            end
+            return
+        end
+        if optionChecks then
+            refreshChecks(optionChecks)
+        end
+        if not win or not win:IsShown() then
+            return
+        end
+        refreshChecks(panes[5].checks)
+        local i = win.current
+        if not pcall(RENDER[i], panes[i]) then
+            U.errors = U.errors + 1
+        end
+        win.fresh:SetText(U.fresh(newest(SOURCES[i])))
+        win.sync:SetText("Type /reload to sync")
+    end
+
+    -- Opens on tab `i`, or the last one used.
+    function U.show(i)
+        if not win then
+            build()
+        end
+        i = TABS[i] and i or (TABS[cfg().tab] and cfg().tab) or 1
+        cfg().tab = i
+        win.current = i
+        for k, p in ipairs(panes) do
+            p.scroll:SetShown(k == i)
+        end
+        if type(PanelTemplates_SetTab) == "function" then
+            pcall(PanelTemplates_SetTab, win, i)
+        end
+        win:Show()
+        U.refresh()
+    end
+
+    function U.toggle()
+        if win and win:IsShown() then
+            win:Hide()
+        else
+            U.show()
+        end
+    end
+
+    -- "Show the plan tracker on screen": §7's own frame, kept per account.
+    function U.setTracker(on)
+        cfg().planTracker = on and true or nil
+        if on ~= (planFrame ~= nil and planFrame:IsShown()) and not pcall(togglePlan) then
             planErrors = planErrors + 1
         end
+    end
+
+    -- The minimap button: our shield on the minimap's edge, at the saved
+    -- angle; shown unless "Minimap button" is off.
+    function U.placeButton()
+        if not button then
+            return
+        end
+        local w = read(Minimap.GetWidth, Minimap)
+        local r = (type(w) == "number" and w or 140) / 2 + 10
+        local a = math.rad(tonumber(cfg().minimapAngle) or 225)
+        button:ClearAllPoints()
+        button:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * r, math.sin(a) * r)
+        button:SetShown(C.opt("minimap"))
+    end
+
+    local function drag()
+        local mx, my = Minimap:GetCenter()
+        local px, py = read("GetCursorPosition")
+        local scale = Minimap:GetEffectiveScale()
+        if type(mx) ~= "number" or type(px) ~= "number" or type(scale) ~= "number" or scale == 0 then
+            return
+        end
+        cfg().minimapAngle = math.deg(math.atan2(py / scale - my, px / scale - mx))
+        U.placeButton()
+    end
+
+    -- The name, what the button does (on the button only), and freshness.
+    function U.tooltip(owner, full)
+        if type(GameTooltip) ~= "table" then
+            return
+        end
+        GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
+        GameTooltip:SetText("Forever Buddy", 1, 1, 1)
+        if full then
+            GameTooltip:AddLine(BLUE .. "Click|r to open · " .. BLUE .. "Drag|r to move", 1, 1, 1)
+            GameTooltip:AddLine(BLUE .. "Right-click|r to hide this button", 1, 1, 1)
+        end
+        GameTooltip:AddLine(U.fresh(newest(SOURCES[5])), 0.5, 0.5, 0.5)
+        GameTooltip:Show()
+    end
+
+    local function makeButton()
+        if button or type(Minimap) ~= "table" then
+            return
+        end
+        button = CreateFrame("Button", "ForeverBuddyMinimapButton", Minimap)
+        button:SetSize(31, 31)
+        button:SetFrameStrata("MEDIUM")
+        button:SetFrameLevel(8)
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        button:RegisterForDrag("LeftButton")
+        button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+        local bg = button:CreateTexture(nil, "BACKGROUND")
+        bg:SetSize(20, 20)
+        bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+        bg:SetPoint("TOPLEFT", 7, -5)
+        local icon = button:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(18, 18)
+        icon:SetTexture(ICON)
+        icon:SetPoint("TOPLEFT", 7, -6)
+        local ring = button:CreateTexture(nil, "OVERLAY")
+        ring:SetSize(53, 53)
+        ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        ring:SetPoint("TOPLEFT")
+        button:SetScript("OnClick", function(_, which)
+            if which == "RightButton" then
+                C.setOpt("minimap", false)
+                U.placeButton()
+                U.refresh()
+                say(GOLD_PREFIX .. "minimap button hidden. /fb minimap or the Settings tab brings it back.")
+            else
+                U.toggle()
+            end
+        end)
+        button:SetScript("OnDragStart", function(b)
+            b:SetScript("OnUpdate", drag)
+        end)
+        button:SetScript("OnDragStop", function(b)
+            b:SetScript("OnUpdate", nil)
+        end)
+        button:SetScript("OnEnter", function(b)
+            U.tooltip(b, true)
+        end)
+        button:SetScript("OnLeave", function()
+            if type(GameTooltip) == "table" then
+                GameTooltip:Hide()
+            end
+        end)
+        U.placeButton()
+    end
+
+    -- PLAYER_LOGIN: the button, the Options canvas, and the tracker if it
+    -- was left on.
+    function U.login()
+        makeButton()
+        registerOptions()
+        if cfg().planTracker and plan and not (planFrame and planFrame:IsShown()) and not pcall(togglePlan) then
+            planErrors = planErrors + 1
+        end
+    end
+end
+
+-- /fb ------------------------------------------------------------------------------
+--
+-- /fb opens the window (U1) on its last tab; /fb plan, list, errands and
+-- cleanup on that tab. /fb brief repeats this login's briefing in full;
+-- /fb brief off|on, coach, card and minimap toggle; /fb sync says how.
+local TAB = { plan = 1, list = 2, errands = 3, cleanup = 4 }
+
+local function slash(msg)
+    local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
+    if cmd == "" or TAB[cmd] then
+        if not pcall(U.show, TAB[cmd]) then
+            U.errors = U.errors + 1
+        end
+    elseif cmd == "sync" then
+        say(GOLD_PREFIX .. "type /reload to sync.")
+    elseif cmd == "minimap" then
+        C.setOpt("minimap", not C.opt("minimap"))
+        U.placeButton()
+        pcall(U.refresh)
+        say(GOLD_PREFIX .. "minimap button " .. (C.opt("minimap") and "shown." or "hidden."))
     elseif cmd == "brief" then
         local b = lastBrief
         if not b then
@@ -3120,12 +3700,6 @@ local function slash(msg)
     elseif cmd == "brief off" or cmd == "brief on" then
         setBriefing(cmd == "brief on")
         say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
-    elseif cmd == "list" then
-        guarded(toggleLists)
-    elseif cmd == "errands" then
-        guarded(sayErrands)
-    elseif cmd == "cleanup" then
-        guarded(C.say)
     elseif cmd == "coach" then
         S.guarded(S.setCoach, not S.coachOn())
         say(GOLD_PREFIX .. "session coach " .. (S.coachOn() and "on." or "off."))
@@ -3136,9 +3710,9 @@ local function slash(msg)
         S.setCard(cmd == "card on")
         say(GOLD_PREFIX .. "session card at logout " .. (S.cardOn() and "on." or "off."))
     else
-        say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
-            .. "/fb cleanup what's marked; /fb coach this session's strip; /fb card off hides the logout card; "
-            .. "/fb brief repeats the login briefing; /fb brief off turns it off.")
+        say(GOLD_PREFIX .. "/fb opens the window; /fb plan, list, errands or cleanup opens that tab; "
+            .. "/fb coach this session's strip; /fb card off hides the logout card; "
+            .. "/fb brief repeats the login briefing; /fb brief off turns it off; /fb minimap shows or hides the button.")
     end
 end
 
@@ -3147,33 +3721,23 @@ if type(SlashCmdList) == "table" then
     SlashCmdList.FOREVERBUDDY = slash
 end
 
--- The addon compartment (the TOC's AddonCompartmentFunc): a menu with the
--- briefing, coach and card toggles, or a plain briefing toggle where the
--- menu API isn't there.
-function ForeverBuddy_OnAddonCompartmentClick(_, _, owner)
-    local toggle = function()
-        setBriefing(not briefingOn())
+-- The addon compartment (the TOC's AddonCompartmentFunc): opens the window
+-- (U1). Its toggles moved to the Settings tab; the tooltip keeps the name
+-- and the freshness line.
+function ForeverBuddy_OnAddonCompartmentClick()
+    if not pcall(U.toggle) then
+        U.errors = U.errors + 1
     end
-    if type(MenuUtil) == "table" and type(MenuUtil.CreateContextMenu) == "function" then
-        local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
-            root:CreateTitle("Forever Buddy")
-            root:CreateCheckbox("Login briefing", briefingOn, toggle)
-            root:CreateCheckbox("Session coach", S.coachOn, function()
-                S.guarded(S.setCoach, not S.coachOn())
-            end)
-            root:CreateCheckbox("Session card at logout", S.cardOn, function()
-                S.setCard(not S.cardOn())
-            end)
-            root:CreateCheckbox("Lockouts at the entrance", L.on, function()
-                L.set(not L.on())
-            end)
-        end)
-        if ok then
-            return
-        end
+end
+
+function ForeverBuddy_OnAddonCompartmentEnter(_, owner)
+    pcall(U.tooltip, owner, false)
+end
+
+function ForeverBuddy_OnAddonCompartmentLeave()
+    if type(GameTooltip) == "table" then
+        GameTooltip:Hide()
     end
-    toggle()
-    say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
 end
 
 handlers.PLAYER_LOGIN = function()
@@ -3183,6 +3747,9 @@ handlers.PLAYER_LOGIN = function()
     pcall(C.hook)
     if not pcall(loadPlan) then
         planErrors = planErrors + 1
+    end
+    if not pcall(U.login) then
+        U.errors = U.errors + 1
     end
     session = {
         id = t,
@@ -3441,6 +4008,7 @@ handlers.BAG_UPDATE_DELAYED = function()
     if listFrame and listFrame:IsShown() then
         guarded(renderLists, listDocked)
     end
+    pcall(U.refresh)
     -- B3: a sold or sent item's tag goes right away.
     guarded(C.tagBags)
     if merchantOpen then
@@ -3468,6 +4036,7 @@ end
 handlers.MAIL_SHOW = function()
     mailOpen = true
     guarded(atMailbox)
+    pcall(U.refresh) -- U1's Errands tab: Fill recipient works now
 end
 
 handlers.MAIL_CLOSED = function()
@@ -3475,6 +4044,7 @@ handlers.MAIL_CLOSED = function()
     if errandFrame then
         errandFrame:Hide()
     end
+    pcall(U.refresh)
 end
 
 handlers.MAIL_INBOX_UPDATE = function()
