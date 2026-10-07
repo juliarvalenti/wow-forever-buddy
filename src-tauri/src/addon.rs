@@ -26,7 +26,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// there WoW doesn't see the folder, so a half-finished install is ignored.
 /// `Data/` holds the bridge's slot stubs (`bridge::Slot::stub`), which the
 /// app replaces with generated data.
-const FILES: [(&str, &[u8]); 6] = [
+const FILES: [(&str, &[u8]); 7] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -46,6 +46,10 @@ const FILES: [(&str, &[u8]); 6] = [
     (
         "Data/Briefing.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Briefing.lua"),
+    ),
+    (
+        "Data/Lists.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/Lists.lua"),
     ),
     (
         TOC,
