@@ -193,6 +193,24 @@ Addon only, from live events; no Bridge slot. Both read what the addon already r
   - **On by default,** because it only appears while you're already leaving. `/fb card` toggles it, and there's a "Session card at logout" checkbox in the compartment menu.
 - **Never:** comparisons with other players, damage or kill meters, advice ("you should"), a sound, or anything that delays or blocks logging out.
 
+## 12. C1: crafting across alts (tooltip lines)
+Two additions to the shipped item tooltip (§8), using the same rules: `TooltipDataProcessor` post-call, `pcall`, nothing in combat, other characters only, names in class colour, max 3 names in compact view then "+N more", and `G` = grey `|cff808080`. The strings below are the harness targets. "Reagents across alts" is C2, later.
+- **Data (what the tooltip needs; the C1 data plan decides how):** per character, the known recipes as `result item id → { profession, skill }`, plus the profession's skill and max. Also, for the learn line, `recipe item id → { profession, required skill }`. Ids and numbers only, in the tooltip index. A character's recipes are as of their last trade-skill window scan, so the stale rule from §8 (a) applies, with the date of that scan.
+- **(a) Can make** (hovering an item another character can craft):
+  - **Compact, own line, after the price line:** `Sela can make this` · two: `Sela and Kaelor can make this` · more: `Sela, Kaelor and Velyra can make this` · past three: `Sela, Kaelor, Velyra +2 can make this`. "can make this" is gold.
+  - **Shift:** one row per character, `Sela | Tailoring 285`. If the recipe has a cooldown and it's known, add ` · ready` or ` · ready Tue` (the game's day). Stale: the right side grey with ` · as of 21 Sep`.
+  - Not shown when only the current character can make it (the game's own profession UI covers that).
+- **(b) Recipe items** (hovering a pattern, plan, formula, manual or schematic):
+  - **Knows:** `Sela knows this` (several names as in (a)). Gold verb, class-coloured names.
+  - **Could learn:** `Kaelor could learn this (Tailoring 280 of 300)`, for a character who has the profession, doesn't know the recipe and whose skill is at or above the required skill. The bracket is grey.
+  - **Not yet:** `Kaelor could learn this at Tailoring 290 (now 280)`, only when within 25 points. Further away, say nothing.
+  - Both kinds can show, knows first: `Sela knows this` then `Kaelor could learn this (Tailoring 280 of 300)`, at most two lines.
+  - **Shift:** rows `Sela | knows · Tailoring 300`, `Kaelor | could learn · 280 of 300`.
+  - **If the recipe item can't be mapped to a recipe reliably,** drop the learn lines entirely. Never guess from the name.
+- **The current character:** never in these lines. The game's own tooltip already says "Already known" or shows the requirement in red.
+- **Nothing to say:** no line, no head. These lines can appear alone (no alt holds the item), like the upgrade hint.
+- **Never:** "used in…" on reagents, other players or guild crafters, prices beyond the existing scan line, or anything that opens the profession window or crafts.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
