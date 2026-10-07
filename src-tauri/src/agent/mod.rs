@@ -1,6 +1,6 @@
 //! The agent connection (P2, docs/specs/agent-mcp.md): an MCP server on
 //! stdin/stdout that an agent client (Claude Desktop, Claude Code) starts as
-//! `wow-forever-buddy --mcp`. `main` sends that flag here before Tauri, the
+//! `wow-forever-buddy mcp`. `main` sends that argument here before Tauri, the
 //! single-instance plugin or anything else of the app starts, so this
 //! process has no window, no game paths and no write gate.
 //!
@@ -25,8 +25,25 @@ pub use activity::{read as read_activity, AgentCall};
 /// checks the two agree.
 const IDENTIFIER: &str = "com.juliarvalenti.wowforeverbuddy";
 
-/// The flag an agent client starts the app with.
-pub const FLAG: &str = "--mcp";
+/// What an agent client starts the app with: a bare word, not `--mcp`. On
+/// Windows, `claude` is usually npm's PowerShell shim, and PowerShell drops
+/// the first `--` handed to a script, so `claude mcp add x -- app.exe --mcp`
+/// arrived as `claude mcp add x app.exe --mcp` and Claude Code refused
+/// `--mcp` as its own unknown option (BUG-MCP). A plain word needs no `--`.
+pub const ARG: &str = "mcp";
+/// The first spelling, still accepted for configs made before 0.9.
+const OLD_FLAG: &str = "--mcp";
+
+/// Whether the command line asks for the agent connection.
+pub fn is_agent_start(first_arg: Option<&str>) -> bool {
+    matches!(first_arg, Some(ARG) | Some(OLD_FLAG))
+}
+
+/// The Claude Code command for Settings › Agents: no `--` (see `ARG`), the
+/// path quoted for spaces.
+pub fn claude_code_command(exe: &str) -> String {
+    format!("claude mcp add forever-buddy \"{exe}\" {ARG}")
+}
 
 /// Where the app keeps the files this process reads, the same dirs Tauri's
 /// `app_config_dir` and `app_local_data_dir` give the app.
@@ -99,6 +116,27 @@ pub fn serve_stdio() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BUG-MCP: the copied Claude Code command must survive PowerShell, which
+    /// drops a bare `--`, so it has none; both spellings start the server.
+    #[test]
+    fn the_claude_code_command_needs_no_double_dash() {
+        let cmd = claude_code_command(r"C:\Users\Julia\Desktop\WoW Forever Buddy.exe");
+        assert_eq!(
+            cmd,
+            r#"claude mcp add forever-buddy "C:\Users\Julia\Desktop\WoW Forever Buddy.exe" mcp"#
+        );
+        assert!(
+            !cmd.split_whitespace().any(|w| w.starts_with("--")),
+            "{cmd}"
+        );
+        assert!(is_agent_start(Some("mcp")) && is_agent_start(Some("--mcp")));
+        assert!(
+            !is_agent_start(None)
+                && !is_agent_start(Some("—mcp"))
+                && !is_agent_start(Some("--mcpx"))
+        );
+    }
 
     #[test]
     fn the_identifier_matches_the_bundle() {

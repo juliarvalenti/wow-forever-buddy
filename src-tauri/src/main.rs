@@ -4,7 +4,7 @@
 fn main() {
     // An agent client starting us as its MCP server (P2): serve stdio and
     // exit, before Tauri and the single-instance check ever start.
-    if std::env::args().nth(1).as_deref() == Some(wow_forever_buddy_lib::agent::FLAG) {
+    if wow_forever_buddy_lib::agent::is_agent_start(std::env::args().nth(1).as_deref()) {
         std::process::exit(wow_forever_buddy_lib::agent::serve_stdio());
     }
     wow_forever_buddy_lib::run()

@@ -654,9 +654,12 @@ export type AgentCall = {
 };
 
 export type AgentStatus = {
-	/**  This app's own executable: what an agent client starts, with `--mcp`. */
+	/**  This app's own executable: what an agent client starts, with `flag`. */
 	command: string,
+	/**  The argument that starts the agent connection (`mcp`). */
 	flag: string,
+	/**  The line to paste for Claude Code, without a `--` PowerShell would eat. */
+	claude_code: string,
 	/**  The last calls an agent made, newest first. */
 	activity: AgentCall[],
 };

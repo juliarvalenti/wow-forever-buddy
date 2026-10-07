@@ -523,7 +523,7 @@ function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange
   const json = status
     ? JSON.stringify({ mcpServers: { "forever-buddy": { command: status.command, args: [status.flag] } } }, null, 2)
     : "";
-  const cli = status ? `claude mcp add forever-buddy -- "${status.command}" ${status.flag}` : "";
+  const cli = status?.claude_code ?? "";
   const copy = async (what: "json" | "cli") => {
     try {
       await navigator.clipboard.writeText(what === "json" ? json : cli);
