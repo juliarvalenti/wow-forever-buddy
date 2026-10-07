@@ -945,6 +945,31 @@ export type Chart = {
 export type Confidence = "sure" | "fair" | "rough";
 
 /**
+ *  Where a character's data in a slot is (bridge spec §4, `bridge.html`'s
+ *  states): the app's "Sent to the game" line.
+ */
+export type Delivery = 
+/**
+ *  Not written yet: changed while WoW was running, so it goes after WoW
+ *  closes.
+ */
+{ state: "waiting" } | 
+/**
+ *  Written (RFC 3339), and this character's addon hasn't loaded it yet:
+ *  it shows after a /reload or the next login.
+ */
+{ state: "pending"; written_at: string } | 
+/**  This character's addon loaded it at `since` (RFC 3339). */
+{ state: "synced"; since: string } | 
+/**
+ *  The installed addon doesn't list the slot: update it, then restart
+ *  WoW once.
+ */
+{ state: "restart" } | 
+/**  The last write failed or was refused; the game keeps the last file. */
+{ state: "failed" };
+
+/**
  *  What `install_detect` returns: every install found, plus every place we
  *  looked, so onboarding's "not found" state can say where.
  */
@@ -1420,6 +1445,18 @@ export type Plan = {
 	producer: string,
 	/**  When it was approved (RFC 3339, UTC). */
 	created_at: string,
+	/**  The 1-based steps done, as of the character's last logout. */
+	done: number[],
+	/**
+	 *  When that progress was saved (RFC 3339, UTC); `None` before the
+	 *  addon has reported any.
+	 */
+	progress_at: string | null,
+	/**
+	 *  Where the plan is on its way to the game (filled in by the command,
+	 *  which knows the installed addon).
+	 */
+	delivery: Delivery,
 };
 
 /**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
