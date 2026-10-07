@@ -11,6 +11,7 @@
 //!
 //! The first producer is the tooltip index (`tooltip`, spec §5).
 
+pub mod briefing;
 pub mod tooltip;
 
 use rusqlite::params;
@@ -39,15 +40,19 @@ pub enum Slot {
     Tooltip1,
     /// The tooltip index, odd item ids.
     Tooltip2,
+    /// The login briefing's app-side facts: alts' waiting mail and each
+    /// character's login note (B1, INGAME §9).
+    Briefing,
 }
 
-pub const SLOTS: [Slot; 2] = [Slot::Tooltip1, Slot::Tooltip2];
+pub const SLOTS: [Slot; 3] = [Slot::Tooltip1, Slot::Tooltip2, Slot::Briefing];
 
 impl Slot {
     pub fn name(self) -> &'static str {
         match self {
             Slot::Tooltip1 => "Tooltip1",
             Slot::Tooltip2 => "Tooltip2",
+            Slot::Briefing => "Briefing",
         }
     }
 
@@ -171,7 +176,7 @@ pub enum Sent {
     TooLarge,
     /// Nothing changed since the last write.
     Unchanged,
-    /// The installed addon doesn't list the slots (not installed, or older
+    /// The installed addon lists none of the slots (not installed, or older
     /// than 0.4.0), so the game wouldn't load them.
     NoAddon,
     /// WoW is running; the next ingest after it exits sends it.
@@ -209,10 +214,18 @@ pub(crate) fn send(
     flavor: &str,
     stamp: i64,
 ) -> AppResult<Sent> {
-    if !addon::lists_slots(&target.game) {
+    // Only the slots the installed TOC loads: an addon a version behind
+    // keeps getting its tooltips while it waits for the update that adds
+    // a newer slot.
+    let listed = addon::listed_slots(&target.game);
+    if listed.is_empty() {
         return Ok(Sent::NoAddon);
     }
-    let built = tooltip::build(db, flavor, stamp)?;
+    let mut built = tooltip::build(db, flavor, stamp)?;
+    built
+        .slots
+        .push((Slot::Briefing, briefing::build(db, flavor, stamp)?));
+    built.slots.retain(|(slot, _)| listed.contains(slot));
     if built
         .slots
         .iter()
@@ -401,6 +414,7 @@ mod tests {
             [
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip1.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Tooltip2.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Briefing.lua",
             ]
         );
         for slot in SLOTS {

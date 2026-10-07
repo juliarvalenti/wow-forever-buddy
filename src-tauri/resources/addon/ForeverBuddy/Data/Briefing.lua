@@ -1,0 +1,1 @@
+ForeverBuddyData_Briefing = nil

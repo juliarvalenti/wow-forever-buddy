@@ -19,7 +19,10 @@ use crate::db::Db;
 use crate::error::AppResult;
 use crate::sv::{LuaTable, LuaValue};
 
-use super::{header, render_capped, Slot, SLOTS};
+use super::{header, render_capped, Slot};
+
+/// The index's own two slots (the bridge has others).
+const SLOTS: [Slot; 2] = [Slot::Tooltip1, Slot::Tooltip2];
 
 /// Both slots, ready to write.
 pub struct Built {

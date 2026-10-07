@@ -26,7 +26,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// there WoW doesn't see the folder, so a half-finished install is ignored.
 /// `Data/` holds the bridge's slot stubs (`bridge::Slot::stub`), which the
 /// app replaces with generated data.
-const FILES: [(&str, &[u8]); 4] = [
+const FILES: [(&str, &[u8]); 5] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -38,6 +38,10 @@ const FILES: [(&str, &[u8]); 4] = [
     (
         "Data/Tooltip2.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Tooltip2.lua"),
+    ),
+    (
+        "Data/Briefing.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/Briefing.lua"),
     ),
     (
         TOC,
@@ -145,23 +149,26 @@ fn read_if_there(path: &Path) -> Option<Vec<u8>> {
     path.is_file().then(|| safe_read(path).ok()).flatten()
 }
 
-/// Whether the installed TOC lists every bridge slot, so the game loads
-/// what the app writes there (0.4.0 and later). WoW reads the TOC only at
-/// client start, which is why an older install needs an update and a
-/// restart first.
-pub fn lists_slots(game: &GameRoot) -> bool {
+/// The bridge slots the installed TOC lists, so the game loads what the app
+/// writes there: the tooltips from 0.4.0, the briefing from 0.6.0. WoW reads
+/// the TOC only at client start, which is why a newer slot needs an addon
+/// update and a restart first.
+pub fn listed_slots(game: &GameRoot) -> Vec<crate::bridge::Slot> {
     let Some(toc) = rel(TOC)
         .resolve(game)
         .ok()
         .and_then(|path| read_if_there(&path))
     else {
-        return false;
+        return Vec::new();
     };
     let toc = String::from_utf8_lossy(&toc);
-    crate::bridge::SLOTS.iter().all(|slot| {
-        let file = format!("Data/{}.lua", slot.name());
-        toc.lines().any(|line| line.trim() == file)
-    })
+    crate::bridge::SLOTS
+        .into_iter()
+        .filter(|slot| {
+            let file = format!("Data/{}.lua", slot.name());
+            toc.lines().any(|line| line.trim() == file)
+        })
+        .collect()
 }
 
 /// Installs or updates the addon: every bundled file through the write gate
@@ -283,7 +290,7 @@ mod tests {
 
     #[test]
     fn reads_versions_from_tocs() {
-        assert_eq!(bundled_version(), "0.5.0");
+        assert_eq!(bundled_version(), "0.6.0");
         assert_eq!(
             toc_version(b"## Interface: 16001\r\n##Version:  0.1.9 \r\n"),
             Some("0.1.9".into())
@@ -306,7 +313,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let after = status(&t.target.game).unwrap();
-        assert_eq!(after.installed_version.as_deref(), Some("0.5.0"));
+        assert_eq!(after.installed_version.as_deref(), Some("0.6.0"));
         assert!(!after.update_available);
         for (name, bytes) in FILES {
             let path = t.flavor.join(FOLDER).join(name);
@@ -326,7 +333,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let s = status(&t.target.game).unwrap();
-        assert_eq!(s.installed_version.as_deref(), Some("0.5.0"));
+        assert_eq!(s.installed_version.as_deref(), Some("0.6.0"));
         assert!(!s.update_available);
     }
 
@@ -567,5 +574,32 @@ mod tests {
             })
             .unwrap();
         assert_eq!(status, "written");
+    }
+
+    /// An addon a version behind (0.5.0's TOC lists the tooltips but not
+    /// the briefing) keeps getting its tooltips; the slot it can't load
+    /// isn't written.
+    #[test]
+    fn only_the_slots_the_installed_toc_lists_are_sent() {
+        use bridge::Sent;
+        let t = setup();
+        let db = Db::open_in_memory().unwrap();
+        let dir = t.flavor.join(FOLDER);
+        std::fs::create_dir_all(dir.join(DATA)).unwrap();
+        std::fs::write(
+            dir.join(TOC),
+            "## Version: 0.5.0\nData/Tooltip1.lua\nData/Tooltip2.lua\nForeverBuddy.lua\n",
+        )
+        .unwrap();
+        assert_eq!(
+            listed_slots(&t.target.game),
+            [Slot::Tooltip1, Slot::Tooltip2]
+        );
+        assert_eq!(
+            bridge::send(&db, &t.gate, &t.target, "_classic_beta_", 1).unwrap(),
+            Sent::Written
+        );
+        assert!(t.flavor.join(Slot::Tooltip1.path().as_string()).exists());
+        assert!(!t.flavor.join(Slot::Briefing.path().as_string()).exists());
     }
 }
