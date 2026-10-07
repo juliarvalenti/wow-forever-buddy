@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lists · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* B2 (lists) + B1 (notes): the app side. Lists and notes are yours; Claude can only propose, and you approve
+     in the same stage/apply bar as F6. Everything here is sent to the game through one Bridge slot each.
+     ?state=proposal shows a pending proposal from Claude. Rules: IMPLEMENTING.md §15. */
+  .split { display: grid; grid-template-columns: 200px minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
+  table.grid { table-layout: fixed; width: 100%; }
+  table.grid th:nth-child(1) { width: 34%; } table.grid th:nth-child(2) { width: 13%; } table.grid th:nth-child(4) { width: 15%; } table.grid th:nth-child(5) { width: 0; padding: 0; }
+  td .an { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table.grid td.have { white-space: normal; padding-top: 6px; padding-bottom: 6px; }
+  .ll li { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+  .ll li + li { border-top: 1px solid rgba(0,0,0,.45); }
+  .ll li.sel { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+  .ll li .n { margin-left: auto; font-size: 11px; color: var(--soot); }
+  .ll li .pend { margin-left: auto; font-size: 11px; color: var(--ember-2); }
+  table.grid td, table.grid th { padding: 0 10px; }
+  table.grid th { padding: 8px 10px; }
+  td .an { display: flex; align-items: center; gap: 8px; }
+  td .ico { width: 22px; height: 22px; font-size: 10px; }
+  .have small { display: block; font-size: 11px; color: var(--soot); }
+  .need { font-weight: 600; color: var(--chalk-hi); }
+  .done td { color: var(--soot); } .done .need { color: var(--ok); font-weight: 500; }
+  tr.add td { height: 40px; }
+  tr.prop td { background: rgba(255,177,92,.05); }
+  tr.prop .chg { font-size: 11px; color: var(--ember-2); }
+  .applybar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid rgba(255,255,255,.06); font-size: 12.5px; }
+  .applybar .grow { flex: 1; color: var(--ash); }
+  .applybar b { color: var(--chalk-hi); font-weight: 500; }
+  .notes .pb { display: grid; gap: 10px; }
+  .note { display: grid; gap: 3px; font-size: 12.5px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .note .who { font-size: 11.5px; }
+  .note .txt { color: var(--chalk); }
+  .note .meta { font-size: 11px; color: var(--soot); }
+  .sent { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 8px 12px; font-size: 12.5px; }
+  .sent + .sent { border-top: 1px solid rgba(255,255,255,.05); }
+  .sent small { grid-column: 2 / -1; font-size: 11px; color: var(--soot); }
+  .sent .st { font-size: 11.5px; color: var(--ok); white-space: nowrap; } .sent .st.wait { color: var(--ember-2); }
+  .prop-only { display: none; } body.proposal .prop-only { display: revert; }
+  body.proposal tr.prop-only { display: table-row; } body.proposal .applybar.prop-only { display: flex; }
+</style>
+</head>
+<body data-page="characters" data-wow="running">
+<main class="main">
+  <header class="head">
+    <div><h1>Lists</h1><div class="lede">What you're gathering, across all your characters. Shown in game at vendors, the auction house and the mailbox.</div></div>
+    <div class="actions"><button class="btn"><i data-i="plus" class="sm"></i>New list</button></div>
+  </header>
+
+  <section class="split">
+    <div class="panel">
+      <div class="ph"><h2>Your lists</h2></div>
+      <ul class="ll">
+        <li class="sel">Tailoring 300<span class="n prop-hide">4 items</span><span class="pend prop-only">1 proposal</span></li>
+        <li>Onyxia attunement<span class="n">2 items</span></li>
+        <li>Raid consumables<span class="n">5 items</span></li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><h2>Tailoring 300</h2><span class="meta">for <span class="cc c-priest">Sela</span> · prices from your scan 3 days ago</span></div>
+      <table class="grid">
+        <thead><tr><th>Item</th><th class="r">Need</th><th>Your characters have</th><th class="r">Last scan</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><div class="an"><span class="ico q-common"><b>R</b></span>Rune Thread</div></td><td class="r need">6</td><td class="have">none<small>sold by trade vendors</small></td><td class="r muted">50s vendor</td><td></td></tr>
+          <tr><td><div class="an"><span class="ico q-common"><b>H</b></span>Heavy Silken Thread</div></td><td class="r need">2 more</td><td class="have">4 · <span class="cc c-priest">Sela</span> bank<small>of 6</small></td><td class="r muted">20s vendor</td><td></td></tr>
+          <tr><td><div class="an"><span class="ico q-common"><b>R</b></span>Runecloth</div></td><td class="r need">20</td><td class="have">340 · <span class="cc c-warrior">Coinpurse</span> bank<small>errand: send 20 to Sela</small></td><td class="r">~1g 12s</td><td></td></tr>
+          <tr class="done"><td><div class="an"><span class="ico q-uncommon"><b>F</b></span>Felcloth</div></td><td class="r need">done</td><td class="have">8 of 8 · <span class="cc c-priest">Sela</span> bags</td><td class="r">~4g 10s</td><td></td></tr>
+          <tr class="prop-only prop"><td><div class="an"><span class="ico q-uncommon"><b>M</b></span>Mooncloth</div></td><td class="r need">4</td><td class="have">none<small class="chg">proposed · from "Claude Desktop": "for the Mooncloth Robe at 300"</small></td><td class="r">~24g</td><td></td></tr>
+          <tr class="add"><td colspan="5"><span class="muted" style="font-size:12px">+ Add an item… (search your characters' items or type a name)</span></td></tr>
+        </tbody>
+      </table>
+      <div class="applybar prop-only"><span class="grow"><b>1 proposed change</b> from "Claude Desktop". Nothing changes until you apply it. <a class="ember" href="#">Review in Approvals</a></span><button class="btn ghost">Discard</button><button class="primary">Apply</button></div>
+    </div>
+
+    <div style="display:grid;gap:12px">
+      <article class="panel notes">
+        <div class="ph"><h2>Login notes</h2><span class="meta">shown in the login briefing</span></div>
+        <div class="pb">
+          <div class="note"><span class="who cc c-druid">Velyra</span><span class="txt">Hand in the Onyxia attunement before raid on Thursday.</span><span class="meta">by you · until Thu 9 Oct</span></div>
+          <div class="note"><span class="who cc c-warrior">Coinpurse</span><span class="txt">Relist the Arcanite Bars if the price is still above 38g.</span><span class="meta">by you · once</span></div>
+          <span class="muted" style="font-size:12px">+ Add a note…</span>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Sent to the game</h2></div>
+        <div class="sent"><span class="okdot"></span><span>Lists and errands</span><span class="st">in the game since 21:06</span><small>3 lists · 2 errands</small></div>
+        <div class="sent"><span class="live"></span><span>Login briefing</span><span class="st wait">waiting for a sync</span><small>2 notes · /reload in game to send</small></div>
+      </article>
+    </div>
+  </section>
+</main>
+<script>
+  if (new URLSearchParams(location.search).get('state') === 'proposal') document.body.classList.add('proposal');
+  document.querySelectorAll('body.proposal .prop-hide').forEach(e => e.style.display = 'none');
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>

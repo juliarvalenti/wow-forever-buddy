@@ -128,6 +128,43 @@ The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
   - Footer: "Saved to your journal in Forever Buddy".
   - It's the same data V9 already turns into the Adventure entry. The card is only the in-game face.
 
+## 9. B1: login briefing (`ingame-errands.html`)
+One chat line at login, once per login, only when there is something to say. It replaces the §3 checklist line, so there's never more than one Forever Buddy line at login.
+- **Format:** `|cffffd100Forever Buddy:|r` followed by facts joined with " · ", in this order, each only when true:
+  1. "3 quests ready to hand in" (the game's own quest log, live).
+  2. "repair due (24%)" (the lowest durability under 30%, live).
+  3. "Sela has 2 letters waiting" (from the app, for another alt, mail expiring within 3 days first).
+  4. "1 errand at the mailbox" (B2, when this character holds goods for another's list).
+  5. "tonight's plan is ready" (P1, when a new plan has arrived).
+- At most **4 facts**. Past that, end with "and more: /fb brief".
+- **Notes:** a note for this character, written in the app (by Julia, or proposed by Claude and approved), goes on a second line: `|cffffd100Note:|r "Hand in the Onyxia attunement before raid on Thursday."` One note per login, the newest first, with the text escaped (`||`).
+- **Nothing to say:** no line at all.
+- **`/fb brief`** repeats the last briefing at any time. A "Login briefing" toggle in the compartment menu turns it off, saved per account.
+- Never in combat (login isn't), never about other players, and never a popup.
+
+## 10. B2: shopping list and alt errands (`ingame-errands.html`)
+Display only. The addon never buys, attaches or sends. **One Bridge slot ("Lists")** carries the lists, their needs and the errands. Holdings come from the existing tooltip index, and prices from the last scan.
+- **The list panel at vendors and the AH:**
+  - A small `DefaultPanelFlatTemplate` panel docks to the right of `MerchantFrame` or `AuctionHouseFrame` while it's open. It's headed "Your list" with the list name in the meta. With several lists, show the ones with items at this place, then the rest under a "+N lists" line.
+  - **Rows:** the item name, then "need 6" on the right, then a grey line saying where your characters stand: "Sela has 4 in bank, still 2 short", "Coinpurse 340 bank · ~1g 12s at last scan", or "your alts have 0".
+  - **"· here":** in gold after an item this vendor sells, or that shows in the current AH results.
+  - **Done items** are grey with "done" once your characters together hold enough.
+  - **Footer:** "From Forever Buddy · 21:04 · /fb list".
+- **Highlighting:**
+  - Merchant item buttons on a list get a 1.5px gold glow and a small "list" tag.
+  - AH result rows that match get a gold left edge.
+  - At the AH, a row priced under your last scan reads "first two rows are under it" in the panel's grey line. We never say "buy".
+  - Highlighting reads the frames' own item ids. It never clicks and never hooks a buy button.
+- **Alt errands at the mailbox:**
+  - When the current character holds goods that another character's list needs, an "Errands" panel docks beside `MailFrame`. It's headed "Errands" with "from Coinpurse" in the meta.
+  - **Rows:** "Thorium Bar ×20 to Kaelor" (the name in class colour) and a grey line "you have 34 in bags · his Blacksmithing list".
+  - **Fill recipient:** one `UIPanelButtonTemplate` button that only sets the Send tab's To field (`SendMailNameEditBox:SetText`). Its tooltip reads: "Types "Kaelor" in the To field. Attach the Thorium Bars yourself, then press Send."
+  - **Goods in the bank:** if they're in this character's bank rather than bags, the button is disabled, with the grey line "340 in your bank · visit the bank first".
+  - **Footer:** "Nothing is attached or sent for you."
+  - **On the receiving alt,** the list line reads "Coinpurse can send 20" instead of "need 20".
+- **Freshness:** the same rules as §8. An alt's holdings older than 7 days are grey with "(as of 21 Sep)".
+- **Commands:** `/fb list` toggles the list panel anywhere (undocked, top right). `/fb errands` shows errands away from a mailbox, as read-only text.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
