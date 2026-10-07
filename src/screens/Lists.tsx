@@ -13,6 +13,7 @@ import type {
 import { commands } from "@/lib/bindings";
 import {
   Button,
+  Callout,
   Dialog,
   ItemIcon,
   LiveDot,
@@ -115,7 +116,23 @@ export function Lists({
   // Notes still to show: not yet shown once.
   const waiting = (notes ?? []).filter((n) => !(n.once && n.shown_at)).length;
 
-  if (!lists.view) return <Page />;
+  // BUG-LISTS: a failed load used to leave a blank page. Say why, with a
+  // way to try again.
+  if (!lists.view) {
+    return (
+      <Page>
+        <PageHeader title="Lists" />
+        {lists.error && (
+          <Callout tone="bad">
+            Couldn't load your lists: {lists.error}{" "}
+            <Button variant="ghost" onClick={lists.reload}>
+              Try again
+            </Button>
+          </Callout>
+        )}
+      </Page>
+    );
+  }
 
   const newList = (
     <Button onClick={() => setEditing("new")}>
