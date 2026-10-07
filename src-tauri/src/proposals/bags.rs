@@ -108,11 +108,12 @@ pub(crate) fn check(db: &Db, flavor: &str, p: &BagProposal) -> Result<BagBody, S
             if !seen.insert(m.item_id) {
                 return Ok(Err(format!("item {} is listed twice", m.item_id)));
             }
-            let held: (i64, i64) = c.query_row(
-                "SELECT count(*), coalesce(max(bound), 0) FROM char_items
+            // Held, bound, and whether the bind state is known at all.
+            let held: (i64, i64, i64) = c.query_row(
+                "SELECT count(*), coalesce(max(bound), 0), coalesce(min(bind_known), 0) FROM char_items
                  WHERE character_id = ?1 AND item_id = ?2 AND location IN ('bag', 'bank')",
                 rusqlite::params![who.id, m.item_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )?;
             if held.0 == 0 {
                 return Ok(Err(format!("{} doesn't hold item {}", who.name, m.item_id)));
@@ -128,6 +129,14 @@ pub(crate) fn check(db: &Db, flavor: &str, p: &BagProposal) -> Result<BagBody, S
                     }
                     if held.1 != 0 {
                         return Ok(Err(format!("item {} is soulbound, so it can't be mailed", m.item_id)));
+                    }
+                    // As for the app's own suggestions: only an item the
+                    // game has said isn't bound.
+                    if held.2 == 0 {
+                        return Ok(Err(format!(
+                            "the game hasn't said whether item {} can be mailed yet; sell is fine",
+                            m.item_id
+                        )));
                     }
                     Mark::Send { to }
                 }
@@ -276,6 +285,10 @@ mod tests {
                 "not an upgrade for Sela",
             ),
             (vec![mark(6948, Send, Some("Sela"), None)], "soulbound"),
+            (
+                vec![mark(2002, Send, Some("Sela"), None)],
+                "bind state unknown",
+            ),
             (vec![mark(16000, Send, Some("Thrandor"), None)], "to itself"),
             (vec![mark(12345, Sell, None, None)], "not held"),
             (

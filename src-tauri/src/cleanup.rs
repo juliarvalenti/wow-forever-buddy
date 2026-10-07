@@ -389,8 +389,9 @@ pub(crate) fn suggest_from(
                     Reason::Upgrade { gain: gain as u32 },
                 ));
             }
-            // Someone could use it, but it may be mailable: no guess.
-            Some(_) if !g.bind_known => {}
+            // The bind state only gates send (design, #155): an item that
+            // isn't known to be mailable can't go to anyone, so it's judged
+            // like a bound one.
             _ => {
                 // Below what this character wears there, and no one else
                 // can have it: outgrown.
