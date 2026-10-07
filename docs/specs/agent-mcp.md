@@ -103,7 +103,7 @@ The app stays the only writer of its database. The agent process never writes to
    - parses it with `deny_unknown_fields` against the kind's schema;
    - applies the limits;
    - resolves every `character`, `adventure` and `item_id` against its own data, refusing unknown ones;
-   - stores the result in the **staged-changes queue** (migration **012**: bridge §7 named 009, which Q1b's quests took; 010 is P1's quest plans and 011 B1's login notes), with status `staged`;
+   - stores the result in the **staged-changes queue** (the next free migration when P2b rebases, per the room's numbering rule), with status `staged`;
    - deletes the inbox file.
 
    A file that fails any check is stored as `rejected` with the reason, so `list_proposals` can tell the agent why, and is deleted too.
@@ -152,7 +152,7 @@ These are enforced in the agent process, and again at ingest, since the inbox is
    - "off refuses everything";
    - the db is opened read-only (a write attempt fails);
    - mail text never appears in any result.
-2. **P2b, proposals:** the inbox, ingest with validation, migration 012, and the Approvals panel, with **notes** first since they're the simplest and already exist in the app. Tests:
+2. **P2b, proposals:** the inbox, ingest with validation, the queue's migration, and the Approvals panel, with **notes** first since they're the simplest and already exist in the app. Tests:
    - malformed, oversized and unknown-target files are rejected with a reason;
    - with agent access off, a valid inbox file never reaches Approvals;
    - the preview shows every applied field, as text;
