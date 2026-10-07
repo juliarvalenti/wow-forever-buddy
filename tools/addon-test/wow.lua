@@ -257,7 +257,16 @@ function M.new(opts)
             return world.zone
         end,
         IsInInstance = function()
-            return world.instance, world.instance and "party" or "none"
+            local kind = world.instance and (world.dungeon and world.dungeon.kind or "party") or "none"
+            return world.instance, kind
+        end,
+        -- name, type, difficulty id, difficulty name (L2).
+        GetInstanceInfo = function()
+            local d = world.instance and world.dungeon
+            if not d then
+                return world.zone, "none", 0, ""
+            end
+            return d.name, d.kind, d.difficulty, d.difficultyName
         end,
         GetInventoryItemID = function(_, slot)
             return world.equipped[slot]
@@ -916,6 +925,21 @@ function M.new(opts)
 
     function client.enterZone(zone, instance)
         world.zone, world.instance = zone, instance == true
+        client.fire("ZONE_CHANGED_NEW_AREA")
+    end
+
+    -- Zones into a dungeon or raid through its portal (a loading screen:
+    -- PLAYER_ENTERING_WORLD), or back out.
+    function client.enterInstance(name, kind, difficulty, difficultyName)
+        world.zone, world.instance = name, true
+        world.dungeon = { name = name, kind = kind, difficulty = difficulty, difficultyName = difficultyName }
+        client.fire("PLAYER_ENTERING_WORLD", false, false)
+        client.fire("ZONE_CHANGED_NEW_AREA")
+    end
+
+    function client.leaveInstance(zone)
+        world.zone, world.instance, world.dungeon = zone, false, nil
+        client.fire("PLAYER_ENTERING_WORLD", false, false)
         client.fire("ZONE_CHANGED_NEW_AREA")
     end
 

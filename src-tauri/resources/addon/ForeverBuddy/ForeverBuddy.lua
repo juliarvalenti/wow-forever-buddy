@@ -2486,6 +2486,109 @@ S.hidesInCombat, S.setCoachCombat = coachHidesInCombat, setCoachCombat
 S.cardOn, S.setCard, S.showCard, S.hideCard = cardOn, setCard, showCard, hideCard
 end
 
+-- Lockouts at the entrance (L2, INGAME §13) ------------------------------------------
+--
+-- Entering a dungeon or raid: one chat line naming your other characters
+-- saved there (the Briefing slot's lockouts, F3's data), with the reset.
+-- Once per instance per session, never after /reload, and in combat it
+-- waits until combat ends. Text in the chat frame and nothing else.
+
+local L = { said = {} } -- said: "instance|difficulty" -> true, this session
+do
+    -- Difficulties that are "the normal one" and go unnamed: normal and
+    -- 10/25-player dungeons and raids, 40-player raids.
+    local NORMAL = { [1] = true, [3] = true, [4] = true, [9] = true, [14] = true }
+
+    function L.on()
+        return type(ForeverBuddySettings) ~= "table" or ForeverBuddySettings.lockouts ~= false
+    end
+
+    -- Written only when off.
+    function L.set(on)
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        ForeverBuddySettings.lockouts = (not on) and false or nil
+    end
+
+    -- "resets Tue", or "resets in 5 h" under a day.
+    local function resets(at)
+        local left = at - (now() or at)
+        if left < 86400 then
+            return "resets in " .. math.max(1, math.floor(left / 3600 + 0.5)) .. " h"
+        end
+        return "resets " .. (read(date, "%a", at) or "?")
+    end
+
+    -- "Velyra", "Velyra and Kaelor", "Velyra, Kaelor and Sela",
+    -- "Velyra, Kaelor, Sela +2".
+    local function names(who)
+        local shown = {}
+        for k = 1, math.min(#who, 3) do
+            shown[k] = colorName(who[k].name, who[k].class)
+        end
+        if #who > 3 then
+            return table.concat(shown, ", ") .. " +" .. (#who - 3)
+        elseif #shown == 1 then
+            return shown[1]
+        end
+        return table.concat(shown, ", ", 1, #shown - 1) .. " and " .. shown[#shown]
+    end
+
+    -- The line for where we are, if any other character is saved here.
+    function L.line()
+        local inside, kind = read(IsInInstance)
+        if not inside or (kind ~= "party" and kind ~= "raid") then
+            return nil
+        end
+        local name, _, difficultyID, difficulty = read(GetInstanceInfo)
+        local slot = slots.Briefing
+        if type(name) ~= "string" or type(slot) ~= "table" or type(slot.lockouts) ~= "table" then
+            return nil
+        end
+        difficulty = type(difficulty) == "string" and difficulty or ""
+        local key = name .. "|" .. difficulty
+        if L.said[key] then
+            return nil
+        end
+        L.said[key] = true
+        local t, who, soonest = now() or 0, {}, nil
+        for _, alt in ipairs(slot.lockouts) do
+            local saves = type(alt) == "table" and not isMe(alt) and type(alt.saves) == "table" and alt.saves or {}
+            for k = 1, #saves - 2, 3 do
+                local reset = saves[k + 2]
+                if saves[k] == name and saves[k + 1] == difficulty and type(reset) == "number" and reset > t then
+                    who[#who + 1] = alt
+                    soonest = (not soonest or reset < soonest) and reset or soonest
+                    break
+                end
+            end
+        end
+        if #who == 0 then
+            return nil
+        end
+        local where = plain(name) .. ((NORMAL[difficultyID] or difficulty == "") and "" or (" (" .. plain(difficulty) .. ")"))
+        return GOLD_PREFIX .. names(who) .. (#who == 1 and " is" or " are") .. " saved to " .. where
+            .. " (" .. resets(soonest) .. ")."
+    end
+
+    -- PLAYER_ENTERING_WORLD (not a /reload) and PLAYER_REGEN_ENABLED.
+    function L.check()
+        if not L.on() then
+            return
+        end
+        if read("InCombatLockdown") then
+            L.waiting = true
+            return
+        end
+        L.waiting = false
+        local line = L.line()
+        if line then
+            say(line)
+        end
+    end
+end
+
 -- /fb ------------------------------------------------------------------------------
 --
 -- /fb plan opens the plan frame; /fb list the list panel; /fb errands says
@@ -2553,6 +2656,9 @@ function ForeverBuddy_OnAddonCompartmentClick(_, _, owner)
             root:CreateCheckbox("Session card at logout", S.cardOn, function()
                 S.setCard(not S.cardOn())
             end)
+            root:CreateCheckbox("Lockouts at the entrance", L.on, function()
+                L.set(not L.on())
+            end)
         end)
         if ok then
             return
@@ -2590,6 +2696,13 @@ end
 handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     if not inventory then
         scanBags()
+    end
+    -- L2: every time we enter somewhere. After /reload the instance we're in
+    -- counts as said, so a later ghost run back in stays quiet too.
+    if isReloadingUi then
+        pcall(L.line)
+    else
+        pcall(L.check)
     end
     if entered then
         return
@@ -2643,6 +2756,10 @@ end
 handlers.PLAYER_REGEN_ENABLED = function()
     if S.coachOn() then
         S.guarded(S.showCoach)
+    end
+    -- L2: entered while fighting, so the line waited.
+    if L.waiting then
+        pcall(L.check)
     end
 end
 

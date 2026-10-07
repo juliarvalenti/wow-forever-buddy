@@ -1220,6 +1220,73 @@ scenario("crafting", function()
     eq(#old.hover(2572), 1, "no makes, no line")
 end)
 
+-- Lockouts at the entrance (L2, INGAME §13): the Briefing slot's lockouts.
+-- Thrandor (this character) is saved to Molten Core too and is never
+-- named; Sela's save has already reset.
+local function saves(name, class, list, surname)
+    return '\t\t{ ["name"] = "' .. name .. '", ["surname"] = "' .. (surname or "") .. '", ["class"] = "' .. class
+        .. '", ["saves"] = { ' .. list .. ' } },\n'
+end
+local WEEK = wow.EPOCH + 3 * DAY
+local ENTRANCE = 'ForeverBuddyData_Briefing = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
+    .. '\t["mail"] = {},\n\t["notes"] = {},\n\t["lockouts"] = {\n'
+    .. saves("Thrandor", "PALADIN", '"Molten Core", "40 Player", ' .. WEEK, "Vargur")
+    .. saves("Velyra", "DRUID", '"Molten Core", "40 Player", ' .. WEEK
+        .. ', "Scarlet Monastery", "Heroic", ' .. (wow.EPOCH + 5 * HOUR))
+    .. saves("Kaelor", "ROGUE", '"Molten Core", "40 Player", ' .. WEEK)
+    .. saves("Sela", "PRIEST", '"Molten Core", "40 Player", ' .. (wow.EPOCH - 1))
+    .. saves("Brannic", "HUNTER", '"Onyxia\'s Lair", "40 Player", ' .. WEEK)
+    .. '\t},\n}\n'
+
+scenario("entrance", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local KAELOR = "|cfffff569Kaelor|r"
+    local tue = os.date("!%a", WEEK)
+    local c = client({ slots = { ["Data/Briefing.lua"] = ENTRANCE } })
+    c.login(nil)
+    c.chat = {}
+    c.enterInstance("Molten Core", "raid", 9, "40 Player")
+    eq(table.concat(c.chat, "\n"), PREFIX .. "Velyra and " .. KAELOR .. " are saved to Molten Core (resets " .. tue .. ").",
+        "two alts, never this character, not an expired save")
+    -- Once per instance per session: out and back in (a ghost run) is quiet.
+    c.leaveInstance("Searing Gorge")
+    c.enterInstance("Molten Core", "raid", 9, "40 Player")
+    eq(#c.chat, 1, "said once")
+
+    -- A difficulty that isn't normal is named; under a day, the hours.
+    c.enterInstance("Scarlet Monastery", "party", 2, "Heroic")
+    eq(c.chat[2], PREFIX .. "Velyra is saved to Scarlet Monastery (Heroic) (resets in 5 h).", "heroic, hours")
+    -- Nobody saved here: nothing.
+    c.enterInstance("Deadmines", "party", 1, "Normal")
+    eq(#c.chat, 2, "nothing to say")
+
+    -- In combat it waits for combat to end.
+    c.world.combat = true
+    c.enterInstance("Onyxia's Lair", "raid", 9, "40 Player")
+    eq(#c.chat, 2, "not in combat")
+    c.combat(false)
+    eq(c.chat[3], PREFIX .. "Brannic is saved to Onyxia's Lair (resets " .. tue .. ").", "after combat")
+
+    -- After /reload inside, silent, and still silent on the way back in.
+    local fresh = client({ slots = { ["Data/Briefing.lua"] = ENTRANCE } })
+    fresh.login(nil)
+    fresh.world.zone, fresh.world.instance = "Molten Core", true
+    fresh.world.dungeon = { name = "Molten Core", kind = "raid", difficulty = 9, difficultyName = "40 Player" }
+    fresh.chat = {}
+    fresh.reload()
+    fresh.leaveInstance("Searing Gorge")
+    fresh.enterInstance("Molten Core", "raid", 9, "40 Player")
+    eq(#fresh.chat, 0, "/reload inside is silent, and so is the way back in")
+
+    -- The off switch, saved per account.
+    local off = client({ slots = { ["Data/Briefing.lua"] = ENTRANCE } })
+    off.settings = { lockouts = false }
+    off.login(nil)
+    off.chat = {}
+    off.enterInstance("Molten Core", "raid", 9, "40 Player")
+    eq(#off.chat, 0, "off")
+end)
+
 -- Known recipes (C1): read from this character's own profession window,
 -- learned recipes only, item ids and skill; carried forward until the next
 -- look, and dropped with the profession.
