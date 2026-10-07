@@ -870,6 +870,8 @@ scenario("weapons", function()
         .. alt("Sela", "PRIEST", 60, { [16] = 30, [17] = 20, [18] = 10 }, hands(10021, 0, 0))
         -- Two one-handers, 40 and 35; a dual wielder.
         .. alt("Brannic", "HUNTER", 60, { [16] = 40, [17] = 35 }, hands(10021, 10021, 0))
+        -- A 48 one-hander and nothing in the off hand (no dual wield).
+        .. alt("Grom", "PALADIN", 60, { [16] = 48 }, hands(10021, 0, 0))
         .. '\t},\n'
     local c = client({
         slots = {
@@ -892,20 +894,22 @@ scenario("weapons", function()
     c.login(nil)
     -- This character holds the Reaper itself, so it's never the best fit.
     c.world.equipped[16] = 10010
-    local COIN, KAELOR, SELA = "|cffc79c6eCoinpurse|r", "|cfffff569Kaelor|r", "|cffffffffSela|r"
+    local KAELOR, SELA, GROM = "|cfffff569Kaelor|r", "|cffffffffSela|r", "|cfff58cbaGrom|r"
 
-    -- A two-handed axe: Brannic against the average of 40 and 35 (+25),
-    -- Coinpurse against its two-hander (+13). Rogues and priests can't.
-    eq(c.hover(10010)[3], "Upgrade for Brannic" .. W .. " (+25 item level|r" .. W .. ")|r · " .. COIN .. W
-        .. " (+13|r" .. W .. ")|r", "two-hander")
+    -- A two-handed axe: Brannic against the average of 40 and 35 (+25), Grom
+    -- against its main hand alone, the off hand being empty (+15, not +39),
+    -- Coinpurse against its two-hander (+13, third: dropped). Rogues and
+    -- priests can't.
+    eq(c.hover(10010)[3], "Upgrade for Brannic" .. W .. " (+25 item level|r" .. W .. ")|r · " .. GROM .. W
+        .. " (+15|r" .. W .. ")|r", "two-hander")
     -- A one-hand sword: dual wielders take the better hand (Kaelor's off
     -- hand, +33; Brannic's off hand, +28). Coinpurse wears a two-hander:
     -- skipped. Priests can't use swords.
     eq(c.hover(10011)[3], "Upgrade for " .. KAELOR .. W .. " (+33 item level|r" .. W .. ")|r · Brannic" .. W
         .. " (+28|r" .. W .. ")|r", "one-hander")
-    -- A shield: only warriors, paladins and shamans, and Coinpurse wears a
-    -- two-hander. Nobody.
-    eq(#c.hover(10012), 1, "shield: nobody")
+    -- A shield: only warriors, paladins and shamans. Coinpurse wears a
+    -- two-hander (skipped); Grom, a paladin, has an empty off hand (+63).
+    eq(c.hover(10012)[3], "Upgrade for " .. GROM .. W .. " (+63 item level|r" .. W .. ")|r", "shield")
     -- A wand: the ranged slot, casters only. Sela +50.
     eq(c.hover(10013)[3], "Upgrade for " .. SELA .. W .. " (+50 item level|r" .. W .. ")|r", "wand")
 
@@ -918,14 +922,16 @@ scenario("weapons", function()
             end
         end
     end
-    eq(upgradeRow(10010), "Upgrade for | Brannic +25 " .. G .. "(over main and off hand)|r · " .. COIN .. " +13",
-        "Shift: two-hander")
+    eq(upgradeRow(10010), "Upgrade for | Brannic +25 " .. G .. "(over main and off hand)|r · " .. GROM .. " +15",
+        "Shift: averaged, and the main hand alone (no suffix)")
     eq(upgradeRow(10011), "Upgrade for | " .. KAELOR .. " +33 " .. G .. "(over the off hand)|r · Brannic +28 "
         .. G .. "(over the off hand)|r", "Shift: off hand")
 
-    -- A main hand the client hasn't cached: no guess for that alt.
-    c.world.uncached[10020] = true
-    eq(c.hover(10010)[3], "Upgrade for Brannic" .. W .. " (+25 item level|r" .. W .. ")|r", "unknown hand: skipped")
+    -- A main hand the client hasn't cached (Brannic's and Grom's sword): no
+    -- guess for those alts, so only Coinpurse is left.
+    c.world.uncached[10021] = true
+    eq(c.hover(10010)[3], "Upgrade for |cffc79c6eCoinpurse|r" .. W .. " (+13 item level|r" .. W .. ")|r",
+        "unknown hand: skipped")
 end)
 
 scenario("tooltip_v2", function()

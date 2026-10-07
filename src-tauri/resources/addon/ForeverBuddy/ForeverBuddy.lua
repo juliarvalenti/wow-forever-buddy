@@ -926,7 +926,9 @@ function Wp.gain(kind, ilvl, class, classID, subclassID, worn, twoHanded)
     elseif twoHanded == nil then
         return nil
     elseif kind == "two" then
-        if twoHanded then
+        -- Against a two-hander, or a main hand with nothing in the off hand;
+        -- the average only when an off hand is worn (§15).
+        if twoHanded or w(17) == 0 then
             return ilvl - w(16)
         end
         return ilvl - (w(16) + w(17)) / 2, "main and off hand"
