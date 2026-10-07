@@ -265,7 +265,7 @@ Extends §8 (b). Same copy, gain threshold (+5), top two, bound-item skip and "o
   - Dual wield (a one-hand weapon counts for the off hand): warrior, rogue and hunter.
   - These are Classic 1.x rules. Keep them in one table in the addon, so a Forever change is a one-line fix.
 - **What it's compared with:**
-  - **Two-handed:** the alt's two-hander if they wear one. Otherwise the *average* of main hand and off hand (an empty slot counts as 0).
+  - **Two-handed:** the alt's main hand (their two-hander, or a one-hander with nothing in the off hand). When an off hand is worn too, the *average* of main hand and off hand. Which hand holds what comes from each alt's `hands` item ids (main, off, ranged) and `GetItemInfo`'s equip location.
   - **One-hand or main hand:** the alt's main hand. If they wear a two-hander, skip it (we can't judge a one-hander against a two-hander). For dual-wield classes, a "One-Hand" item also compares with the off hand, and the better gain wins.
   - **Shield, off hand, held in off hand:** the alt's off hand. Skip it if they wear a two-hander.
   - **Ranged, wand, thrown:** slot 18, for classes that can use that type.
