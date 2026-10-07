@@ -81,11 +81,41 @@ The content waits on Q-SPIKE (what quest data we can trust). The shape doesn't.
     - Second: "~1g 12s each at your last scan · plan needs 20". Each part only when known. Use "~", not "≈": the game's fonts likely lack that glyph.
     - Then a small blue-grey "Shift for details".
   - **Shift:** a gold "Forever Buddy" head, then the current character first ("Thrandor · 40 · on you", the live count), then one row per alt ("Coinpurse · 340 · bank, 2 Oct"), "All characters 440", "Last scan ~1g 12s each · 3 days ago", and "Blacksmithing plan needs 20 more". Show at most eight rows, then "+2 more".
-  - **Equippable items:** the compact line can instead say "Upgrade for Kaelor (+9 item level, once level 58)". This uses item level only, never stats we can't read.
-  - **Add nothing** when only the current character has the item, or nobody does. Never show an empty head.
-  - **Stale data:** a count older than 7 days turns grey, with "(as of 21 Sep)". A price older than 7 days adds "· scan 12 days ago".
+  - **Add nothing** when only the current character has the item, nobody does, and there's no upgrade hint (v2 below). Never show an empty head.
   - The current character's bags come live from the game. Other alts come from the Bridge's item-index slot, which holds ids and counts only. Names come from the game's cache.
   - Never on unit tooltips, and nothing extra in combat.
+- **Tooltips v2 (TIP2):** three additions to the shipped tooltip (#96). The exact strings below are the harness targets. `G` is our grey, `|cff808080`, closed with `|r`. Names keep the existing class-colour codes, shown here as plain names.
+  - **(a) Stale greying.** "Stale" means older than 7 days, measured with `GetServerTime()`.
+    - **Which date counts:** each place has its own date. Bags and worn use `alts[i].seen`, bank uses `alts[i].bank`, and mail uses `alts[i].mail`. All of these are already in the index.
+    - **Compact line:** an alt whose main place is stale is shown whole in grey, name included, followed by the date: `Your alts: Coinpurse 340 bank · G[Evil 3 mail (as of 21 Sep)]`. The date is `"%d %b"` with no leading zero ("5 Oct", not "05 Oct").
+    - **Compact price:** a scan older than 7 days gets a grey suffix: `~1g 12s each at your last scan G[· 12 days ago]`.
+    - **Shift rows:** for a stale alt, the whole right side is grey: `Evil | G[3 mail · 15 days ago]`. For a stale scan, the right side of the Last scan row is grey: `Last scan | G[~1g 12s each · 12 days ago]`.
+    - Nothing else changes. Fresh data reads exactly as now.
+  - **(b) Upgrade hint.** It says which of your *other* characters the hovered item would be an upgrade for, by item level only.
+    - **Data (PM-approved):** each `alts` entry gains `["level"] = 27` and `["worn"] = { 21, 0, 18, … }`: that character's equipped base item level in all 19 inventory slots, in slot order, with 0 for an empty slot. These are numbers only. v1 reads only the slots below, and the rest are there so weapons can follow without changing the index.
+    - **What the game gives us:** the item's `equipLoc`, `ilvl`, required level, classID and subclassID, from `C_Item.GetItemInfo` (already cached while its tooltip shows).
+    - **Slots compared:** head 1, neck 2, shoulder 3, chest and robe 5, waist 6, legs 7, feet 8, wrist 9, hands 10, back 15. Finger compares with the lower of 11 and 12, and trinket with the lower of 13 and 14. An empty slot counts as 0.
+    - **Not in v2:** weapons, shields, off-hands, ranged, relics, shirts and tabards. These need proficiency rules we'd get wrong.
+    - **Armour type:** the alt's class must be able to wear it.
+      - Cloth: everyone.
+      - Leather: everyone except mage, priest and warlock.
+      - Mail: warrior and paladin always. Hunter and shaman only if `level >= 40` or the item requires 40 or more.
+      - Plate: warrior and paladin only if `level >= 40` or the item requires 40 or more.
+      - Jewellery and back items: any class.
+    - **Bound items:** skip the hint if the item is bound or binds on pickup, by matching the tooltip's own lines against the game's `ITEM_SOULBOUND` and `ITEM_BIND_ON_PICKUP`. A soulbound item can't reach another character.
+    - **Gain:** the item's base ilvl minus the compared slot's ilvl. Only show a gain of **+5 or more**, to avoid noise on sidegrades. Show the top two, best first, with ties going to the higher-level character.
+    - **Compact, own line, after the price line:**
+      - One character: `Upgrade for Kaelor (+9 item level)`.
+      - Under the required level: `Upgrade for Kaelor (+9 item level, once level 58)`.
+      - Two characters: `Upgrade for Kaelor (+9 item level) · Sela (+6)`.
+      - "Upgrade for" is gold, names are in class colour, and the rest is white. ", once level 58" is grey.
+    - **When the line shows:** it can appear on its own, when no alt holds the item. That's the useful case at vendors, the AH and loot. Then the compact view is a gap, the upgrade line, and "Shift for details" (only if there's a Shift view to see).
+    - **Shift:** a row `Upgrade for | Kaelor +9 · Sela +6`. Grey "(level 58)" goes after a name that's under the required level.
+    - **No hint when:** the character you're on is the best fit (the game's own comparison covers that), the item is bound, its slot is out of scope, the class can't wear it, or no gain reaches +5.
+  - **(c) Shopping-list need.** Built only once shopping lists exist (goals and lists ticket). Until then, never show it.
+    - **Compact:** appended to the price line: `~1g 12s each at your last scan · your list needs 20`. With no price, the line is just `Your list needs 20`. The count is white and "your list needs" is gold.
+    - **Shift:** a row `Shopping list | 20 more (Blacksmithing 300)`, naming the list.
+    - **Data:** a future `lists` slot, `item id → { need, listName }`. It's not part of TIP2's index.
 - **Session coach:**
   - A small movable strip headed "This session", with the session length in the meta.
   - Rows: Gold (+312g · 184g/hr), Experience (87,000/hr), "Level 60 in ≈ 41 min" (only while levelling), and Loot (47 items · ≈ 96g, the worth only with prices).
