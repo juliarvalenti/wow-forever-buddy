@@ -76,6 +76,10 @@ SCENARIOS=(
   "settings-moving|settings-moving|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Copying 412|settings"
   "settings-move-refused|settings-pending|click:css=.d-side-foot button[title=\"Settings\"];click:css=.st-set.full:has-text(\"Store backups in\") button;click:Move backups;wait:text=Nothing was moved|settings"
   "characters-noaddon|characters-empty|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.unseen|characters-noaddon"
+  # O2 (IMPLEMENTING §22): Kaelor gone (dimmed, last), Sela hidden ("1 hidden · Show"); Settings › Data; the Forget dialog.
+  "characters-tidy|tidy|click:css=nav button[title=\"Characters\"];wait:css=.ch-card.gone|characters"
+  "settings-data|tidy|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-chars;hover:css=#settings-data .st-chars >> nth=-1|settings"
+  "settings-forget|tidy|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-chars;click:css=#settings-data button >> text=Forget…;wait:css=.d-dialog|settings"
   "characters-search|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results|characters-search"
   # TIP3 (b): Epic leaves nothing of Runecloth: "Nothing matches these filters".
   "characters-search-filtered|characters|click:css=nav button[title=\"Characters\"];wait:css=.ch-card;fill:Search every satchel, bank and mailbox=Runecloth;wait:css=.ch-results;click:css=.ch-filters button >> text=Epic;wait:text=Nothing matches these filters|characters-search"

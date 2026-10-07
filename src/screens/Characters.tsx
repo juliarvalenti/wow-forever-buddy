@@ -8,6 +8,7 @@ import {
   Landmark,
   type LucideIcon,
   Mail,
+  MoreHorizontal,
   Puzzle,
   Search,
 } from "lucide-react";
@@ -53,12 +54,14 @@ import { useCleanup } from "@/hooks/useCleanup";
 import { useQuestLog, useQuestPlan, useQuestsAvailable } from "@/hooks/useQuests";
 import { useGoodsWorth } from "@/hooks/useWorth";
 import { useSettings } from "@/hooks/useSettings";
+import { useTidy } from "@/hooks/useTidy";
 import { BagCleanup, MarkMenu, MarkTag, type Who } from "@/screens/BagCleanup";
 import { LoginNotes } from "@/screens/LoginNotes";
 import {
   ago,
   characterName,
   coins,
+  dayMonth,
   errorText,
   plural,
   played,
@@ -199,8 +202,18 @@ const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivi
 /** Characters: every alt's card, or one character's sheet. Characters in
  *  the WTF folder the addon hasn't seen yet get a neutral card
  *  (characters-noaddon.html) and fill in as each one is seen. */
-export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void }) {
+export function Characters({
+  onOpenDashboard,
+  onOpenData,
+}: {
+  onOpenDashboard: () => void;
+  /** O2: Settings › Data, where hidden and gone characters are managed. */
+  onOpenData: () => void;
+}) {
   const { overview, error, refresh } = useCharacters();
+  const tidy = useTidy();
+  const hidden = tidy.tidy?.hidden ?? [];
+  const gone = useMemo(() => new Set(tidy.tidy?.gone.map((g) => g.id)), [tidy.tidy]);
   const worth = useGoodsWorth();
   const roster = useRoster();
   const addon = useAddon();
@@ -236,10 +249,14 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
         (r) =>
           !seen.some(
             (c) => same(c.account, r.account) && same(c.group_dir, r.realm) && same(c.folder, r.name),
+          ) &&
+          // O2: a hidden character is still in WTF, but hidden everywhere.
+          !hidden.some(
+            (h) => same(h.account, r.account) && same(h.group_dir, r.realm) && same(h.char_dir, r.name),
           ),
       )
       .sort((a, b) => (b.last_played ?? "").localeCompare(a.last_played ?? ""));
-  }, [overview, roster]);
+  }, [overview, roster, hidden]);
   const addonMissing = addon.status != null && addon.status.installed_version == null;
   // F8c: item icons are opt-in; offer them here, where the letters are, once
   // there's a game folder to read them from (IMPLEMENTING §13).
@@ -257,8 +274,9 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
       gold: (a, b) => (b.money ?? 0) - (a.money ?? 0),
       seen: (a, b) => b.last_seen.localeCompare(a.last_seen),
     };
-    return list.sort(by[sort]);
-  }, [overview, sort]);
+    // O2: characters gone from WTF sort after the others.
+    return list.sort((a, b) => Number(gone.has(a.id)) - Number(gone.has(b.id)) || by[sort](a, b));
+  }, [overview, sort, gone]);
 
   if (open != null) {
     return (
@@ -303,7 +321,16 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
           ) : undefined
         }
       />
+      {hidden.length > 0 && (
+        <p className="ch-hidden">
+          {hidden.length} hidden ·{" "}
+          <button className="ch-link" onClick={onOpenData}>
+            Show
+          </button>
+        </p>
+      )}
       {error && <Callout tone="bad">{error}</Callout>}
+      {tidy.error && <Callout tone="bad">{tidy.error}</Callout>}
       {addonMissing && (
         <div className="ch-banner">
           <Puzzle size={16} aria-hidden />
@@ -380,7 +407,18 @@ export function Characters({ onOpenDashboard }: { onOpenDashboard: () => void })
           )}
           <section className={`ch-cards${results ? " searching" : ""}`}>
             {cards.map((c) => (
-              <Card key={c.id} c={c} match={match(c.id)} onOpen={() => setOpen(c.id)} />
+              <div key={c.id} className={`ch-cardbox${gone.has(c.id) ? " gone" : ""}`}>
+                <Card c={c} match={match(c.id)} gone={gone.has(c.id)} onOpen={() => setOpen(c.id)} />
+                <CardMenu
+                  name={fullName(c)}
+                  onHide={() => tidy.hide(c.id, true).then((ok) => ok && refresh())}
+                />
+                {gone.has(c.id) && (
+                  <button className="ch-link ch-manage" onClick={onOpenData}>
+                    Manage in Settings
+                  </button>
+                )}
+              </div>
             ))}
             {unseen.map((r) => (
               <UnseenCard
@@ -628,18 +666,66 @@ function Progress({ c }: { c: CharacterCard }) {
   return <div className="ch-prog" />;
 }
 
+/** O2: the card's "more" menu. Hide is immediate; Unhide is in Settings ›
+ *  Data. A sibling of the card, since the card is itself a button. */
+function CardMenu({ name, onHide }: { name: string; onHide: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <span className="ch-more" ref={box}>
+      <button
+        className="ch-more-btn"
+        aria-label={`More for ${name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreHorizontal size={15} aria-hidden />
+      </button>
+      {open && (
+        <span className="ch-pop" role="menu">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onHide();
+            }}
+          >
+            Hide
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Card({
   c,
   match,
+  gone,
   onOpen,
 }: {
   c: CharacterCard;
   match?: "hit" | "miss";
+  /** O2: its WTF folder is gone: dimmed, with when it was last seen. */
+  gone?: boolean;
   onOpen: () => void;
 }) {
   const where = c.subzone ?? c.zone;
   return (
-    <button className={`d-panel ch-card${match ? ` ${match}` : ""}`} onClick={onOpen} style={classStyle(c)}>
+    <button
+      className={`d-panel ch-card${match ? ` ${match}` : ""}${gone ? " gone" : ""}`}
+      onClick={onOpen}
+      style={classStyle(c)}
+    >
       <div className="ch-id">
         <Crest c={c} />
         <div>
@@ -649,8 +735,14 @@ function Card({
           </div>
           <div className="ch-cl">{classLine(c)}</div>
           <div className="ch-loc">
-            {where ? `${where} · ` : ""}
-            {ago(c.last_seen)}
+            {gone ? (
+              `Not in your WTF folder any more · last seen ${dayMonth(c.last_seen)}`
+            ) : (
+              <>
+                {where ? `${where} · ` : ""}
+                {ago(c.last_seen)}
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -442,7 +442,7 @@ fn get_recent_play(db: &Db, flavor: &str, a: PlayArgs) -> Result<Value, String> 
     let ids: Vec<i64> = db
         .with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT a.id FROM adventures a JOIN characters c ON c.id = a.character_id
+                "SELECT a.id FROM adventures a JOIN visible_characters c ON c.id = a.character_id
                  WHERE c.flavor = ?1 AND a.login >= ?2 AND (?3 IS NULL OR a.character_id = ?3)
                  ORDER BY a.login DESC, a.id DESC LIMIT ?4",
             )?;
@@ -570,7 +570,7 @@ fn get_lockouts(db: &Db, flavor: &str) -> Result<Value, String> {
         .with_conn(|c| {
             let mut stmt = c.prepare(
                 "SELECT ch.name, ch.surname, l.name, l.difficulty, l.raid, l.reset_at, l.as_of
-                 FROM lockouts l JOIN characters ch ON ch.id = l.character_id
+                 FROM lockouts l JOIN visible_characters ch ON ch.id = l.character_id
                  WHERE ch.flavor = ?1 AND (l.reset_at IS NULL OR l.reset_at > ?2)
                  ORDER BY l.reset_at IS NULL, l.reset_at, ch.name, l.name LIMIT ?3",
             )?;

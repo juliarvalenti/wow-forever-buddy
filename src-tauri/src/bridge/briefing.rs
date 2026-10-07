@@ -55,7 +55,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
             "SELECT m.character_id, count(*),
                     min(CASE WHEN m.days_left IS NULL THEN NULL
                              ELSE m.as_of + CAST(m.days_left * 86400 AS INTEGER) END)
-             FROM char_mail m JOIN characters ch ON ch.id = m.character_id
+             FROM char_mail m JOIN visible_characters ch ON ch.id = m.character_id
              WHERE ch.flavor = ?1
              GROUP BY m.character_id",
         )?;
@@ -67,7 +67,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Vec<u8>> {
         // Saves that haven't reset by now (an expired one is already gone).
         let mut stmt = c.prepare(
             "SELECT l.character_id, l.name, l.difficulty, l.reset_at
-             FROM lockouts l JOIN characters ch ON ch.id = l.character_id
+             FROM lockouts l JOIN visible_characters ch ON ch.id = l.character_id
              WHERE ch.flavor = ?1 AND l.reset_at > ?2
              ORDER BY l.character_id, l.name, l.difficulty",
         )?;

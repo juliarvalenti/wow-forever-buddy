@@ -242,7 +242,7 @@ fn display_name(name: String, surname: Option<String>) -> String {
 pub fn latest(db: &Db, flavor: &str) -> AppResult<Option<u32>> {
     db.with_conn(|c| {
         Ok(c.query_row(
-            "SELECT a.id FROM adventures a JOIN characters c ON c.id = a.character_id
+            "SELECT a.id FROM adventures a JOIN visible_characters c ON c.id = a.character_id
              WHERE c.flavor = ?1 ORDER BY a.login DESC, a.id DESC LIMIT 1",
             [flavor],
             |r| r.get::<_, i64>(0),
@@ -260,11 +260,11 @@ fn neighbour(
     newer: bool,
 ) -> AppResult<Option<AdventureLink>> {
     let sql = if newer {
-        "SELECT a.id, c.name, c.surname, a.login FROM adventures a JOIN characters c ON c.id = a.character_id
+        "SELECT a.id, c.name, c.surname, a.login FROM adventures a JOIN visible_characters c ON c.id = a.character_id
          WHERE c.flavor = ?1 AND (a.login > ?2 OR (a.login = ?2 AND a.id > ?3))
          ORDER BY a.login, a.id LIMIT 1"
     } else {
-        "SELECT a.id, c.name, c.surname, a.login FROM adventures a JOIN characters c ON c.id = a.character_id
+        "SELECT a.id, c.name, c.surname, a.login FROM adventures a JOIN visible_characters c ON c.id = a.character_id
          WHERE c.flavor = ?1 AND (a.login < ?2 OR (a.login = ?2 AND a.id < ?3))
          ORDER BY a.login DESC, a.id DESC LIMIT 1"
     };

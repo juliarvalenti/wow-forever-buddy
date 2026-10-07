@@ -32,6 +32,7 @@ mod state;
 pub mod sv;
 #[cfg(test)]
 mod test_support;
+mod tidy;
 mod triggers;
 
 use std::sync::mpsc::Sender;
@@ -125,6 +126,13 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::cleanup::cleanup_clear,
             commands::cleanup::cleanup_accept,
             commands::cleanup::cleanup_dismiss,
+            commands::tidy::tidy_get,
+            commands::tidy::tidy_data,
+            commands::tidy::tidy_hide,
+            commands::tidy::tidy_forget_preview,
+            commands::tidy::tidy_forget,
+            commands::tidy::tidy_remember,
+            commands::tidy::tidy_compact,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,

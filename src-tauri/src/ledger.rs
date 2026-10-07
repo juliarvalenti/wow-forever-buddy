@@ -169,7 +169,9 @@ fn display_name(name: String, surname: Option<String>) -> String {
 fn characters(db: &Db, flavor: &str) -> AppResult<Vec<Character>> {
     db.with_conn(|c| {
         let mut chars: Vec<Character> = c
-            .prepare("SELECT id, name, surname FROM characters WHERE flavor = ?1 ORDER BY id")?
+            .prepare(
+                "SELECT id, name, surname FROM visible_characters WHERE flavor = ?1 ORDER BY id",
+            )?
             .query_map([flavor], |r| {
                 Ok(Character {
                     id: r.get(0)?,
