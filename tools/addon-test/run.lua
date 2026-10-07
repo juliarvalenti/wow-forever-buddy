@@ -390,18 +390,44 @@ scenario("forever", function()
     local t0 = wow.EPOCH
     c.login(nil)
     c.advance(10 * MINUTE)
-    c.give(117, 2) -- the last change before logging out
+    c.give(117, 2) -- the last bag change
     c.advance(MINUTE)
+    -- AUDIT-F: changes with no bag update still reach the kept snapshot.
+    c.gainXp(500)
+    c.setMoney(26000)
+    c.advance(MINUTE)
+    -- The logout card, read after the teardown has begun: the gold is this
+    -- session's +10s from play, not the whole purse lost to a 0.
+    c.world.torn = true
+    c.startLogout()
+    local card = c.global("ForeverBuddyCardFrame")
+    local gold
+    for _, r in ipairs(card.rows) do
+        if r.shown and r.label.text == "Gold" then
+            gold = r.value.text
+        end
+    end
+    eq(gold, "|cff1eff00+10s|r", "the card's gold, from play")
+    -- A saves update during the teardown reads none; this session's stay.
+    c.fire("UPDATE_INSTANCE_INFO")
     local db = file(c.logout())
 
     local s = db.sessions[1]
     eq(s.events[1].kind, "gain", "the jerky is the first gain")
     eq(s.events[1].item, 117, "not the whole inventory at login")
-    eq(s.events[2], nil, "and the only one")
+    local gains = 0
+    for _, e in ipairs(s.events) do
+        gains = gains + (e.kind == "gain" and 1 or 0)
+    end
+    eq(gains, 1, "and the only gain")
 
     local snap = db.snapshot
-    eq(snap.at, t0 + 1 + 10 * MINUTE, "as of the last good look, not the logout")
-    eq(snap.money, 25000, "money from play, not the teardown's 0")
+    eq(snap.at >= t0 + 1 + 11 * MINUTE and snap.at < db._meta.written, true, "as of the last good look")
+    eq(snap.money, 26000, "money from play, not the teardown's 0")
+    eq(snap.xp, 1700, "XP gained after the last bag change")
+    eq(table.concat(snap.quests_done, ","), "7,783", "quests done, from play")
+    eq(#snap.professions, 3, "professions, from play")
+    eq(db.character.level, 12, "the level isn't the teardown's 0")
     eq(snap.bags[0].size, 16, "the backpack")
     eq(snap.bags[0].items[1].link, wow.link(6948), "its items")
     eq(snap.equipped[16], wow.link(25), "worn gear")

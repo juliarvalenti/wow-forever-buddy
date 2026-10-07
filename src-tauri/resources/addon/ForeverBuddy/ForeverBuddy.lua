@@ -2903,11 +2903,23 @@ local function tally()
     local t = now() or 0
     local s = session or { login = t, start = {}, events = {} }
     local out = { length = t - (s.login or t), quests = 0, loot = 0, worth = 0, priced = false }
-    local m = read(GetMoney)
+    -- AUDIT-F: torn down, money and level read 0; the last good look has
+    -- them (and the logout card would show the whole purse as lost).
+    local good = not S.live() and S.good
+    local m = good and good.money or (not good and read(GetMoney)) or nil
     if type(m) == "number" and type(s.start.money) == "number" then
         out.gold = m - s.start.money
     end
-    local level = read(UnitLevel, "player")
+    local level = not good and read(UnitLevel, "player") or nil
+    if good then
+        -- The login level, or the highest level-up logged since.
+        level = s.start.level
+        for _, e in ipairs(s.events or {}) do
+            if e.kind == "level" and type(e.level) == "number" and (not level or e.level > level) then
+                level = e.level
+            end
+        end
+    end
     if type(level) == "number" and type(s.start.level) == "number" and level > s.start.level then
         out.ding = level
     end
@@ -2933,6 +2945,9 @@ local function tally()
         local hours = math.max(t - xp.t, 60) / 3600
         out.xpHour = xp.gained / hours
         local cur, max = read(UnitXP, "player"), read(UnitXPMax, "player")
+        if good then
+            cur, max = good.xp, good.xp_max
+        end
         local cap = read(GetMaxPlayerLevel)
         if out.xpHour > 0 and type(cur) == "number" and type(max) == "number" and type(level) == "number"
             and (type(cap) ~= "number" or level < cap) then
@@ -3929,6 +3944,9 @@ handlers.PLAYER_LOGIN = function()
         events = {},
     }
     lastZone = session.start.zone
+    -- AUDIT-F: before the character is up these read 0; the first good
+    -- look (S.takeGood) takes them again.
+    S.startEarly = not S.live()
 end
 
 -- After /reload the client has just written the file and read it back, and
@@ -4050,7 +4068,6 @@ handlers.PLAYER_MONEY = function()
     else
         lastMoney = addEvent("money", { money = money })
     end
-    pcall(S.takeGood)
 end
 
 -- Where a quest was taken or handed in, and who to (the quest log, Q1b):
@@ -4188,7 +4205,6 @@ handlers.BAG_UPDATE_DELAYED = function()
     if merchantOpen then
         guarded(C.atVendor)
     end
-    pcall(S.takeGood)
 end
 
 handlers.BANKFRAME_OPENED = function()
@@ -4246,6 +4262,14 @@ handlers.TIME_PLAYED_MSG = function(total, level)
 end
 
 handlers.UPDATE_INSTANCE_INFO = function()
+    -- AUDIT-F: during the teardown the saves read as none; keep this
+    -- session's reading. (At login the bags aren't up yet but saves are,
+    -- and there's no reading to keep.)
+    local live = S.live()
+    if lockouts and not live then
+        return
+    end
+    S.savesLive = live
     local n = read(GetNumSavedInstances)
     if type(n) ~= "number" then
         return
@@ -4275,13 +4299,31 @@ handlers.ITEM_DATA_LOAD_RESULT = function(itemID, success)
     end
 end
 
--- Builds the whole file from this session plus the sessions carried forward.
 -- Forever tears the character's state down before PLAYER_LOGOUT: bags, worn
--- gear, money and quests read empty then (Julia's first logouts,
--- BUG-SATCHELS). So snapshots are also taken during play, and the latest
--- one whose backpack could be read is kept in S.good. The backpack (bag 0)
--- always has slots, so a snapshot without it is hollow, not "no bags".
+-- gear, money, XP, level, quests, professions and saves read empty then
+-- (Julia's first logouts, BUG-SATCHELS, AUDIT-F). So snapshots are also
+-- taken during play, and the latest one whose backpack could be read is
+-- kept in S.good. The backpack (bag 0) always has slots, so a snapshot
+-- without it is hollow, not "no bags".
 S.GOOD_EVERY = 10 -- seconds between snapshots during play
+
+-- Whether the character can be read right now (see above).
+function S.live()
+    local n = read("C_Container.GetContainerNumSlots", 0)
+    return type(n) == "number" and n > 0
+end
+
+-- The events after which the good snapshot is refreshed (throttled): what
+-- it holds changed. The logout countdown and leaving the world force one.
+S.GOOD_ON = {
+    BAG_UPDATE_DELAYED = true,
+    PLAYER_MONEY = true,
+    PLAYER_XP_UPDATE = true,
+    PLAYER_LEVEL_UP = true,
+    ZONE_CHANGED_NEW_AREA = true,
+    QUEST_TURNED_IN = true,
+    TRADE_SKILL_LIST_UPDATE = true,
+}
 
 function S.takeGood(force)
     local t = now()
@@ -4303,6 +4345,22 @@ function S.takeGood(force)
     S.goodAt = t
     local s = snapshot(t)
     if s.bags[0] then
+        -- The first live look: if the login's saves were read before the
+        -- character was up, ask again (UPDATE_INSTANCE_INFO).
+        if not S.good and not S.savesLive then
+            read(RequestRaidInfo)
+        end
+        -- And if the login itself was read too early: who, and where this
+        -- session starts from.
+        if S.startEarly then
+            S.startEarly = false
+            for k, v in pairs(identity()) do
+                character[k] = v
+            end
+            session.start.money, session.start.xp = s.money, s.xp
+            session.start.level = read(UnitLevel, "player")
+            pcall(S.xpBaseline)
+        end
         S.good = s
     end
 end
@@ -4324,6 +4382,7 @@ function S.logoutSnapshot(t)
     return g
 end
 
+-- Builds the whole file from this session plus the sessions carried forward.
 -- If anything here fails, ForeverBuddyDB keeps what the client loaded, so the
 -- file is never left half-built.
 handlers.PLAYER_LOGOUT = function()
@@ -4350,9 +4409,12 @@ handlers.PLAYER_LOGOUT = function()
         truncated = true
     end
 
-    -- Refreshed, but a value that can't be read now keeps the login one.
-    for k, v in pairs(identity()) do
-        character[k] = v
+    -- Refreshed, but a value that can't be read now keeps the login one; torn
+    -- down (AUDIT-F) none can, or the level would be 0.
+    if S.live() then
+        for k, v in pairs(identity()) do
+            character[k] = v
+        end
     end
 
     local db = {
@@ -4395,6 +4457,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
     if not ok then
         errors = errors or {}
         errors[event] = string.sub(tostring(err), 1, 200)
+    end
+    if S.GOOD_ON[event] then
+        pcall(S.takeGood)
     end
 end)
 
