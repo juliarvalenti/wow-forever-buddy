@@ -468,6 +468,16 @@ function SwitchRow({
   );
 }
 
+/** The agent's tools in plain words, for the activity list. */
+const TOOL_WORDS: Record<string, string> = {
+  list_characters: "listed characters",
+  get_character: "read a character",
+  find_items: "searched items",
+  get_quests: "read quests",
+  get_prices: "read prices",
+  get_recent_play: "read recent play",
+};
+
 /** P2a (docs/specs/agent-mcp.md §1): the switch, what to paste into an agent
  *  client, and the agent's recent calls. Every string from the activity list
  *  (the client's name for itself) is shown as text. */
@@ -491,6 +501,7 @@ function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange
     try {
       await navigator.clipboard.writeText(what === "json" ? json : cli);
       setCopied(what);
+      setTimeout(() => setCopied((c) => (c === what ? null : c)), 2000);
     } catch (e) {
       setError(errorText(e));
     }
@@ -511,8 +522,8 @@ function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange
           <div className="st-set full">
             <div className="t">Claude Desktop and other clients</div>
             <div className="d">Add this to the client's MCP settings.</div>
-            <pre className="st-code">{json}</pre>
-            <div className="ctl">
+            <div className="st-codebox">
+              <pre className="st-code">{json}</pre>
               <Button variant="ghost" onClick={() => copy("json")}>
                 {copied === "json" ? "Copied" : "Copy"}
               </Button>
@@ -520,8 +531,8 @@ function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange
           </div>
           <div className="st-set full">
             <div className="t">Claude Code</div>
-            <pre className="st-code">{cli}</pre>
-            <div className="ctl">
+            <div className="st-codebox">
+              <pre className="st-code">{cli}</pre>
               <Button variant="ghost" onClick={() => copy("cli")}>
                 {copied === "cli" ? "Copied" : "Copy"}
               </Button>
@@ -536,7 +547,7 @@ function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange
             {status.activity.map((c, i) => (
               <li key={i} className={c.ok ? undefined : "refused"}>
                 <span>“{c.client}”</span>
-                <span className="tool">{c.tool}</span>
+                <span className="tool">{TOOL_WORDS[c.tool] ?? c.tool}</span>
                 <span className="d-dim">{c.ok ? ago(c.at) : `refused · ${ago(c.at)}`}</span>
               </li>
             ))}

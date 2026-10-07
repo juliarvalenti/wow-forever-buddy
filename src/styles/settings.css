@@ -47,7 +47,10 @@
 .st-activity { list-style: none; display: grid; gap: 3px; margin: 6px 0 0; padding: 0; font-size: 11.5px; }
 .st-activity li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; color: var(--chalk); }
 .st-activity li span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.st-activity .tool { font-family: ui-monospace, Consolas, monospace; color: var(--soot); }
+.st-codebox { position: relative; }
+.st-codebox .st-code { padding-right: 64px; }
+.st-codebox > button { position: absolute; top: 4px; right: 4px; height: 22px; padding: 0 8px; font-size: 11px; }
+.st-activity .tool { color: var(--soot); }
 .st-activity li.refused { color: var(--soot); }
 
 .st-keep { list-style: none; display: grid; gap: 4px; margin: 6px 0 10px; padding: 0; font-size: 12px; }
