@@ -277,7 +277,20 @@ struct Gear {
 
 /// What the app would suggest for each of `character`'s bag items that
 /// isn't marked or dismissed: the mark and its reason.
-fn suggest(c: &rusqlite::Connection, character: u32) -> AppResult<Vec<(u32, Mark, Reason)>> {
+pub(crate) fn suggest(
+    c: &rusqlite::Connection,
+    character: u32,
+) -> AppResult<Vec<(u32, Mark, Reason)>> {
+    suggest_from(c, character, false)
+}
+
+/// `suggest`, or with `all` every bag item, marked or dismissed (to check an
+/// agent's reason against the app's own rules).
+pub(crate) fn suggest_from(
+    c: &rusqlite::Connection,
+    character: u32,
+    all: bool,
+) -> AppResult<Vec<(u32, Mark, Reason)>> {
     let flavor = flavor_of(c, character)?;
     // Every character of the flavor: class, level, and its worn item levels.
     let mut stmt = c.prepare(
@@ -320,13 +333,14 @@ fn suggest(c: &rusqlite::Connection, character: u32) -> AppResult<Vec<(u32, Mark
                 coalesce(it.min_level, 0), max(i.bound), min(i.bind_known)
          FROM char_items i LEFT JOIN items it ON it.item_id = i.item_id
          WHERE i.character_id = ?1 AND i.location = 'bag'
-           AND i.item_id NOT IN (SELECT item_id FROM cleanup_marks WHERE character_id = ?1)
-           AND i.item_id NOT IN (SELECT item_id FROM cleanup_dismissed WHERE character_id = ?1)
+           AND (?2 OR (
+             i.item_id NOT IN (SELECT item_id FROM cleanup_marks WHERE character_id = ?1)
+             AND i.item_id NOT IN (SELECT item_id FROM cleanup_dismissed WHERE character_id = ?1)))
          GROUP BY i.item_id
          ORDER BY i.item_id",
     )?;
     let gear = stmt
-        .query_map([character], |r| {
+        .query_map(params![character, all], |r| {
             Ok(Gear {
                 item: r.get(0)?,
                 quality: r.get(1)?,
@@ -375,8 +389,9 @@ fn suggest(c: &rusqlite::Connection, character: u32) -> AppResult<Vec<(u32, Mark
                     Reason::Upgrade { gain: gain as u32 },
                 ));
             }
-            // Someone could use it, but it may be mailable: no guess.
-            Some(_) if !g.bind_known => {}
+            // The bind state only gates send (design, #155): an item that
+            // isn't known to be mailable can't go to anyone, so it's judged
+            // like a bound one.
             _ => {
                 // Below what this character wears there, and no one else
                 // can have it: outgrown.
@@ -426,13 +441,15 @@ pub fn dismiss(db: &Db, character: u32, item: u32) -> AppResult<()> {
     })
 }
 
-/// A suggestion as the panel shows it: the item, and who it would go to.
-fn row(
+/// A suggestion (or an agent's proposed mark) as the panel shows it: the
+/// item, and who it would go to.
+pub(crate) fn row(
     c: &rusqlite::Connection,
     character: u32,
     item: u32,
     mark: Mark,
-    reason: Reason,
+    reason: Option<Reason>,
+    producer: &str,
 ) -> AppResult<Marked> {
     let (name, quality, icon, sell, count): (String, Option<u8>, Option<u32>, Option<i64>, u32) = c
         .query_row(
@@ -465,8 +482,8 @@ fn row(
         count,
         sell_price: sell.filter(|&p| p > 0).map(|p| p as f64),
         to,
-        reason: Some(reason),
-        producer: "app".into(),
+        reason,
+        producer: producer.into(),
     })
 }
 
@@ -513,7 +530,7 @@ pub fn view(db: &Db, character: u32) -> AppResult<Cleanup> {
             .collect::<Result<Vec<_>, _>>()?;
         let mut suggestions = Vec::new();
         for (item, mark, reason) in suggest(c, character)? {
-            suggestions.push(row(c, character, item, mark, reason)?);
+            suggestions.push(row(c, character, item, mark, Some(reason), "app")?);
         }
         Ok(Cleanup {
             marks,
@@ -620,7 +637,7 @@ pub fn slot_entries(db: &Db, flavor: &str) -> AppResult<Vec<(LuaValue, LuaValue)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const FLAVOR: &str = "_classic_beta_";
@@ -630,7 +647,7 @@ mod tests {
     /// state the game never reported, and a soulbound Hearthstone. He wears
     /// 66 in head and shoulders. Sela (2, priest 40) wears nothing; Kaelor
     /// (4, rogue 30) wears 20 in shoulders. Evil (3) is on another flavor.
-    fn db() -> Db {
+    pub(crate) fn db() -> Db {
         let db = Db::open_in_memory().unwrap();
         db.with_conn(|c| {
             for (id, flavor, name, class, level) in [

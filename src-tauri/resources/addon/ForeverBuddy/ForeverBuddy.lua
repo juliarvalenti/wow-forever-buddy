@@ -2446,7 +2446,7 @@ do
     -- The reason after the line, in grey (B3b): a fixed code, never text
     -- from the slot. " · grey", " · outgrown", " (+9 item level)".
     local function why(m)
-        if m.reason == "upgrade" and m.gain > 0 then
+        if m.reason == "upgrade" and (m.gain or 0) > 0 then
             return GREY .. " (+" .. m.gain .. " item level)|r"
         elseif m.reason == "grey" or m.reason == "outgrown" then
             return GREY .. " · " .. m.reason .. "|r"

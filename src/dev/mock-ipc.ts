@@ -157,6 +157,7 @@ export function installMockIpc(): void {
     note: null,
     plan: null,
     list: null,
+    bags: null,
     ...extra,
   });
   const step = (text: string, zone: string | null = null): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
@@ -209,6 +210,41 @@ export function installMockIpc(): void {
                 changes: [
                   { item_id: 14342, name: "Mooncloth", quality: 2, icon_file_id: null, need: 4, was: null },
                   { item_id: 14047, name: "Runecloth", quality: 1, icon_file_id: null, need: 30, was: 20 },
+                ],
+              },
+            }),
+            // B3b: "Bag marks for Thrandor", the same rows as the panel.
+            proposal(6, 30, "Claude Desktop", {
+              kind: "bag_marks",
+              reason: "Thrandor's bags are full before Stratholme.",
+              bags: {
+                character_id: 2,
+                character: "Thrandor",
+                class: "paladin",
+                gone: [],
+                rows: [
+                  {
+                    item_id: 1004,
+                    name: "Torn Bear Pelt",
+                    quality: 0,
+                    icon: null,
+                    count: 3,
+                    sell_price: 16,
+                    to: null,
+                    reason: { code: "grey" },
+                    producer: "proposed",
+                  },
+                  {
+                    item_id: 1005,
+                    name: "Truestrike Shoulders",
+                    quality: 3,
+                    icon: null,
+                    count: 1,
+                    sell_price: 12_100,
+                    to: { id: 7, name: "Kaelor", class: "rogue" },
+                    reason: { code: "upgrade", gain: 9 },
+                    producer: "proposed",
+                  },
                 ],
               },
             }),

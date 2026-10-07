@@ -24,7 +24,7 @@ function vendor(copper: number): string {
  *  (B3b) its reason in grey. On the parchment satchel rows names are plain
  *  ink. */
 export function MarkTag({ mark, parchment }: { mark: Marked; parchment?: boolean }) {
-  const why = reasonText(mark, parchment);
+  const why = reasonText(mark);
   return (
     <span className="bc-tag">
       {mark.to ? (
@@ -46,25 +46,13 @@ export function MarkTag({ mark, parchment }: { mark: Marked; parchment?: boolean
   );
 }
 
-/** "grey", "outgrown", "+9 item level for Kaelor", then for an agent's mark
- *  `from "Claude Desktop", approved`. Null with neither. */
-function reasonText(m: Marked, parchment?: boolean): React.ReactNode {
+/** "grey", "outgrown", "+9 item level" (the tag before it already says
+ *  "→ Kaelor"), then for an agent's mark `from "Claude Desktop", approved`.
+ *  Null with neither. */
+function reasonText(m: Marked): React.ReactNode {
   const r = m.reason;
   const why =
-    r?.code === "upgrade" && m.to ? (
-      <>
-        +{r.gain} item level for{" "}
-        {parchment ? (
-          m.to.name
-        ) : (
-          <span className="ch-cc" style={cc(m.to.class)}>
-            {m.to.name}
-          </span>
-        )}
-      </>
-    ) : r?.code === "grey" || r?.code === "outgrown" ? (
-      r.code
-    ) : null;
+    r?.code === "upgrade" ? `+${r.gain} item level` : r?.code === "grey" || r?.code === "outgrown" ? r.code : null;
   const agent = m.producer.startsWith("agent:") ? `from "${m.producer.slice("agent:".length)}", approved` : null;
   if (!why && !agent) return null;
   return (

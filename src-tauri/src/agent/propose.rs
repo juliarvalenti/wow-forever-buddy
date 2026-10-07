@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 use super::Paths;
 use crate::db::Db;
+use crate::proposals::bags::{BagProposal, ProposedMark};
 use crate::proposals::inbox::{self, InboxFile};
 use crate::proposals::list::{ListProposal, ProposedItem};
 use crate::proposals::plan::{PlanProposal, ProposedStep};
@@ -24,7 +25,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 4] = [
+const TOOLS: [Tool; 5] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -73,6 +74,23 @@ const TOOLS: [Tool; 4] = [
                     "required": ["item_id", "need"], "additionalProperties": false } },
                 "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
               "required": ["list", "items"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "propose_bag_marks",
+        description: "Suggests marking some of one character's bag items to sell at a vendor, or to send to another of the player's characters. The marks show in the player's bags in game; selling and sending stay manual, and nothing changes until the player approves. A reason, if given, must match what Forever Buddy itself works out for that item: 'grey' (poor quality), 'outgrown' (below what the character wears there, and no one else can use it), or 'upgrade' (an item level upgrade for the character it's sent to). Soulbound items can't be sent.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "character": { "type": "string", "description": "Whose bags: the name as list_characters gives it." },
+                "marks": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "object", "properties": {
+                    "item_id": { "type": "integer", "description": "An item the character holds (get_character)." },
+                    "action": { "type": "string", "enum": ["sell", "send"] },
+                    "to": { "type": "string", "description": "For send: another of the player's characters." },
+                    "reason": { "type": "string", "enum": ["grey", "outgrown", "upgrade"] } },
+                    "required": ["item_id", "action"], "additionalProperties": false } },
+                "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+              "required": ["character", "marks"], "additionalProperties": false })
         },
     },
     Tool {
@@ -126,6 +144,14 @@ struct ListArgs {
     list: String,
     for_character: Option<String>,
     items: Vec<ProposedItem>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BagArgs {
+    character: String,
+    marks: Vec<ProposedMark>,
     reason: Option<String>,
 }
 
@@ -248,6 +274,24 @@ pub fn call(
             let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
             stage(&db, paths, flavor, client, proposals::LIST, a.reason, body)
         }
+        "propose_bag_marks" => {
+            let a: BagArgs = args(raw)?;
+            let p = BagProposal {
+                character: a.character,
+                marks: a.marks,
+            };
+            proposals::bags::check(&db, flavor, &p)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(
+                &db,
+                paths,
+                flavor,
+                client,
+                proposals::BAG_MARKS,
+                a.reason,
+                body,
+            )
+        }
         "list_proposals" => {
             args::<NoArgs>(raw)?;
             let a = proposals::list(&db, flavor, now).map_err(|e| e.to_string())?;
@@ -268,6 +312,7 @@ pub fn call(
                     "text": p.note.as_ref().map(|n| n.text.clone()),
                     "plan_title": p.plan.as_ref().map(|n| n.title.clone()),
                     "list": p.list.as_ref().map(|l| l.name.clone()),
+                    "bag_marks_for": p.bags.as_ref().map(|b| b.character.clone()),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();
