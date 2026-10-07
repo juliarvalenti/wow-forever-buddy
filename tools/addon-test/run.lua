@@ -590,7 +590,7 @@ scenario("toc", function()
     eq(fields.SavedVariablesPerCharacter, "ForeverBuddyDB", "SavedVariablesPerCharacter")
     eq(fields.SavedVariables, nil, "account-wide SavedVariables")
     -- The bridge slots load first, so their globals exist when the addon runs.
-    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, ForeverBuddy.lua", "files")
+    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -660,6 +660,96 @@ scenario("quests", function()
     -- A client without the API leaves the list out, never empty.
     local old = client({ api = { ["C_QuestLog.GetAllCompletedQuestIDs"] = false } })
     eq(file(play(old, nil, 10)).snapshot.quests_done, nil, "no list without the API")
+    return text
+end)
+
+-- Tonight's plan (P1, INGAME §7): this character's plan from the Plan slot,
+-- /fb plan to show it, live tick-off, the one manual tick, waypoints from
+-- recorded positions, and the progress kept across logins.
+local PLAN = 'ForeverBuddyData_Plan = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n\t["plans"] = {\n'
+    .. '\t\t{ ["id"] = 7, ["name"] = "Thrandor", ["surname"] = "Vargur", ["title"] = "Hogger", ["steps"] = {\n'
+    .. '\t\t\t{ ["text"] = "Take Wanted: Hogger", ["kind"] = "accept", ["quest"] = 176, ["zone"] = "Elwynn Forest",'
+    .. ' ["giver"] = "Marshal Dughan", ["map"] = 1429, ["x"] = 0.412, ["y"] = 0.657 },\n'
+    .. '\t\t\t{ ["text"] = "Find |Hitem:1|h[Hogger]|h by the river", ["kind"] = "objective", ["zone"] = "Elwynn Forest" },\n'
+    .. '\t\t\t{ ["text"] = "Defeat Hogger", ["kind"] = "objective", ["quest"] = 176, ["zone"] = "Elwynn Forest" },\n'
+    .. '\t\t\t{ ["text"] = "Hand in Wanted: Hogger", ["kind"] = "turn_in", ["quest"] = 176, ["zone"] = "Elwynn Forest",'
+    .. ' ["map"] = 1436, ["x"] = 0.5, ["y"] = 0.5 },\n'
+    .. '\t\t} },\n'
+    .. '\t\t{ ["id"] = 8, ["name"] = "Coinpurse", ["surname"] = "", ["title"] = "Not yours", ["steps"] = {\n'
+    .. '\t\t\t{ ["text"] = "Someone else\'s step", ["kind"] = "objective" },\n'
+    .. '\t\t} },\n'
+    .. '\t},\n}\n'
+
+scenario("plan", function()
+    local c = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    c.login(nil)
+    -- The arrival line belongs to the B1 briefing (INGAME §7, §9).
+    eq(#c.chat, 0, "no chat line of its own at login")
+    eq(c.global("ForeverBuddyPlanFrame"), nil, "never opens by itself")
+
+    c.slash("/fb plan")
+    local f = c.global("ForeverBuddyPlanFrame")
+    eq(f.shown, true, "shown")
+    eq(f.title.text, "Tonight's plan · Elwynn Forest", "title")
+    local row = function(i)
+        return f.rows[i]
+    end
+    eq(row(1).label.text, "1. Take Wanted: Hogger", "step 1")
+    eq(row(1).detail.text, "Elwynn Forest · Marshal Dughan", "where")
+    eq(table.concat(row(1).label.color, ","), "1,0.82,0", "the current step is gold")
+    eq(row(2).label.text, "2. Find ||Hitem:1||h[Hogger]||h by the river", "plan text is escaped")
+    eq(row(1).go.enabled, true, "a waypoint in this zone")
+    eq(row(4).go.enabled, false, "not from another map")
+    eq(row(4).go.tip, "Go to Elwynn Forest first.", "why not")
+    eq(row(3).go.enabled, false, "no recorded position")
+    eq(row(3).go.tip, "No position recorded for this quest yet.", "says so")
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "0 of 4 done", "footer")
+
+    c.click(row(1).go)
+    eq(c.waypoints[1].map, 1429, "the game's own waypoint")
+    eq(c.waypoints[1].x, 0.412, "at the recorded spot")
+
+    -- The game says the quest was taken: step 1 ticks and its waypoint goes.
+    c.accept(176, { name = "Marshal Dughan" })
+    eq(table.concat(row(1).label.color, ","), "0.5,0.5,0.5", "done steps are grey")
+    eq(table.concat(row(2).label.color, ","), "1,0.82,0", "next step")
+    eq(c.waypoints[2], "cleared", "the ticked step's waypoint is cleared")
+    -- Only a step with no quest id is ticked by hand, and can be unticked.
+    c.click(row(2))
+    c.click(row(2))
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "1 of 4 done", "ticked and unticked")
+    c.click(row(2))
+    c.click(row(3))
+    c.click(row(4))
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "2 of 4 done", "steps the game ticks can't be clicked")
+    -- An objective step ticks when its quest is complete in the log.
+    c.questComplete(176)
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "3 of 4 done", "objective done")
+    c.turnIn(176, 450, 75)
+    eq(f.footer.text, "All 4 done · from Forever Buddy", "all done")
+    eq(table.concat(c.chat, "\n"), "Forever Buddy: tonight's plan is done.", "one chat line when done")
+
+    -- Progress is kept: the next login shows the same ticks and says nothing.
+    local text = c.logout()
+    eq(file(text).plan.id, 7, "progress saved")
+    local again = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    again.login(text)
+    eq(#again.chat, 0, "nothing at login for a plan already seen")
+    again.slash("/fb plan")
+    local g = again.global("ForeverBuddyPlanFrame")
+    eq(g.footer.text, "All 4 done · from Forever Buddy", "progress after login")
+    again.slash("/fb plan")
+    eq(g.shown, false, "/fb plan again hides it")
+
+    -- Another character's plan isn't this one's.
+    local other = client({
+        slots = { ["Data/Plan.lua"] = PLAN },
+        character = { name = "Velyra", surname = "Duskmane", realm = "Classic Beta PvP 2", guid = "Player-1" },
+    })
+    other.login(nil)
+    eq(#other.chat, 0, "no plan, no chat")
+    other.slash("/fb plan")
+    eq(other.global("ForeverBuddyPlanFrame").footer.text, "No plan for this character. Make one in Forever Buddy.", "empty")
     return text
 end)
 

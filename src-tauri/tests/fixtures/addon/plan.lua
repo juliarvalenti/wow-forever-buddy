@@ -1,13 +1,13 @@
--- Written by tools/addon-test/run.lua (scenario readback_missing). Don't edit: change the scenario and run it again.
+-- Written by tools/addon-test/run.lua (scenario plan). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
 		["addon"] = "0.6.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
-			["events"] = 0,
+			["events"] = 3,
 			["items"] = 3,
-			["quests_done"] = 2,
+			["quests_done"] = 3,
 			["sessions"] = 1,
 		},
 		["loaded_prior"] = false,
@@ -16,7 +16,14 @@ ForeverBuddyDB = {
 		["schema"] = 1,
 		["secret_hits"] = 0,
 		["truncated"] = false,
-		["written"] = 1791061200,
+		["written"] = 1790964000,
+	},
+	["bridge"] = {
+		["Plan"] = {
+			["schema"] = 1,
+			["seen"] = 1790964000,
+			["stamp"] = 1790960000,
+		},
 	},
 	["character"] = {
 		["class"] = "WARRIOR",
@@ -62,13 +69,51 @@ ForeverBuddyDB = {
 			["subclass"] = 5,
 		},
 	},
+	["plan"] = {
+		["done"] = {
+			true, -- [1]
+			true, -- [2]
+			true, -- [3]
+			true, -- [4]
+		},
+		["finished"] = true,
+		["id"] = 7,
+	},
 	["sessions"] = {
 		{
 			["events"] = {
+				{
+					["giver"] = "Marshal Dughan",
+					["id"] = 176,
+					["kind"] = "quest_accepted",
+					["map"] = 1429,
+					["t"] = 1790964000,
+					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
+				}, -- [1]
+				{
+					["id"] = 176,
+					["kind"] = "quest",
+					["map"] = 1429,
+					["money"] = 75,
+					["t"] = 1790964000,
+					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
+					["xp"] = 450,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
+				}, -- [2]
+				{
+					["kind"] = "money",
+					["money"] = 25075,
+					["t"] = 1790964000,
+				}, -- [3]
 			},
-			["id"] = 1791057600,
-			["login"] = 1791057600,
-			["logout"] = 1791061200,
+			["id"] = 1790964000,
+			["login"] = 1790964000,
+			["logout"] = 1790964000,
 			["start"] = {
 				["level"] = 12,
 				["money"] = 25000,
@@ -78,7 +123,7 @@ ForeverBuddyDB = {
 		}, -- [1]
 	},
 	["snapshot"] = {
-		["at"] = 1791061200,
+		["at"] = 1790964000,
 		["bags"] = {
 			[0] = {
 				["free"] = 14,
@@ -103,13 +148,7 @@ ForeverBuddyDB = {
 			["avg"] = 21.5,
 			["equipped"] = 20.25,
 		},
-		["lockouts"] = {
-		},
-		["money"] = 25000,
-		["played"] = {
-			["level"] = 97674,
-			["total"] = 116751,
-		},
+		["money"] = 25075,
 		["professions"] = {
 			{
 				["line"] = 182,
@@ -133,11 +172,12 @@ ForeverBuddyDB = {
 		},
 		["quests_done"] = {
 			7, -- [1]
-			783, -- [2]
+			176, -- [2]
+			783, -- [3]
 		},
 		["rest_state"] = "Rested",
 		["rested"] = 674,
-		["xp"] = 1200,
+		["xp"] = 1650,
 		["xp_max"] = 8800,
 		["zone"] = {
 			["map"] = 1429,
