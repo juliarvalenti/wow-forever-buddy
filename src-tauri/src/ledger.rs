@@ -204,10 +204,11 @@ fn local_day(t: i64, tz: &FixedOffset) -> NaiveDate {
 }
 
 /// The chart's days, and when each ends (the next midnight): a day's value
-/// is the money at the last point before its end. Empty without any points.
+/// is the money at the last point before its end. The last `n` days, or from
+/// the first point with `None`. Empty without any points.
 fn days(
     chars: &[Character],
-    range: LedgerRange,
+    n: Option<u64>,
     now: i64,
     tz: &FixedOffset,
 ) -> (Vec<NaiveDate>, Vec<i64>) {
@@ -220,7 +221,7 @@ fn days(
     else {
         return (Vec::new(), Vec::new());
     };
-    let start = match range.days() {
+    let start = match n {
         Some(n) => today - Days::new(n - 1),
         None => local_day(first, tz).min(today),
     };
@@ -233,7 +234,7 @@ fn days(
 }
 
 fn chart(chars: &[Character], range: LedgerRange, now: i64, tz: &FixedOffset) -> Chart {
-    let (days, ends) = days(chars, range, now, tz);
+    let (days, ends) = days(chars, range.days(), now, tz);
     let per_day =
         |c: &Character| -> Vec<Option<i64>> { ends.iter().map(|e| c.before(*e)).collect() };
 
@@ -515,6 +516,42 @@ pub fn ledger(
     })
 }
 
+/// One character's gold at the end of each day (P3's get_gold_history).
+pub struct DailyGold {
+    pub name: String,
+    /// Oldest first, with `None` before its first point.
+    pub days: Vec<(NaiveDate, Option<i64>)>,
+}
+
+/// Each character's money at the end of each of the last `n` days, by the
+/// chart's own rule; only `character` when given. Characters with no points
+/// are left out.
+pub fn daily(
+    db: &Db,
+    flavor: &str,
+    character: Option<i64>,
+    n: u64,
+    now: i64,
+    tz: &FixedOffset,
+) -> AppResult<Vec<DailyGold>> {
+    let chars: Vec<Character> = characters(db, flavor)?
+        .into_iter()
+        .filter(|c| !c.points.is_empty() && character.is_none_or(|id| id == c.id))
+        .collect();
+    let (days, ends) = days(&chars, Some(n), now, tz);
+    Ok(chars
+        .iter()
+        .map(|c| DailyGold {
+            name: c.name.clone(),
+            days: days
+                .iter()
+                .zip(&ends)
+                .map(|(d, e)| (*d, c.before(*e)))
+                .collect(),
+        })
+        .collect())
+}
+
 // CSV ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -568,7 +605,7 @@ fn csv(
                 .into_iter()
                 .filter(|c| !c.points.is_empty())
                 .collect();
-            let (days, ends) = days(&chars, range, now, tz);
+            let (days, ends) = days(&chars, range.days(), now, tz);
             let mut header = vec![csv_text("Date"), csv_text("Account (gold)")];
             header.extend(
                 chars

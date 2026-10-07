@@ -9,15 +9,16 @@
 
 use std::path::Path;
 
-use chrono::{NaiveDate, Utc};
+use chrono::{FixedOffset, Local, NaiveDate, Utc};
 use rusqlite::params;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::characters::{self, BagView, CharacterCard, ItemRow};
+use crate::cleanup::{self, Marked, Reason};
 use crate::db::Db;
 use crate::error::AppError;
-use crate::{adventures, ah, notes, quests};
+use crate::{adventures, ah, ledger, notes, quests};
 
 /// Spec §5: at most this many rows of any list in one answer, with `more`.
 const MAX_ROWS: usize = 500;
@@ -25,6 +26,9 @@ const MAX_ROWS: usize = 500;
 const MAX_DONE_IDS: usize = 10_000;
 const MAX_PRICE_ITEMS: usize = 100;
 const MAX_DAYS: u32 = 30;
+/// P3's gold and price histories.
+const MAX_HISTORY_DAYS: u32 = 90;
+const MAX_HISTORY_ITEMS: usize = 10;
 
 struct Tool {
     name: &'static str,
@@ -34,7 +38,7 @@ struct Tool {
 
 const CHARACTER_ARG: &str = "The character's name as list_characters gives it (\"Thrandor Vargur\"), or just the first name when only one character has it.";
 
-const TOOLS: [Tool; 6] = [
+const TOOLS: [Tool; 10] = [
     Tool {
         name: "list_characters",
         description: "Every character Forever Buddy has seen: name, class, race, level, zone, gold (copper), item level, rested XP and when it was last seen. Start here.",
@@ -83,6 +87,41 @@ const TOOLS: [Tool; 6] = [
                         "character": { "type": "string", "description": CHARACTER_ARG },
                         "days": { "type": "integer", "minimum": 1, "maximum": MAX_DAYS, "description": "How far back, 7 by default." } },
                     "additionalProperties": false })
+        },
+    },
+    // P3: more of what the screens show.
+    Tool {
+        name: "get_gold_history",
+        description: "Gold over time, as on the Ledger: each character's gold (copper) at the end of each day in the player's time zone, carried forward between logouts, and the change from the day before. Days before a character was first seen are left out.",
+        schema: || {
+            json!({ "type": "object", "properties": {
+                        "character": { "type": "string", "description": CHARACTER_ARG },
+                        "days": { "type": "integer", "minimum": 1, "maximum": MAX_HISTORY_DAYS, "description": "How far back, 30 by default." } },
+                    "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "get_price_history",
+        description: "Auction house price history from the player's Auctionator scans: for each day a scan saw the item, the lowest and highest buyout (copper) and how many were listed. Only days with a scan.",
+        schema: || {
+            json!({ "type": "object", "properties": {
+                        "items": { "type": "array", "items": { "type": "integer", "minimum": 1 },
+                                   "maxItems": MAX_HISTORY_ITEMS, "description": "Item ids." },
+                        "days": { "type": "integer", "minimum": 1, "maximum": MAX_HISTORY_DAYS, "description": "How far back, 30 by default." } },
+                    "required": ["items"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "get_lockouts",
+        description: "Every character's current raid and dungeon lockouts, with when each resets, as of that character's last logout. Lockouts already reset are left out.",
+        schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+    },
+    Tool {
+        name: "get_bag_marks",
+        description: "A character's bag cleanup: items marked to sell or to send to another of the player's characters, with the reason and who marked it, and the items the app suggests marking. See propose_bag_marks to suggest more.",
+        schema: || {
+            json!({ "type": "object", "properties": { "character": { "type": "string", "description": CHARACTER_ARG } },
+                    "required": ["character"], "additionalProperties": false })
         },
     },
 ];
@@ -141,6 +180,20 @@ struct PlayArgs {
     days: Option<u32>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoldArgs {
+    character: Option<String>,
+    days: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PriceHistoryArgs {
+    items: Vec<u32>,
+    days: Option<u32>,
+}
+
 fn args<T: for<'de> Deserialize<'de>>(v: &Value) -> Result<T, String> {
     // Some clients send no arguments at all for a tool that takes none.
     let v = if v.is_null() { json!({}) } else { v.clone() };
@@ -173,6 +226,13 @@ pub fn call(db_path: &Path, flavor: &str, name: &str, raw: &Value) -> Result<Val
         "get_quests" => get_quests(&db, flavor, args(raw)?),
         "get_prices" => get_prices(&db, flavor, args(raw)?, today),
         "get_recent_play" => get_recent_play(&db, flavor, args(raw)?),
+        "get_gold_history" => get_gold_history(&db, flavor, args(raw)?, *Local::now().offset()),
+        "get_price_history" => get_price_history(&db, flavor, args(raw)?, today),
+        "get_lockouts" => {
+            args::<NoArgs>(raw)?;
+            get_lockouts(&db, flavor)
+        }
+        "get_bag_marks" => get_bag_marks(&db, flavor, &args::<CharacterArgs>(raw)?.character),
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -427,6 +487,159 @@ fn get_recent_play(db: &Db, flavor: &str, a: PlayArgs) -> Result<Value, String> 
     Ok(json!({ "days": days, "sessions": sessions, "more": ids.len() > MAX_ROWS }))
 }
 
+fn history_days(days: Option<u32>) -> Result<u32, String> {
+    let days = days.unwrap_or(30);
+    if !(1..=MAX_HISTORY_DAYS).contains(&days) {
+        return Err(format!("`days` must be 1 to {MAX_HISTORY_DAYS}."));
+    }
+    Ok(days)
+}
+
+/// The Ledger's per-day gold (only times and amounts are stored, so there
+/// is no sender, trade partner or buyer to leave), at most `MAX_ROWS` days
+/// across all characters.
+fn get_gold_history(db: &Db, flavor: &str, a: GoldArgs, tz: FixedOffset) -> Result<Value, String> {
+    let days = history_days(a.days)?;
+    let who = a
+        .character
+        .as_deref()
+        .map(|k| resolve(db, flavor, k))
+        .transpose()?;
+    let chars = ledger::daily(
+        db,
+        flavor,
+        who.map(|c| i64::from(c.id)),
+        u64::from(days),
+        Utc::now().timestamp(),
+        &tz,
+    )
+    .map_err(db_error)?;
+    let mut left = MAX_ROWS;
+    let mut more = false;
+    let characters: Vec<Value> = chars
+        .iter()
+        .map(|c| {
+            let mut prev = None;
+            let mut rows = Vec::new();
+            for (day, gold) in &c.days {
+                let Some(gold) = *gold else { continue };
+                if left == 0 {
+                    more = true;
+                    break;
+                }
+                left -= 1;
+                rows.push(json!({ "day": day.to_string(), "gold_copper": gold as f64,
+                                  "change_copper": prev.map(|p: i64| (gold - p) as f64) }));
+                prev = Some(gold);
+            }
+            json!({ "character": c.name, "days": rows })
+        })
+        .collect();
+    Ok(json!({ "days": days, "characters": characters, "more": more }))
+}
+
+fn get_price_history(
+    db: &Db,
+    flavor: &str,
+    a: PriceHistoryArgs,
+    today: NaiveDate,
+) -> Result<Value, String> {
+    let days = history_days(a.days)?;
+    if a.items.is_empty() || a.items.len() > MAX_HISTORY_ITEMS {
+        return Err(format!("1 to {MAX_HISTORY_ITEMS} items a call."));
+    }
+    let mut items = Vec::new();
+    for id in a.items {
+        items.push(match ah::history(db, flavor, id, Some(days), today) {
+            Ok(h) => json!({
+                "item_id": id, "name": h.item.name,
+                "days": h.points.iter().map(|p| json!({
+                    "day": p.day, "low_copper": p.low, "high_copper": p.high, "available": p.available,
+                })).collect::<Vec<_>>(),
+            }),
+            Err(AppError::NotFound(_)) => json!({ "item_id": id, "days": [] }),
+            Err(e) => return Err(db_error(e)),
+        });
+    }
+    Ok(json!({ "days": days, "items": items }))
+}
+
+fn get_lockouts(db: &Db, flavor: &str) -> Result<Value, String> {
+    let now = Utc::now().timestamp();
+    let rows: Vec<Value> = db
+        .with_conn(|c| {
+            let mut stmt = c.prepare(
+                "SELECT ch.name, ch.surname, l.name, l.difficulty, l.raid, l.reset_at, l.as_of
+                 FROM lockouts l JOIN characters ch ON ch.id = l.character_id
+                 WHERE ch.flavor = ?1 AND (l.reset_at IS NULL OR l.reset_at > ?2)
+                 ORDER BY l.reset_at IS NULL, l.reset_at, ch.name, l.name LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![flavor, now, MAX_ROWS as i64 + 1], |r| {
+                    let name: String = r.get(0)?;
+                    let surname: Option<String> = r.get(1)?;
+                    Ok(json!({
+                        "character": display(&name, surname.as_deref()),
+                        "name": r.get::<_, String>(2)?,
+                        "difficulty": r.get::<_, String>(3)?,
+                        "raid": r.get::<_, i64>(4)? != 0,
+                        "resets_at": r.get::<_, Option<i64>>(5)?,
+                        "as_of": r.get::<_, i64>(6)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .map_err(db_error)?;
+    Ok(json!({
+        "lockouts": rows.iter().take(MAX_ROWS).collect::<Vec<_>>(),
+        "more": rows.len() > MAX_ROWS,
+    }))
+}
+
+fn mark(m: &Marked) -> Value {
+    let reason = m.reason.map(|r| match r {
+        Reason::Grey => json!({ "code": "grey" }),
+        Reason::Outgrown => json!({ "code": "outgrown" }),
+        Reason::Upgrade { gain } => json!({ "code": "upgrade", "item_levels": gain }),
+    });
+    json!({
+        "item_id": m.item_id,
+        "name": m.name,
+        "count": m.count,
+        "action": if m.to.is_some() { "send" } else { "sell" },
+        "to": m.to.as_ref().map(|t| &t.name),
+        "vendor_price_copper": m.sell_price,
+        "reason": reason,
+    })
+}
+
+fn get_bag_marks(db: &Db, flavor: &str, key: &str) -> Result<Value, String> {
+    let c = resolve(db, flavor, key)?;
+    let v = cleanup::view(db, c.id).map_err(db_error)?;
+    let marks: Vec<Value> = v
+        .marks
+        .iter()
+        .take(MAX_ROWS)
+        .map(|m| {
+            let mut row = mark(m);
+            // "app", or "agent" for one approved from an agent's proposal.
+            row["marked_by"] = json!(if m.producer.starts_with("agent:") {
+                "agent"
+            } else {
+                "app"
+            });
+            row
+        })
+        .collect();
+    Ok(json!({
+        "character": display(&c.name, c.surname.as_deref()),
+        "marks": marks,
+        "suggested": v.suggestions.iter().take(MAX_ROWS).map(mark).collect::<Vec<_>>(),
+        "more": v.marks.len() > MAX_ROWS || v.suggestions.len() > MAX_ROWS,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,11 +676,15 @@ mod tests {
                                      items = {{ {{ link = "|Hitem:858:|h[Potion]|h", count = 2 }} }} }} }} }},
     professions = {{ {{ name = "Tailoring", skill = 150, max = 225 }} }},
     quests_done = {{ 176, 783 }},
+    lockouts = {{ {{ name = "Molten Core", difficulty = "Normal", reset_at = {reset}, raid = true }},
+                  {{ name = "Scholomance", difficulty = "Normal", reset_at = {reset_gone}, raid = false }} }},
   }},
   items = {{ [2589] = {{ name = "Linen Cloth", quality = 1, ilvl = 5 }} }},
   sessions = {{}},
 }}
-"#
+"#,
+            reset = at + 3 * 86_400,
+            reset_gone = at - 60,
         )
     }
 
@@ -477,6 +694,18 @@ mod tests {
         let path = dir.path().join("buddy.db");
         let db = Db::open(&path).unwrap();
         ingest_text(&db, "Ellygie-Vargur", &file(Utc::now().timestamp() - 600));
+        // The linen marked to sell from an agent's approved proposal.
+        db.with_conn(|c| {
+            cleanup::put(
+                c,
+                1,
+                2589,
+                cleanup::Mark::Sell,
+                None,
+                "agent:Claude Desktop",
+            )
+        })
+        .unwrap();
         drop(db);
         (dir, path)
     }
@@ -527,6 +756,49 @@ mod tests {
     }
 
     #[test]
+    fn p3_tools_answer_from_the_fixture() {
+        let (_dir, path) = fixture();
+        let g = run(
+            &path,
+            "get_gold_history",
+            json!({ "character": "Ellygie", "days": 7 }),
+        )
+        .unwrap();
+        let days = g["characters"][0]["days"].as_array().unwrap();
+        assert_eq!(g["characters"][0]["character"], "Ellygie Vargur");
+        assert_eq!(
+            days.last().unwrap()["gold_copper"],
+            123456.0,
+            "today, carried forward"
+        );
+        assert_eq!(
+            days[0]["change_copper"],
+            Value::Null,
+            "no day before the first"
+        );
+        assert!(run(&path, "get_gold_history", json!({ "days": 91 })).is_err());
+
+        let p = run(&path, "get_price_history", json!({ "items": [2589] })).unwrap();
+        assert_eq!(p["items"][0]["days"], json!([]), "no scans yet");
+        assert!(run(&path, "get_price_history", json!({ "items": [] })).is_err());
+        let many: Vec<u32> = (1..=11).collect();
+        assert!(run(&path, "get_price_history", json!({ "items": many })).is_err());
+
+        let l = run(&path, "get_lockouts", Value::Null).unwrap();
+        let lockouts = l["lockouts"].as_array().unwrap();
+        assert_eq!(lockouts.len(), 1, "the reset one is left out: {l}");
+        assert_eq!(lockouts[0]["name"], "Molten Core");
+        assert_eq!(lockouts[0]["character"], "Ellygie Vargur");
+        assert_eq!(lockouts[0]["raid"], true);
+
+        let b = run(&path, "get_bag_marks", json!({ "character": "Ellygie" })).unwrap();
+        assert_eq!(b["marks"][0]["name"], "Linen Cloth");
+        assert_eq!(b["marks"][0]["action"], "sell");
+        assert_eq!(b["marks"][0]["marked_by"], "agent");
+        assert!(b["suggested"].is_array());
+    }
+
+    #[test]
     fn mail_text_never_appears_in_any_result() {
         let (_dir, path) = fixture();
         let calls = [
@@ -535,6 +807,9 @@ mod tests {
             ("find_items", json!({ "query": "potion" })),
             ("get_quests", json!({ "character": "Ellygie" })),
             ("get_recent_play", json!({})),
+            ("get_gold_history", json!({})),
+            ("get_lockouts", json!({})),
+            ("get_bag_marks", json!({ "character": "Ellygie" })),
         ];
         for (name, a) in calls {
             let text = run(&path, name, a).unwrap().to_string();
