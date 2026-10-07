@@ -326,6 +326,16 @@ export const commands = {
 	 *  tab stays hidden. False before a game folder is set.
 	 */
 	questsAvailable: () => __TAURI_INVOKE<boolean>("quests_available"),
+	/**
+	 *  The characters' active quest plans (P1). Empty before a game folder is
+	 *  set. Plans become active only through an approved proposal (P2).
+	 */
+	plansList: () => __TAURI_INVOKE<Plan[]>("plans_list"),
+	/**
+	 *  "Clear plan": the character has no plan any more, in the app now and in
+	 *  the game at the next slot write.
+	 */
+	planClear: (characterId: number) => __TAURI_INVOKE<Plan[]>("plan_clear", { characterId }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1400,6 +1410,18 @@ export type OfNote = {
 	icon?: number | null,
 };
 
+export type Plan = {
+	id: number,
+	character_id: number,
+	character: string,
+	title: string,
+	steps: Step[],
+	/**  "app" or "agent:<client name>", as a claim (the client names itself). */
+	producer: string,
+	/**  When it was approved (RFC 3339, UTC). */
+	created_at: string,
+};
+
 /**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
 export type PlanFolder = {
 	/**  Relative to the flavor folder, `/`-separated. */
@@ -1801,6 +1823,21 @@ export type StartupProblem =
 "settings" | 
 /**  Anything else, e.g. a data folder that can't be created. */
 "other";
+
+export type Step = {
+	text: string,
+	quest_id: number | null,
+	zone: string | null,
+	kind?: StepKind | null,
+};
+
+/**
+ *  What finishes a step in game. Without one, a step with a quest id is
+ *  done when that quest is handed in.
+ */
+export type StepKind = "accept" | "turn_in" | 
+/**  Done by hand: the player ticks it. */
+"objective";
 
 /**  The storage meter on the Backups screen. */
 export type StorageInfo = {

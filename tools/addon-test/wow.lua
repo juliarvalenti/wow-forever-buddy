@@ -110,6 +110,8 @@ function M.new(opts)
         now = M.EPOCH,
         errors = {}, -- errors that escaped the addon's own OnEvent
         unknown = {},
+        chat = {}, -- lines added to the default chat frame
+        waypoints = {}, -- C_Map.SetUserWaypoint calls
     }
     for _, e in ipairs(opts.unknown_events or {}) do
         client.unknown[e] = true
@@ -164,6 +166,7 @@ function M.new(opts)
         quests_done = { 783, 7 }, -- GetAllCompletedQuestIDs, in the client's order
         pos = { 0.41234, 0.65678 }, -- on map 1429 (Elwynn), outside instances
         npc = nil, -- { name, player } the quest window is open on
+        complete = {}, -- quest id -> objectives done (C_QuestLog.IsComplete)
     }
     client.world = world
 
@@ -331,8 +334,18 @@ function M.new(opts)
         end,
         ["C_Map.GetBestMapForUnit"] = function(unit)
             if unit == "player" then
-                return 1429
+                return world.map or 1429
             end
+        end,
+        ["C_Map.SetUserWaypoint"] = function(point)
+            table.insert(client.waypoints, point)
+        end,
+        ["C_Map.ClearUserWaypoint"] = function()
+            table.insert(client.waypoints, "cleared")
+        end,
+        -- Objectives done in the log (client.questComplete).
+        ["C_QuestLog.IsComplete"] = function(id)
+            return world.complete[id] == true
         end,
         UnitClass = function(unit)
             if unit == "player" then
@@ -455,8 +468,53 @@ function M.new(opts)
         return f
     end
 
+    -- Frames are also just enough UI for the plan frame: text, colour,
+    -- shown/enabled and scripts are recorded so scenarios can read and
+    -- click them; any other widget method is a no-op.
     local Frame = {}
-    Frame.__index = Frame
+    local function noop() end
+    Frame.__index = function(_, k)
+        local m = rawget(Frame, k)
+        if m ~= nil then
+            return m
+        end
+        return noop
+    end
+    local function newWidget(parent)
+        local w = setmetatable({ events = {}, scripts = {}, children = {}, shown = true, enabled = true }, Frame)
+        w.parent = parent
+        if parent then
+            table.insert(parent.children, w)
+        end
+        return w
+    end
+    function Frame:CreateFontString()
+        return newWidget(self)
+    end
+    function Frame:SetText(text)
+        self.text = text
+    end
+    function Frame:GetText()
+        return self.text
+    end
+    function Frame:SetTextColor(r, g, b)
+        self.color = { r, g, b }
+    end
+    function Frame:Show()
+        self.shown = true
+    end
+    function Frame:Hide()
+        self.shown = false
+    end
+    function Frame:SetShown(on)
+        self.shown = on and true or false
+    end
+    function Frame:IsShown()
+        return self.shown
+    end
+    function Frame:SetEnabled(on)
+        self.enabled = on and true or false
+    end
     function Frame:RegisterEvent(event)
         if client.unknown[event] then
             error('Frame:RegisterEvent(): Attempt to register unknown event "' .. event .. '"', 2)
@@ -487,11 +545,27 @@ function M.new(opts)
         env.print = function()
             error("ForeverBuddy must not print")
         end
-        env.CreateFrame = function()
-            local f = setmetatable({ events = {}, scripts = {} }, Frame)
+        env.CreateFrame = function(_, name, parent)
+            local f = newWidget(parent)
             table.insert(state.frames, f)
+            if name then
+                env[name] = f
+            end
             return f
         end
+        env.UIParent = newWidget(nil)
+        env.date = os.date
+        -- The one chat line a new plan gets (INGAME §7); print stays banned.
+        env.DEFAULT_CHAT_FRAME = {
+            AddMessage = function(_, msg)
+                table.insert(client.chat, msg)
+            end,
+        }
+        env.UiMapPoint = {
+            CreateFromCoordinates = function(map, x, y)
+                return { map = map, x = x, y = y }
+            end,
+        }
         env.C_Timer = {
             After = function(seconds, fn)
                 table.insert(state.timers, { at = client.now + seconds, fn = fn })
@@ -791,6 +865,45 @@ function M.new(opts)
         bagsChanged()
         client.fire("MAIL_CLOSED")
         world.mail_open = false
+    end
+
+    -- Types a slash command, e.g. "/fb plan", as the client dispatches it:
+    -- the SLASH_<KEY>1 global names the command, SlashCmdList[KEY] runs it.
+    function client.slash(line)
+        local cmd, rest = line:match("^(%S+)%s*(.*)$")
+        local env = state.env
+        for key, fn in pairs(env.SlashCmdList or {}) do
+            if env["SLASH_" .. key .. "1"] == cmd then
+                local ok, err = pcall(fn, rest)
+                if not ok then
+                    table.insert(client.errors, "slash: " .. tostring(err))
+                end
+                return
+            end
+        end
+        error("no slash command " .. cmd)
+    end
+
+    -- A quest's objectives are all done: the log updates.
+    function client.questComplete(id)
+        world.complete[id] = true
+        client.fire("QUEST_LOG_UPDATE")
+    end
+
+    -- A global of the running addon's environment (a named frame, say).
+    function client.global(name)
+        return state.env[name]
+    end
+
+    -- Clicks a widget: its OnClick, as the client calls it.
+    function client.click(widget)
+        local fn = widget.scripts.OnClick
+        if fn then
+            local ok, err = pcall(fn, widget, "LeftButton")
+            if not ok then
+                table.insert(client.errors, "click: " .. tostring(err))
+            end
+        end
     end
 
     -- Shows the item tooltip for `id`: the game's own line, then whatever

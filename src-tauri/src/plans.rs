@@ -11,6 +11,10 @@
 //! log (Q1b): the giver and position recorded when that quest was taken or
 //! handed in, so a waypoint is never a position an agent made up. Every
 //! string is checked for length here and shown as plain text in game.
+//!
+//! `set_plan`'s only caller is P2c's approval step, which comes next; until
+//! then only tests call it.
+#![cfg_attr(not(test), allow(dead_code))]
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
