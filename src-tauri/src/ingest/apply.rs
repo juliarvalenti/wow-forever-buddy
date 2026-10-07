@@ -76,6 +76,9 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
             params![id, r.slot.name(), r.stamp, r.schema, r.seen],
         )?;
     }
+    if let Some(p) = &file.plan {
+        crate::plans::record_progress(tx, id, p.id, &p.done, at)?;
+    }
     Ok(id)
 }
 
