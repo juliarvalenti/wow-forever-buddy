@@ -695,8 +695,25 @@ scenario("plan", function()
     eq(table.concat(c.chat, "\n"), "|cffffd100Forever Buddy:|r tonight's plan is ready", "the briefing says it arrived")
     c.chat = {}
     eq(c.global("ForeverBuddyPlanFrame"), nil, "never opens by itself")
+    eq(c.global("ForeverBuddyWindow"), nil, "nor does the window (U1)")
 
+    -- U1: /fb plan opens the window's Plan tab, the same steps.
     c.slash("/fb plan")
+    local w = c.global("ForeverBuddyWindow")
+    eq(w.shown, true, "/fb plan opens the window")
+    local tab = w.panes[1]
+    eq(tab.scroll.shown, true, "on the Plan tab")
+    eq(tab.rows[1].label.text, "1. Take Wanted: Hogger", "the steps")
+    eq(table.concat(tab.rows[1].label.color, ","), "1,0.82,0", "the current step is gold")
+    eq(tab.rows[1].edge.shown, true, "with its edge")
+    eq(tab.rows[2].label.text, "2. Find ||Hitem:1||h[Hogger]||h by the river", "escaped here too")
+    eq(tab.rows[3].go.enabled, false, "no recorded position")
+    eq(tab.footer.text, "0 of 4 done", "progress")
+    eq(w.fresh.text:match("^From Forever Buddy · %d%d:%d%d") ~= nil, true, "the freshness line")
+    eq(w.sync.text, "Type /reload to sync", "typed sync (INGAME §5 C)")
+    eq(tab.tracker.checked, false, "the tracker is off")
+    -- Its checkbox shows the §7 tracker.
+    c.click(tab.tracker)
     local f = c.global("ForeverBuddyPlanFrame")
     eq(f.shown, true, "shown")
     eq(f.title.text, "Tonight's plan · Elwynn Forest", "title")
@@ -721,6 +738,8 @@ scenario("plan", function()
     -- The game says the quest was taken: step 1 ticks and its waypoint goes.
     c.accept(176, { name = "Marshal Dughan" })
     eq(table.concat(row(1).label.color, ","), "0.5,0.5,0.5", "done steps are grey")
+    eq(table.concat(tab.rows[1].label.color, ","), "0.5,0.5,0.5", "in the window too")
+    eq(tab.footer.text, "1 of 4 done", "the window follows")
     eq(table.concat(row(2).label.color, ","), "1,0.82,0", "next step")
     eq(c.waypoints[2], "cleared", "the ticked step's waypoint is cleared")
     -- Only a step with no quest id is ticked by hand, and can be unticked.
@@ -746,10 +765,12 @@ scenario("plan", function()
     again.advance(5)
     eq(#again.chat, 0, "nothing at login for a plan already seen")
     again.slash("/fb plan")
+    local tracker = again.global("ForeverBuddyWindow").panes[1].tracker
+    again.click(tracker)
     local g = again.global("ForeverBuddyPlanFrame")
     eq(g.footer.text, "All 4 done · from Forever Buddy", "progress after login")
-    again.slash("/fb plan")
-    eq(g.shown, false, "/fb plan again hides it")
+    again.click(tracker)
+    eq(g.shown, false, "unticked, it hides")
 
     -- Another character's plan isn't this one's.
     local other = client({
@@ -759,9 +780,23 @@ scenario("plan", function()
     other.login(nil)
     eq(#other.chat, 0, "no plan, no chat")
     other.slash("/fb plan")
-    eq(other.global("ForeverBuddyPlanFrame").footer.text, "No plan for this character yet.", "empty")
+    eq(other.global("ForeverBuddyWindow").panes[1].footer.text,
+        "No plan for Velyra. Make one in Forever Buddy, or ask Claude for one.", "empty")
     return text
 end)
+
+-- U1: a checkbox on the window's Settings tab, by its label.
+local function setting(c, label)
+    c.slash("/fb")
+    local w = c.global("ForeverBuddyWindow")
+    c.click(w.Tabs[5])
+    for _, cb in ipairs(w.panes[5].checks) do
+        if cb.label.text == label then
+            return cb
+        end
+    end
+    error("no setting " .. label)
+end
 
 -- Alt-aware tooltips (bridge spec §5): lines from the tooltip index, this
 -- character's own count live, slot text shown as plain text.
@@ -823,6 +858,13 @@ scenario("tooltip", function()
     c.world.combat = true
     eq(#c.hover(14047), 1, "nothing in combat")
     c.world.combat = false
+    -- U1: "Your alts on item tooltips" off leaves the game's own lines.
+    local box = setting(c, "Your alts on item tooltips")
+    eq(box.checked, true, "on by default")
+    c.click(box)
+    eq(#c.hover(14047), 1, "off: nothing added")
+    c.click(box)
+    eq(#c.hover(14047), 5, "on again")
 
     local big = client({
         slots = { ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", '\t["tooLarge"] = true,\n') },
@@ -1087,10 +1129,11 @@ scenario("briefing", function()
     eq(#quiet.chat, 0, "silent when there's nothing to say")
     quiet.slash("/fb brief")
     eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
-    quiet.slash("/fb")
-    eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
-        .. "/fb cleanup what's marked; /fb coach this session's strip; /fb card off hides the logout card; "
-        .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
+    quiet.slash("/fb help")
+    eq(quiet.chat[2], PREFIX .. "/fb opens the window; /fb plan, list, errands or cleanup opens that tab; "
+        .. "/fb coach this session's strip; /fb card off hides the logout card; "
+        .. "/fb brief repeats the login briefing; /fb brief off turns it off; /fb minimap shows or hides the button.",
+        "/fb help")
 
     -- Not in combat.
     local fighting = client({ slots = { ["Data/Briefing.lua"] = briefingSlot(NOTES) } })
@@ -1178,19 +1221,32 @@ scenario("lists", function()
     c.closeAuctionHouse()
     eq(f.shown, false, "closes with the AH")
 
-    -- /fb list: anywhere, every list, until /fb list again.
+    -- U1: /fb list opens the window's Lists tab, every list. The panel
+    -- above only docks.
     c.slash("/fb list")
-    eq(f.shown, true, "/fb list")
-    eq(f.point[2], c.global("UIParent"), "undocked")
-    eq(f.meta.text, "Tailoring · Raid night ]] ||cffff0000x", "every list")
-    -- A vendor docks it for a while; closing it puts it back.
-    c.openMerchant({})
-    eq(f.point[2], c.global("MerchantFrame"), "docked at the vendor")
+    local w = c.global("ForeverBuddyWindow")
+    local lists = w.panes[2]
+    eq(w.shown, true, "/fb list opens the window")
+    eq(lists.scroll.shown, true, "on the Lists tab")
+    eq(f.shown, false, "not the docking panel")
+    eq(lists.meta.text, "Tailoring · Raid night ]] ||cffff0000x", "every list")
+    eq(lists.rows[1].label.text, "Runecloth", "the same rows")
+    eq(lists.footer.text, "", "the window's footer says where it's from")
+    -- At a vendor, "· here" shows in the tab too.
+    c.openMerchant({ 2589 })
+    eq(lists.rows[2].label.text, "Linen Cloth |cffffd100· here|r", "here")
     c.closeMerchant()
-    eq(f.shown, true, "still open")
-    eq(f.point[2], c.global("UIParent"), "back where it was")
-    c.slash("/fb list")
-    eq(f.shown, false, "/fb list again")
+
+    -- The Errands tab: the same rows, and Fill recipient waits for a mailbox.
+    c.slash("/fb errands")
+    local tab = w.panes[3]
+    eq(tab.scroll.shown, true, "on the Errands tab")
+    eq(lists.scroll.shown, false, "one tab at a time")
+    eq(tab.rows[2].label.text, "Linen Cloth ×4 to " .. SELA, "errand")
+    eq(tab.rows[2].fill.enabled, false, "not at a mailbox")
+    eq(tab.footer.text, "Fill recipient works at a mailbox. Nothing is attached or sent for you.", "says why")
+    c.click(tab.rows[2].fill)
+    eq(c.global("SendMailNameEditBox"):GetText(), nil, "types nothing away from the mailbox")
 
     -- The mailbox: Sela's errands. Linen is in the bags; the Runecloth is in
     -- the bank, so its button waits.
@@ -1216,12 +1272,11 @@ scenario("lists", function()
     c.bank(nil, { [14047] = 20 })
     eq(e.rows[1].detail.text, "you have 20 in bags · Sela's Tailoring list", "live")
     eq(e.rows[1].fill.enabled, true, "ready now")
+    eq(tab.rows[1].fill.enabled, true, "the open Errands tab too, at the mailbox")
+    eq(tab.footer.text, "Nothing is attached or sent for you.", "and its footer")
     c.closeMailbox()
     eq(e.shown, false, "closes with the mailbox")
-
-    c.slash("/fb errands")
-    eq(c.chat[1], PREFIX .. "Runecloth ×20 to " .. SELA .. " (20 in bags) · Sela's Tailoring list", "/fb errands")
-    eq(#c.chat, 2, "one line each")
+    eq(tab.rows[1].fill.enabled, false, "the tab waits again")
     local text = c.logout()
     eq(file(text).bridge.Lists.stamp, 1790960000, "receipt")
 
@@ -1234,12 +1289,12 @@ scenario("lists", function()
     sela.advance(5)
     eq(#sela.chat, 0, "no errands, no briefing")
     sela.slash("/fb list")
-    local g = sela.global("ForeverBuddyListFrame")
+    local g = sela.global("ForeverBuddyWindow").panes[2]
     eq(g.rows[1].right.text, "Thrandor can send 20", "coming from Thrandor")
     sela.openMailbox()
     eq(sela.global("ForeverBuddyErrandFrame"), nil, "no errands panel")
     sela.slash("/fb errands")
-    eq(sela.chat[1], PREFIX .. "no errands for this character.", "says so")
+    eq(sela.global("ForeverBuddyWindow").panes[3].footer.text, "No errands for Sela.", "says so")
 
     -- Without the slot: a vendor shows nothing, /fb list says there are none.
     local none = client()
@@ -1247,7 +1302,7 @@ scenario("lists", function()
     none.openMerchant({ 117 })
     eq(none.global("ForeverBuddyListFrame"), nil, "no panel without lists")
     none.slash("/fb list")
-    eq(none.global("ForeverBuddyListFrame").footer.text, "No lists yet. Make one in Forever Buddy.", "empty")
+    eq(none.global("ForeverBuddyWindow").panes[2].footer.text, "No lists yet. Make one in Forever Buddy.", "empty")
     return text
 end)
 
@@ -1427,8 +1482,20 @@ scenario("cleanup", function()
     c.world.bound[6948] = "Soulbound"
     c.login(nil)
     c.give(10005, 1)
+    -- U1: /fb cleanup opens the window's Cleanup tab.
     c.slash("/fb cleanup")
-    eq(c.chat[#c.chat], PREFIX .. "1 marked to sell, 2 to send.", "/fb cleanup")
+    local tab = c.global("ForeverBuddyWindow").panes[4]
+    eq(tab.scroll.shown, true, "on the Cleanup tab")
+    eq(tab.top.text, "4 to sell · ~52c at a vendor · 2 to send", "the totals line")
+    eq(tab.rows[1].label.text, "Felcloth Hood", "by name")
+    eq(tab.rows[1].right.text, "→ " .. SELA, "a send")
+    eq(tab.rows[1].detail.text, "+9 item level", "its reason")
+    eq(tab.rows[2].label.text, "Hearthstone", "no reason")
+    eq(tab.rows[2].detail.text, "", "none shown")
+    eq(tab.rows[3].label.text, "Linen Cloth ×4", "a sell")
+    eq(tab.rows[3].right.text, "sell", "sell")
+    eq(tab.rows[3].detail.text, "grey", "grey")
+    eq(tab.footer.text, "Mark items in the Forever Buddy app.", "where marks are made")
 
     -- Tags in the backpack: Hearthstone (slot 1) a letter, Linen (slot 2) a
     -- coin; our own child texture, nothing else on the button.
@@ -1441,6 +1508,12 @@ scenario("cleanup", function()
     eq(tagOf(1), "Interface\\Minimap\\Tracking\\Mailbox", "send: a letter")
     eq(tagOf(2), "Interface\\MoneyFrame\\UI-GoldIcon", "sell: a coin")
     eq(tagOf(4), nil, "the jerky isn't marked")
+    -- U1: "Marks in your bags" off takes the tags away; on brings them back.
+    local marks = setting(c, "Marks in your bags")
+    c.click(marks)
+    eq(tagOf(1), nil, "off: no tags")
+    c.click(marks)
+    eq(tagOf(1), "Interface\\Minimap\\Tracking\\Mailbox", "on again")
 
     -- Tooltips.
     eq(c.hover(2589)[2], "Marked to sell in Forever Buddy" .. G .. " · grey|r|cffffffff · 13c each at a vendor|r",
@@ -1479,7 +1552,7 @@ scenario("cleanup", function()
     })
     sela.login(nil)
     sela.slash("/fb cleanup")
-    eq(sela.chat[#sela.chat], PREFIX .. "nothing marked on Sela.", "nothing")
+    eq(sela.global("ForeverBuddyWindow").panes[4].footer.text, "Nothing marked on Sela.", "nothing")
     eq(#sela.hover(2589), 1, "no lines for someone else's marks")
 end)
 
@@ -1653,6 +1726,108 @@ scenario("session", function()
     local lost = brief.global("ForeverBuddyCardFrame")
     eq(rows(lost), "Played | 4m\nGold | -2g", "a loss in white")
     return out
+end)
+
+-- The window and minimap button (U1, INGAME §17): opened by the button, the
+-- compartment or /fb, never by itself; every toggle on its Settings tab and
+-- in Esc › Options › AddOns; nothing changes in combat.
+scenario("window", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local c = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    c.login(nil)
+    c.advance(5)
+    c.chat = {}
+    eq(c.global("ForeverBuddyWindow"), nil, "never opens by itself")
+
+    -- The minimap button: our own shield, on the minimap.
+    local b = c.global("ForeverBuddyMinimapButton")
+    eq(b.parent, c.global("Minimap"), "on the minimap")
+    eq(b.shown, true, "shown")
+    eq(b.children[2].texture, "Interface\\AddOns\\ForeverBuddy\\Media\\Icon", "our shield")
+    b.scripts.OnEnter(b)
+    local tip = c.global("GameTooltip").lines
+    eq(tip[1], "Forever Buddy", "tooltip")
+    eq(tip[2], "|cff4fb8ffClick|r to open · |cff4fb8ffDrag|r to move", "what a click does")
+    eq(tip[3], "|cff4fb8ffRight-click|r to hide this button", "and a right-click")
+    eq(tip[4]:match("^From Forever Buddy · %d%d:%d%d") ~= nil, true, "freshness")
+
+    -- A click opens it on its last tab (Plan at first); a click closes it.
+    c.click(b)
+    local w = c.global("ForeverBuddyWindow")
+    eq(w.shown, true, "opened")
+    eq(w.title, "Forever Buddy", "titled")
+    eq(w.panes[1].scroll.shown, true, "on Plan")
+    local esc = false
+    for _, name in ipairs(c.global("UISpecialFrames")) do
+        esc = esc or name == "ForeverBuddyWindow"
+    end
+    eq(esc, true, "Esc closes it")
+    c.click(w.Tabs[4])
+    eq(w.panes[4].scroll.shown, true, "another tab")
+    eq(w.panes[1].scroll.shown, false, "one at a time")
+    c.click(b)
+    eq(w.shown, false, "closed")
+    c.slash("/fb")
+    eq(w.panes[4].scroll.shown, true, "/fb opens on the last tab")
+
+    -- The compartment opens and closes it; its tooltip is the name and the
+    -- freshness line.
+    c.global("ForeverBuddy_OnAddonCompartmentClick")()
+    eq(w.shown, false, "the compartment toggles it")
+    c.global("ForeverBuddy_OnAddonCompartmentEnter")(nil, b)
+    eq(#c.global("GameTooltip").lines, 2, "name and freshness only")
+
+    -- Settings: every toggle, and the same ones in Esc › Options › AddOns.
+    c.slash("/fb")
+    c.click(w.Tabs[5])
+    local labels = {}
+    for _, cb in ipairs(w.panes[5].checks) do
+        labels[#labels + 1] = cb.label.text .. (cb.checked and " ✓" or "")
+    end
+    eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
+        .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
+        .. "Your alts on item tooltips ✓, Minimap button ✓", "every toggle")
+    eq(w.panes[5].checks[4].enabled, false, "combat hiding waits for the coach")
+    local options = c.global("Settings").categories[1]
+    eq(options.name, "Forever Buddy", "in Esc › Options › AddOns")
+    local brief = w.panes[5].checks[1]
+    c.click(brief)
+    eq(c.global("ForeverBuddySettings").briefing, false, "saved per account")
+    eq(options.frame.checks[1].checked, false, "the Options copy follows")
+    c.click(brief)
+    eq(c.global("ForeverBuddySettings").briefing, nil, "on again")
+    c.click(w.panes[5].checks[2])
+    eq(c.global("ForeverBuddySettings").lockouts, false, "lockouts off is saved")
+    c.click(w.panes[5].checks[2])
+    -- In combat, nothing in it changes.
+    c.world.combat = true
+    c.click(brief)
+    eq(brief.checked, true, "the box goes back")
+    eq(c.global("ForeverBuddySettings").briefing, nil, "nothing saved")
+    c.world.combat = false
+
+    -- Right-click hides the button, with one line saying how to get it back.
+    c.click(b, "RightButton")
+    eq(b.shown, false, "hidden")
+    eq(c.chat[#c.chat], PREFIX .. "minimap button hidden. /fb minimap or the Settings tab brings it back.", "says how")
+    eq(w.panes[5].checks[8].checked, false, "the Settings tab agrees")
+    c.slash("/fb minimap")
+    eq(b.shown, true, "back")
+    eq(c.chat[#c.chat], PREFIX .. "minimap button shown.", "says so")
+    c.click(w.panes[5].checks[8])
+    eq(b.shown, false, "the checkbox hides it too")
+    c.click(w.panes[5].checks[8])
+
+    -- Dragged, it follows the cursor round the edge, and the angle is kept.
+    c.world.cursor = { 1000, 800 } -- straight above the minimap's centre
+    b.scripts.OnDragStart(b)
+    b.scripts.OnUpdate(b)
+    b.scripts.OnDragStop(b)
+    eq(c.global("ForeverBuddySettings").minimapAngle, 90, "the angle")
+    eq(b.scripts.OnUpdate, nil, "stops following")
+
+    c.slash("/fb sync")
+    eq(c.chat[#c.chat], PREFIX .. "type /reload to sync.", "typed sync (INGAME §5 C)")
 end)
 
 -- Runner ---------------------------------------------------------------------
