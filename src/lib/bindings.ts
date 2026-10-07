@@ -333,6 +333,16 @@ export const commands = {
 	 *  tab stays hidden. False before a game folder is set.
 	 */
 	questsAvailable: () => __TAURI_INVOKE<boolean>("quests_available"),
+	/**
+	 *  The characters' active quest plans (P1). Empty before a game folder is
+	 *  set. Plans become active only through an approved proposal (P2).
+	 */
+	plansList: () => __TAURI_INVOKE<Plan[]>("plans_list"),
+	/**
+	 *  "Clear plan": the character has no plan any more, in the app now and in
+	 *  the game at the next slot write.
+	 */
+	planClear: (characterId: number) => __TAURI_INVOKE<Plan[]>("plan_clear", { characterId }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -942,6 +952,31 @@ export type Chart = {
 export type Confidence = "sure" | "fair" | "rough";
 
 /**
+ *  Where a character's data in a slot is (bridge spec §4, `bridge.html`'s
+ *  states): the app's "Sent to the game" line.
+ */
+export type Delivery = 
+/**
+ *  Not written yet: changed while WoW was running, so it goes after WoW
+ *  closes.
+ */
+{ state: "waiting" } | 
+/**
+ *  Written (RFC 3339), and this character's addon hasn't loaded it yet:
+ *  it shows after a /reload or the next login.
+ */
+{ state: "pending"; written_at: string } | 
+/**  This character's addon loaded it at `since` (RFC 3339). */
+{ state: "synced"; since: string } | 
+/**
+ *  The installed addon doesn't list the slot: update it, then restart
+ *  WoW once.
+ */
+{ state: "restart" } | 
+/**  The last write failed or was refused; the game keeps the last file. */
+{ state: "failed" };
+
+/**
  *  What `install_detect` returns: every install found, plus every place we
  *  looked, so onboarding's "not found" state can say where.
  */
@@ -1431,6 +1466,30 @@ export type OfNote = {
 	icon?: number | null,
 };
 
+export type Plan = {
+	id: number,
+	character_id: number,
+	character: string,
+	title: string,
+	steps: Step[],
+	/**  "app" or "agent:<client name>", as a claim (the client names itself). */
+	producer: string,
+	/**  When it was approved (RFC 3339, UTC). */
+	created_at: string,
+	/**  The 1-based steps done, as of the character's last logout. */
+	done: number[],
+	/**
+	 *  When that progress was saved (RFC 3339, UTC); `None` before the
+	 *  addon has reported any.
+	 */
+	progress_at: string | null,
+	/**
+	 *  Where the plan is on its way to the game (filled in by the command,
+	 *  which knows the installed addon).
+	 */
+	delivery: Delivery,
+};
+
 /**  Files to write in one folder, for "…\Thrandor\SavedVariables\ (41 files)". */
 export type PlanFolder = {
 	/**  Relative to the flavor folder, `/`-separated. */
@@ -1832,6 +1891,21 @@ export type StartupProblem =
 "settings" | 
 /**  Anything else, e.g. a data folder that can't be created. */
 "other";
+
+export type Step = {
+	text: string,
+	quest_id: number | null,
+	zone: string | null,
+	kind?: StepKind | null,
+};
+
+/**
+ *  What finishes a step in game. Without one, a step with a quest id is
+ *  done when that quest is handed in.
+ */
+export type StepKind = "accept" | "turn_in" | 
+/**  Done by hand: the player ticks it. */
+"objective";
 
 /**  The storage meter on the Backups screen. */
 export type StorageInfo = {

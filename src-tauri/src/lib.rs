@@ -19,6 +19,7 @@ mod install;
 mod ledger;
 mod macros;
 mod notes;
+mod plans;
 mod quests;
 mod secrets;
 mod sessions;
@@ -101,6 +102,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::character_set_bank_alt,
             commands::characters::character_quests,
             commands::characters::quests_available,
+            commands::plans::plans_list,
+            commands::plans::plan_clear,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,

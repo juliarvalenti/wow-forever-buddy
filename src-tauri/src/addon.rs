@@ -26,7 +26,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// there WoW doesn't see the folder, so a half-finished install is ignored.
 /// `Data/` holds the bridge's slot stubs (`bridge::Slot::stub`), which the
 /// app replaces with generated data.
-const FILES: [(&str, &[u8]); 5] = [
+const FILES: [(&str, &[u8]); 6] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -38,6 +38,10 @@ const FILES: [(&str, &[u8]); 5] = [
     (
         "Data/Tooltip2.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Tooltip2.lua"),
+    ),
+    (
+        "Data/Plan.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/Plan.lua"),
     ),
     (
         "Data/Briefing.lua",
@@ -150,9 +154,9 @@ fn read_if_there(path: &Path) -> Option<Vec<u8>> {
 }
 
 /// The bridge slots the installed TOC lists, so the game loads what the app
-/// writes there: the tooltips from 0.4.0, the briefing from 0.6.0. WoW reads
-/// the TOC only at client start, which is why a newer slot needs an addon
-/// update and a restart first.
+/// writes there (tooltips from 0.4.0, the plan and briefing from 0.6.0). WoW
+/// reads the TOC only at client start, which is why a slot a newer addon adds
+/// needs an update and a restart first. Empty when the addon isn't installed.
 pub fn listed_slots(game: &GameRoot) -> Vec<crate::bridge::Slot> {
     let Some(toc) = rel(TOC)
         .resolve(game)

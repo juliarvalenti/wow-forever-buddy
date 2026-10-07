@@ -12,9 +12,10 @@ const MAX_TEXT = 300;
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
-/** "by you · once", "by Claude, approved · until Thu 9 Oct", "shown Thu 2 Oct". */
+/** "by you · next login", "from an agent, approved · until Thu 9 Oct", "shown Thu 2 Oct".
+ *  P2b swaps "an agent" for the quoted client name it stores ("Claude Desktop"). */
 function meta(n: LoginNote): string {
-  const by = n.author === "claude" ? "by Claude, approved" : "by you";
+  const by = n.author === "claude" ? "from an agent, approved" : "by you";
   if (n.once && n.shown_at) return `${by} · shown ${day(n.shown_at)}`;
   return `${by} · ${n.once ? "next login" : n.until ? `until ${day(n.until)}` : ""}`;
 }
@@ -45,11 +46,13 @@ export function LoginNotes({ characterId }: { characterId: number }) {
 
   return (
     <Panel>
-      <PanelHeader title="Login note">
+      <PanelHeader title="Login notes">
         <span className="d-dim">shown in chat at login</span>
       </PanelHeader>
       <PanelBody>
-        {mine.length === 0 && !adding && <p className="d-dim">No note waiting.</p>}
+        {mine.length === 0 && !adding && (
+          <p className="d-dim">No notes. Add one to see it in game next time you log in.</p>
+        )}
         {mine.map((n) => {
           const done = n.once && n.shown_at != null;
           return (

@@ -210,6 +210,15 @@ pub struct AddonFile {
     /// Login notes the briefing showed (`briefed = { [note id] = time }`,
     /// addon 0.6.0 on), so the app archives the once notes.
     pub briefed: Vec<(i64, i64)>,
+    /// Quest plan progress (`plan`, P1): the plan id and its steps done.
+    pub plan: Option<PlanProgress>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanProgress {
+    pub id: i64,
+    /// 1-based, ascending.
+    pub done: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -403,6 +412,23 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
     let sessions = tbl(db, "sessions").map(sessions).unwrap_or_default();
     let receipts = tbl(db, "bridge").map(receipts).unwrap_or_default();
     let briefed = tbl(db, "briefed").map(briefed).unwrap_or_default();
+    let plan = tbl(db, "plan").and_then(|p| {
+        let mut done: Vec<u32> = tbl(p, "done")
+            .map(|d| {
+                pairs(d)
+                    .filter(|(_, v)| matches!(v, LuaValue::Bool(true)))
+                    .filter_map(|(i, _)| u32::try_from(i?).ok())
+                    .filter(|i| (1..=100).contains(i))
+                    .collect()
+            })
+            .unwrap_or_default();
+        done.sort_unstable();
+        done.dedup();
+        Some(PlanProgress {
+            id: int(p, "id")?,
+            done,
+        })
+    });
     Ok(AddonFile {
         written: int(meta, "written"),
         character,
@@ -411,6 +437,7 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         sessions,
         receipts,
         briefed,
+        plan,
     })
 }
 

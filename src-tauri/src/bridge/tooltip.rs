@@ -21,8 +21,8 @@ use crate::sv::{LuaTable, LuaValue};
 
 use super::{header, render_capped, Slot};
 
-/// The index's own two slots (the bridge has others).
-const SLOTS: [Slot; 2] = [Slot::Tooltip1, Slot::Tooltip2];
+/// The index's two halves.
+pub const TOOLTIP_SLOTS: [Slot; 2] = [Slot::Tooltip1, Slot::Tooltip2];
 
 /// Both slots, ready to write.
 pub struct Built {
@@ -228,8 +228,8 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
         t.hash.extend(extra);
         t
     };
-    let mut slots = Vec::with_capacity(SLOTS.len());
-    for slot in SLOTS {
+    let mut slots = Vec::with_capacity(TOOLTIP_SLOTS.len());
+    for slot in TOOLTIP_SLOTS {
         let body = head(vec![
             (key("alts"), alts_value.clone()),
             (
@@ -251,7 +251,7 @@ pub fn build(db: &Db, flavor: &str, stamp: i64) -> AppResult<Built> {
 /// Every slot as a header saying the index didn't fit (spec §5): refuse and
 /// report, never truncate.
 fn too_large(head: &dyn Fn(Vec<(LuaValue, LuaValue)>) -> LuaTable) -> AppResult<Built> {
-    let slots = SLOTS
+    let slots = TOOLTIP_SLOTS
         .iter()
         .map(|&slot| {
             let body = head(vec![(key("tooLarge"), LuaValue::Bool(true))]);
@@ -471,7 +471,7 @@ mod tests {
     fn too_large_says_so_instead_of_cutting_short() {
         let built = sized(100, 1_500, 20_000);
         assert!(built.too_large);
-        for slot in SLOTS {
+        for slot in TOOLTIP_SLOTS {
             let t = parsed(&built, slot);
             assert_eq!(t.get("tooLarge"), Some(&LuaValue::Bool(true)));
             assert_eq!(t.get("items"), None);

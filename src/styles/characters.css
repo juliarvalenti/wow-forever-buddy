@@ -160,6 +160,18 @@
 .ch-slot .il { font: 700 13px Georgia, serif; color: var(--ink-2); }
 .ch-sec { font: italic 12.5px Georgia, serif; color: var(--ink-3); margin: 14px 0 6px; }
 .ch-empty { font: italic 13px Georgia, serif; color: var(--ink-3); padding: 10px 0; }
+/* P1: the active quest plan panel (character.html?plan, IMPLEMENTING §16). */
+.pmeta { padding: 8px 14px 6px; font-size: 11.5px; color: var(--soot); }
+.psteps { list-style: none; margin: 0; padding: 0 14px 6px; }
+.psteps li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 6px 0; font-size: 12.5px; border-top: 1px solid rgba(255,255,255,.05); }
+.psteps .no { color: var(--ash); text-align: right; font-variant-numeric: tabular-nums; }
+.psteps b { font-weight: 500; color: var(--chalk-hi); display: block; }
+.psteps small { font-size: 11px; color: var(--soot); }
+.psteps li.done b, .psteps li.done .no { color: var(--soot); text-decoration: line-through; text-decoration-color: rgba(255,255,255,.25); }
+.psteps li.now { box-shadow: inset 2px 0 0 var(--ember-2); margin-left: -14px; padding-left: 14px; }
+.psteps li.now .no { color: var(--ember-2); }
+.psent { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 11.5px; color: var(--ash); border-top: 1px solid rgba(255,255,255,.05); }
+.pact { padding: 2px 14px 12px; }
 /* Q1b: the Quests tab (character.html?tab=quests, IMPLEMENTING §14). */
 .qv { margin-top: 8px; }
 .qfresh { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin: 2px 0 8px; }

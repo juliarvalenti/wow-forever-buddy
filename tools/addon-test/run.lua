@@ -594,7 +594,7 @@ scenario("toc", function()
     eq(fields.SavedVariables, "ForeverBuddySettings", "account-wide SavedVariables")
     eq(fields.AddonCompartmentFunc, "ForeverBuddy_OnAddonCompartmentClick", "compartment")
     -- The bridge slots load first, so their globals exist when the addon runs.
-    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Briefing.lua, ForeverBuddy.lua", "files")
+    eq(table.concat(files, ", "), "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -664,6 +664,100 @@ scenario("quests", function()
     -- A client without the API leaves the list out, never empty.
     local old = client({ api = { ["C_QuestLog.GetAllCompletedQuestIDs"] = false } })
     eq(file(play(old, nil, 10)).snapshot.quests_done, nil, "no list without the API")
+    return text
+end)
+
+-- Tonight's plan (P1, INGAME §7): this character's plan from the Plan slot,
+-- /fb plan to show it, live tick-off, the one manual tick, waypoints from
+-- recorded positions, and the progress kept across logins.
+local PLAN = 'ForeverBuddyData_Plan = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n\t["plans"] = {\n'
+    .. '\t\t{ ["id"] = 7, ["name"] = "Thrandor", ["surname"] = "Vargur", ["title"] = "Hogger", ["steps"] = {\n'
+    .. '\t\t\t{ ["text"] = "Take Wanted: Hogger", ["kind"] = "accept", ["quest"] = 176, ["zone"] = "Elwynn Forest",'
+    .. ' ["giver"] = "Marshal Dughan", ["map"] = 1429, ["x"] = 0.412, ["y"] = 0.657 },\n'
+    .. '\t\t\t{ ["text"] = "Find |Hitem:1|h[Hogger]|h by the river", ["kind"] = "objective", ["zone"] = "Elwynn Forest" },\n'
+    .. '\t\t\t{ ["text"] = "Defeat Hogger", ["kind"] = "objective", ["quest"] = 176, ["zone"] = "Elwynn Forest" },\n'
+    .. '\t\t\t{ ["text"] = "Hand in Wanted: Hogger", ["kind"] = "turn_in", ["quest"] = 176, ["zone"] = "Elwynn Forest",'
+    .. ' ["map"] = 1436, ["x"] = 0.5, ["y"] = 0.5 },\n'
+    .. '\t\t} },\n'
+    .. '\t\t{ ["id"] = 8, ["name"] = "Coinpurse", ["surname"] = "", ["title"] = "Not yours", ["steps"] = {\n'
+    .. '\t\t\t{ ["text"] = "Someone else\'s step", ["kind"] = "objective" },\n'
+    .. '\t\t} },\n'
+    .. '\t},\n}\n'
+
+scenario("plan", function()
+    local c = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    c.login(nil)
+    -- The arrival line belongs to the B1 briefing (INGAME §7, §9).
+    eq(#c.chat, 0, "no chat line of its own at login")
+    c.advance(5)
+    eq(table.concat(c.chat, "\n"), "|cffffd100Forever Buddy:|r tonight's plan is ready", "the briefing says it arrived")
+    c.chat = {}
+    eq(c.global("ForeverBuddyPlanFrame"), nil, "never opens by itself")
+
+    c.slash("/fb plan")
+    local f = c.global("ForeverBuddyPlanFrame")
+    eq(f.shown, true, "shown")
+    eq(f.title.text, "Tonight's plan · Elwynn Forest", "title")
+    local row = function(i)
+        return f.rows[i]
+    end
+    eq(row(1).label.text, "1. Take Wanted: Hogger", "step 1")
+    eq(row(1).detail.text, "Elwynn Forest · Marshal Dughan", "where")
+    eq(table.concat(row(1).label.color, ","), "1,0.82,0", "the current step is gold")
+    eq(row(2).label.text, "2. Find ||Hitem:1||h[Hogger]||h by the river", "plan text is escaped")
+    eq(row(1).go.enabled, true, "a waypoint in this zone")
+    eq(row(4).go.enabled, false, "not from another map")
+    eq(row(4).go.tip, "Go to Elwynn Forest first.", "why not")
+    eq(row(3).go.enabled, false, "no recorded position")
+    eq(row(3).go.tip, "No position recorded for this quest yet.", "says so")
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "0 of 4 done", "footer")
+
+    c.click(row(1).go)
+    eq(c.waypoints[1].map, 1429, "the game's own waypoint")
+    eq(c.waypoints[1].x, 0.412, "at the recorded spot")
+
+    -- The game says the quest was taken: step 1 ticks and its waypoint goes.
+    c.accept(176, { name = "Marshal Dughan" })
+    eq(table.concat(row(1).label.color, ","), "0.5,0.5,0.5", "done steps are grey")
+    eq(table.concat(row(2).label.color, ","), "1,0.82,0", "next step")
+    eq(c.waypoints[2], "cleared", "the ticked step's waypoint is cleared")
+    -- Only a step with no quest id is ticked by hand, and can be unticked.
+    c.click(row(2))
+    c.click(row(2))
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "1 of 4 done", "ticked and unticked")
+    c.click(row(2))
+    c.click(row(3))
+    c.click(row(4))
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "2 of 4 done", "steps the game ticks can't be clicked")
+    -- An objective step ticks when its quest is complete in the log.
+    c.questComplete(176)
+    eq(f.footer.text:match("(%d+ of %d+ done)$"), "3 of 4 done", "objective done")
+    c.turnIn(176, 450, 75)
+    eq(f.footer.text, "All 4 done · from Forever Buddy", "all done")
+    eq(table.concat(c.chat, "\n"), "|cffffd100Forever Buddy:|r tonight's plan is done.", "one chat line when done")
+
+    -- Progress is kept: the next login shows the same ticks and says nothing.
+    local text = c.logout()
+    eq(file(text).plan.id, 7, "progress saved")
+    local again = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    again.login(text)
+    again.advance(5)
+    eq(#again.chat, 0, "nothing at login for a plan already seen")
+    again.slash("/fb plan")
+    local g = again.global("ForeverBuddyPlanFrame")
+    eq(g.footer.text, "All 4 done · from Forever Buddy", "progress after login")
+    again.slash("/fb plan")
+    eq(g.shown, false, "/fb plan again hides it")
+
+    -- Another character's plan isn't this one's.
+    local other = client({
+        slots = { ["Data/Plan.lua"] = PLAN },
+        character = { name = "Velyra", surname = "Duskmane", realm = "Classic Beta PvP 2", guid = "Player-1" },
+    })
+    other.login(nil)
+    eq(#other.chat, 0, "no plan, no chat")
+    other.slash("/fb plan")
+    eq(other.global("ForeverBuddyPlanFrame").footer.text, "No plan for this character yet.", "empty")
     return text
 end)
 
@@ -832,6 +926,8 @@ end)
 -- B1 (INGAME §9): the login briefing, one chat line from live facts and the
 -- Briefing slot, the note on its own line, /fb brief, and the toggle.
 local PREFIX = "|cffffd100Forever Buddy:|r "
+-- An alt's name is in its class colour, like everywhere we name one.
+local SELA = "|cffffffffSela|r"
 local function briefingSlot(notes)
     return 'ForeverBuddyData_Briefing = {\n\t["schema"] = 1,\n\t["stamp"] = 1790960000,\n'
         .. '\t["mail"] = {\n'
@@ -861,14 +957,14 @@ scenario("briefing", function()
     eq(#c.chat, 0, "nothing before the quest log has loaded")
     c.advance(5)
     eq(table.concat(c.chat, "\n"), table.concat({
-        PREFIX .. "3 quests ready to hand in · repair due (24%) · Sela has 2 letters waiting",
+        PREFIX .. "3 quests ready to hand in · repair due (24%) · " .. SELA .. " has 2 letters waiting",
         -- The note's own colour codes are shown as text, not run.
         '|cffffd100Note:|r "Hand in the Onyxia attunement ||cffff0000before||r raid"',
     }, "\n"), "the briefing")
 
     -- /fb brief repeats it.
     c.chat = {}
-    c.slash("brief")
+    c.slash("/fb brief")
     eq(#c.chat, 2, "/fb brief repeats both lines")
     local text = c.logout()
     local db = file(text)
@@ -878,7 +974,7 @@ scenario("briefing", function()
     c.chat = {}
     c.login(text)
     c.advance(5)
-    eq(table.concat(c.chat, "\n"), PREFIX .. "3 quests ready to hand in · repair due (24%) · Sela has 2 letters waiting",
+    eq(table.concat(c.chat, "\n"), PREFIX .. "3 quests ready to hand in · repair due (24%) · " .. SELA .. " has 2 letters waiting",
         "a once note shows once")
     eq(file(c.logout()).briefed[7], wow.EPOCH + 5, "the receipt is kept until the app reads it")
 
@@ -889,14 +985,14 @@ scenario("briefing", function()
     eq(#c.chat, 0, "not after /reload")
 
     -- The toggle is account-wide and survives logins.
-    c.slash("brief off")
+    c.slash("/fb brief off")
     eq(c.chat[1], PREFIX .. "login briefing off.", "off")
     c.chat = {}
     c.login(c.logout())
     c.advance(5)
     eq(#c.chat, 0, "off: silent at login")
     eq(c.settings.briefing, false, "saved account-wide")
-    c.slash("brief on")
+    c.slash("/fb brief on")
     eq(c.settings == nil or c.settings.briefing == nil, true, "on: nothing saved")
 
     -- Nothing to say: no line at login; /fb brief says so.
@@ -904,10 +1000,11 @@ scenario("briefing", function()
     quiet.login(nil)
     quiet.advance(5)
     eq(#quiet.chat, 0, "silent when there's nothing to say")
-    quiet.slash("brief")
+    quiet.slash("/fb brief")
     eq(quiet.chat[1], PREFIX .. "nothing to report.", "/fb brief with nothing")
-    quiet.slash("")
-    eq(quiet.chat[2], PREFIX .. "/fb brief repeats the login briefing; /fb brief off turns it off.", "/fb help")
+    quiet.slash("/fb")
+    eq(quiet.chat[2], PREFIX .. "/fb plan shows tonight's plan; /fb brief repeats the login briefing; "
+        .. "/fb brief off turns it off.", "/fb help")
 
     -- Not in combat.
     local fighting = client({ slots = { ["Data/Briefing.lua"] = briefingSlot(NOTES) } })

@@ -10,9 +10,10 @@
 -- * This session is built from live APIs. What the client loaded from disk
 --   is only trusted if it validates, and only old sessions come from it.
 -- * Nothing visible but lines added to the game's own item tooltip, through
---   TooltipDataProcessor (bridge spec §5), and the login briefing: at most
---   two chat lines once per login, and /fb's reply (INGAME §9). No frames
---   shown, no popups, no Blizzard function replaced.
+--   TooltipDataProcessor (bridge spec §5), the plan frame the player opens
+--   with /fb plan (INGAME §7), and the login briefing: at most two chat
+--   lines once per login, and /fb's reply (INGAME §9). No popups, no
+--   Blizzard function replaced, nothing protected, no automation.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
 -- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
@@ -105,7 +106,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Briefing" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -995,6 +996,9 @@ local GOLD_PREFIX = "|cffffd100Forever Buddy:|r "
 local BRIEF_FACTS = 4
 local REPAIR_AT = 0.30
 local lastBrief -- { facts, note } of this login, for /fb brief
+-- Set at login when this character's plan is one it hasn't seen (the plan
+-- section below): the briefing mentions it, P1 itself prints nothing.
+local planIsNew = false
 
 local function say(text)
     local f = DEFAULT_CHAT_FRAME
@@ -1068,11 +1072,14 @@ local function briefing()
         -- The app sends them soonest-expiring first; the first other alt.
         for _, m in ipairs(slot.mail) do
             if type(m) == "table" and type(m.letters) == "number" and m.letters > 0 and not isMe(m) then
-                facts[#facts + 1] = plain(m.name) .. " has " .. m.letters
+                facts[#facts + 1] = colorName(m.name, m.class) .. " has " .. m.letters
                     .. (m.letters == 1 and " letter" or " letters") .. " waiting"
                 break
             end
         end
+    end
+    if planIsNew then
+        facts[#facts + 1] = "tonight's plan is ready"
     end
     local note
     if type(slot) == "table" and type(slot.notes) == "table" then
@@ -1133,10 +1140,267 @@ local function briefedKept()
     return kept
 end
 
--- /fb brief repeats this login's briefing in full; /fb brief off|on.
+-- Tonight's plan (P1, INGAME §7) -----------------------------------------------------
+--
+-- This character's quest plan from the Plan slot, in a small movable frame
+-- of our own, shown with /fb plan and never by itself. Accept and hand-in
+-- steps tick off when the game says that quest was taken or handed in;
+-- other steps are ticked by clicking them. Progress is saved per character.
+-- A step's text, zone and giver came from outside the game, so they're
+-- shown through plain(); its waypoint is only ever handed to the game's own
+-- map pin (or TomTom), never super-tracked and never a click on anything.
+
+local plan -- this character's plan, if the slot has one
+local progress -- { id = plan id, done = { [step] = true } }, saved in ForeverBuddyDB.plan
+local planFrame
+local planErrors = 0
+
+local function myPlan()
+    local slot = slots.Plan
+    if type(slot) ~= "table" or type(slot.plans) ~= "table" or not character then
+        return nil
+    end
+    for _, p in ipairs(slot.plans) do
+        if type(p) == "table" and type(p.steps) == "table" and p.name == character.name
+            and (p.surname or "") == (character.surname or "") then
+            return p
+        end
+    end
+    return nil
+end
+
+-- The first step not done yet: the one the frame marks.
+local function currentStep()
+    for i = 1, #plan.steps do
+        if not progress.done[i] then
+            return i
+        end
+    end
+    return nil
+end
+
+local function doneCount()
+    local n = 0
+    for i = 1, #plan.steps do
+        if progress.done[i] then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local waypointStep -- the step whose game waypoint we set, if any
+
+local function hasPosition(step)
+    return type(step.map) == "number" and type(step.x) == "number" and type(step.y) == "number"
+end
+
+-- The game's own waypoint for a step, or TomTom's when it's installed.
+local function setWaypoint(i, step)
+    if not hasPosition(step) then
+        return
+    end
+    local tomtom = rawget(_G, "TomTom")
+    if type(tomtom) == "table" and type(tomtom.AddWaypoint) == "function" then
+        pcall(tomtom.AddWaypoint, tomtom, step.map, step.x, step.y, { title = plain(step.text), from = "Forever Buddy" })
+        return
+    end
+    local point = read("UiMapPoint.CreateFromCoordinates", step.map, step.x, step.y)
+    if point then
+        read("C_Map.SetUserWaypoint", point)
+        waypointStep = i
+    end
+end
+
+local renderPlan
+
+-- After any tick: the ticked step's waypoint goes, and finishing the plan
+-- gets its one chat line.
+local function afterTick()
+    if waypointStep and progress.done[waypointStep] then
+        read("C_Map.ClearUserWaypoint")
+        waypointStep = nil
+    end
+    if doneCount() == #plan.steps and not progress.finished then
+        progress.finished = true
+        say(GOLD_PREFIX .. "tonight's plan is done.")
+    end
+    if planFrame and planFrame:IsShown() then
+        renderPlan()
+    end
+end
+
+function renderPlan()
+    if not planFrame then
+        return
+    end
+    local f = planFrame
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+    end
+    if not plan then
+        f.title:SetText("Tonight's plan")
+        f.footer:SetText("No plan for this character yet.")
+        return
+    end
+    local zone = plan.steps[1] and plan.steps[1].zone
+    f.title:SetText("Tonight's plan" .. (zone and (" · " .. plain(zone)) or ""))
+    local current = currentStep()
+    local here = read("C_Map.GetBestMapForUnit", "player")
+    for i, step in ipairs(plan.steps) do
+        local row = f.rows[i]
+        if not row then
+            row = CreateFrame("Button", nil, f)
+            row:SetSize(260, 30)
+            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            row.label:SetPoint("TOPLEFT", 10, -2)
+            row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
+            row.go = CreateFrame("Button", nil, row)
+            row.go:SetSize(18, 18)
+            row.go:SetPoint("RIGHT", -4, 0)
+            row.go:SetText("→")
+            f.rows[i] = row
+        end
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", 6, -26 - (i - 1) * 32)
+        local done = progress.done[i]
+        local where = {}
+        if type(step.zone) == "string" then
+            where[#where + 1] = plain(step.zone)
+        end
+        if type(step.giver) == "string" then
+            where[#where + 1] = plain(step.giver)
+        end
+        row.label:SetText(i .. ". " .. plain(step.text))
+        if done then
+            row.label:SetTextColor(0.5, 0.5, 0.5)
+        elseif i == current then
+            row.label:SetTextColor(1, 0.82, 0)
+        else
+            row.label:SetTextColor(1, 1, 1)
+        end
+        row.detail:SetText(table.concat(where, " · "))
+        -- The one manual tick: a step with no quest id, which the game can't
+        -- see finish. Clicking marks it done or undone.
+        row:SetScript("OnClick", function()
+            if not step.quest then
+                progress.done[i] = not progress.done[i] or nil
+                afterTick()
+            end
+        end)
+        local canGo = hasPosition(step) and step.map == here and not done
+        row.go:SetEnabled(canGo)
+        if not hasPosition(step) then
+            row.go.tip = "No position recorded for this quest yet."
+        elseif canGo then
+            row.go.tip = "Click the map pin to track it."
+        elseif type(step.zone) == "string" and not done then
+            row.go.tip = "Go to " .. plain(step.zone) .. " first."
+        else
+            row.go.tip = nil
+        end
+        row.go:SetScript("OnClick", function()
+            if canGo then
+                setWaypoint(i, step)
+            end
+        end)
+        row:Show()
+    end
+    local n = #plan.steps
+    if doneCount() == n then
+        f.footer:SetText("All " .. n .. " done · from Forever Buddy")
+        f.footer:SetTextColor(0.25, 1, 0.25)
+    else
+        local at = type(slots.Plan.stamp) == "number" and read(date, "%H:%M", slots.Plan.stamp)
+        f.footer:SetText("From Forever Buddy" .. (at and (" · " .. at) or "") .. " · " .. doneCount()
+            .. " of " .. n .. " done")
+        f.footer:SetTextColor(0.5, 0.5, 0.5)
+    end
+end
+
+local function togglePlan()
+    if not planFrame then
+        local f = CreateFrame("Frame", "ForeverBuddyPlanFrame", UIParent, "BackdropTemplate")
+        f:SetSize(280, 80)
+        f:SetPoint("RIGHT", UIParent, "RIGHT", -60, 80)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title:SetPoint("TOPLEFT", 10, -8)
+        f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.footer:SetPoint("BOTTOMLEFT", 10, 8)
+        f.rows = {}
+        f:Hide()
+        planFrame = f
+    end
+    if planFrame:IsShown() then
+        planFrame:Hide()
+    else
+        renderPlan()
+        planFrame:SetHeight(48 + (plan and #plan.steps or 1) * 32)
+        planFrame:Show()
+    end
+end
+
+-- At login: this character's plan and its saved progress.
+local function loadPlan()
+    plan = myPlan()
+    local saved = loaded and type(loaded.plan) == "table" and loaded.plan or nil
+    if not plan then
+        progress = nil
+        return
+    end
+    if saved and saved.id == plan.id and type(saved.done) == "table" then
+        progress = saved
+        return
+    end
+    progress = { id = plan.id, done = {} }
+    planIsNew = true
+end
+
+-- The game saw something happen to quest `id`: tick the first unfinished
+-- step it completes. `kind` is accept, turn_in, or objective (the quest is
+-- complete in the log). Ticks are never undone by the game.
+local function planTick(kind, id)
+    if not plan or not id then
+        return
+    end
+    for i, step in ipairs(plan.steps) do
+        if not progress.done[i] and step.quest == id and step.kind == kind then
+            progress.done[i] = true
+            afterTick()
+            return
+        end
+    end
+end
+
+-- QUEST_LOG_UPDATE: objective steps whose quest is now complete.
+local function planObjectives()
+    if not plan then
+        return
+    end
+    for i, step in ipairs(plan.steps) do
+        if not progress.done[i] and step.kind == "objective" and step.quest
+            and read("C_QuestLog.IsComplete", step.quest) then
+            planTick("objective", step.quest)
+        end
+    end
+end
+
+-- /fb ------------------------------------------------------------------------------
+--
+-- /fb plan opens the plan frame; /fb brief repeats this login's briefing in
+-- full; /fb brief off|on.
 local function slash(msg)
     local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
-    if cmd == "brief" then
+    if cmd == "plan" then
+        if not pcall(togglePlan) then
+            planErrors = planErrors + 1
+        end
+    elseif cmd == "brief" then
         local b = lastBrief
         if not b then
             local facts, note = briefing()
@@ -1151,7 +1415,8 @@ local function slash(msg)
         setBriefing(cmd == "brief on")
         say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
     else
-        say(GOLD_PREFIX .. "/fb brief repeats the login briefing; /fb brief off turns it off.")
+        say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb brief repeats the login briefing; "
+            .. "/fb brief off turns it off.")
     end
 end
 
@@ -1183,6 +1448,9 @@ handlers.PLAYER_LOGIN = function()
     local t = now()
     character = identity()
     hookTooltips()
+    if not pcall(loadPlan) then
+        planErrors = planErrors + 1
+    end
     session = {
         id = t,
         login = t,
@@ -1298,6 +1566,15 @@ handlers.QUEST_ACCEPTED = function(a, b)
         id = id,
         title = id and read("C_QuestLog.GetTitleForQuestID", id) or nil,
     }))
+    if not pcall(planTick, "accept", id) then
+        planErrors = planErrors + 1
+    end
+end
+
+handlers.QUEST_LOG_UPDATE = function()
+    if not pcall(planObjectives) then
+        planErrors = planErrors + 1
+    end
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xp, money)
@@ -1308,6 +1585,9 @@ handlers.QUEST_TURNED_IN = function(questID, xp, money)
         xp = arg(xp),
         money = arg(money),
     }))
+    if not pcall(planTick, "turn_in", id) then
+        planErrors = planErrors + 1
+    end
 end
 
 -- No killer: that's restricted, and the recap says so instead.
@@ -1457,6 +1737,7 @@ handlers.PLAYER_LOGOUT = function()
         items = items,
         sessions = sessions,
         bridge = receipts and next(receipts) and receipts or nil,
+        plan = progress,
         briefed = next(briefed) and briefedKept() or nil,
     }
     local version, build = read(GetBuildInfo)
@@ -1469,6 +1750,7 @@ handlers.PLAYER_LOGOUT = function()
         truncated = truncated,
         secret_hits = secretHits,
         tooltip_errors = tooltipErrors > 0 and tooltipErrors or nil,
+        plan_errors = planErrors > 0 and planErrors or nil,
         missing_events = missingEvents,
         errors = errors,
     }
