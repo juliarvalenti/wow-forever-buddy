@@ -46,6 +46,10 @@ SCENARIOS=(
   "character-plan|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.psteps|character"
   "character-tooltip|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor;wait:css=.ch-sheet;hover:text=Truestrike Shoulders;wait:css=.ch-tt|character"
   "character-bank-alt|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Coinpurse;wait:css=.ch-sheet|character"
+  # B2: the Lists screen (mock: lists.html), adding an item, and empty.
+  "lists|dashboard|click:css=nav button[title=\"Lists\"];wait:css=.ls-grid|lists"
+  "lists-add|dashboard|click:css=nav button[title=\"Lists\"];wait:css=.ls-grid;click:css=.ls-add button;fill:Item to add=rune;wait:css=.ls-found|lists"
+  "lists-empty|lists-empty|click:css=nav button[title=\"Lists\"];wait:css=.ls-empty|lists"
   "ah|ah|click:css=nav button[title=\"Auction House\"];wait:css=.ah-chart|ah"
   "ah-empty|ah-empty|click:css=.d-side-foot button[title=\"Settings\"];wait:text=Auction House prices|settings"
   "ah-unreadable|ah-unreadable|click:css=.d-side-foot button[title=\"Settings\"];wait:text=Auction House prices|settings"

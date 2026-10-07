@@ -4,6 +4,7 @@ import {
   Coins,
   FolderOpen,
   Home,
+  ListChecks,
   type LucideIcon,
   Puzzle,
   Scale,
@@ -30,6 +31,7 @@ import { Characters } from "@/screens/Characters";
 import { Dashboard } from "@/screens/Dashboard";
 import { GameFolder } from "@/screens/GameFolder";
 import { Ledger } from "@/screens/Ledger";
+import { Lists } from "@/screens/Lists";
 import { Macros } from "@/screens/Macros";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { Settings as SettingsScreen } from "@/screens/Settings";
@@ -40,6 +42,7 @@ type Screen =
   | "characters"
   | "ledger"
   | "adventures"
+  | "lists"
   | "ah"
   | "backups"
   | "game"
@@ -120,6 +123,7 @@ function Shell() {
     { id: "characters", label: "Characters", icon: Users, n: overview?.characters.length || null },
     { id: "ledger", label: "Ledger", icon: Coins },
     { id: "adventures", label: "Adventures", icon: ScrollText },
+    { id: "lists", label: "Lists", icon: ListChecks },
     // F5d: only once an Auctionator file has given prices on this machine.
     ...(hasPrices ? [{ id: "ah", label: "Auction House", icon: Scale } as const] : []),
     { group: "Game files" },
@@ -262,6 +266,7 @@ function Shell() {
             onOpenJournal={() => setScreen("ledger")}
           />
         )}
+        {current === "lists" && <Lists />}
         {current === "game" && <GameFolder install={install} />}
         {current === "ah" && <AuctionHouse />}
         {current === "settings" && (
