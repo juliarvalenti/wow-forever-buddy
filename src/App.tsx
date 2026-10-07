@@ -95,6 +95,8 @@ function Shell() {
     null,
   )?.name;
   const [screen, setScreen] = useState<Screen>("dashboard");
+  // The list Approvals' "also shown in Lists" opens.
+  const [listFocus, setListFocus] = useState<number | null>(null);
   // The adventure on show; null is the newest. The sidebar opens the newest.
   const [adventureId, setAdventureId] = useState<number | null>(null);
   const openAdventure = (id: number | null) => {
@@ -277,10 +279,18 @@ function Shell() {
             onOpenJournal={() => setScreen("ledger")}
           />
         )}
-        {current === "lists" && <Lists />}
+        {current === "lists" && <Lists focus={listFocus} onReview={() => setScreen("approvals")} />}
         {current === "game" && <GameFolder install={install} />}
         {current === "ah" && <AuctionHouse />}
-        {current === "approvals" && <Approvals onOpenSettings={() => setScreen("settings")} />}
+        {current === "approvals" && (
+          <Approvals
+            onOpenSettings={() => setScreen("settings")}
+            onOpenList={(id) => {
+              setListFocus(id);
+              setScreen("lists");
+            }}
+          />
+        )}
         {current === "settings" && (
           <SettingsScreen install={install} onOpenGameFolder={() => setScreen("game")} />
         )}

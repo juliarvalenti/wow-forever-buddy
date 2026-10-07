@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
-import type { CharacterCard, Delivery, List, ListItem, SeenItem } from "@/lib/bindings";
+import type {
+  CharacterCard,
+  Decision,
+  Delivery,
+  List,
+  ListChange,
+  ListItem,
+  Proposal,
+  SeenItem,
+} from "@/lib/bindings";
 import { commands } from "@/lib/bindings";
 import {
   Button,
@@ -15,6 +24,7 @@ import {
   PrimaryButton,
   StatusDot,
 } from "@/components/d";
+import { useApprovals } from "@/hooks/useApprovals";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useLists } from "@/hooks/useLists";
 import { useNotes } from "@/hooks/useNotes";
@@ -69,11 +79,19 @@ function sent(d: Delivery): { live: boolean; text: string; hint?: string } {
   }
 }
 
-export function Lists() {
+export function Lists({ focus, onReview }: { focus?: number | null; onReview: () => void }) {
   const lists = useLists();
+  // P2 (§15): agents' list proposals also show in place. Same queue entries
+  // as Approvals; new lists stay there until approved.
+  const { approvals, decide } = useApprovals();
+  const proposalsFor = (id: number) =>
+    (approvals?.waiting ?? []).filter((p) => p.list?.list_id === id && !p.list.gone);
   const { overview } = useCharacters();
   const characters = overview?.characters ?? [];
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(focus ?? null);
+  useEffect(() => {
+    if (focus != null) setSelected(focus);
+  }, [focus]);
   const [editing, setEditing] = useState<List | "new" | null>(null);
 
   const { notes } = useNotes();
@@ -116,14 +134,21 @@ export function Lists() {
           <Panel>
             <PanelHeader title="Your lists" />
             <ul className="ls-ll">
-              {all.map((l) => (
-                <li key={l.id}>
-                  <button aria-current={l.id === list?.id ? "true" : undefined} onClick={() => setSelected(l.id)}>
-                    <span className="nm">{l.name}</span>
-                    <span className="n">{plural(l.items.length, "item", "items")}</span>
-                  </button>
-                </li>
-              ))}
+              {all.map((l) => {
+                const pending = proposalsFor(l.id).length;
+                return (
+                  <li key={l.id}>
+                    <button aria-current={l.id === list?.id ? "true" : undefined} onClick={() => setSelected(l.id)}>
+                      <span className="nm">{l.name}</span>
+                      {pending > 0 ? (
+                        <span className="pend">{plural(pending, "proposal", "proposals")}</span>
+                      ) : (
+                        <span className="n">{plural(l.items.length, "item", "items")}</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </Panel>
 
@@ -134,6 +159,12 @@ export function Lists() {
               scanAt={lists.view.scan_at}
               onEdit={() => setEditing(list)}
               lists={lists}
+              proposals={proposalsFor(list.id)}
+              onDecide={async (ids, d) => {
+                await decide(ids, d);
+                lists.reload();
+              }}
+              onReview={onReview}
             />
           )}
 
@@ -209,17 +240,51 @@ function SentRow({
   );
 }
 
+/** An item an agent proposes adding: its own ember row. (A changed need
+ *  shows in the item's existing row instead.) Who and why are in the bar. */
+function ProposedRow({ c }: { c: ListChange }) {
+  const q = c.quality != null ? `ch-q${c.quality}` : "";
+  return (
+    <tr className="prop">
+      <td>
+        <div className="ls-an">
+          <span className={`ch-ico ${q}`} aria-hidden>
+            <b>{c.name.slice(0, 1)}</b>
+            <ItemIcon id={c.icon_file_id} />
+          </span>
+          <span className={`nm ${q}`}>{c.name}</span>
+        </div>
+      </td>
+      <td className="num need">{c.need}</td>
+      <td className="have">
+        <small className="chg">proposed</small>
+      </td>
+      <td className="num" />
+      <td />
+    </tr>
+  );
+}
+
 function ListTable({
   list,
   scanAt,
   onEdit,
   lists,
+  proposals,
+  onDecide,
+  onReview,
 }: {
   list: List;
   scanAt: string | null;
   onEdit: () => void;
   lists: ReturnType<typeof useLists>;
+  proposals: Proposal[];
+  onDecide: (ids: number[], d: Decision) => Promise<void>;
+  onReview: () => void;
 }) {
+  const changes = proposals.flatMap((p) => (p.list?.changes ?? []).map((c) => ({ p, c })));
+  const ids = proposals.map((p) => p.id);
+  const producers = [...new Set(proposals.map((p) => p.producer))];
   const meta = [
     list.for_character ? (
       <span key="for">
@@ -257,16 +322,55 @@ function ListTable({
         </thead>
         <tbody>
           {list.items.map((i) => (
-            <Row key={i.id} item={i} list={list} lists={lists} />
+            <Row
+              key={i.id}
+              item={i}
+              list={list}
+              lists={lists}
+              proposed={changes.find(({ c }) => c.item_id === i.item_id)?.c}
+            />
           ))}
+          {changes
+            .filter(({ c }) => !list.items.some((i) => i.item_id === c.item_id))
+            .map(({ p, c }) => (
+              <ProposedRow key={`${p.id}-${c.item_id}`} c={c} />
+            ))}
           <AddRow listId={list.id} lists={lists} />
         </tbody>
       </table>
+      {changes.length > 0 && (
+        <div className="ls-applybar">
+          <span className="grow">
+            <b>{plural(changes.length, "proposed change", "proposed changes")}</b> from{" "}
+            {producers.map((p) => `"${p}"`).join(", ")}
+            {proposals.length === 1 && proposals[0].reason ? `: "${proposals[0].reason}"` : ""}. Nothing changes
+            until you apply it.{" "}
+            <button className="d-link" onClick={onReview}>
+              Review in Approvals
+            </button>
+          </span>
+          <Button variant="ghost" onClick={() => onDecide(ids, "decline")}>
+            Discard
+          </Button>
+          <PrimaryButton onClick={() => onDecide(ids, "approve")}>Apply</PrimaryButton>
+        </div>
+      )}
     </Panel>
   );
 }
 
-function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnType<typeof useLists> }) {
+function Row({
+  item,
+  list,
+  lists,
+  proposed,
+}: {
+  item: ListItem;
+  list: List;
+  lists: ReturnType<typeof useLists>;
+  /** An agent's proposed new need for this item (§15): shown in this row. */
+  proposed?: ListChange;
+}) {
   const [editing, setEditing] = useState(false);
   const [need, setNeed] = useState(String(item.need));
   // For a character: what it holds itself (the rest are errands). Otherwise
@@ -293,7 +397,7 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
   };
 
   return (
-    <tr className={done ? "done" : undefined}>
+    <tr className={proposed ? "prop" : done ? "done" : undefined}>
       <td>
         <div className="ls-an">
           <span className={`ch-ico ${q}`} aria-hidden>
@@ -304,7 +408,12 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
         </div>
       </td>
       <td className="num need">
-        {editing ? (
+        {proposed ? (
+          <>
+            <s className="was">{item.need}</s>
+            {proposed.need}
+          </>
+        ) : editing ? (
           <input
             className="ls-needin"
             type="number"
@@ -338,7 +447,7 @@ function Row({ item, list, lists }: { item: ListItem; list: List; lists: ReturnT
         ) : (
           "none"
         )}
-        {sub && <small>{sub}</small>}
+        {proposed ? <small className="chg">proposed</small> : sub && <small>{sub}</small>}
       </td>
       <td className="num">{item.price != null ? price(item.price) : ""}</td>
       <td className="rm">

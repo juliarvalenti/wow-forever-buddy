@@ -48,6 +48,8 @@ SCENARIOS=(
   "character-bank-alt|characters|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Coinpurse;wait:css=.ch-sheet|character"
   # B2: the Lists screen (mock: lists.html), adding an item, and empty.
   "lists|dashboard|click:css=nav button[title=\"Lists\"];wait:css=.ls-grid|lists"
+  # P2: an agent's list change in place (lists.html?state=proposal; no stored shot, so next to lists).
+  "lists-proposal|lists-proposal|click:css=nav button[title=\"Lists\"];wait:css=.ls-applybar|lists"
   "lists-add|dashboard|click:css=nav button[title=\"Lists\"];wait:css=.ls-grid;click:css=.ls-add button;fill:Item to add=rune;wait:css=.ls-found|lists"
   "lists-empty|lists-empty|click:css=nav button[title=\"Lists\"];wait:css=.ls-empty|lists"
   "ah|ah|click:css=nav button[title=\"Auction House\"];wait:css=.ah-chart|ah"

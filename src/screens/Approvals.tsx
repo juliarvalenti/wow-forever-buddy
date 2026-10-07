@@ -141,7 +141,15 @@ function Mine({ now }: { now: LoginNote | null }) {
   );
 }
 
-function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decision) => void }) {
+function Waiting({
+  p,
+  decide,
+  onOpenList,
+}: {
+  p: Proposal;
+  decide: (ids: number[], d: Decision) => void;
+  onOpenList: (id: number) => void;
+}) {
   const n = p.note;
   const r = n?.replaces;
   const conflict = r?.conflict ?? false;
@@ -159,6 +167,14 @@ function Waiting({ p, decide }: { p: Proposal; decide: (ids: number[], d: Decisi
             from "{p.producer}" · {ago(p.created_at)}
             {r && !conflict ? " · replaces a note" : ""}
             {p.plan?.replaces ? " · replaces the active plan" : ""}
+            {p.list?.list_id != null && !p.list.gone && (
+              <>
+                {" · "}
+                <button className="d-link" onClick={() => onOpenList(p.list!.list_id!)}>
+                  also shown in Lists
+                </button>
+              </>
+            )}
           </small>
         </div>
         <div className="ap-acts">
@@ -236,7 +252,13 @@ function DecidedRow({ p }: { p: Proposal }) {
   );
 }
 
-export function Approvals({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Approvals({
+  onOpenSettings,
+  onOpenList,
+}: {
+  onOpenSettings: () => void;
+  onOpenList: (id: number) => void;
+}) {
   const { approvals, error, decide } = useApprovals();
   const { settings } = useSettings();
   const on = settings?.agent_access ?? false;
@@ -259,7 +281,7 @@ export function Approvals({ onOpenSettings }: { onOpenSettings: () => void }) {
           {!settings || !approvals ? null : waiting.length > 0 ? (
             <>
               {waiting.map((p) => (
-                <Waiting key={p.id} p={p} decide={decide} />
+                <Waiting key={p.id} p={p} decide={decide} onOpenList={onOpenList} />
               ))}
               {waiting.length > 1 && together.length > 0 && (
                 <div className="ap-bar">
