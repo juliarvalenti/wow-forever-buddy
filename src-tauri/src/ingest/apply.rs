@@ -68,7 +68,13 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
         )?;
     }
     for session in &file.sessions {
-        apply_session(tx, id, &target.flavor, session)?;
+        apply_session(
+            tx,
+            id,
+            &target.flavor,
+            session,
+            had_login_burst_bug(file.addon.as_deref()),
+        )?;
     }
     for r in &file.receipts {
         tx.execute(
@@ -424,11 +430,54 @@ fn replace_items(
     Ok(true)
 }
 
+/// Within this long of login, a burst of plain gains is the bags loading.
+const LOGIN_BURST_SECS: i64 = 60;
+/// At least this many different items in one second makes it a burst.
+const LOGIN_BURST_ITEMS: usize = 5;
+
+/// BUG-ADV: addons before 0.9.0 took their bag baseline before a fresh
+/// login's bags had loaded, then logged everything carried as gained in one
+/// go. Those are the plain gains (no `how`) within a minute of login that
+/// share a second with at least 5 different items: what was already carried,
+/// not loot. Migration 020 drops the same from sessions already stored.
+fn login_burst(s: &crate::ingest::file::Session) -> std::collections::HashSet<i64> {
+    use std::collections::{HashMap, HashSet};
+    let plain = |e: &&crate::ingest::file::Event| {
+        e.kind == "gain"
+            && e.data.get("how").is_none_or(serde_json::Value::is_null)
+            && e.at - s.login <= LOGIN_BURST_SECS
+    };
+    let mut items: HashMap<i64, HashSet<i64>> = HashMap::new();
+    for e in s.events.iter().filter(plain) {
+        if let Some(item) = e.data.get("item").and_then(serde_json::Value::as_i64) {
+            items.entry(e.at).or_default().insert(item);
+        }
+    }
+    s.events
+        .iter()
+        .filter(plain)
+        .filter(|e| {
+            items
+                .get(&e.at)
+                .is_some_and(|i| i.len() >= LOGIN_BURST_ITEMS)
+        })
+        .map(|e| e.seq)
+        .collect()
+}
+
+/// Whether the addon that wrote a file had the login baseline bug: before
+/// 0.9.0, or unknown. A fixed addon's burst is real loot (a container
+/// opened right after login), so it's kept.
+fn had_login_burst_bug(addon: Option<&str>) -> bool {
+    addon.is_none_or(|v| crate::addon::version_key(v) < crate::addon::version_key("0.9.0"))
+}
+
 fn apply_session(
     tx: &Transaction<'_>,
     id: i64,
     flavor: &str,
     s: &crate::ingest::file::Session,
+    old_addon: bool,
 ) -> AppResult<()> {
     let last = |kind: &str, field: &str| {
         s.events
@@ -476,7 +525,12 @@ fn apply_session(
             "DELETE FROM adventure_events WHERE adventure_id = ?1",
             [adventure],
         )?;
-        for e in &s.events {
+        let burst = if old_addon {
+            login_burst(s)
+        } else {
+            Default::default()
+        };
+        for e in s.events.iter().filter(|e| !burst.contains(&e.seq)) {
             tx.execute(
                 "INSERT INTO adventure_events (adventure_id, seq, at, kind, data)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -511,4 +565,72 @@ fn apply_session(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingest::file::{Event, Session};
+
+    /// BUG-ADV (Julia's case): the bags loading after login, logged as six
+    /// items gained in one second, isn't loot; a mail gain at the same time,
+    /// a small early loot and later loot are.
+    #[test]
+    fn a_login_burst_is_the_starting_inventory() {
+        let mut seq = 0;
+        let mut ev = |at: i64, data: serde_json::Value| {
+            seq += 1;
+            Event {
+                seq,
+                at,
+                kind: "gain".into(),
+                data,
+            }
+        };
+        let mut events: Vec<Event> = (1..=6)
+            .map(|item| ev(1003, serde_json::json!({ "item": item, "count": 2 })))
+            .collect();
+        events.push(ev(
+            1003,
+            serde_json::json!({ "item": 7, "count": 1, "how": "mail" }),
+        ));
+        events.push(ev(1010, serde_json::json!({ "item": 8, "count": 3 })));
+        events.push(ev(1500, serde_json::json!({ "item": 9, "count": 1 })));
+        let s = Session {
+            login: 1000,
+            logout: Some(2000),
+            start_money: None,
+            start_xp: None,
+            start_level: None,
+            start_zone: None,
+            events,
+        };
+        let mut burst: Vec<i64> = login_burst(&s).into_iter().collect();
+        burst.sort_unstable();
+        assert_eq!(burst, [1, 2, 3, 4, 5, 6]);
+
+        // The same six an hour in are a big loot, not the bags loading.
+        let late = Session {
+            events: s
+                .events
+                .iter()
+                .map(|e| Event {
+                    at: e.at + 3600,
+                    ..e.clone()
+                })
+                .collect(),
+            ..s.clone()
+        };
+        assert!(login_burst(&late).is_empty());
+    }
+
+    /// Only files from an addon with the bug (before 0.9.0, or unknown) have
+    /// their burst dropped; a fixed addon's is real loot.
+    #[test]
+    fn only_old_addons_had_the_burst() {
+        assert!(had_login_burst_bug(None));
+        assert!(had_login_burst_bug(Some("0.8.0")));
+        assert!(!had_login_burst_bug(Some("0.9.0")));
+        assert!(!had_login_burst_bug(Some("0.10.1")));
+    }
 }

@@ -32,6 +32,7 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/017_cleanup_suggestions.sql")),
     M::up(include_str!("migrations/018_tidy.sql")),
     M::up(include_str!("migrations/019_goals.sql")),
+    M::up(include_str!("migrations/020_login_burst.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 /// The schema version this build migrates to (`PRAGMA user_version`, which
@@ -285,6 +286,47 @@ mod tests {
     #[test]
     fn migrations_are_valid() {
         MIGRATIONS.validate().unwrap();
+    }
+
+    /// BUG-ADV: migration 020 drops a stored login burst (the whole bags
+    /// "gained" in the first second they loaded) and keeps real loot, gains
+    /// with a `how`, and a small early loot.
+    #[test]
+    fn migration_020_drops_stored_login_bursts() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut conn, 19).unwrap();
+        conn.execute_batch(
+            "INSERT INTO characters (id, flavor, account, group_dir, char_dir, name, first_seen, last_seen)
+             VALUES (1, 'f', 'A', '70', 'X', 'X', 0, 0);
+             INSERT INTO adventures (id, character_id, login) VALUES (1, 1, 1000);",
+        )
+        .unwrap();
+        let mut seq = 0;
+        let mut add = |at: i64, data: &str| {
+            seq += 1;
+            conn.execute(
+                "INSERT INTO adventure_events (adventure_id, seq, at, kind, data) VALUES (1, ?1, ?2, 'gain', ?3)",
+                rusqlite::params![seq, at, data],
+            )
+            .unwrap();
+        };
+        // The burst: six items in the second the bags loaded.
+        for item in 1..=6 {
+            add(1003, &format!(r#"{{"item":{item},"count":2}}"#));
+        }
+        add(1003, r#"{"item":7,"count":1,"how":"mail"}"#); // from the mailbox, kept
+        add(1010, r#"{"item":8,"count":3}"#); // a small early loot, kept
+        add(1500, r#"{"item":9,"count":1}"#); // later loot, kept
+        MIGRATIONS.to_latest(&mut conn).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT json_extract(data, '$.item') FROM adventure_events ORDER BY seq")
+            .unwrap();
+        let left: Vec<i64> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(left, [7, 8, 9]);
     }
 
     #[test]
