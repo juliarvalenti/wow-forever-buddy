@@ -936,19 +936,23 @@ function Wp.gain(kind, ilvl, class, classID, subclassID, worn, twoHanded)
         return nil
     elseif kind == "main" then
         return ilvl - w(16)
-    elseif kind == "held" then
-        return ilvl - w(17), "the off hand"
+    end
+    -- Off-hand comparisons only against an off hand that's worn: an empty one
+    -- is usually a choice, and "+63 over nothing" reads like noise (§15).
+    local offWorn = w(17) > 0
+    if kind == "held" then
+        return offWorn and ilvl - w(17) or nil, "the off hand"
     elseif kind == "off" then
-        if not Wp.DUAL_WIELD[c] then
+        if not (Wp.DUAL_WIELD[c] and offWorn) then
             return nil
         end
         return ilvl - w(17), "the off hand"
     end
-    -- A one-hander: the main hand, or for a dual wielder the off hand if
+    -- A one-hander: the main hand, or for a dual wielder a worn off hand if
     -- that gains more.
     local gain = ilvl - w(16)
     local off = ilvl - w(17)
-    if Wp.DUAL_WIELD[c] and off > gain then
+    if Wp.DUAL_WIELD[c] and offWorn and off > gain then
         return off, "the off hand"
     end
     return gain

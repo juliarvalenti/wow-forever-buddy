@@ -908,8 +908,9 @@ scenario("weapons", function()
     eq(c.hover(10011)[3], "Upgrade for " .. KAELOR .. W .. " (+33 item level|r" .. W .. ")|r · Brannic" .. W
         .. " (+28|r" .. W .. ")|r", "one-hander")
     -- A shield: only warriors, paladins and shamans. Coinpurse wears a
-    -- two-hander (skipped); Grom, a paladin, has an empty off hand (+63).
-    eq(c.hover(10012)[3], "Upgrade for " .. GROM .. W .. " (+63 item level|r" .. W .. ")|r", "shield")
+    -- two-hander (skipped); Grom, a paladin, has an empty off hand, and an
+    -- empty off hand isn't compared with (§15). Nobody.
+    eq(#c.hover(10012), 1, "shield: not over an empty off hand")
     -- A wand: the ranged slot, casters only. Sela +50.
     eq(c.hover(10013)[3], "Upgrade for " .. SELA .. W .. " (+50 item level|r" .. W .. ")|r", "wand")
 
