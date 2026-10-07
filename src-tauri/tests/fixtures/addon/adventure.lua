@@ -129,10 +129,14 @@ ForeverBuddyDB = {
 				{
 					["id"] = 176,
 					["kind"] = "quest",
+					["map"] = 1429,
 					["money"] = 1200,
 					["t"] = 1790965390,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
 					["xp"] = 1350,
+					["y"] = 0.657,
+					["zone"] = "Westfall",
 				}, -- [10]
 				{
 					["kind"] = "money",

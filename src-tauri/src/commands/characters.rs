@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::characters::{self, AltLockout, CharacterSheet, CharactersOverview, SearchResults};
 use crate::error::{AppError, AppResult};
+use crate::quests::{self, QuestLog};
 use crate::state::AppState;
 
 /// The Characters screen: totals and one card per character of the active
@@ -45,6 +46,14 @@ pub fn characters_search(state: State<'_, AppState>, query: String) -> AppResult
 #[specta::specta]
 pub fn character_detail(state: State<'_, AppState>, id: u32) -> AppResult<CharacterSheet> {
     characters::sheet(&state.core.db, id)
+}
+
+/// One character's quest log (Q1b): completed count and recent accepts and
+/// turn-ins. The sheet shows it only when it has something in it.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn character_quests(state: State<'_, AppState>, id: u32) -> AppResult<QuestLog> {
+    quests::log(&state.core.db, id)
 }
 
 /// Raid and dungeon saves across the active flavor's characters that haven't

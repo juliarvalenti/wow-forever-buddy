@@ -66,6 +66,20 @@
   .locks li { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; padding: 6px 0; font-size: 12.5px; white-space: nowrap; }
   .locks li + li { border-top: 1px solid rgba(255,255,255,.05); }
   .locks .when { font-size: 11.5px; color: var(--ash); }
+  /* Q1b quests tab */
+  .qv { display: none; margin-top: 8px; }
+  body.t-quests .qv { display: block; }
+  body.t-quests .sheet > .doll, body.t-quests .wrow { display: none; }
+  .qfresh { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin: 2px 0 8px; }
+  .qsec { display: flex; align-items: baseline; gap: 8px; font: 700 13.5px Georgia, serif; color: var(--ink); margin: 10px 0 2px; }
+  .qsec span { font: 500 11px "Geist", sans-serif; color: var(--ink-3); }
+  .qday { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin: 8px 0 0; }
+  .qlist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 5px 0; border-bottom: 1px solid var(--ink-hair); }
+  .qlist .qt { font: 600 13px Georgia, serif; color: var(--ink); }
+  .qlist .qw { grid-column: 1; font-size: 11.5px; color: var(--ink-3); }
+  .qlist .qd { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+  .qlist.done .qt { color: var(--ink-2); }
+  .qnote { font: italic 11.5px Georgia, serif; color: var(--ink-3); margin-top: 10px; }
   .bankalt { display: inline-flex; align-items: center; gap: 8px; margin-right: 8px; font-size: 12.5px; color: var(--ash); cursor: pointer; }
 
   @media (max-width: 1100px) {
@@ -125,6 +139,7 @@
         <a href="#">Bank <span class="n">112</span></a>
         <a href="#">Mail <span class="n">3</span></a>
         <a href="#">Professions</a>
+        <a href="?tab=quests" id="qtab">Quests <span class="n">214</span></a>
         <a href="#">History</a>
         <span class="stamp"><i data-i="clock" class="sm"></i>4 min ago</span>
       </nav>
@@ -156,6 +171,31 @@
           <div class="slot" data-tt="ashkandi"><span class="ico lg q-epic"><b>A</b></span><div class="t"><div class="q-epic">Ashkandi, Greatsword of the Brotherhood</div><small>Two-hand · fills both hands</small></div><span class="il">77</span></div>
           <div class="slot"><span class="ico lg q-rare"><b>L</b></span><div class="t"><div class="q-rare">Libram of Hope</div><small>Relic</small></div><span class="il">60</span></div>
         </div>
+      </div>
+
+      <!-- Q1b: the Quests tab (character.html?tab=quests). Hidden until real quest data exists (ships dark). -->
+      <div class="qv">
+        <div class="qfresh">214 quests completed · as of logout, 5 Oct</div>
+        <div class="qsec">In your log <span>4</span></div>
+        <ul class="qlist">
+          <li><span class="qt">Dead Man's Plea</span><span class="qw">Stratholme · from Anthion Harmon</span><span class="qd">accepted 4 Oct</span></li>
+          <li><span class="qt">The Active Agent</span><span class="qw">Eastern Plaguelands · from Betina Bigglezink</span><span class="qd">accepted 4 Oct</span></li>
+          <li><span class="qt">Mission Accomplished!</span><span class="qw">Eastern Plaguelands · from Betina Bigglezink</span><span class="qd">accepted 2 Oct</span></li>
+          <li><span class="qt">Of Love and Family</span><span class="qw">Eastern Plaguelands · from Tirion Fordring</span><span class="qd">accepted 28 Sep</span></li>
+        </ul>
+        <div class="qsec">Recently completed <span>newest first</span></div>
+        <div class="qday">Yesterday</div>
+        <ul class="qlist done">
+          <li><span class="qt">The Archivist</span><span class="qw">Eastern Plaguelands · to Duke Nicholas Zverenhoff</span><span class="qd">22:10</span></li>
+          <li><span class="qt">Ramstein</span><span class="qw">Stratholme · to Duke Nicholas Zverenhoff</span><span class="qd">21:58</span></li>
+          <li><span class="qt">The Truth Comes Crashing Down</span><span class="qw">Light's Hope Chapel · to Fiona</span><span class="qd">21:41</span></li>
+        </ul>
+        <div class="qday">Sat 3 Oct</div>
+        <ul class="qlist done">
+          <li><span class="qt">Houses of the Holy</span><span class="qw">Stratholme · to Leonid Barthalomew</span><span class="qd">20:12</span></li>
+          <li><span class="qt">The Corruptor</span><span class="qw">Eastern Plaguelands · to Betina Bigglezink</span><span class="qd">19:47</span></li>
+        </ul>
+        <div class="qnote">Each quest you accept or hand in is noted at logout. Completed quests from before the addon count in the total, without dates.</div>
       </div>
     </article>
 
@@ -199,6 +239,13 @@
     </div>
   </div>
 </main>
+<script>
+  if (new URLSearchParams(location.search).get('tab') === 'quests') {
+    document.body.classList.add('t-quests');
+    document.querySelector('.tabs a.on').classList.remove('on');
+    document.getElementById('qtab').classList.add('on');
+  }
+</script>
 <script src="_shell.js"></script>
 </body>
 </html>

@@ -66,18 +66,28 @@ ForeverBuddyDB = {
 		{
 			["events"] = {
 				{
+					["giver"] = "Marshal Dughan",
 					["id"] = 176,
 					["kind"] = "quest_accepted",
+					["map"] = 1429,
 					["t"] = 1790964600,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [1]
 				{
+					["giver"] = "Marshal Dughan",
 					["id"] = 176,
 					["kind"] = "quest",
+					["map"] = 1429,
 					["money"] = 75,
 					["t"] = 1790965800,
 					["title"] = "Wanted: Hogger",
+					["x"] = 0.412,
 					["xp"] = 450,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [2]
 				{
 					["kind"] = "money",

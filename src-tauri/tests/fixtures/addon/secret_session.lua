@@ -49,7 +49,11 @@ ForeverBuddyDB = {
 			["events"] = {
 				{
 					["kind"] = "quest",
+					["map"] = 1429,
 					["t"] = 1790964060,
+					["x"] = 0.412,
+					["y"] = 0.657,
+					["zone"] = "Elwynn Forest",
 				}, -- [1]
 				{
 					["kind"] = "money",

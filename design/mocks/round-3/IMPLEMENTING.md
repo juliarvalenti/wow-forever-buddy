@@ -270,3 +270,20 @@ Icons come from the player's own game files and replace the letter tiles in the 
   - **The nudge on Characters:** a slim, quiet stone strip above the cards, never a `Callout`. It has a letter tile, the text "Items show letters. Turn on icons to see the real pictures, read from your own game files.", a stone **Show icons** button (it turns the switch on directly, since the text has already said what it does) and a ghost **Not now**.
   - **When the nudge appears:** only while icons are off, the game folder is set, and the nudge hasn't been dismissed. "Not now" hides it for good. Settings still has the switch.
   - **No nudge** on any other screen. Turning the switch on never shows a dialog.
+
+## 14. Q1b: the Quests tab on the character sheet (`character.html?tab=quests`)
+This is read-only, from `character_quests(id)`: the completed count plus the newest 200 accepts and hand-ins. **It ships dark:** the tab is hidden until real quest data exists for any character, and then it shows for every character.
+- **Tab:** "Quests" with the completed count ("Quests 214"), between Professions and History. If the tabs don't fit, drop the "4 min ago" stamp before anything else, as the 1100 px rule already does.
+- **Freshness line**, italic: "214 quests completed · as of logout, 5 Oct".
+- **"In your log" (with a count):** quests accepted with no hand-in after them, newest first.
+  - Each row: the title (Georgia, ink), then a grey line "Zone · from Giver", and "accepted 4 Oct" on the right.
+  - Leave out "from Giver" when there's no giver: an item-started quest, or a giver that wasn't recorded.
+- **"Recently completed" (newest first):** grouped by day under italic day heads ("Yesterday", "Sat 3 Oct").
+  - Each row: the title (slightly lighter ink), then "Zone · to Giver" (the turn-in NPC), and the time on the right ("22:10").
+  - Show the newest 50, then a quiet "Show older" link that loads the rest of the 200.
+- **Note** at the bottom, italic and muted: "Each quest you accept or hand in is noted at logout. Completed quests from before the addon count in the total, without dates."
+- **Coordinates aren't shown here.** They're for the quest planner later. Never show another player's name: the addon already drops player givers.
+- **Empty states** (once the tab is visible):
+  - Nothing recorded for this character: "No quests noted for Thrandor yet. They appear after you accept or hand one in with the addon running, then log out."
+  - Completed ids but no events: show the count line and the note only.
+- No quest links, rewards or descriptions. We don't have them, and won't guess.

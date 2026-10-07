@@ -1047,23 +1047,48 @@ handlers.PLAYER_MONEY = function()
     end
 end
 
+-- Where a quest was taken or handed in, and who to (the quest log, Q1b):
+-- the zone, the map and the player's position on it (0-1, to 0.1%; none in
+-- an instance), and the giver, the NPC the quest window is open on. A quest
+-- shared by another player has a player there, and a player's name is never
+-- kept.
+local function questPlace(fields)
+    fields.zone = zoneNow()
+    local map = read("C_Map.GetBestMapForUnit", "player")
+    fields.map = map
+    local pos = map and read("C_Map.GetPlayerMapPosition", map, "player")
+    if type(pos) == "table" and pos.GetXY then
+        local x, y = read(pos.GetXY, pos)
+        if type(x) == "number" and type(y) == "number" then
+            fields.x = math.floor(x * 1000 + 0.5) / 1000
+            fields.y = math.floor(y * 1000 + 0.5) / 1000
+        end
+    end
+    -- Only on a definite "not a player": a missing API or a secret answer
+    -- records no giver.
+    if read(UnitIsPlayer, "npc") == false then
+        fields.giver = read(UnitName, "npc")
+    end
+    return fields
+end
+
 -- Retail sends the quest id alone; older clients sent the log index first.
 handlers.QUEST_ACCEPTED = function(a, b)
     local id = arg(b or a)
-    addEvent("quest_accepted", {
+    addEvent("quest_accepted", questPlace({
         id = id,
         title = id and read("C_QuestLog.GetTitleForQuestID", id) or nil,
-    })
+    }))
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xp, money)
     local id = arg(questID)
-    addEvent("quest", {
+    addEvent("quest", questPlace({
         id = id,
         title = id and read("C_QuestLog.GetTitleForQuestID", id) or nil,
         xp = arg(xp),
         money = arg(money),
-    })
+    }))
 end
 
 -- No killer: that's restricted, and the recap says so instead.
