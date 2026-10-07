@@ -34,10 +34,12 @@ import type {
   ListsView,
   Macro,
   Mark,
+  Marked,
   MacrosList,
   Plan,
   PlaySession,
   QuestLog,
+  Reason,
   RestorePlan,
   SearchResults,
   SecretStatus,
@@ -408,7 +410,7 @@ export function installMockIpc(): void {
           },
         ];
   // B3: the sheet's bag items by id (character_detail's ids), and each
-  // character's marks: item id -> 0 to sell, or the recipient's id.
+  // character's marks: item id -> { to (0 to sell), reason, producer }.
   const cleanupItems: Record<number, { name: string; quality: number; count: number; sell: number | null }> = {
     1001: { name: "Hearthstone", quality: 1, count: 1, sell: null },
     1002: { name: "Runecloth", quality: 1, count: 40, sell: 40 },
@@ -417,34 +419,53 @@ export function installMockIpc(): void {
     1005: { name: "Truestrike Shoulders", quality: 3, count: 1, sell: 12_100 },
     1101: { name: "Major Healing Potion", quality: 1, count: 12, sell: 1_000 },
   };
-  const allMarks = new Map<number, Map<number, number>>([
-    [2, new Map([[1003, 0], [1005, 7]])],
+  type MockMark = { to: number; reason: Reason | null; producer: string };
+  // B3b: the Fangs from an accepted suggestion, the Runecloth from an
+  // approved Claude proposal. Suggested: the pelts (grey) and the shoulders
+  // (+9 for Kaelor).
+  const allMarks = new Map<number, Map<number, MockMark>>([
+    [
+      2,
+      new Map([
+        [1003, { to: 0, reason: { code: "grey" }, producer: "app" }],
+        [1002, { to: 6, reason: null, producer: "agent:Claude Desktop" }],
+      ]),
+    ],
   ]);
+  const suggestable: Record<number, MockMark> = {
+    1004: { to: 0, reason: { code: "grey" }, producer: "app" },
+    1005: { to: 7, reason: { code: "upgrade", gain: 9 }, producer: "app" },
+  };
+  const dismissed = new Set<string>();
   const cleanupMarks = (id: number) => {
     if (!allMarks.has(id)) allMarks.set(id, new Map());
     return allMarks.get(id)!;
   };
-  const cleanupView = (id: number): Cleanup => {
-    const marks = cleanupMarks(id);
+  const cleanupRow = (item: number, m: MockMark): Marked => {
+    const it = cleanupItems[item];
     return {
-      marks: [...marks.entries()]
-        .filter(([item]) => cleanupItems[item])
-        .map(([item, to]) => {
-          const it = cleanupItems[item];
-          return {
-            item_id: item,
-            name: it.name,
-            quality: it.quality,
-            icon: null,
-            count: it.count,
-            sell_price: it.sell,
-            to: to ? listWho(to) : null,
-          };
-        }),
-      greys: Object.entries(cleanupItems).filter(([item, it]) => it.quality === 0 && !marks.has(Number(item))).length,
-      delivery: { state: "synced", since: iso(18) },
+      item_id: item,
+      name: it.name,
+      quality: it.quality,
+      icon: null,
+      count: it.count,
+      sell_price: it.sell,
+      to: m.to ? listWho(m.to) : null,
+      reason: m.reason,
+      producer: m.producer,
     };
   };
+  const cleanupSuggested = (id: number) =>
+    id !== 2
+      ? []
+      : Object.entries(suggestable).filter(
+          ([item]) => !cleanupMarks(id).has(Number(item)) && !dismissed.has(`${id}:${item}`),
+        );
+  const cleanupView = (id: number): Cleanup => ({
+    marks: [...cleanupMarks(id).entries()].filter(([item]) => cleanupItems[item]).map(([item, m]) => cleanupRow(item, m)),
+    suggestions: cleanupSuggested(id).map(([item, m]) => cleanupRow(Number(item), m)),
+    delivery: { state: "synced", since: iso(18) },
+  });
   const listsView = (): ListsView => ({
     lists: noAddon ? [] : lists,
     delivery: { state: "synced", since: iso(18) },
@@ -1293,22 +1314,29 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
-    // B3: Thrandor's bag cleanup (character.html, IMPLEMENTING §18): the
-    // Broken Fangs marked to sell, the shoulders to send to Kaelor, and one
-    // grey (the bear pelts) not marked yet.
+    // B3/B3b: Thrandor's bag cleanup (character.html, IMPLEMENTING §18).
     cleanup_get: ({ characterId }): Cleanup => cleanupView(Number(characterId)),
     cleanup_mark: ({ characterId, itemId, mark }): Cleanup => {
       const m = mark as Mark;
-      cleanupMarks(Number(characterId)).set(Number(itemId), m.action === "send" ? m.to : 0);
+      cleanupMarks(Number(characterId)).set(Number(itemId), {
+        to: m.action === "send" ? m.to : 0,
+        reason: null,
+        producer: "app",
+      });
       return cleanupView(Number(characterId));
     },
     cleanup_clear: ({ characterId, itemId }): Cleanup => {
       cleanupMarks(Number(characterId)).delete(Number(itemId));
       return cleanupView(Number(characterId));
     },
-    cleanup_mark_greys: ({ characterId }): Cleanup => {
-      const marks = cleanupMarks(Number(characterId));
-      for (const [id, it] of Object.entries(cleanupItems)) if (it.quality === 0 && !marks.has(Number(id))) marks.set(Number(id), 0);
+    cleanup_accept: ({ characterId, itemId }): Cleanup => {
+      const id = Number(characterId);
+      for (const [item, m] of cleanupSuggested(id))
+        if (itemId == null || Number(item) === itemId) cleanupMarks(id).set(Number(item), m);
+      return cleanupView(id);
+    },
+    cleanup_dismiss: ({ characterId, itemId }): Cleanup => {
+      dismissed.add(`${characterId}:${itemId}`);
       return cleanupView(Number(characterId));
     },
     lists_get: listsView,

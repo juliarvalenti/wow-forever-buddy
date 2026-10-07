@@ -854,7 +854,7 @@ function Slot({
         <div className={q}>{item.name}</div>
         <small>
           {label ?? (item.count > 1 ? `× ${item.count}` : "")}
-          {marked && <MarkTag mark={marked} />}
+          {marked && <MarkTag mark={marked} parchment />}
         </small>
       </div>
       <span className="il">
@@ -1201,7 +1201,8 @@ function Sheet({
                 cleanup={cleanup.cleanup}
                 error={cleanup.error}
                 onClear={cleanup.clear}
-                onMarkGreys={cleanup.markGreys}
+                onAccept={cleanup.accept}
+                onDismiss={cleanup.dismiss}
               />
             )}
             <Panel>
