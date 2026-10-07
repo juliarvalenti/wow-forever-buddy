@@ -295,18 +295,45 @@ impl AppCore {
             chrono::Utc::now().timestamp(),
         );
         // BUG-LISTS: these two leave the screens at "waiting" with nothing
-        // recorded, so the log says which it was.
-        let why = match &sent {
-            Ok(Sent::Waiting) => Some("game data waits: the write gate says WoW is running"),
-            Ok(Sent::NoAddon) => {
-                Some("game data not sent: the installed addon lists no data files")
-            }
-            _ => None,
-        };
-        if let Some(why) = why {
-            crate::applog::append(&self.paths.log_dir, why);
+        // recorded, so the log says which it was: once per wait, naming what
+        // the gate saw. The gate is stricter than "WoW is running" on screen
+        // (any process under the WoW folder, or a WoW-looking name, holds
+        // writes), so the name is what tells them apart.
+        use std::sync::atomic::Ordering;
+        let waiting = matches!(sent, Ok(Sent::Waiting));
+        let was = self.send_waiting.swap(waiting, Ordering::SeqCst);
+        if waiting && !was {
+            // "BlizzardError.exe is running", or why it can't tell.
+            let blocker = self
+                .game
+                .blocking_now(&self.probe_target())
+                .map_or_else(|| "WoW was running".to_string(), |b| b.to_string());
+            crate::applog::append(
+                &self.paths.log_dir,
+                &format!("game data waits for the write gate: {blocker}"),
+            );
+        }
+        if matches!(sent, Ok(Sent::NoAddon)) {
+            crate::applog::append(
+                &self.paths.log_dir,
+                "game data not sent: the installed addon lists no data files",
+            );
         }
         sent
+    }
+
+    /// A send the write gate held, tried again (BUG-LISTS): nothing else
+    /// retries it until the next ingest, so a process that outlived WoW, or
+    /// a race at its exit, left the screens at "waiting for WoW to close".
+    pub fn retry_waiting_send(&self) -> Option<AppResult<Sent>> {
+        use std::sync::atomic::Ordering;
+        if !self.send_waiting.load(Ordering::SeqCst) {
+            return None;
+        }
+        if self.game.blocking_now(&self.probe_target()).is_some() {
+            return None;
+        }
+        Some(self.send_to_game())
     }
 }
 
@@ -614,5 +641,83 @@ mod tests {
             assert_eq!(stub.len(), 1);
             assert_eq!(stub[0].0, slot.global());
         }
+    }
+
+    /// BUG-LISTS, "waiting for WoW to close" with WoW closed:
+    /// (1) a Blizzard process left under the WoW folder (a crash reporter,
+    /// say) counts as the game, so the gate holds writes after the player
+    /// closed WoW; (2) nothing tried the send
+    /// again until the next ingest; (3) the installed TOC's slots read fine
+    /// on a `_classic_beta_` install (an empty list would say "restart",
+    /// not "waiting"). The log now names the blocker, once, and the retry
+    /// sends as soon as nothing holds the gate.
+    #[test]
+    fn a_held_send_names_its_blocker_and_goes_out_once_free() {
+        use crate::config::paths::AppPaths;
+        use crate::game::process::fake::FakeProbe;
+        use crate::game::process::ProcInfo;
+        use crate::secrets::MemoryStore;
+        use std::sync::Arc;
+
+        let (dir, root) = crate::test_support::fixture_copy();
+        let probe = Arc::new(FakeProbe::default());
+        let core = AppCore::with_parts(
+            AppPaths::under(&dir.path().join("app")),
+            Arc::new(MemoryStore::default()),
+            probe.clone(),
+        )
+        .unwrap();
+        crate::install::set(&core.settings, &root, Some("_classic_beta_")).unwrap();
+        crate::addon::install(
+            &core.write_gate().unwrap(),
+            &core.mutation_target().unwrap(),
+        )
+        .unwrap();
+        let game = core.active_game().unwrap();
+        assert_eq!(
+            addon::listed_slots(&game.root),
+            SLOTS.to_vec(),
+            "(3) every slot listed"
+        );
+
+        // (1) A crash reporter outlives the game, in the WoW folder.
+        probe.set_processes(vec![ProcInfo {
+            pid: FakeProbe::wow_pid(),
+            name: "BlizzardError.exe".into(),
+            // As the OS reports it: the real path (a temp dir's /var is
+            // /private/var on macOS).
+            exe: Some(
+                dunce::canonicalize(root.join("_classic_beta_"))
+                    .unwrap()
+                    .join("BlizzardError.exe"),
+            ),
+        }]);
+        // The app counts it as the game too (an exe under the WoW folder),
+        // though the player closed WoW.
+        core.game.poll(&core.probe_target());
+        assert!(core.game.status().running, "the app says WoW is running");
+        assert_eq!(
+            core.send_to_game().unwrap(),
+            Sent::Waiting,
+            "the gate holds it"
+        );
+        assert_eq!(core.send_to_game().unwrap(), Sent::Waiting);
+        let log = std::fs::read_to_string(core.paths.log_dir.join("buddy.log")).unwrap();
+        assert_eq!(
+            log.matches("game data waits for the write gate: BlizzardError.exe is running")
+                .count(),
+            1,
+            "named, once: {log}"
+        );
+
+        // (2) Retried on its own once nothing holds the gate.
+        assert!(core.retry_waiting_send().is_none(), "still held: not tried");
+        probe.set_processes(Vec::new());
+        assert_eq!(core.retry_waiting_send().unwrap().unwrap(), Sent::Written);
+        assert!(core.retry_waiting_send().is_none(), "nothing waits now");
+        assert!(!matches!(
+            delivery(&core.db, &game.flavor, Slot::Lists, None, "", true).unwrap(),
+            Delivery::Waiting
+        ));
     }
 }
