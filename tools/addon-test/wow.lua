@@ -863,6 +863,32 @@ function M.new(opts)
         client.fire("PLAYER_LEVEL_UP", world.level, 10, 0, 0, 0, 0, 0, 0, 0)
     end
 
+    -- XP from a kill or a quest: over the bar, the level goes up and the
+    -- rest carries into the next one (whose bar is as long, here).
+    function client.gainXp(n)
+        world.xp = world.xp + n
+        if world.xp >= world.xp_max then
+            local rest = world.xp - world.xp_max
+            client.levelUp()
+            world.xp = rest
+        end
+        client.fire("PLAYER_XP_UPDATE", "player")
+    end
+
+    -- /logout's countdown, and cancelling it.
+    function client.startLogout()
+        client.fire("PLAYER_CAMPING")
+    end
+
+    function client.cancelLogout()
+        client.fire("LOGOUT_CANCEL")
+    end
+
+    function client.combat(on)
+        world.combat = on
+        client.fire(on and "PLAYER_REGEN_DISABLED" or "PLAYER_REGEN_ENABLED")
+    end
+
     function client.die(durabilityCost)
         world.repair = world.repair + (durabilityCost or 0)
         client.fire("PLAYER_DEAD")

@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.6.0"
+local VERSION = "0.7.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -1961,6 +1961,366 @@ local function guarded(fn, ...)
     end
 end
 
+-- This session: the coach and the logout card (S2, INGAME §8) -------------------------
+--
+-- Both read the session the addon already keeps (it carries over a /reload):
+-- money against the session's start, looted gains from the bag diff, quest
+-- hand-ins, level-ups. XP per hour is counted here from PLAYER_XP_UPDATE.
+-- The coach is a small strip, off by default; the card shows during the
+-- logout countdown. Neither acts or blocks anything.
+
+-- The section's functions live in a do-block (a chunk can hold only 200
+-- locals); what the rest of the file uses is exported through S.
+local S = { errors = 0 }
+do
+local COACH_EVERY = 5 -- seconds between coach refreshes while it's shown
+local QUALITY_HEX = { [0] = "9d9d9d", "ffffff", "1eff00", "0070dd", "a335ee", "ff8000", "e6cc80", "00ccff" }
+local coachFrame, cardFrame
+local xp -- { t, gained, last, max }: XP counted since `t`
+
+local function settings()
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    return ForeverBuddySettings
+end
+
+local function coachOn()
+    return type(ForeverBuddySettings) == "table" and ForeverBuddySettings.coach == true
+end
+
+local function coachHidesInCombat()
+    return type(ForeverBuddySettings) == "table" and ForeverBuddySettings.coachCombat == true
+end
+
+local function cardOn()
+    return type(ForeverBuddySettings) ~= "table" or ForeverBuddySettings.card ~= false
+end
+
+-- "1,234,567".
+local function thousands(n)
+    local s = tostring(math.floor(n + 0.5))
+    local out
+    repeat
+        s, out = string.gsub(s, "^(%d+)(%d%d%d)", "%1,%2")
+    until out == 0
+    return s
+end
+
+-- Whole gold once there's a gold: "312g", else "45s", "8c".
+local function money(copper)
+    local c = math.floor(math.abs(copper) + 0.5)
+    if c >= 10000 then
+        return thousands(math.floor(c / 10000)) .. "g"
+    end
+    return coins(c)
+end
+
+-- "1h 42m", "22m".
+local function span(seconds)
+    local m = math.max(0, math.floor(seconds / 60 + 0.5))
+    return m < 60 and (m .. "m") or (math.floor(m / 60) .. "h " .. (m % 60) .. "m")
+end
+
+-- The last-scan price of `id` from the tooltip index, or nil.
+local function scanPrice(id)
+    local slot = slots[(id % 2 == 0) and "Tooltip1" or "Tooltip2"]
+    local entry = type(slot) == "table" and type(slot.items) == "table" and slot.items[id]
+    local p = type(entry) == "table" and entry[1]
+    return type(p) == "number" and p > 0 and p or nil
+end
+
+-- Where XP is counted from: the session's start if the level hasn't changed
+-- (so a /reload keeps the count), else from now.
+local function xpBaseline()
+    local cur, max = read(UnitXP, "player"), read(UnitXPMax, "player")
+    local start = session and session.start or {}
+    local level = read(UnitLevel, "player")
+    if type(cur) ~= "number" then
+        xp = nil
+        return
+    end
+    if start.level == level and type(start.xp) == "number" and cur >= start.xp then
+        xp = { t = session.login, gained = cur - start.xp, last = cur, max = max }
+    else
+        xp = { t = now(), gained = 0, last = cur, max = max }
+    end
+end
+
+-- PLAYER_XP_UPDATE: what was gained since the last one, across a level-up
+-- (the rest of the old level, then the new level's XP).
+local function countXp()
+    local cur, max = read(UnitXP, "player"), read(UnitXPMax, "player")
+    if not xp or type(cur) ~= "number" then
+        return
+    end
+    if cur >= xp.last then
+        xp.gained = xp.gained + (cur - xp.last)
+    elseif type(xp.max) == "number" then
+        xp.gained = xp.gained + math.max(0, xp.max - xp.last) + cur
+    end
+    xp.last, xp.max = cur, max
+end
+
+-- What the session adds up to now.
+local function tally()
+    local t = now() or 0
+    local s = session or { login = t, start = {}, events = {} }
+    local out = { length = t - (s.login or t), quests = 0, loot = 0, worth = 0, priced = false }
+    local m = read(GetMoney)
+    if type(m) == "number" and type(s.start.money) == "number" then
+        out.gold = m - s.start.money
+    end
+    local level = read(UnitLevel, "player")
+    if type(level) == "number" and type(s.start.level) == "number" and level > s.start.level then
+        out.ding = level
+    end
+    for _, e in ipairs(s.events or {}) do
+        if e.kind == "quest" then
+            out.quests = out.quests + 1
+        elseif e.kind == "gain" and e.how == nil and type(e.item) == "number" then
+            local n = num(e.count)
+            out.loot = out.loot + n
+            local p = scanPrice(e.item)
+            if p then
+                out.worth, out.priced = out.worth + p * n, true
+            end
+            local info = items[e.item]
+            local q = info and num(info.quality) or 0
+            if info and q >= 2 and (not out.best or q > out.best.q
+                or (q == out.best.q and num(info.ilvl) > num(out.best.ilvl))) then
+                out.best = { name = info.name, q = q, ilvl = info.ilvl }
+            end
+        end
+    end
+    if xp and out.length > 0 then
+        local hours = math.max(t - xp.t, 60) / 3600
+        out.xpHour = xp.gained / hours
+        local cur, max = read(UnitXP, "player"), read(UnitXPMax, "player")
+        local cap = read(GetMaxPlayerLevel)
+        if out.xpHour > 0 and type(cur) == "number" and type(max) == "number" and type(level) == "number"
+            and (type(cap) ~= "number" or level < cap) then
+            out.nextLevel = level + 1
+            out.toLevel = (max - cur) / out.xpHour * 3600
+        end
+    end
+    return out
+end
+
+local function coachRow(f, i)
+    local row = f.rows[i]
+    if not row then
+        row = CreateFrame("Frame", nil, f)
+        row:SetSize(186, 16)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.label:SetPoint("LEFT", 0, 0)
+        row.value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.value:SetPoint("RIGHT", 0, 0)
+        f.rows[i] = row
+    end
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -24 - (i - 1) * 17)
+    row:Show()
+    return row
+end
+
+-- The coach's rows: Gold, Experience, "Level 61 in" while levelling, Loot.
+local function renderCoach()
+    local f = coachFrame
+    local s = tally()
+    f.meta:SetText(span(s.length))
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+    end
+    local lines = {}
+    if s.gold then
+        local hours = math.max(s.length, 60) / 3600
+        lines[#lines + 1] = { "Gold", (s.gold < 0 and "-" or "+") .. money(s.gold) .. " · "
+            .. money(math.max(0, s.gold) / hours) .. "/hr" }
+    end
+    if s.xpHour then
+        lines[#lines + 1] = { "Experience", thousands(s.xpHour) .. "/hr" }
+    end
+    if s.toLevel then
+        lines[#lines + 1] = { "Level " .. s.nextLevel .. " in", "~" .. span(s.toLevel) }
+    end
+    lines[#lines + 1] = { "Loot", s.loot .. (s.loot == 1 and " item" or " items")
+        .. (s.priced and (" · ~" .. money(s.worth)) or "") }
+    for i, l in ipairs(lines) do
+        local row = coachRow(f, i)
+        row.label:SetText(l[1])
+        row.value:SetText(l[2])
+    end
+    f:SetHeight(32 + #lines * 17)
+end
+
+local function coachTick()
+    if not coachFrame or not coachFrame:IsShown() then
+        return
+    end
+    if not read("InCombatLockdown") then
+        if not pcall(renderCoach) then
+            S.errors = S.errors + 1
+        end
+    end
+    read("C_Timer.After", COACH_EVERY, coachTick)
+end
+
+local function showCoach()
+    if not coachFrame then
+        local f = CreateFrame("Frame", "ForeverBuddyCoachFrame", UIParent, "DefaultPanelFlatTemplate")
+        f:SetSize(210, 100)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", function(frame)
+            frame:StopMovingOrSizing()
+            local ok, point, _, _, x, y = pcall(frame.GetPoint, frame)
+            if ok and type(point) == "string" and type(x) == "number" and type(y) == "number" then
+                settings().coachAt = { point, x, y }
+            end
+        end)
+        f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.heading:SetPoint("TOPLEFT", 10, -6)
+        f.heading:SetText("This session")
+        f.meta = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.meta:SetPoint("TOPRIGHT", -10, -8)
+        f.rows = {}
+        f:Hide() -- new frames start shown; the timer starts on the first Show
+        coachFrame = f
+    end
+    local at = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.coachAt
+    coachFrame:ClearAllPoints()
+    if type(at) == "table" and type(at[1]) == "string" and type(at[2]) == "number" and type(at[3]) == "number" then
+        coachFrame:SetPoint(at[1], UIParent, at[1], at[2], at[3])
+    else
+        coachFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 40, -200)
+    end
+    if coachHidesInCombat() and read("InCombatLockdown") then
+        return
+    end
+    renderCoach()
+    local wasShown = coachFrame:IsShown()
+    coachFrame:Show()
+    if not wasShown then
+        read("C_Timer.After", COACH_EVERY, coachTick)
+    end
+end
+
+local function hideCoach()
+    if coachFrame then
+        coachFrame:Hide()
+    end
+end
+
+-- Saved only when on (and the combat option only when set), so the file
+-- stays empty for most players.
+local function setCoach(on)
+    settings().coach = on or nil
+    if on then
+        showCoach()
+    else
+        hideCoach()
+    end
+end
+
+local function setCoachCombat(hide)
+    settings().coachCombat = hide or nil
+end
+
+local function setCard(on)
+    if on then
+        settings().card = nil
+    else
+        settings().card = false
+    end
+end
+
+-- "Thrandor's evening", from the local clock.
+local function cardTitle()
+    local h = tonumber(read(date, "%H", now())) or 20
+    local part = (h >= 5 and h < 12 and "morning") or (h >= 12 and h < 17 and "afternoon")
+        or (h >= 17 and h < 22 and "evening") or "night"
+    return plain(character and character.name or "Your") .. "'s " .. part
+end
+
+-- The logout card: shown during the countdown, above the game's dialog;
+-- only its × takes the mouse.
+local function showCard()
+    if not cardOn() or not session then
+        return
+    end
+    if not cardFrame then
+        local f = CreateFrame("Frame", "ForeverBuddyCardFrame", UIParent, "DefaultPanelFlatTemplate")
+        f:SetSize(270, 120)
+        f:SetFrameStrata("DIALOG")
+        f:SetPoint("TOP", UIParent, "TOP", 0, -40)
+        f:EnableMouse(false)
+        f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.heading:SetPoint("TOPLEFT", 10, -6)
+        f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        f.close:SetPoint("TOPRIGHT", 2, 2)
+        f.close:SetScript("OnClick", function()
+            f:Hide()
+        end)
+        f.ding = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        f.ding:SetPoint("TOPLEFT", 12, -28)
+        f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.footer:SetPoint("BOTTOMLEFT", 12, 8)
+        f.footer:SetText("Saved to your journal in Forever Buddy")
+        f.rows = {}
+        cardFrame = f
+    end
+    local f = cardFrame
+    local s = tally()
+    f.heading:SetText(cardTitle())
+    f.ding:SetText(s.ding and ("Ding! Level " .. s.ding) or "")
+    f.ding:SetShown(s.ding ~= nil)
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+    end
+    local lines = { { "Played", span(s.length) } }
+    if s.gold and s.gold ~= 0 then
+        lines[#lines + 1] = { "Gold", (s.gold > 0 and "|cff1eff00+" or "|cffff2020-") .. money(s.gold) .. "|r" }
+    end
+    if s.best then
+        lines[#lines + 1] = { "Best find", "|cff" .. (QUALITY_HEX[s.best.q] or "ffffff") .. plain(s.best.name) .. "|r" }
+    end
+    if s.quests > 0 then
+        lines[#lines + 1] = { "Quests", tostring(s.quests) }
+    end
+    local top = s.ding and 50 or 28
+    for i, l in ipairs(lines) do
+        local row = coachRow(f, i)
+        row:SetSize(246, 16)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top - (i - 1) * 18)
+        row.label:SetText(l[1])
+        row.value:SetText(l[2])
+    end
+    f:SetHeight(top + #lines * 18 + 28)
+    f:Show()
+end
+
+local function hideCard()
+    if cardFrame then
+        cardFrame:Hide()
+    end
+end
+
+local function sessionGuarded(fn, ...)
+    if not pcall(fn, ...) then
+        S.errors = S.errors + 1
+    end
+end
+
+S.guarded, S.xpBaseline, S.countXp = sessionGuarded, xpBaseline, countXp
+S.coachOn, S.setCoach, S.showCoach, S.hideCoach = coachOn, setCoach, showCoach, hideCoach
+S.hidesInCombat, S.setCoachCombat = coachHidesInCombat, setCoachCombat
+S.cardOn, S.setCard, S.showCard, S.hideCard = cardOn, setCard, showCard, hideCard
+end
+
 -- /fb ------------------------------------------------------------------------------
 --
 -- /fb plan opens the plan frame; /fb list the list panel; /fb errands says
@@ -1990,8 +2350,18 @@ local function slash(msg)
         guarded(toggleLists)
     elseif cmd == "errands" then
         guarded(sayErrands)
+    elseif cmd == "coach" then
+        S.guarded(S.setCoach, not S.coachOn())
+        say(GOLD_PREFIX .. "session coach " .. (S.coachOn() and "on." or "off."))
+    elseif cmd == "coach combat" then
+        S.setCoachCombat(not S.hidesInCombat())
+        say(GOLD_PREFIX .. "session coach " .. (S.hidesInCombat() and "hides in combat." or "stays in combat."))
+    elseif cmd == "card off" or cmd == "card on" then
+        S.setCard(cmd == "card on")
+        say(GOLD_PREFIX .. "session card at logout " .. (S.cardOn() and "on." or "off."))
     else
         say(GOLD_PREFIX .. "/fb plan shows tonight's plan; /fb list your lists; /fb errands what to send; "
+            .. "/fb coach this session's strip; /fb card off hides the logout card; "
             .. "/fb brief repeats the login briefing; /fb brief off turns it off.")
     end
 end
@@ -2002,7 +2372,8 @@ if type(SlashCmdList) == "table" then
 end
 
 -- The addon compartment (the TOC's AddonCompartmentFunc): a menu with the
--- briefing toggle, or a plain toggle where the menu API isn't there.
+-- briefing, coach and card toggles, or a plain briefing toggle where the
+-- menu API isn't there.
 function ForeverBuddy_OnAddonCompartmentClick(_, _, owner)
     local toggle = function()
         setBriefing(not briefingOn())
@@ -2011,6 +2382,12 @@ function ForeverBuddy_OnAddonCompartmentClick(_, _, owner)
         local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
             root:CreateTitle("Forever Buddy")
             root:CreateCheckbox("Login briefing", briefingOn, toggle)
+            root:CreateCheckbox("Session coach", S.coachOn, function()
+                S.guarded(S.setCoach, not S.coachOn())
+            end)
+            root:CreateCheckbox("Session card at logout", S.cardOn, function()
+                S.setCard(not S.cardOn())
+            end)
         end)
         if ok then
             return
@@ -2069,18 +2446,52 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     else
         read(RequestTimePlayed)
     end
-    if not (isReloadingUi and loaded and session) then
-        return
-    end
-    local last = loaded.sessions[#loaded.sessions]
-    if type(last) == "table" and type(last.events) == "table" then
-        loaded.sessions[#loaded.sessions] = nil
-        for _, e in ipairs(session.events) do
-            last.events[#last.events + 1] = e
+    if isReloadingUi and loaded and session then
+        local last = loaded.sessions[#loaded.sessions]
+        if type(last) == "table" and type(last.events) == "table" then
+            loaded.sessions[#loaded.sessions] = nil
+            for _, e in ipairs(session.events) do
+                last.events[#last.events + 1] = e
+            end
+            last.logout = nil
+            session = last
         end
-        last.logout = nil
-        session = last
     end
+    -- The coach counts from the session as joined above.
+    S.guarded(S.xpBaseline)
+    if S.coachOn() then
+        S.guarded(S.showCoach)
+    end
+end
+
+handlers.PLAYER_XP_UPDATE = function()
+    S.guarded(S.countXp)
+end
+
+-- Combat: the coach stands still (and hides, if asked).
+handlers.PLAYER_REGEN_DISABLED = function()
+    if S.hidesInCombat() then
+        S.hideCoach()
+    end
+end
+
+handlers.PLAYER_REGEN_ENABLED = function()
+    if S.coachOn() then
+        S.guarded(S.showCoach)
+    end
+end
+
+-- The logout countdown (and /quit's): the card, until it's cancelled.
+handlers.PLAYER_CAMPING = function()
+    S.guarded(S.showCard)
+end
+
+handlers.PLAYER_QUITING = function()
+    S.guarded(S.showCard)
+end
+
+handlers.LOGOUT_CANCEL = function()
+    S.hideCard()
 end
 
 handlers.ZONE_CHANGED_NEW_AREA = function()
@@ -2364,6 +2775,7 @@ handlers.PLAYER_LOGOUT = function()
         tooltip_errors = tooltipErrors > 0 and tooltipErrors or nil,
         plan_errors = planErrors > 0 and planErrors or nil,
         list_errors = listErrors > 0 and listErrors or nil,
+        session_errors = S.errors > 0 and S.errors or nil,
         missing_events = missingEvents,
         errors = errors,
     }
