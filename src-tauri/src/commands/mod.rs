@@ -10,6 +10,7 @@ pub mod app;
 pub mod approvals;
 pub mod backup;
 pub mod characters;
+pub mod cleanup;
 pub mod game;
 pub mod icons;
 pub mod ingest;

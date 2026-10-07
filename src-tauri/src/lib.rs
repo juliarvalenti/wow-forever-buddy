@@ -8,6 +8,7 @@ mod backup;
 mod bridge;
 pub mod casc;
 mod characters;
+mod cleanup;
 mod commands;
 mod config;
 mod db;
@@ -119,6 +120,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::lists::list_item_need,
             commands::lists::list_item_remove,
             commands::lists::items_seen_search,
+            commands::cleanup::cleanup_get,
+            commands::cleanup::cleanup_mark,
+            commands::cleanup::cleanup_clear,
+            commands::cleanup::cleanup_mark_greys,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::secrets::secrets_status,

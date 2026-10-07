@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario carry_forward). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.7.0",
+		["addon"] = "0.8.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,

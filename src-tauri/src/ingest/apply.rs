@@ -305,6 +305,15 @@ fn apply_snapshot(tx: &Transaction<'_>, id: i64, s: &Snapshot) -> AppResult<()> 
             }
         }
     }
+    // B3: a mark goes once its item has left the character (sold, sent,
+    // used): nowhere in what we now know it holds.
+    if s.bags.is_some() {
+        tx.execute(
+            "DELETE FROM cleanup_marks WHERE character_id = ?1
+             AND item_id NOT IN (SELECT item_id FROM char_items WHERE character_id = ?1)",
+            [id],
+        )?;
+    }
     Ok(())
 }
 
@@ -366,8 +375,8 @@ fn replace_items(
     for i in items {
         tx.execute(
             "INSERT INTO char_items (character_id, location, container, slot, item_id, link,
-                                     count, as_of)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                                     count, as_of, bound)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 location,
@@ -376,7 +385,8 @@ fn replace_items(
                 i.item_id,
                 i.link,
                 i.count,
-                as_of
+                as_of,
+                i.bound
             ],
         )?;
     }

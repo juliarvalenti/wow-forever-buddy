@@ -48,14 +48,17 @@ pub enum Slot {
     Briefing,
     /// Shopping lists and alt errands (B2, INGAME §10).
     Lists,
+    /// Items marked to sell or send (B3, INGAME §14).
+    Cleanup,
 }
 
-pub const SLOTS: [Slot; 5] = [
+pub const SLOTS: [Slot; 6] = [
     Slot::Tooltip1,
     Slot::Tooltip2,
     Slot::Plan,
     Slot::Briefing,
     Slot::Lists,
+    Slot::Cleanup,
 ];
 
 impl Slot {
@@ -66,6 +69,7 @@ impl Slot {
             Slot::Plan => "Plan",
             Slot::Briefing => "Briefing",
             Slot::Lists => "Lists",
+            Slot::Cleanup => "Cleanup",
         }
     }
 
@@ -328,6 +332,11 @@ pub(crate) fn send(
         body.hash.extend(crate::lists::slot_entries(db, flavor)?);
         slots.push((Slot::Lists, render(Slot::Lists, body)?));
     }
+    if has(Slot::Cleanup) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::cleanup::slot_entries(db, flavor)?);
+        slots.push((Slot::Cleanup, render(Slot::Cleanup, body)?));
+    }
     let built = tooltip::Built { slots, too_large };
     if built
         .slots
@@ -584,6 +593,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Plan.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Briefing.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Lists.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Cleanup.lua",
             ]
         );
         for slot in SLOTS {

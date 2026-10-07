@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.7.0"
+local VERSION = "0.8.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -380,7 +380,8 @@ local function container(bag)
         if type(info) == "table" then
             local link = arg(info.hyperlink)
             if link then
-                out.items[slot] = { link = link, count = arg(info.stackCount) }
+                -- bound (B3): the app won't offer to mail a soulbound item.
+                out.items[slot] = { link = link, count = arg(info.stackCount), bound = arg(info.isBound) == true or nil }
                 noteItem(arg(info.itemID) or linkItemID(link))
             end
         end

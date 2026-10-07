@@ -299,7 +299,9 @@ function M.new(opts)
         ["C_Container.GetContainerItemInfo"] = function(bag, slot)
             local item = readable(bag) and world.bags[bag] and world.bags[bag].slots[slot]
             if item then
-                return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id) }
+                -- Soulbound when its tooltip says so (world.bound).
+                return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id),
+                    isBound = world.bound[item.id] == "Soulbound" }
             end
         end,
         ["C_Bank.FetchPurchasedBankTabIDs"] = function()

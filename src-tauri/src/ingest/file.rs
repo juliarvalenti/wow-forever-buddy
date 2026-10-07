@@ -78,6 +78,8 @@ pub struct SlotItem {
     pub item_id: i64,
     pub link: String,
     pub count: i64,
+    /// The game said it's soulbound (addon 0.8.0 on, bags and bank).
+    pub bound: bool,
 }
 
 /// A bag or bank tab itself: what the cards' "3 free" and the sheet's
@@ -329,10 +331,14 @@ pub fn item_id(link: &str) -> Option<i64> {
 }
 
 fn slot_item(container: i64, slot: i64, v: &LuaValue) -> Option<SlotItem> {
-    // `equipped[slot] = link`, or `{ link = …, count = … }`.
-    let (link, count) = match v {
-        LuaValue::Str(_) => (v.to_string_lossy()?, 1),
-        LuaValue::Table(t) => (text(t, "link")?, int(t, "count").unwrap_or(1)),
+    // `equipped[slot] = link`, or `{ link = …, count = …, bound = true }`.
+    let (link, count, bound) = match v {
+        LuaValue::Str(_) => (v.to_string_lossy()?, 1, false),
+        LuaValue::Table(t) => (
+            text(t, "link")?,
+            int(t, "count").unwrap_or(1),
+            matches!(t.get("bound"), Some(LuaValue::Bool(true))),
+        ),
         _ => return None,
     };
     Some(SlotItem {
@@ -341,6 +347,7 @@ fn slot_item(container: i64, slot: i64, v: &LuaValue) -> Option<SlotItem> {
         item_id: item_id(&link)?,
         link,
         count,
+        bound,
     })
 }
 
