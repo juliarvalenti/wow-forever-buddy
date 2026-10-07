@@ -60,6 +60,10 @@ All are annotated `readOnlyHint: true`. Each answers from the app's database ope
 | `get_quests` | `character`, optional `since` | Completed quest ids (Q1b's `char_quests_done`), plus recent accepts and turn-ins with titles and zones from our own events. |
 | `get_prices` | `items` (ids) | Last scan price, 30-day median, scan age, from Auctionator data. |
 | `get_recent_play` | optional `character`, `days` (max 30) | Sessions: time played, zones, gold change, levels, notable loot (the Adventures data). |
+| `get_gold_history` (P3) | optional `character`, `days` (max 90) | Each character's gold at the end of each day, by the Ledger's own rule, with the change from the day before. Only times and amounts are stored, so no counterpart (sender, trade partner, buyer) can leave. |
+| `get_price_history` (P3) | `items` (up to 10 ids), `days` (max 90) | Per scanned day: lowest and highest buyout and how many were listed (the AH chart's data). |
+| `get_lockouts` (P3) | none | Every character's current lockouts with reset time and as of; reset ones left out. |
+| `get_bag_marks` (P3) | `character` | B3's marks (sell, or send to another of the player's characters, with the reason and whether an agent's proposal made it) and the app's open suggestions. |
 | `list_proposals` | none | Proposals from the last 30 days: waiting, approved, declined, or not queued with the reason, plus how many files the app hasn't picked up yet. |
 
 **Built in P2a:** the first six tools. `get_quests` returns completed quest ids as a plain number list, up to 10,000, since a planner needs the whole set and ids are tiny. Every other list is capped at 500 rows with `more`. P2b adds `list_proposals`, and `get_character` now lists the character's waiting login notes (id, text, timing), so an agent can propose a replacement.
@@ -154,7 +158,7 @@ These are enforced in the agent process, and again at ingest, since the inbox is
 | Pending proposals | 50. Past that, proposal tools refuse until some are approved or declined. |
 | Inbox file | 64 KB; the agent process won't write past 200 unprocessed files. |
 | Text fields | As in §3, UTF-8, no control characters. |
-| Read results | 500 rows per call, with a `more` flag; `get_recent_play` up to 30 days. |
+| Read results | 500 rows per call, with a `more` flag; `get_recent_play` up to 30 days; gold and price history up to 90 days, price history 10 items a call. |
 | Call rate | 10 calls a second per agent process, as a guard against a looping agent. |
 
 ---

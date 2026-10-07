@@ -477,9 +477,14 @@ const TOOL_WORDS: Record<string, string> = {
   get_quests: "read quests",
   get_prices: "read prices",
   get_recent_play: "read recent play",
+  get_gold_history: "read gold history",
+  get_price_history: "read price history",
+  get_lockouts: "read lockouts",
+  get_bag_marks: "read bag marks",
   propose_note: "suggested a login note",
   propose_quest_plan: "suggested a quest plan",
   propose_list_change: "suggested a list change",
+  propose_bag_marks: "suggested bag marks",
   list_proposals: "checked its suggestions",
 };
 
