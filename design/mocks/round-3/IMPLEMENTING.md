@@ -243,6 +243,28 @@ This is the first cut of `macros.html` (the v0.6 sketch). **Nothing on this scre
   - With no macros-cache.txt for the character: "No macros for Thrandor yet. WoW writes them when you log out."
   - With an empty account list: "No account macros yet."
 
+## 12b. M2: editing macros (`macros-edit.html?state=edit|over|staged|applied|running`)
+F7's screen gains Edit, New and Delete. Everything goes through the write gate, staged then applied, exactly like F6 (§11). The macro text is always what Julia typed. No agent writes macros in this ticket.
+- **Viewer, not editing:** the F7 viewer, plus a stone **Edit** next to Copy. While WoW runs, Edit is a `LockedAction` ("Close WoW first"), and Copy still works.
+- **Editing** (`?state=edit`):
+  - The name becomes a field with a live count, "12 / 16" (WoW's name limit).
+  - The body becomes an editable code block with the same tinting and an ember focus ring. The count bar stays live underneath.
+  - A ghost **Delete** sits on the right of the name row.
+  - Footer: "Nothing is written until you apply. The icon stays as it is.", with a ghost **Cancel** and a stone **Keep changes** that stages the edit and returns to the viewer.
+  - **The icon isn't editable in M2.** It keeps whatever the file says, and new macros get the question-mark icon. An icon picker needs icon media (F8) and comes later.
+- **Over the limit** (`?state=over`): the count goes red ("262 / 255", "7 over"), a red line says "WoW cuts macros off at 255 characters. Shorten it by 7 to keep this change.", and Keep changes is locked. Never stage a macro over 255. A macro that is *already* over 255 in the file can be viewed and copied, and edited only down to 255.
+- **New macro:** a ghost "+ New macro" in the list header opens the editor with an empty name and body. Until the game's slot limits for this flavour are confirmed, refuse at apply with a plain reason rather than show a limit.
+- **Delete:** staged, never immediate, and there's no confirm dialog, because the snapshot covers it. The row stays in the list struck through, with "removed" in ember, until Apply.
+- **Staged** (`?state=staged`):
+  - The list marks rows "edited", "new" or "removed" in ember. The viewer shows the staged text, with the meta "edited, not applied yet".
+  - A full-width bar under the list and viewer reads "**3 changes** to Thrandor's macros: 1 edited, 1 new, 1 removed.", with a ghost Discard and a bronze **Apply**, the screen's only primary.
+  - Staged changes survive switching between Account and Character, or to another character. The bar counts per file and names it ("Thrandor's macros", "account macros"). With both, show both counts in one line.
+- **Apply:** one safety snapshot of the affected macros-cache.txt files, then an atomic replace per file that keeps every line we don't understand, in order. Success: a green check line, "3 changes written to Thrandor's macros. A safety snapshot was taken first.", with a ghost **Undo** that restores the snapshot. Failure: one red line with the reason, the changes stay staged, and nothing on disk changes.
+- **WoW running** (`?state=running`): the ember callout "**WoW is running, so macro changes are locked.** WoW rewrites macros-cache.txt when it closes, so changes wait until then. Copy still works." New, Edit and Apply are `LockedAction`s, and staged changes are kept with "**3 changes** waiting for WoW to close."
+- **Server sync, verify first:** WoW can keep macros on the server (the `synchronizeMacros` setting). If the server copy wins at login, an edit written to the file could be silently replaced. Check this on a real install before shipping. If it's a risk, show a one-line note under the bar when the setting is on: "WoW may restore the server's copy of your macros at login."
+- **The note** under the viewer: "Changes are written to macros-cache.txt when you apply them, with WoW closed. A safety snapshot is taken first, so you can undo." It's hidden while WoW runs.
+- **Never:** writing while WoW runs, writing on click, generated or suggested macro text, or touching any line we didn't change.
+
 ## 13. F8: real item icons (`icons.html`)
 Icons come from the player's own game files and replace the letter tiles in the **same frame**, so nothing moves when they arrive.
 - **One frame, everywhere:**

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Macros, editing · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* M2: editing macros. Built on macros-readonly.html (F7). Stage, then apply through the write gate, like F6.
+     ?state=edit (default) | over | staged | applied | running. Elements with data-show only appear in those states.
+     Rules: IMPLEMENTING.md §12b. */
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar .who { display: inline-flex; align-items: center; gap: 8px; }
+  .toolbar .meta { margin-left: auto; font-size: 11.5px; color: var(--soot); }
+  .grid2 { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .mlist { max-height: 520px; overflow: auto; }
+  .mlist li { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+  .mlist li + li { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+  .mlist li.sel { background: rgba(255,177,92,.06); box-shadow: inset 2px 0 0 var(--ember-2); }
+  .mlist li .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mlist li .len { margin-left: auto; font-size: 11px; color: var(--soot); font-variant-numeric: tabular-nums; }
+  .mlist li .len.hot { color: var(--warn); } .mlist li .len.over { color: var(--bad); }
+  .mlist li .tagc { margin-left: auto; font-size: 11px; color: var(--ember-2); }
+  .mlist li .tagc + .len { margin-left: 8px; }
+  .mlist li.gone .nm { text-decoration: line-through; color: var(--soot); }
+  .mlist .ico { width: 26px; height: 26px; flex-shrink: 0; }
+  .viewer .pb { display: grid; gap: 10px; }
+  .v-top { display: flex; align-items: center; gap: 12px; }
+  .v-top .ico { width: 36px; height: 36px; font-size: 14px; }
+  .v-top .grow { flex: 1; min-width: 0; }
+  .v-top .t { font: 600 15px "Geist", sans-serif; color: var(--chalk-hi); }
+  .v-top .s { font-size: 11.5px; color: var(--soot); }
+  .namef { max-width: 260px; }
+  .namef small { font-size: 11px; color: var(--soot); }
+  .code { font: 13px/1.7 ui-monospace, "Cascadia Mono", Menlo, monospace; padding: 12px 14px; min-height: 170px; border-radius: var(--r); white-space: pre-wrap; word-break: break-word; color: var(--chalk);
+    background: rgba(0,0,0,.45); box-shadow: inset 0 2px 6px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); }
+  .code.editing { box-shadow: inset 0 2px 6px rgba(0,0,0,.75), 0 0 0 1px rgba(255,177,92,.5), 0 0 10px rgba(255,122,46,.15); }
+  .code .meta-d { color: #b79c6c; } .code .cmd { color: #ffb15c; } .code .cond { color: #8fb4ee; } .code .sp { color: #ece4d6; }
+  .caret { display: inline-block; width: 1px; height: 15px; background: var(--ember-2); vertical-align: -2px; }
+  .count { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--soot); }
+  .count .bar { flex: 1; }
+  .count .bar .fill { background: linear-gradient(90deg, #7a6a52, var(--warn)); }
+  .count .bar .fill.bad { background: var(--bad); }
+  .count b { color: var(--warn); font-weight: 600; } .count b.bad { color: var(--bad); }
+  .edacts { display: flex; align-items: center; gap: 8px; }
+  .edacts .grow { flex: 1; font-size: 11.5px; color: var(--soot); }
+  .note { font-size: 11.5px; color: var(--soot); display: flex; gap: 6px; align-items: flex-start; line-height: 1.45; }
+  .note svg { flex-shrink: 0; margin-top: 1px; }
+  .errline { font-size: 12px; color: var(--bad); display: flex; gap: 6px; align-items: center; }
+  .barpanel { margin-top: 12px; }
+  .applybar, .done { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 12.5px; }
+  .applybar .grow { flex: 1; color: var(--ash); } .applybar b { color: var(--chalk-hi); font-weight: 500; }
+  .done { color: var(--ok); } .done .grow { flex: 1; color: var(--chalk); }
+  @media (max-width: 1100px) { .grid2 { grid-template-columns: 220px minmax(0, 1fr); } }
+</style>
+</head>
+<body data-page="macros" data-wow="closed">
+<main class="main">
+  <header class="head">
+    <div><h1>Macros</h1><div class="lede">From each character's macros-cache.txt, as of their last logout</div></div>
+  </header>
+
+  <div class="callout" data-show="running"><i data-i="lock"></i><span class="grow"><b>WoW is running, so macro changes are locked.</b> WoW rewrites macros-cache.txt when it closes, so changes wait until then. Copy still works.</span><span class="live"></span></div>
+
+  <div class="toolbar">
+    <div class="seg"><button>Account 18</button><button class="on">Character 11</button></div>
+    <span class="who"><span class="cdot c-paladin"></span><span class="cc c-paladin" style="font-weight:600">Thrandor</span><button class="btn ghost" style="height:24px">Change <i data-i="down" class="sm"></i></button></span>
+    <span class="meta">18 account macros · 11 for Thrandor</span>
+  </div>
+
+  <section class="grid2">
+    <div class="panel">
+      <div class="ph"><h2>Thrandor</h2>
+        <button class="btn ghost" data-show="edit over staged applied" style="height:24px;margin-left:auto"><i data-i="plus" class="sm"></i>New macro</button>
+        <span class="lockact" data-show="running" style="margin-left:auto" title="Close WoW first"><i data-i="lock"></i>New macro</span>
+      </div>
+      <ul class="mlist">
+        <li class="sel"><span class="ico q-common"><b>J</b></span><span class="nm">Judge + Seal</span><span class="tagc" data-show="staged running">edited</span><span class="len hot">231</span></li>
+        <li><span class="ico q-common"><b>H</b></span><span class="nm">Holy Light @mouseover</span><span class="len">88</span></li>
+        <li><span class="ico q-common"><b>B</b></span><span class="nm">BoP focus</span><span class="len">64</span></li>
+        <li class="gone" data-show="staged running"><span class="ico q-common"><b>C</b></span><span class="nm">Cleanse self</span><span class="tagc">removed</span></li>
+        <li data-show="edit over applied"><span class="ico q-common"><b>C</b></span><span class="nm">Cleanse self</span><span class="len">52</span></li>
+        <li><span class="ico q-common"><b>M</b></span><span class="nm">Mount</span><span class="len">41</span></li>
+        <li><span class="ico q-common"><b>T</b></span><span class="nm">Trinket + Wings</span><span class="len">97</span></li>
+        <li><span class="ico q-common"><b>D</b></span><span class="nm">Divine Shield + Hearth</span><span class="len over">262</span></li>
+        <li><span class="ico q-common"><b>S</b></span><span class="nm">Seal twist</span><span class="len">143</span></li>
+        <li><span class="ico q-common"><b>W</b></span><span class="nm">Wisdom party</span><span class="len">76</span></li>
+        <li data-show="staged running"><span class="ico q-common"><b>?</b></span><span class="nm">Hammer of Wrath</span><span class="tagc">new</span><span class="len">58</span></li>
+      </ul>
+    </div>
+
+    <div class="panel viewer">
+      <div class="ph"><h2>Judge + Seal</h2><span class="meta" data-show="edit over">editing · character macro</span><span class="meta" data-show="staged running">character macro · edited, not applied yet</span><span class="meta" data-show="applied">character macro · written 21:14</span></div>
+      <div class="pb">
+        <div class="v-top" data-show="staged applied running">
+          <span class="ico lg q-common"><b>J</b></span>
+          <div class="grow"><div class="t">Judge + Seal</div><div class="s">Thrandor · slot 1</div></div>
+          <button class="btn"><i data-i="file" class="sm"></i>Copy</button>
+          <button class="btn" data-show="staged applied">Edit</button>
+          <span class="lockact" data-show="running" title="Close WoW first"><i data-i="lock"></i>Edit</span>
+        </div>
+        <div class="v-top" data-show="edit over">
+          <span class="ico lg q-common"><b>J</b></span>
+          <div class="grow"><div class="field namef"><input value="Judge + Seal" aria-label="Macro name"><small>12 / 16</small></div></div>
+          <button class="btn ghost">Delete</button>
+        </div>
+<div class="code" data-show="staged applied running"><span class="meta-d">#showtooltip</span> <span class="sp">Judgement</span>
+<span class="cmd">/cast</span> <span class="cond">[mod:shift]</span> <span class="sp">Seal of Light</span>; <span class="cond">[mod:ctrl]</span> <span class="sp">Seal of Wisdom</span>
+<span class="cmd">/cast</span> <span class="cond">[@target,harm,nodead]</span> <span class="sp">Judgement</span>
+<span class="cmd">/use</span> <span class="sp">13</span>
+<span class="cmd">/startattack</span>
+<span class="cmd">/cast</span> <span class="cond">[nomod]</span> <span class="sp">Seal of Command</span></div>
+<div class="code editing" data-show="edit over"><span class="meta-d">#showtooltip</span> <span class="sp">Judgement</span>
+<span class="cmd">/cast</span> <span class="cond">[mod:shift]</span> <span class="sp">Seal of Light</span>; <span class="cond">[mod:ctrl]</span> <span class="sp">Seal of Wisdom</span>
+<span class="cmd">/cast</span> <span class="cond">[@target,harm,nodead]</span> <span class="sp">Judgement</span>
+<span class="cmd">/use</span> <span class="sp">13</span>
+<span class="cmd">/startattack</span>
+<span class="cmd">/cast</span> <span class="cond">[nomod]</span> <span class="sp">Seal of Command</span><span data-show="over">; <span class="cond">[mod:alt]</span> <span class="sp">Seal of Light</span></span><span class="caret"></span></div>
+        <div class="count" data-show="edit staged applied running"><span><b>231</b> / 255</span><span class="bar"><i class="fill" style="width:90.6%"></i></span><span class="warn">24 left</span></div>
+        <div class="count" data-show="over"><span><b class="bad">262</b> / 255</span><span class="bar"><i class="fill bad" style="width:100%"></i></span><span style="color:var(--bad)">7 over</span></div>
+        <div class="errline" data-show="over"><i data-i="alert" class="sm"></i>WoW cuts macros off at 255 characters. Shorten it by 7 to keep this change.</div>
+        <div class="edacts" data-show="edit over"><span class="grow">Nothing is written until you apply. The icon stays as it is.</span><button class="btn ghost">Cancel</button><button class="btn" data-show="edit">Keep changes</button><span class="lockact" data-show="over" title="7 characters over">Keep changes</span></div>
+        <div class="note" data-show="edit over staged applied"><i data-i="file" class="sm"></i><span>Changes are written to macros-cache.txt when you apply them, with WoW closed. A safety snapshot is taken first, so you can undo.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel barpanel" data-show="staged applied running">
+    <div class="applybar" data-show="staged"><span class="grow"><b>3 changes</b> to Thrandor's macros: 1 edited, 1 new, 1 removed.</span><button class="btn ghost">Discard</button><button class="primary">Apply</button></div>
+    <div class="done" data-show="applied"><i data-i="check" class="sm"></i><span class="grow">3 changes written to Thrandor's macros. A safety snapshot was taken first.</span><button class="btn ghost">Undo</button></div>
+    <div class="applybar" data-show="running"><span class="grow"><b>3 changes</b> waiting for WoW to close.</span><button class="btn ghost">Discard</button><span class="lockact" title="Close WoW first"><i data-i="lock"></i>Apply</span></div>
+  </div>
+</main>
+<script>
+  const st = new URLSearchParams(location.search).get('state') || 'edit';
+  if (st === 'running') document.body.dataset.wow = 'running';
+  document.querySelectorAll('[data-show]').forEach(el => { if (!el.dataset.show.split(' ').includes(st)) el.remove(); });
+</script>
+<script src="_shell.js"></script>
+</body>
+</html>
