@@ -189,7 +189,7 @@ Addon only, from live events; no Bridge slot. Both read what the addon already r
     - **Best find:** the highest-quality item gained this session (uncommon or better, ties broken by last-scan worth), as its name in quality colour. With none, no row.
     - **Quests:** the number turned in. With 0, no row.
   - **Too short to say anything** (under 5 minutes and no rows besides Played): no card at all.
-  - **Footer:** "In Forever Buddy's Adventures after you close WoW". It's honest: the app picks the session up from saved variables after the game exits.
+  - **Footer:** "In Adventures after you close WoW" (one line at 270px). It's honest: the app picks the session up from saved variables after the game exits.
   - **On by default,** because it only appears while you're already leaving. `/fb card` toggles it, and there's a "Session card at logout" checkbox in the compartment menu.
 - **Never:** comparisons with other players, damage or kill meters, advice ("you should"), a sound, or anything that delays or blocks logging out.
 
