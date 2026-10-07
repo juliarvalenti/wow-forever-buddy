@@ -20,21 +20,59 @@ function vendor(copper: number): string {
   return [g ? `${g}g` : null, s ? `${s}s` : null, !g && c ? `${c}c` : null].filter(Boolean).join(" ") || "0c";
 }
 
-/** The muted tag after a marked item's name: "sell" or "→ Sela". */
-export function MarkTag({ mark }: { mark: Marked }) {
+/** The muted tag after a marked item's name: "sell" or "→ Sela", then
+ *  (B3b) its reason in grey. On the parchment satchel rows names are plain
+ *  ink. */
+export function MarkTag({ mark, parchment }: { mark: Marked; parchment?: boolean }) {
+  const why = reasonText(mark, parchment);
   return (
     <span className="bc-tag">
       {mark.to ? (
         <>
           →{" "}
-          <span className="ch-cc" style={cc(mark.to.class)}>
-            {mark.to.name}
-          </span>
+          {parchment ? (
+            mark.to.name
+          ) : (
+            <span className="ch-cc" style={cc(mark.to.class)}>
+              {mark.to.name}
+            </span>
+          )}
         </>
       ) : (
         "sell"
       )}
+      {why && <span className="bc-why"> · {why}</span>}
     </span>
+  );
+}
+
+/** "grey", "outgrown", "+9 item level for Kaelor", then for an agent's mark
+ *  `from "Claude Desktop", approved`. Null with neither. */
+function reasonText(m: Marked, parchment?: boolean): React.ReactNode {
+  const r = m.reason;
+  const why =
+    r?.code === "upgrade" && m.to ? (
+      <>
+        +{r.gain} item level for{" "}
+        {parchment ? (
+          m.to.name
+        ) : (
+          <span className="ch-cc" style={cc(m.to.class)}>
+            {m.to.name}
+          </span>
+        )}
+      </>
+    ) : r?.code === "grey" || r?.code === "outgrown" ? (
+      r.code
+    ) : null;
+  const agent = m.producer.startsWith("agent:") ? `from "${m.producer.slice("agent:".length)}", approved` : null;
+  if (!why && !agent) return null;
+  return (
+    <>
+      {why}
+      {why && agent && " · "}
+      {agent}
+    </>
   );
 }
 
@@ -129,21 +167,38 @@ function deliveryLine(d: Delivery): { live: boolean; text: string } {
   }
 }
 
+function Tile({ m }: { m: Marked }) {
+  const q = m.quality != null ? `ch-q${m.quality}` : "";
+  return (
+    <>
+      <span className={`ch-ico ${q}`} aria-hidden>
+        <b>{m.name.slice(0, 1)}</b>
+        <ItemIcon id={m.icon} />
+      </span>
+      <span className={`nm ${q}`}>{m.name}</span>
+      <span className="n">{m.count > 1 ? `× ${m.count}` : ""}</span>
+    </>
+  );
+}
+
 /** The side column's Bag cleanup panel: shown when something is marked or
- *  the bags hold greys. */
+ *  suggested. */
 export function BagCleanup({
   cleanup,
   error,
   onClear,
-  onMarkGreys,
+  onAccept,
+  onDismiss,
 }: {
   cleanup: Cleanup;
   error: string | null;
   onClear: (itemId: number) => void;
-  onMarkGreys: () => void;
+  /** Mark one suggestion, or all with null. */
+  onAccept: (itemId: number | null) => void;
+  onDismiss: (itemId: number) => void;
 }) {
-  const { marks, greys } = cleanup;
-  if (marks.length === 0 && greys === 0) return null;
+  const { marks, suggestions } = cleanup;
+  if (marks.length === 0 && suggestions.length === 0) return null;
   const sell = marks.filter((m) => !m.to);
   const send = marks.length - sell.length;
   const sellCount = sell.reduce((n, m) => n + m.count, 0);
@@ -163,28 +218,41 @@ export function BagCleanup({
       </PanelHeader>
       <PanelBody>
         {marks.length === 0 && <p className="d-dim">Nothing marked.</p>}
-        {marks.map((m) => {
-          const q = m.quality != null ? `ch-q${m.quality}` : "";
-          return (
-            <div key={m.item_id} className="bc-row">
-              <span className={`ch-ico ${q}`} aria-hidden>
-                <b>{m.name.slice(0, 1)}</b>
-                <ItemIcon id={m.icon} />
-              </span>
-              <span className={`nm ${q}`}>{m.name}</span>
-              <span className="n">{m.count > 1 ? `× ${m.count}` : ""}</span>
-              <MarkTag mark={m} />
-              <button className="bc-x" title="Clear mark" aria-label={`Clear the mark on ${m.name}`} onClick={() => onClear(m.item_id)}>
-                <X size={13} aria-hidden />
-              </button>
-            </div>
-          );
-        })}
+        {marks.map((m) => (
+          <div key={m.item_id} className="bc-row">
+            <Tile m={m} />
+            <MarkTag mark={m} />
+            <button className="bc-x" title="Clear mark" aria-label={`Clear the mark on ${m.name}`} onClick={() => onClear(m.item_id)}>
+              <X size={13} aria-hidden />
+            </button>
+          </div>
+        ))}
         {footer && <p className="bc-foot">{footer}</p>}
-        {greys > 0 && (
-          <Button variant="ghost" onClick={onMarkGreys}>
-            Mark all greys ({greys})
-          </Button>
+        {suggestions.length > 0 && (
+          <div className="bc-sugg">
+            <div className="bc-subhead">
+              <span>Suggested</span>
+              <Button variant="ghost" onClick={() => onAccept(null)}>
+                Mark all {suggestions.length}
+              </Button>
+            </div>
+            {suggestions.map((m) => (
+              <div key={m.item_id} className="bc-row suggested">
+                <Tile m={m} />
+                <span className="bc-tag">
+                  <MarkTag mark={m} /> · suggested
+                </span>
+                <span className="bc-acts">
+                  <Button variant="ghost" onClick={() => onAccept(m.item_id)}>
+                    Mark
+                  </Button>
+                  <button className="bc-x" title="Dismiss" aria-label={`Dismiss the suggestion for ${m.name}`} onClick={() => onDismiss(m.item_id)}>
+                    <X size={13} aria-hidden />
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
         )}
         {marks.length > 0 && (
           <div className="bc-sent">

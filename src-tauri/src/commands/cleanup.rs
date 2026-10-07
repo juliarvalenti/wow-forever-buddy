@@ -69,10 +69,26 @@ pub fn cleanup_clear(
     changed(state, character_id)
 }
 
-/// "Mark all greys": a one-off.
+/// B3b: mark a suggestion with its reason, or (`item_id` None) "Mark all".
 #[tauri::command(async)]
 #[specta::specta]
-pub fn cleanup_mark_greys(state: State<'_, AppState>, character_id: u32) -> AppResult<Cleanup> {
-    cleanup::mark_greys(&state.core.db, character_id)?;
+pub fn cleanup_accept(
+    state: State<'_, AppState>,
+    character_id: u32,
+    item_id: Option<u32>,
+) -> AppResult<Cleanup> {
+    cleanup::accept(&state.core.db, character_id, item_id)?;
     changed(state, character_id)
+}
+
+/// B3b: dismiss a suggestion; it doesn't come back for that item.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn cleanup_dismiss(
+    state: State<'_, AppState>,
+    character_id: u32,
+    item_id: u32,
+) -> AppResult<Cleanup> {
+    cleanup::dismiss(&state.core.db, character_id, item_id)?;
+    cleanup_get(state, character_id)
 }

@@ -70,8 +70,10 @@ ForeverBuddyDB = {
 		},
 		[10005] = {
 			["class"] = 4,
+			["equip"] = "INVTYPE_HEAD",
 			["icon"] = 133070,
 			["ilvl"] = 40,
+			["level"] = 35,
 			["name"] = "Felcloth Hood",
 			["quality"] = 3,
 			["sell"] = 5000,
@@ -148,18 +150,22 @@ ForeverBuddyDB = {
 				["free"] = 12,
 				["items"] = {
 					{
+						["bound"] = false,
 						["count"] = 1,
 						["link"] = "|cffffffff|Hitem:6948::::::::12:::::|h[Hearthstone]|h|r",
 					}, -- [1]
 					{
+						["bound"] = false,
 						["count"] = 4,
 						["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
 					}, -- [2]
 					{
+						["bound"] = false,
 						["count"] = 40,
 						["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
 					}, -- [3]
 					{
+						["bound"] = false,
 						["count"] = 1,
 						["link"] = "|cffffffff|Hitem:10005::::::::12:::::|h[Felcloth Hood]|h|r",
 					}, -- [4]

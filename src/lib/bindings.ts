@@ -373,8 +373,10 @@ export const commands = {
 	cleanupGet: (characterId: number) => __TAURI_INVOKE<Cleanup>("cleanup_get", { characterId }),
 	cleanupMark: (characterId: number, itemId: number, mark: Mark) => __TAURI_INVOKE<Cleanup>("cleanup_mark", { characterId, itemId, mark }),
 	cleanupClear: (characterId: number, itemId: number) => __TAURI_INVOKE<Cleanup>("cleanup_clear", { characterId, itemId }),
-	/**  "Mark all greys": a one-off. */
-	cleanupMarkGreys: (characterId: number) => __TAURI_INVOKE<Cleanup>("cleanup_mark_greys", { characterId }),
+	/**  B3b: mark a suggestion with its reason, or (`item_id` None) "Mark all". */
+	cleanupAccept: (characterId: number, itemId: number | null) => __TAURI_INVOKE<Cleanup>("cleanup_accept", { characterId, itemId }),
+	/**  B3b: dismiss a suggestion; it doesn't come back for that item. */
+	cleanupDismiss: (characterId: number, itemId: number) => __TAURI_INVOKE<Cleanup>("cleanup_dismiss", { characterId, itemId }),
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**
 	 *  Changes only the fields present in `patch` and returns the new settings.
@@ -1018,11 +1020,8 @@ export type Chart = {
 /**  The sheet's Bag cleanup panel. */
 export type Cleanup = {
 	marks: Marked[],
-	/**
-	 *  Poor-quality items in the bags that aren't marked yet (for "Mark all
-	 *  greys (6)").
-	 */
-	greys: number,
+	/**  What the app suggests marking (B3b), never applied by itself. */
+	suggestions: Marked[],
 	delivery: Delivery,
 };
 
@@ -1599,7 +1598,7 @@ export type Mark = { action: "sell" } |
 /**  To another character (its id). */
 { action: "send"; to: number };
 
-/**  One marked item of a character. */
+/**  One marked (or suggested) item of a character. */
 export type Marked = {
 	item_id: number,
 	name: string,
@@ -1611,6 +1610,9 @@ export type Marked = {
 	sell_price: number | null,
 	/**  `None` for sell. */
 	to: Recipient | null,
+	reason: Reason | null,
+	/**  "app", or "agent:<client name>" for an approved proposal (a claim). */
+	producer: string,
 };
 
 export type Marker = {
@@ -1836,6 +1838,11 @@ export type QuestLog = {
 	/**  Newest first. */
 	entries: QuestEntry[],
 };
+
+/**  Why a mark was made or suggested (B3b): a fixed code, never free text. */
+export type Reason = { code: "grey" } | { code: "outgrown" } | 
+/**  `gain` item levels for the character it's sent to. */
+{ code: "upgrade"; gain: number };
 
 export type Recipient = {
 	id: number,

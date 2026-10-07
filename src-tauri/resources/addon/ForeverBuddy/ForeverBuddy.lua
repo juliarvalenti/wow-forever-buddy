@@ -333,7 +333,7 @@ local function linkItemID(link)
 end
 
 local function fillItem(id)
-    local name, _, quality, ilvl, _, _, _, _, _, icon, sell, class, subclass =
+    local name, _, quality, ilvl, minLevel, _, _, _, equipLoc, icon, sell, class, subclass =
         read("C_Item.GetItemInfo", id)
     if not name then
         return false
@@ -346,6 +346,10 @@ local function fillItem(id)
         sell = sell,
         class = class,
         subclass = subclass,
+        -- B3b: where it's worn ("INVTYPE_HEAD") and the level it needs, so
+        -- the app can tell outgrown gear and which alt it would upgrade.
+        equip = type(equipLoc) == "string" and equipLoc ~= "" and equipLoc or nil,
+        level = type(minLevel) == "number" and minLevel > 0 and minLevel or nil,
     }
     return true
 end
@@ -381,7 +385,13 @@ local function container(bag)
             local link = arg(info.hyperlink)
             if link then
                 -- bound (B3): the app won't offer to mail a soulbound item.
-                out.items[slot] = { link = link, count = arg(info.stackCount), bound = arg(info.isBound) == true or nil }
+                -- Written true or false whenever the game says, so "not
+                -- bound" and "unknown" differ (B3b).
+                local bound = arg(info.isBound)
+                out.items[slot] = { link = link, count = arg(info.stackCount) }
+                if type(bound) == "boolean" then
+                    out.items[slot].bound = bound
+                end
                 noteItem(arg(info.itemID) or linkItemID(link))
             end
         end
@@ -2399,8 +2409,11 @@ do
     local LETTER = "Interface\\Minimap\\Tracking\\Mailbox"
     local tags = setmetatable({}, { __mode = "k" }) -- our own textures, by button
     local vendorFrame
+    -- The reason codes the slot may carry (B3b); anything else is ignored.
+    local REASONS = { grey = true, outgrown = true, upgrade = true }
 
-    -- This character's marks: item id -> { sell = true } or { to = alt }.
+    -- This character's marks: item id -> { sell = true } or { to = alt },
+    -- with its reason.
     function C.mine()
         local s = slots.Cleanup
         local out = {}
@@ -2414,17 +2427,31 @@ do
             end
         end
         local flat = me and s.marks[me]
-        for k = 1, (type(flat) == "table" and #flat or 0) - 2, 3 do
+        -- Five per mark: item, action, recipient index, reason code, gain.
+        for k = 1, (type(flat) == "table" and #flat or 0) - 4, 5 do
             local id, action, to = flat[k], flat[k + 1], flat[k + 2]
+            local reason = REASONS[flat[k + 3]] and flat[k + 3] or nil
+            local gain = num(flat[k + 4])
             if type(id) == "number" then
                 if action == "sell" then
-                    out[id] = { sell = true }
+                    out[id] = { sell = true, reason = reason }
                 elseif action == "send" and type(s.alts[to]) == "table" then
-                    out[id] = { to = s.alts[to] }
+                    out[id] = { to = s.alts[to], reason = reason, gain = gain }
                 end
             end
         end
         return out
+    end
+
+    -- The reason after the line, in grey (B3b): a fixed code, never text
+    -- from the slot. " · grey", " · outgrown", " (+9 item level)".
+    local function why(m)
+        if m.reason == "upgrade" and m.gain > 0 then
+            return GREY .. " (+" .. m.gain .. " item level)|r"
+        elseif m.reason == "grey" or m.reason == "outgrown" then
+            return GREY .. " · " .. m.reason .. "|r"
+        end
+        return ""
     end
 
     local function sellPrice(id)
@@ -2496,10 +2523,10 @@ do
         end
         if m.sell then
             local p = sellPrice(id)
-            tooltip:AddLine("Marked to sell in Forever Buddy"
+            tooltip:AddLine("Marked to sell in Forever Buddy" .. why(m)
                 .. (p and (WHITE .. " · " .. coins(p) .. " each at a vendor|r") or ""), 1, 0.82, 0)
         else
-            tooltip:AddLine("Marked to send to " .. colorName(m.to.name, m.to.class)
+            tooltip:AddLine("Marked to send to " .. colorName(m.to.name, m.to.class) .. why(m)
                 .. (isBound(data) and (GREY .. ", but it's soulbound|r") or ""), 1, 0.82, 0)
         end
     end

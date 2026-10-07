@@ -78,8 +78,9 @@ pub struct SlotItem {
     pub item_id: i64,
     pub link: String,
     pub count: i64,
-    /// The game said it's soulbound (addon 0.8.0 on, bags and bank).
-    pub bound: bool,
+    /// Whether the game said it's soulbound (addon 0.8.0 on, bags and
+    /// bank); `None` when it didn't say.
+    pub bound: Option<bool>,
 }
 
 /// A bag or bank tab itself: what the cards' "3 free" and the sheet's
@@ -219,6 +220,9 @@ pub struct ItemInfo {
     pub class_id: Option<i64>,
     pub subclass_id: Option<i64>,
     pub sell_price: Option<i64>,
+    /// Where it's worn ("INVTYPE_HEAD"), and the level it needs (B3b).
+    pub equip_loc: Option<String>,
+    pub min_level: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -331,13 +335,16 @@ pub fn item_id(link: &str) -> Option<i64> {
 }
 
 fn slot_item(container: i64, slot: i64, v: &LuaValue) -> Option<SlotItem> {
-    // `equipped[slot] = link`, or `{ link = …, count = …, bound = true }`.
+    // `equipped[slot] = link`, or `{ link = …, count = …, bound = true|false }`.
     let (link, count, bound) = match v {
-        LuaValue::Str(_) => (v.to_string_lossy()?, 1, false),
+        LuaValue::Str(_) => (v.to_string_lossy()?, 1, None),
         LuaValue::Table(t) => (
             text(t, "link")?,
             int(t, "count").unwrap_or(1),
-            matches!(t.get("bound"), Some(LuaValue::Bool(true))),
+            match t.get("bound") {
+                Some(LuaValue::Bool(b)) => Some(*b),
+                _ => None,
+            },
         ),
         _ => return None,
     };
@@ -715,6 +722,8 @@ fn items(t: &LuaTable) -> Vec<ItemInfo> {
                 class_id: int(i, "class"),
                 subclass_id: int(i, "subclass"),
                 sell_price: int(i, "sell"),
+                equip_loc: text(i, "equip").filter(|s| s.len() <= 40),
+                min_level: int(i, "level"),
             })
         })
         .collect()

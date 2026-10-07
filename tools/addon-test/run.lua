@@ -1416,7 +1416,8 @@ local CLEANUP = 'ForeverBuddyData_Cleanup = {\n\t["schema"] = 1,\n\t["stamp"] = 
     .. '\t\t{ ["name"] = "Thrandor", ["surname"] = "Vargur", ["class"] = "WARRIOR" },\n'
     .. '\t\t{ ["name"] = "Sela", ["surname"] = "", ["class"] = "PRIEST" },\n'
     .. '\t},\n\t["marks"] = {\n'
-    .. '\t\t[1] = { 2589, "sell", 0, 6948, "send", 2, 10005, "send", 2 },\n'
+    -- Five per mark: item, action, recipient, reason code (B3b), gain.
+    .. '\t\t[1] = { 2589, "sell", 0, "grey", 0, 6948, "send", 2, "", 0, 10005, "send", 2, "upgrade", 9 },\n'
     .. '\t},\n}\n'
 
 scenario("cleanup", function()
@@ -1442,8 +1443,9 @@ scenario("cleanup", function()
     eq(tagOf(4), nil, "the jerky isn't marked")
 
     -- Tooltips.
-    eq(c.hover(2589)[2], "Marked to sell in Forever Buddy|cffffffff · 13c each at a vendor|r", "sell line")
-    eq(c.hover(10005)[2], "Marked to send to " .. SELA, "send line")
+    eq(c.hover(2589)[2], "Marked to sell in Forever Buddy" .. G .. " · grey|r|cffffffff · 13c each at a vendor|r",
+        "sell line, with its reason")
+    eq(c.hover(10005)[2], "Marked to send to " .. SELA .. G .. " (+9 item level)|r", "send line, with the gain")
     eq(c.hover(6948)[2], "Marked to send to " .. SELA .. G .. ", but it's soulbound|r", "soulbound")
     eq(#c.hover(14047), 1, "not marked, nothing")
 

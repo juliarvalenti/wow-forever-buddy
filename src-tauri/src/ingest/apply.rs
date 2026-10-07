@@ -39,8 +39,8 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     for item in &file.items {
         tx.execute(
             "INSERT INTO items (item_id, name, quality, ilvl, icon_file_id, class_id,
-                                subclass_id, sell_price, seen_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                                subclass_id, sell_price, seen_at, equip_loc, min_level)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT (item_id) DO UPDATE SET
                name = coalesce(excluded.name, name), quality = coalesce(excluded.quality, quality),
                ilvl = coalesce(excluded.ilvl, ilvl),
@@ -48,6 +48,8 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
                class_id = coalesce(excluded.class_id, class_id),
                subclass_id = coalesce(excluded.subclass_id, subclass_id),
                sell_price = coalesce(excluded.sell_price, sell_price),
+               equip_loc = coalesce(excluded.equip_loc, equip_loc),
+               min_level = coalesce(excluded.min_level, min_level),
                seen_at = max(seen_at, excluded.seen_at)
              WHERE excluded.seen_at >= items.seen_at",
             params![
@@ -59,7 +61,9 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
                 item.class_id,
                 item.subclass_id,
                 item.sell_price,
-                at
+                at,
+                item.equip_loc,
+                item.min_level
             ],
         )?;
     }
@@ -375,8 +379,8 @@ fn replace_items(
     for i in items {
         tx.execute(
             "INSERT INTO char_items (character_id, location, container, slot, item_id, link,
-                                     count, as_of, bound)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                     count, as_of, bound, bind_known)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 id,
                 location,
@@ -386,7 +390,8 @@ fn replace_items(
                 i.link,
                 i.count,
                 as_of,
-                i.bound
+                i.bound == Some(true),
+                i.bound.is_some()
             ],
         )?;
     }

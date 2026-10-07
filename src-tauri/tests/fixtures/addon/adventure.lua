@@ -179,10 +179,12 @@ ForeverBuddyDB = {
 				["free"] = 14,
 				["items"] = {
 					{
+						["bound"] = false,
 						["count"] = 1,
 						["link"] = "|cffffffff|Hitem:6948::::::::12:::::|h[Hearthstone]|h|r",
 					}, -- [1]
 					{
+						["bound"] = false,
 						["count"] = 4,
 						["link"] = "|cffffffff|Hitem:117::::::::12:::::|h[Tough Jerky]|h|r",
 					}, -- [2]

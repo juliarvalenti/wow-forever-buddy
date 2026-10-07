@@ -93,10 +93,12 @@ ForeverBuddyDB = {
 				["free"] = 14,
 				["items"] = {
 					{
+						["bound"] = false,
 						["count"] = 1,
 						["link"] = "|cffffffff|Hitem:6948::::::::12:::::|h[Hearthstone]|h|r",
 					}, -- [1]
 					{
+						["bound"] = false,
 						["count"] = 4,
 						["link"] = "|cffffffff|Hitem:2589::::::::12:::::|h[Linen Cloth]|h|r",
 					}, -- [2]
@@ -112,6 +114,7 @@ ForeverBuddyDB = {
 					["free"] = 27,
 					["items"] = {
 						{
+							["bound"] = false,
 							["count"] = 20,
 							["link"] = "|cffffffff|Hitem:14047::::::::12:::::|h[Runecloth]|h|r",
 						}, -- [1]

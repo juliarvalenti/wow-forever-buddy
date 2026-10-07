@@ -25,6 +25,8 @@ export function useCleanup(characterId: number) {
     error,
     mark: (itemId: number, mark: Mark) => run(commands.cleanupMark(characterId, itemId, mark)),
     clear: (itemId: number) => run(commands.cleanupClear(characterId, itemId)),
-    markGreys: () => run(commands.cleanupMarkGreys(characterId)),
+    /** B3b: mark one suggestion with its reason, or all with `null`. */
+    accept: (itemId: number | null) => run(commands.cleanupAccept(characterId, itemId)),
+    dismiss: (itemId: number) => run(commands.cleanupDismiss(characterId, itemId)),
   };
 }
