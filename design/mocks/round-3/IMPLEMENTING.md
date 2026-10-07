@@ -328,3 +328,23 @@ A new **Lists** screen in the sidebar under Overview, after Adventures (list ico
 - **Status line:** the Bridge state for the plan slot, using the four `bridge.html` states, with "· progress as of logout" when it's in the game.
 - **Clear plan:** a ghost button with no confirm. It sets the plan to `replaced`, and the slot is rewritten empty on the next send. The sheet then shows no panel. Approvals keeps the history.
 - **Replaced plans aren't listed here.** Approvals shows past proposals and their outcomes.
+
+## 17. P2b: Approvals (`approvals.html`, `?state=empty|off`)
+One place for everything agents propose: quest plans, login notes and list changes. The rules come from `docs/specs/agent-mcp.md` §4.
+- **Sidebar:** "Approvals" under Overview, after Auction House (check icon). While anything is waiting, an ember pill shows the count. There's no pill at 0 or while agent access is off.
+- **Layout:** "Waiting for you" (newest first) on the left, with "Decided" and "Agent access" on the right.
+- **Each proposal** has:
+  - a kind tile (map, page, bag) and a title: "Quest plan for Velyra", "Login note for Coinpurse", "Changes to Tailoring 300", with names in class colour;
+  - a grey line under it: `from "Claude Desktop" · 4 minutes ago`. The producer is always quoted as a claim, exactly as the client reported it, so `"claude-code"` stays lowercase;
+  - the agent's reason, if it gave one: `Reason given: "…"`;
+  - ghost **Decline** and stone **Approve** on the right.
+- **Previews show exactly what Approve applies**, as plain text, with no field hidden:
+  - **Plan:** the steps. If it replaces an active plan, put the active plan (with its ticks) on the left and the proposal on the right, ember-edged.
+  - **Note:** the proposed text and its timing ("next login", "until Thu 9 Oct").
+  - **List:** the items with tiles, the new need, and "added" or "changed" (the old number struck through). Link "also shown in Lists", because the same entry shows in place there (§15).
+- **Conflict (a note changed after the agent read it):** an ember line: "You changed this note after "Claude Desktop" read it. Pick one; nothing is replaced until you do." Show "Yours now" next to "Proposed", with the buttons **Keep mine** and **Use proposed**. A conflict is never part of Approve all.
+- **The bar** under the list is the F6 stage/apply bar: "**2 can be approved together.** The note needs you to pick." It has a ghost **Decline all** and a bronze **Approve 2**, the screen's only primary. The count excludes conflicts.
+- **Decided:** the last 30 days, with a green dot for approved, a grey dot for declined, and a red dot for "not queued" (rejected at ingest) with the reason in plain words ("item 99999 isn't one we know").
+- **Empty:** "Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here."
+- **Off:** a lock: "Agent access is off, so agents can't read your characters or suggest anything.", with a stone **Open Settings › Agents** button. The Agent access panel reads "Off. Every request is refused, and nothing new is queued."
+- **Never:** a bare "Claude", a verified-looking identity (no checkmarks or avatars for clients), HTML in any proposed string, or anything that acts in game.

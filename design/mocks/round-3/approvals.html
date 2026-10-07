@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Approvals · WoW Forever Buddy (mock r3)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* P2b: one queue for everything agents propose (plans, notes, lists). Nothing applies without a click here or
+     in place (lists.html ?state=proposal). Every proposed string is plain text. The producer is a claim, always quoted.
+     ?state=empty | off. Rules: IMPLEMENTING.md §17, spec docs/specs/agent-mcp.md §4. */
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+  .prop { padding: 12px 14px; display: grid; gap: 10px; }
+  .prop + .prop { border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+  .prop .top { display: flex; align-items: center; gap: 10px; }
+  .prop .kind { width: 30px; height: 30px; border-radius: 4px; display: grid; place-items: center; background: rgba(0,0,0,.3); color: var(--ash); flex: none; }
+  .prop .t { display: grid; gap: 2px; min-width: 0; }
+  .prop .t b { font-weight: 500; color: var(--chalk-hi); font-size: 13.5px; }
+  .prop .t small { font-size: 11.5px; color: var(--soot); }
+  .prop .acts { margin-left: auto; display: flex; gap: 8px; flex: none; }
+  .why { font-size: 12px; color: var(--ash); padding-left: 40px; }
+  .why q { color: var(--chalk); }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-left: 40px; }
+  .cmp.one { grid-template-columns: 1fr; }
+  .pv { background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.05); border-radius: 4px; padding: 8px 10px; min-width: 0; }
+  .pv h3 { margin: 0 0 6px; font: 500 11.5px/1.3 Geist, sans-serif; color: var(--soot); }
+  .pv.new { border-color: rgba(255,177,92,.28); background: rgba(255,177,92,.04); }
+  .pv.new h3 { color: var(--ember-2); }
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 4px; font-size: 12.5px; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; color: var(--chalk); }
+  ol.steps li::before { content: counter(s); color: var(--soot); font-size: 11px; text-align: right; padding-top: 1px; }
+  ol.steps li small { grid-column: 2; font-size: 11px; color: var(--soot); }
+  ol.steps li.done { color: var(--soot); text-decoration: line-through; }
+  .notetxt { font-size: 12.5px; color: var(--chalk); }
+  .notetxt + small { display: block; margin-top: 4px; font-size: 11px; color: var(--soot); }
+  .conflict { margin-left: 40px; font-size: 12px; color: var(--ember-2); display: flex; gap: 6px; align-items: center; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.items td { padding: 4px 0; } table.items td + td { padding-left: 10px; }
+  table.items .an { display: flex; align-items: center; gap: 8px; }
+  table.items .ico { width: 22px; height: 22px; font-size: 10px; }
+  table.items .chg { font-size: 11px; color: var(--ember-2); white-space: nowrap; }
+  table.items .old { color: var(--soot); text-decoration: line-through; margin-right: 4px; }
+  .applybar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.06); font-size: 12.5px; }
+  .applybar .grow { flex: 1; color: var(--ash); }
+  .applybar b { color: var(--chalk-hi); font-weight: 500; }
+  .hist { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 8px; align-items: start; padding: 8px 12px; font-size: 12.5px; }
+  .hist + .hist { border-top: 1px solid rgba(255,255,255,.05); }
+  .hist small { grid-column: 2; font-size: 11px; color: var(--soot); }
+  .hist .dot { width: 7px; height: 7px; border-radius: 50%; margin: 5px 0 0 4px; background: var(--soot); }
+  .hist .dot.ok { background: var(--ok); } .hist .dot.no { background: #b0564a; }
+  .acc { padding: 10px 12px; font-size: 12.5px; color: var(--ash); display: grid; gap: 4px; }
+  .acc b { color: var(--chalk-hi); font-weight: 500; }
+  .blank { padding: 28px 18px; text-align: center; display: grid; gap: 10px; justify-items: center; color: var(--ash); font-size: 13px; }
+  .blank .kind { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.3); color: var(--soot); }
+  .only-empty, .only-off { display: none; }
+  body[data-approvals="empty"] .only-empty, body[data-approvals="off"] .only-off { display: grid; }
+  body[data-approvals] .only-pending { display: none !important; }
+  @media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } .cmp { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-page="approvals" data-wow="running">
+<script>
+  // ?state=empty|off: no badge in the sidebar, and the pending panel is replaced
+  const st = new URLSearchParams(location.search).get('state');
+  if (st === 'empty' || st === 'off') document.body.dataset.approvals = st;
+</script>
+<main class="main">
+  <header class="head">
+    <div><h1>Approvals</h1><div class="lede">What agents you've connected have suggested. Nothing changes until you approve it.</div></div>
+  </header>
+
+  <section class="split">
+    <div class="panel">
+      <div class="ph"><h2>Waiting for you</h2><span class="meta only-pending">3 · newest first</span></div>
+
+      <div class="only-pending" style="display:block">
+        <!-- 1. A plan that replaces an active one: old and new side by side -->
+        <div class="prop">
+          <div class="top">
+            <span class="kind"><i data-i="map" class="sm"></i></span>
+            <div class="t"><b>Quest plan for <span class="cc c-druid">Velyra</span></b><small>from "Claude Desktop" · 4 minutes ago · replaces the active plan</small></div>
+            <div class="acts"><button class="btn ghost">Decline</button><button class="btn">Approve</button></div>
+          </div>
+          <div class="why">Reason given: <q>Felwood is nearly done; Winterspring next for the Everlook quests at 56.</q></div>
+          <div class="cmp">
+            <div class="pv">
+              <h3>Active now · Felwood · 2 of 4 done</h3>
+              <ol class="steps">
+                <li class="done">Accept "Cleansing Felwood"</li>
+                <li class="done">Kill Irontree Stompers<small>Irontree Woods</small></li>
+                <li>Turn in "Cleansing Felwood"<small>Emerald Sanctuary</small></li>
+                <li>Hearth to Ironforge</li>
+              </ol>
+            </div>
+            <div class="pv new">
+              <h3>Proposed · Winterspring · 4 steps</h3>
+              <ol class="steps">
+                <li>Fly to Everlook</li>
+                <li>Accept "Are We There, Yeti?"<small>Everlook</small></li>
+                <li>Collect 10 Thick Yeti Fur<small>Owl Wing Thicket</small></li>
+                <li>Turn in "Are We There, Yeti?"<small>Everlook</small></li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. A note that changed after the agent read it: pick one, not in Approve all -->
+        <div class="prop">
+          <div class="top">
+            <span class="kind"><i data-i="file" class="sm"></i></span>
+            <div class="t"><b>Login note for <span class="cc c-warrior">Coinpurse</span></b><small>from "Claude Desktop" · 12 minutes ago</small></div>
+            <div class="acts"><button class="btn ghost">Keep mine</button><button class="btn">Use proposed</button></div>
+          </div>
+          <div class="conflict"><i data-i="alert" class="sm"></i>You changed this note after "Claude Desktop" read it. Pick one; nothing is replaced until you do.</div>
+          <div class="cmp">
+            <div class="pv">
+              <h3>Yours now</h3>
+              <div class="notetxt">Relist the Arcanite Bars if the price is still above 38g.</div><small>by you · edited 21:40 · next login</small>
+            </div>
+            <div class="pv new">
+              <h3>Proposed</h3>
+              <div class="notetxt">Relist the Arcanite Bars above 36g, and post the Thorium Bars from the bank.</div><small>next login</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. List changes: the same entry shows in place on the Lists screen -->
+        <div class="prop">
+          <div class="top">
+            <span class="kind"><i data-i="bag" class="sm"></i></span>
+            <div class="t"><b>Changes to Tailoring 300</b><small>from "claude-code" · yesterday 22:15 · <a class="ember" href="lists.html?state=proposal">also shown in Lists</a></small></div>
+            <div class="acts"><button class="btn ghost">Decline</button><button class="btn">Approve</button></div>
+          </div>
+          <div class="why">Reason given: <q>for the Mooncloth Robe at 300</q></div>
+          <div class="cmp one">
+            <div class="pv new">
+              <h3>2 changes</h3>
+              <table class="items">
+                <tr><td><div class="an"><span class="ico q-uncommon"><b>M</b></span>Mooncloth</div></td><td>need 4</td><td class="chg">added</td></tr>
+                <tr><td><div class="an"><span class="ico q-common"><b>R</b></span>Runecloth</div></td><td><span class="old">20</span>need 30</td><td class="chg">changed</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="applybar"><span class="grow"><b>2 can be approved together.</b> The note needs you to pick.</span><button class="btn ghost">Decline all</button><button class="primary">Approve 2</button></div>
+      </div>
+
+      <div class="blank only-empty">
+        <span class="kind"><i data-i="check"></i></span>
+        <span>Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here.</span>
+      </div>
+      <div class="blank only-off">
+        <span class="kind"><i data-i="lock"></i></span>
+        <span>Agent access is off, so agents can't read your characters or suggest anything.</span>
+        <a class="btn" href="settings.html">Open Settings › Agents</a>
+      </div>
+    </div>
+
+    <div style="display:grid;gap:12px">
+      <article class="panel">
+        <div class="ph"><h2>Decided</h2><span class="meta">last 30 days</span></div>
+        <div class="hist"><span class="dot ok"></span><span>Quest plan for <span class="cc c-priest">Sela</span> approved</span><small>from "Claude Desktop" · Tue 21:02</small></div>
+        <div class="hist"><span class="dot"></span><span>Login note for <span class="cc c-druid">Velyra</span> declined</span><small>from "Claude Desktop" · Mon 19:30</small></div>
+        <div class="hist"><span class="dot no"></span><span>List change not queued</span><small>from "claude-code" · Mon 18:02 · item 99999 isn't one we know</small></div>
+        <div class="hist"><span class="dot ok"></span><span>New list Raid consumables approved</span><small>from "Claude Desktop" · Sun 20:11</small></div>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Agent access</h2></div>
+        <div class="acc only-pending" style="display:grid"><span><b>On.</b> Agents can read your characters and suggest. Only you can apply.</span><a class="ember" href="settings.html">Settings › Agents</a></div>
+        <div class="acc only-empty"><span><b>On.</b> Agents can read your characters and suggest. Only you can apply.</span><a class="ember" href="settings.html">Settings › Agents</a></div>
+        <div class="acc only-off"><span><b>Off.</b> Every request is refused, and nothing new is queued.</span><a class="ember" href="settings.html">Settings › Agents</a></div>
+      </article>
+    </div>
+  </section>
+</main>
+<script src="_shell.js"></script>
+</body>
+</html>
