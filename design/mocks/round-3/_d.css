@@ -82,6 +82,9 @@ svg.i.sm { width: 14px; height: 14px; }
 .nav-item { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; white-space: nowrap; color: var(--hide-text); }
 .nav-item svg { color: var(--hide-mute); }
 .nav-item .n { margin-left: auto; font-size: 11px; color: var(--hide-dim); }
+/* a count that wants you (P2 Approvals): ember pill, not the dim count */
+.nav-item .n.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--ember-2); color: #2a1608; font-weight: 600; }
 .nav-item.soon { color: var(--hide-dim); }
 .nav-item.soon .n { font-size: 11px; font-style: italic; }
 .nav-item:hover { background: rgba(0,0,0,.2); }

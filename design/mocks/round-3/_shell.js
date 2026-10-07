@@ -68,6 +68,8 @@
     { id: 'gold', label: 'Ledger', icon: 'coins', href: 'gold.html' },
     { id: 'sessions', label: 'Adventures', icon: 'scroll', href: 'session.html' },
     { id: 'ah', label: 'Auction House', icon: 'scale', href: 'ah.html' },
+    // P2: agent proposals waiting for a click. The badge is the pending count, hidden at 0 and while agent access is off.
+    { id: 'approvals', label: 'Approvals', icon: 'check', href: 'approvals.html', badge: 3 },
     { group: 'Game files' },
     { id: 'backups', label: 'Backups', icon: 'archive', href: 'backups.html', n: 23 },
     { id: 'addons', label: 'Addons', icon: 'puzzle', href: 'addons.html', soon: 1 },
@@ -78,7 +80,7 @@
   const noAddon = document.body.dataset.addon === 'none';
   const main = document.querySelector('main.main');
   const nav = NAV.map(n => n.group ? `<div class="nav-group">${n.group}</div>`
-    : `<a class="nav-item ${n.id === page ? 'active' : ''} ${n.soon ? 'soon' : ''}" href="${n.href}" title="${n.label}">${icon(n.icon)}<span class="lbl">${n.label}</span>${n.soon ? '<span class="n">soon</span>' : n.n && wow !== 'nofolder' ? `<span class="n">${n.n}</span>` : ''}</a>`).join('');
+    : `<a class="nav-item ${n.id === page ? 'active' : ''} ${n.soon ? 'soon' : ''}" href="${n.href}" title="${n.label}">${icon(n.icon)}<span class="lbl">${n.label}</span>${n.soon ? '<span class="n">soon</span>' : n.badge && !document.body.dataset.approvals ? `<span class="n badge">${n.badge}</span>` : n.n && wow !== 'nofolder' ? `<span class="n">${n.n}</span>` : ''}</a>`).join('');
   // The app only knows WowB.exe is running, not who is logged in (addon data lands at logout or /reload),
   // so the character line is "last played", never a live claim.
   const lastPlayed = noAddon ? '' : `<div class="st-row"><span class="okdot" style="background:transparent"></span><span class="st-t">Last played ${document.body.dataset.char || 'Thrandor'}</span></div>`;

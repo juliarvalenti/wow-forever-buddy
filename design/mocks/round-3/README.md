@@ -25,6 +25,7 @@ Open any `.html` directly. `?still` freezes motion and `?tt=<item>` pins a toolt
 | Ledger / Adventures | `gold.html`, `session.html` | session timeline with Forever "secret values" fallbacks |
 | Auction House | `ah.html` | scan freshness, price history, sales ledger, sell suggestions |
 | Settings | `settings.html` | spec-accurate retention, Integrations |
+| **Approvals** (P2b) | `approvals.html` | pending plan, note conflict and list change; `?state=empty`, `?state=off`. Spec in IMPLEMENTING §17 |
 | Sketches | `addons.html` (v0.5), `macros.html` (v0.6) | writes locked while WoW runs |
 
 **WeakAuras is dropped** (Julia, 4 Oct). It doesn't run on Forever because of the Midnight addon restrictions, so there's no WeakAuras page, no sidebar entry and no Wago.io integration. The Wago Addons key stays, because it's for normal addon updates.
