@@ -300,12 +300,15 @@ A new **Lists** screen in the sidebar under Overview, after Adventures (list ico
   - **Last scan:** "~1g 12s" from F5, or "50s vendor" when the item is sold by vendors. It's empty when there's neither (AH hidden or no scan).
   - **The list header meta** names who it's for ("for Sela", in class colour) and the price age.
   - The last row is "+ Add an item…", a search over items your characters have seen, plus free text.
-- **Claude's proposals** (P2, MCP):
-  - Claude can only *propose* a new list, an added or changed item, or a note. A proposal shows as an ember-tinted row with "proposed by Claude: "…"" carrying its reason, and the list in the left column says "1 proposal".
-  - Under the table sits the F6 stage/apply bar: "**Claude proposed 1 change** to this list. Nothing changes until you apply it." with a ghost **Discard** and a bronze **Apply**, the screen's only primary.
+- **Agent proposals** (P2, `docs/specs/agent-mcp.md`):
+  - An agent can only *propose* a new list, an added or changed item, or a note.
+  - **The producer is a claim, never an identity:** always quote the client's self-reported name, as in `from "Claude Desktop"`. Never write a bare "Claude".
+  - **One queue, two places.** Every proposal lives in P2's **Approvals** panel (sidebar badge). Where the data lives, it also shows in place: an ember-tinted row with `proposed · from "Claude Desktop": "for the Mooncloth Robe at 300"` carrying its reason, and the list in the left column says "1 proposal".
+  - **The F6 stage/apply bar** under the table: "**1 proposed change** from "Claude Desktop". Nothing changes until you apply it." It has a ghost **Discard** and a bronze **Apply**, the screen's only primary, plus a "Review in Approvals" link.
+  - Apply and Discard here act on the same queue entries as Approvals.
   - Nothing reaches the game until it's applied.
 - **Login notes:**
-  - Each note has the character in class colour, the text, and a muted meta line ("by you · until Thu 9 Oct", "by Claude, approved · once").
+  - Each note has the character in class colour, the text, and a muted meta line ("by you · until Thu 9 Oct", "from "Claude Desktop", approved · once").
   - A note can be "once" (shown at the next login, then archived) or "until <date>".
   - "+ Add a note…" picks the character.
   - Claude's notes arrive as proposals in the same apply bar.
