@@ -39,6 +39,7 @@ import {
   ago,
   bytes,
   characterName,
+  holder,
   OLDER_FOLDERS,
   OLDER_FOLDERS_WHY,
   plural,
@@ -466,6 +467,7 @@ function ConfirmRestore({
   keys,
   mode,
   running,
+  waitingFor,
   snapshots,
   onClose,
 }: {
@@ -473,6 +475,8 @@ function ConfirmRestore({
   keys: Keys;
   mode: RestoreMode;
   running: boolean;
+  /** The exe holding writes ("WowB.exe"), or "WoW" (BUG-LISTS). */
+  waitingFor: string;
   /** All snapshots, newest first: for dates and an older one to fall back to. */
   snapshots: SnapshotSummary[];
   onClose: () => void;
@@ -550,8 +554,10 @@ function ConfirmRestore({
           <LiveDot />
           {running ? (
             <span>
-              Waiting for WoW to close…{" "}
-              <span className="d-muted">Restore unlocks once WoW closes and the list is checked again.</span>
+              Waiting for {waitingFor} to close…{" "}
+              <span className="d-muted">
+                Restore unlocks once {waitingFor} closes and the list is checked again.
+              </span>
             </span>
           ) : (
             <span>WoW closed. Checking what changed…</span>
@@ -924,6 +930,7 @@ export function Backups({
           keys={keys}
           mode={mirror ? "mirror" : "overlay"}
           running={running}
+          waitingFor={holder(game)}
           snapshots={list ?? []}
           onClose={() => setConfirming(false)}
         />

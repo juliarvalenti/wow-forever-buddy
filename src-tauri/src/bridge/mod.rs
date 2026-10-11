@@ -303,7 +303,7 @@ impl AppCore {
         let waiting = matches!(sent, Ok(Sent::Waiting));
         let was = self.send_waiting.swap(waiting, Ordering::SeqCst);
         if waiting && !was {
-            // "BlizzardError.exe is running", or why it can't tell.
+            // "WowB.exe is running", or why it can't tell.
             let blocker = self
                 .game
                 .blocking_now(&self.probe_target())
@@ -680,21 +680,39 @@ mod tests {
             "(3) every slot listed"
         );
 
-        // (1) A crash reporter outlives the game, in the WoW folder.
-        probe.set_processes(vec![ProcInfo {
+        // As the OS reports it: the real path (a temp dir's /var is
+        // /private/var on macOS).
+        let under = |name: &str| ProcInfo {
             pid: FakeProbe::wow_pid(),
-            name: "BlizzardError.exe".into(),
-            // As the OS reports it: the real path (a temp dir's /var is
-            // /private/var on macOS).
+            name: name.into(),
             exe: Some(
                 dunce::canonicalize(root.join("_classic_beta_"))
                     .unwrap()
-                    .join("BlizzardError.exe"),
+                    .join(name),
             ),
-        }]);
-        // The app counts it as the game too (an exe under the WoW folder),
-        // though the player closed WoW.
+        };
+        // A known helper that outlives the game (the crash reporter) holds
+        // nothing (security's skip list).
+        probe.set_processes(vec![under("BlizzardError.exe")]);
         core.game.poll(&core.probe_target());
+        assert!(!core.game.status().running && core.game.status().holding.is_none());
+        assert_eq!(
+            core.send_to_game().unwrap(),
+            Sent::Written,
+            "not held by a helper"
+        );
+
+        // (1) Any other exe in the WoW folder still holds (a renamed game
+        // fails closed), and the app counts it as the game, though the
+        // player closed WoW.
+        crate::lists::create_list(&core.db, &game.flavor, "Mats", None, "app").unwrap();
+        probe.set_processes(vec![under("Launcher.exe")]);
+        core.game.poll(&core.probe_target());
+        assert_eq!(
+            core.game.status().holding.as_deref(),
+            Some("Launcher.exe"),
+            "named"
+        );
         assert!(core.game.status().running, "the app says WoW is running");
         assert_eq!(
             core.send_to_game().unwrap(),
@@ -704,7 +722,7 @@ mod tests {
         assert_eq!(core.send_to_game().unwrap(), Sent::Waiting);
         let log = std::fs::read_to_string(core.paths.log_dir.join("buddy.log")).unwrap();
         assert_eq!(
-            log.matches("game data waits for the write gate: BlizzardError.exe is running")
+            log.matches("game data waits for the write gate: Launcher.exe is running")
                 .count(),
             1,
             "named, once: {log}"

@@ -63,12 +63,14 @@ import {
   coins,
   dayMonth,
   errorText,
+  holder,
   plural,
   played,
   resetDay,
   resetsIn,
   when,
 } from "@/lib/format";
+import { useGameStatus } from "@/hooks/useGameStatus";
 
 // design/mocks/round-3/characters.html and character.html. Net worth and
 // "Worth carried" show only once AH prices exist (F5c), from priced items
@@ -896,7 +898,7 @@ function approvedAt(iso: string): string {
 }
 
 /** The plan's Bridge state, in bridge.html's words (IMPLEMENTING §16). */
-function planDelivery(p: Plan): { live: boolean; text: string } {
+function planDelivery(p: Plan, waitingFor: string): { live: boolean; text: string } {
   const d = p.delivery;
   switch (d.state) {
     case "synced":
@@ -904,7 +906,7 @@ function planDelivery(p: Plan): { live: boolean; text: string } {
     case "pending":
       return { live: true, text: "Waiting for a sync: /reload or log in to see it" };
     case "waiting":
-      return { live: true, text: "Goes to the game when WoW closes" };
+      return { live: true, text: `Goes to the game when ${waitingFor} closes` };
     case "restart":
       return { live: true, text: "Needs the addon update, then restart WoW once" };
     case "failed":
@@ -921,7 +923,7 @@ function QuestPlan({ plan, onClear }: { plan: Plan; onClear: () => void }) {
   const producer = plan.producer.startsWith("agent:")
     ? `from "${plan.producer.slice("agent:".length)}"`
     : "made in Forever Buddy";
-  const status = planDelivery(plan);
+  const status = planDelivery(plan, holder(useGameStatus()));
   return (
     <Panel>
       <PanelHeader title="Quest plan">

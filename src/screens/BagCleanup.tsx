@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { Cleanup, Delivery, ItemRow, Mark, Marked } from "@/lib/bindings";
 import { Button, ItemIcon, LiveDot, Panel, PanelBody, PanelHeader, StatusDot } from "@/components/d";
-import { coins, plural } from "@/lib/format";
+import { useGameStatus } from "@/hooks/useGameStatus";
+import { coins, holder, plural } from "@/lib/format";
 
 // B3 bag cleanup on the character sheet (IMPLEMENTING §18): mark items to
 // sell, or to send to another character; the addon shows the marks in game
@@ -137,7 +138,7 @@ export function MarkMenu({
   );
 }
 
-function deliveryLine(d: Delivery): { live: boolean; text: string } {
+function deliveryLine(d: Delivery, waitingFor: string): { live: boolean; text: string } {
   switch (d.state) {
     case "synced":
       return {
@@ -147,7 +148,7 @@ function deliveryLine(d: Delivery): { live: boolean; text: string } {
     case "pending":
       return { live: true, text: "Waiting for a sync: /reload or log in to see it" };
     case "waiting":
-      return { live: true, text: "Goes to the game when WoW closes" };
+      return { live: true, text: `Goes to the game when ${waitingFor} closes` };
     case "restart":
       return { live: true, text: "Needs the addon update, then restart WoW once" };
     case "failed":
@@ -185,6 +186,7 @@ export function BagCleanup({
   onAccept: (itemId: number | null) => void;
   onDismiss: (itemId: number) => void;
 }) {
+  const game = useGameStatus();
   const { marks, suggestions } = cleanup;
   if (marks.length === 0 && suggestions.length === 0) return null;
   const sell = marks.filter((m) => !m.to);
@@ -198,7 +200,7 @@ export function BagCleanup({
   ]
     .filter(Boolean)
     .join(" · ");
-  const status = deliveryLine(cleanup.delivery);
+  const status = deliveryLine(cleanup.delivery, holder(game));
   return (
     <Panel>
       <PanelHeader title="Bag cleanup">

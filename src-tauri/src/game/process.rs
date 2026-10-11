@@ -150,6 +150,23 @@ impl ProcessProbe for SysinfoProbe {
     }
 }
 
+/// Blizzard helpers that can live under the WoW folder and outlast the game,
+/// but never write WTF or SavedVariables (security, BUG-LISTS): the crash
+/// reporter (`BlizzardError.exe`, or anything in its `Blizzard Error`
+/// folder), the voice proxy (`WowVoiceProxy*.exe`) and Battle.net
+/// (`Battle.net*.exe`). Only these are skipped; any other exe under the
+/// folder still holds the write gate, so a renamed game fails closed.
+fn is_helper(name: &str, exe: &Path) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let exe_named = |prefix: &str| lower.starts_with(prefix) && lower.ends_with(".exe");
+    lower == "blizzarderror.exe"
+        || exe_named("wowvoiceproxy")
+        || exe_named("battle.net")
+        || exe
+            .components()
+            .any(|c| c.as_os_str().eq_ignore_ascii_case("Blizzard Error"))
+}
+
 /// A `ProbeTarget` prepared for matching: the root canonicalized once.
 struct Matcher<'a> {
     root: Option<PathBuf>,
@@ -186,7 +203,7 @@ impl<'a> Matcher<'a> {
             return self.known_name(&p.name);
         };
         match &p.exe {
-            Some(exe) if path_starts_with(exe, root) => true,
+            Some(exe) if path_starts_with(exe, root) => !is_helper(&p.name, exe),
             // Only candidates are canonicalized, to keep each poll cheap.
             Some(exe) if self.known_name(&p.name) => {
                 dunce::canonicalize(exe).is_ok_and(|canon| path_starts_with(&canon, root))
@@ -222,6 +239,11 @@ pub struct GameStatus {
     /// The last poll couldn't list processes, so `running` is stale. The UI
     /// says it can't tell; restores stay locked.
     pub unknown: bool,
+    /// The exe the write gate would stop at now ("WowB.exe"), so the
+    /// screens say what they wait for instead of a bare "WoW" (BUG-LISTS).
+    /// The gate is stricter than `running`: this can be set while
+    /// `running` is false.
+    pub holding: Option<String>,
 }
 
 /// A process list is trustworthy only if it includes this app.
@@ -243,7 +265,8 @@ pub enum Transition {
     Stopped,
     /// Process listing stopped working (status is now `unknown`).
     Unknown,
-    /// It works again, and the game's state is as before.
+    /// It works again, and the game's state is as before; or the game's
+    /// state is as before but what holds the write gate changed (`holding`).
     Known,
 }
 
@@ -308,6 +331,14 @@ impl GameWatcher {
             .map(|p| p.pid)
             .collect();
         pids.sort_unstable();
+        // The game itself first, then anything else the gate stops at.
+        let holding = list
+            .iter()
+            .filter(|p| matcher.blocks_writes(p))
+            .min_by_key(|p| (!matcher.is_ours(p), p.name.to_ascii_lowercase()))
+            .map(|p| p.name.clone());
+        let holding_changed = holding != status.holding;
+        status.holding = holding;
 
         let was_running = status.running;
         let running = !pids.is_empty();
@@ -321,7 +352,8 @@ impl GameWatcher {
         match (was_running, running) {
             (false, true) => Some(Transition::Started),
             (true, false) => Some(Transition::Stopped),
-            _ => was_unknown.then_some(Transition::Known),
+            // A new holder alone is news for the screens too.
+            _ => (was_unknown || holding_changed).then_some(Transition::Known),
         }
     }
 
@@ -469,6 +501,37 @@ mod tests {
         )));
     }
 
+    /// BUG-LISTS (security): Blizzard helpers under the folder that outlast
+    /// the game and never write WTF don't hold anything; any other exe there
+    /// still does, so a renamed game fails closed.
+    #[test]
+    fn known_helpers_under_the_folder_dont_hold_writes() {
+        let t = target(Path::new("/Games/World of Warcraft"));
+        let m = Matcher::new(&t);
+        let under = |p: &str| PathBuf::from("/Games/World of Warcraft").join(p);
+        for (name, path) in [
+            ("BlizzardError.exe", "_classic_beta_/BlizzardError.exe"),
+            ("Reporter.exe", "_classic_beta_/Blizzard Error/Reporter.exe"),
+            ("WowVoiceProxy.exe", "_classic_beta_/WowVoiceProxy.exe"),
+            (
+                "WowVoiceProxy-arm64.exe",
+                "_classic_beta_/WowVoiceProxy-arm64.exe",
+            ),
+            ("Battle.net.exe", "Battle.net/Battle.net.exe"),
+        ] {
+            let p = proc(9, name, Some(under(path)));
+            assert!(!m.is_ours(&p) && !m.blocks_writes(&p), "{name}");
+        }
+        for (name, path) in [
+            ("WowB.exe", "_classic_beta_/WowB.exe"),
+            ("ForeverClient.exe", "_classic_beta_/ForeverClient.exe"),
+            ("Repair.exe", "Utils/Repair.exe"),
+        ] {
+            let p = proc(9, name, Some(under(path)));
+            assert!(m.is_ours(&p) && m.blocks_writes(&p), "{name} still holds");
+        }
+    }
+
     /// Review must-fix (1): a known WoW exe outside our root isn't shown as
     /// our game, but it does block writes.
     #[test]
@@ -477,7 +540,10 @@ mod tests {
         let w = watcher_with(vec![proc(7, "Wow.exe", Some(elsewhere))]);
         let t = target(Path::new("/Games/World of Warcraft"));
 
-        assert_eq!(w.poll(&t), None, "not our install: no 'WoW is running'");
+        // Only the holder is news: not "WoW is running".
+        assert_eq!(w.poll(&t), Some(Transition::Known));
+        assert!(!w.status().running, "not our install: no 'WoW is running'");
+        assert_eq!(w.status().holding.as_deref(), Some("Wow.exe"), "named");
         assert!(w.is_running_now(&t), "but writes are blocked");
     }
 
@@ -596,7 +662,13 @@ mod tests {
     fn pattern_names_only_affect_the_gate() {
         let t = target(Path::new("/Games/World of Warcraft"));
         let w = watcher_with(vec![proc(5, "WowX.exe", None)]);
-        assert_eq!(w.poll(&t), None, "not displayed as running");
+        assert_eq!(
+            w.poll(&t),
+            Some(Transition::Known),
+            "only the holder is news"
+        );
+        assert!(!w.status().running, "not displayed as running");
+        assert_eq!(w.status().holding.as_deref(), Some("WowX.exe"));
         let blocker = w.blocking_now(&t).expect("writes are blocked");
         assert_eq!(blocker, Blocker::Process("WowX.exe".into()));
         assert_eq!(blocker.to_string(), "WowX.exe is running");

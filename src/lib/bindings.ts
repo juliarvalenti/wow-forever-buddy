@@ -1232,6 +1232,13 @@ export type GameStatus = {
 	 *  says it can't tell; restores stay locked.
 	 */
 	unknown: boolean,
+	/**
+	 *  The exe the write gate would stop at now ("WowB.exe"), so the
+	 *  screens say what they wait for instead of a bare "WoW" (BUG-LISTS).
+	 *  The gate is stricter than `running`: this can be set while
+	 *  `running` is false.
+	 */
+	holding: string | null,
 };
 
 /**  Emitted when WoW starts or stops. */

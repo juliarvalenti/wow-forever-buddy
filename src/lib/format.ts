@@ -1,6 +1,18 @@
 // Formatting for the D screens: sentence case, tabular numbers, no em dashes.
 
-import type { AppError } from "./bindings";
+import type { AppError, GameStatus } from "./bindings";
+
+/** Blizzard's client names (`Wow.exe`, `WowB-arm64.exe`, `WowClassicT.exe`,
+ *  the macOS app): the game itself, the same pattern the write gate uses. */
+const GAME_EXE = /^(wow(classic)?[a-z]?(-64|-arm64)?\.exe|world of warcraft)$/i;
+
+/** What a "waiting" line waits for (BUG-LISTS): "WoW" when it's the game
+ *  itself or the app can't tell yet, else the exe holding writes to the
+ *  game folder ("Launcher.exe"), so a wrong match shows itself. */
+export function holder(status: GameStatus | null | undefined): string {
+  const exe = status?.holding;
+  return exe && !GAME_EXE.test(exe) ? exe : "WoW";
+}
 
 /** "48.2 MB". `null` (an f64 the backend couldn't send) shows as a dash. */
 export function bytes(n: number | null | undefined): string {
