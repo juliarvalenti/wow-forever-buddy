@@ -276,9 +276,8 @@ export function Characters({
       gold: (a, b) => (b.money ?? 0) - (a.money ?? 0),
       seen: (a, b) => b.last_seen.localeCompare(a.last_seen),
     };
-    // O2: characters gone from WTF sort after the others.
-    return list.sort((a, b) => Number(gone.has(a.id)) - Number(gone.has(b.id)) || by[sort](a, b));
-  }, [overview, sort, gone]);
+    return list.sort(by[sort]);
+  }, [overview, sort]);
 
   if (open != null) {
     return (
@@ -290,6 +289,19 @@ export function Characters({
   const results = search.results;
   const match = (id: number | null): "hit" | "miss" | undefined =>
     results ? (id != null && results.characters.includes(id) ? "hit" : "miss") : undefined;
+  // A card with its "more" menu beside it, and for a gone character
+  // "Manage in Settings" laid over the card (the card is itself a button).
+  const slot = (c: CharacterCard) => (
+    <div key={c.id} className={`ch-cardbox${gone.has(c.id) ? " gone" : ""}`}>
+      <Card c={c} match={match(c.id)} gone={gone.has(c.id)} onOpen={() => setOpen(c.id)} />
+      <CardMenu name={fullName(c)} onHide={() => tidy.hide(c.id, true).then((ok) => ok && refresh())} />
+      {gone.has(c.id) && (
+        <button className="ch-link ch-manage" onClick={onOpenData}>
+          Manage in Settings
+        </button>
+      )}
+    </div>
+  );
   return (
     <Page>
       <PageHeader
@@ -408,20 +420,9 @@ export function Characters({
             />
           )}
           <section className={`ch-cards${results ? " searching" : ""}`}>
-            {cards.map((c) => (
-              <div key={c.id} className={`ch-cardbox${gone.has(c.id) ? " gone" : ""}`}>
-                <Card c={c} match={match(c.id)} gone={gone.has(c.id)} onOpen={() => setOpen(c.id)} />
-                <CardMenu
-                  name={fullName(c)}
-                  onHide={() => tidy.hide(c.id, true).then((ok) => ok && refresh())}
-                />
-                {gone.has(c.id) && (
-                  <button className="ch-link ch-manage" onClick={onOpenData}>
-                    Manage in Settings
-                  </button>
-                )}
-              </div>
-            ))}
+            {/* O2: the characters in WTF, then the ones the addon hasn't
+                seen, then the ones gone from WTF. */}
+            {cards.filter((c) => !gone.has(c.id)).map(slot)}
             {unseen.map((r) => (
               <UnseenCard
                 key={`${r.account}/${r.realm}/${r.name}`}
@@ -430,6 +431,7 @@ export function Characters({
                 match={match(null)}
               />
             ))}
+            {cards.filter((c) => gone.has(c.id)).map(slot)}
           </section>
         </>
       )}
