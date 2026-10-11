@@ -1927,7 +1927,7 @@ scenario("window", function()
     end
     eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
         .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
-        .. "Your alts on item tooltips ✓, Minimap button ✓", "every toggle")
+        .. "Your alts on item tooltips ✓, Minimap button ✓, Record my next session", "every toggle")
     eq(w.panes[5].checks[4].enabled, false, "combat hiding waits for the coach")
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "in Esc › Options › AddOns")
@@ -1969,6 +1969,151 @@ scenario("window", function()
 
     c.slash("/fb sync")
     eq(c.chat[#c.chat], PREFIX .. "type /reload to sync.", "typed sync (INGAME §5 C)")
+end)
+
+-- Record mode (SIM1 b): "Record my next session" records one session, then
+-- turns itself off. Numbers only: events by name, number and boolean
+-- arguments, a probe of the client after each; money as the change since
+-- the first probe. Its file is the fixture the replay below plays back.
+scenario("record", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local c = stocked({ forever = true })
+    c.settings = { recordNext = true }
+    c.world.inbox = { { sender = "Gankalot", subject = "Secret plans", money = 5, cod = 0, days = 3, items = {} } }
+    c.login(nil)
+    eq(c.chat[1], PREFIX .. "recording this session to help fix bugs (numbers only).", "says so at login")
+    c.advance(10 * MINUTE)
+    c.give(117, 2)
+    c.gainXp(500)
+    c.setMoney(26000)
+    c.openMailbox()
+    c.closeMailbox()
+    c.advance(MINUTE)
+    local text = c.logout()
+    local db = file(text)
+    local r = db.record
+    eq(r.addon, db._meta.addon, "which addon")
+    eq(r.events[1].e, "PLAYER_LOGIN", "from the login")
+    eq(r.events[#r.events].e, "PLAYER_LOGOUT", "to the logout")
+    eq(r.events[1].s.m, 0, "money is the change since the first probe")
+    eq(c.settings.recordNext, nil, "turned itself off")
+
+    -- Numbers only: no string from the game but event names and the
+    -- allowlist (and the markers for what was dropped).
+    local allowed = { ForeverBuddy = true, player = true, ["~"] = true, ["nil"] = true, secret = true }
+    local seen = {}
+    for _, e in ipairs(r.events) do
+        seen[e.e] = true
+        for _, a in ipairs(e.a or {}) do
+            if type(a) == "string" then
+                eq(allowed[a], true, "argument " .. a .. " of " .. e.e)
+            end
+        end
+        for k, v in pairs(e.s or {}) do
+            eq(type(v) ~= "string" or v == "secret", true, "probe " .. k .. " of " .. e.e)
+        end
+    end
+    eq(seen.BAG_UPDATE_DELAYED and seen.PLAYER_MONEY and seen.MAIL_SHOW and true, true, "the events in between")
+    eq(text:find("Gankalot", 1, true) == nil or db.snapshot.mail ~= nil, true, "mail text only where it always was")
+
+    -- The next login says it once; nothing is recorded then.
+    c.chat = {}
+    c.login(text)
+    eq(c.chat[1], PREFIX .. "last session's recording is saved. Recording is off again.", "once")
+    local again = file(c.logout())
+    eq(again.record, nil, "off again")
+    c.login(text)
+    eq(#c.chat, 1, "said once only")
+
+    -- /fb record ticks the same box.
+    c.slash("/fb record")
+    eq(c.chat[#c.chat], PREFIX .. "recording your next session.", "/fb record")
+    eq(c.global("ForeverBuddySettings").recordNext, true, "the box")
+    c.slash("/fb record")
+    eq(c.chat[#c.chat], PREFIX .. "recording off.", "and off")
+
+    -- Capped: past 3000 entries it stops and says it was cut short.
+    local long = client()
+    long.settings = { recordNext = true }
+    long.login(nil)
+    for _ = 1, 3100 do
+        long.fire("PLAYER_MONEY")
+    end
+    local cut = file(long.logout()).record
+    eq(#cut.events, 3000, "capped")
+    eq(cut.truncated, true, "cut short")
+    return text
+end)
+
+-- Replays a recording (SIM1 b): the fake client answers as the probes say,
+-- the recorded events fire in order, and what the addon writes has to hold
+-- up. A probe with no backpack is the client before it's up or after the
+-- teardown (`torn`).
+local REPLAY_MONEY = 100000
+
+local function replay(rec)
+    local c = client({ forever = true })
+    c.login(nil, { events = false })
+    local w, t, last = c.world, 0, nil
+    local lockouts = {}
+    for i = 1, 10 do
+        lockouts[i] = { name = "Instance " .. i, reset = 3 * DAY, raid = false, difficulty = "Normal" }
+    end
+    for _, e in ipairs(rec.events) do
+        c.advance(math.max(0, e.t - t))
+        t = e.t
+        local s = e.s
+        if s then
+            last = s
+            w.torn = not (type(s.b) == "number" and s.b > 0) or nil
+            if type(s.m) == "number" then
+                w.money = REPLAY_MONEY + s.m
+            end
+            w.level = type(s.l) == "number" and s.l > 0 and s.l or w.level
+            w.xp = type(s.x) == "number" and s.x or w.xp
+            w.xp_max = type(s.xm) == "number" and s.xm > 0 and s.xm or w.xp_max
+            if type(s.sv) == "number" then
+                w.lockouts = { unpack(lockouts, 1, math.min(s.sv, #lockouts)) }
+            end
+            w.combat = s.c == true
+        end
+        local args = {}
+        for i, a in ipairs(e.a or {}) do
+            args[i] = (a ~= "nil" and a ~= "~" and a ~= "secret") and a or nil
+        end
+        c.fire(e.e, unpack(args, 1, #(e.a or {})))
+    end
+    return file(c.save()), last
+end
+
+scenario("replay", function()
+    local recordings = { synthetic = file(wow.readFile(FIXTURES .. "record.lua")).record }
+    for name, rec in pairs(recordings) do
+        local db = replay(rec)
+        eq(db._meta.errors, nil, name .. ": no addon errors")
+        local gains = 0
+        for _, s in ipairs(db.sessions) do
+            for _, e in ipairs(s.events) do
+                gains = gains + (e.kind == "gain" and 1 or 0)
+            end
+        end
+        eq(gains, 0, name .. ": logging in isn't a gain (the bags don't change in a replay)")
+        -- The last probe the character could be read at: the file says the same.
+        local live
+        for _, e in ipairs(rec.events) do
+            if e.s and type(e.s.b) == "number" and e.s.b > 0 then
+                live = e.s
+            end
+        end
+        if live then
+            eq(db.snapshot ~= nil, true, name .. ": a snapshot")
+            eq(db.snapshot.money, REPLAY_MONEY + live.m, name .. ": its money is the last live one")
+            eq(db.snapshot.lockouts and #db.snapshot.lockouts or 0, math.min(live.sv or 0, 10),
+                name .. ": its saves are the last live ones")
+        else
+            eq(db.snapshot, nil, name .. ": never live, no snapshot")
+        end
+    end
 end)
 
 -- Runner ---------------------------------------------------------------------

@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.1"
+local VERSION = "0.9.2"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -500,6 +500,9 @@ local C = {}
 -- The Forever Buddy window and minimap button (U1), filled in near the end;
 -- declared here so the panels above can refresh it.
 local U = { errors = 0 }
+-- Record mode (SIM1 b), filled in after the window; declared here so the
+-- window's Settings tab can offer it.
+local Rec = {}
 
 -- U1's on/off settings (ForeverBuddySettings, per account), on unless
 -- turned off: "tooltips" (alts on item tooltips), "bagMarks" (the tags in
@@ -3514,6 +3517,18 @@ do
                 U.placeButton()
             end,
         },
+        -- Record mode (SIM1 b): the next login session only.
+        { head = "Help fix bugs" },
+        {
+            label = "Record my next session",
+            sub = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
+            get = function()
+                return Rec.next()
+            end,
+            set = function(on)
+                Rec.setNext(on)
+            end,
+        },
     }
 
     local function refreshChecks(checks)
@@ -3540,6 +3555,15 @@ do
                 cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
                 cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
                 cb.label:SetText(o.label)
+                if o.sub then
+                    -- A grey line under the label.
+                    cb.sub = cb:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                    cb.sub:SetPoint("TOPLEFT", cb.label, "BOTTOMLEFT", 0, -2)
+                    cb.sub:SetWidth(W - 90)
+                    cb.sub:SetJustifyH("LEFT")
+                    cb.sub:SetText(o.sub)
+                    y = y - 16
+                end
                 cb.option = o
                 cb:SetScript("OnClick", function(b)
                     -- Nothing changes in combat: the box goes back.
@@ -3611,7 +3635,7 @@ do
             end)
         elseif i == 5 then
             p.checks = buildOptions(p, -8)
-            p:SetHeight(320)
+            p:SetHeight(380)
         end
         panes[i] = p
     end
@@ -3847,6 +3871,155 @@ do
     end
 end
 
+-- Record mode (SIM1 b) ---------------------------------------------------------------
+--
+-- "Record my next session" (Settings tab, /fb record): one login session's
+-- events, in order, with their number and boolean arguments and, after
+-- each, a probe of what the client answers (backpack slots, money, level,
+-- XP, worn items, quests done, saves, combat). It's what the harness can't
+-- invent: the real client's timing. Numbers only: no names, chat, mail,
+-- zones or item names, and no strings from the game but the event names
+-- and a short allowlist. Money is the change since the first probe, and
+-- time is seconds since login. Kept in this character's file as `record`,
+-- which the app doesn't read; replayed by tools/addon-test.
+
+do
+    local MAX = 3000 -- entries; past that, cut short
+    -- The only strings kept as arguments: our addon's name, the unit.
+    local KEEP = { [ADDON_NAME] = true, player = true }
+    -- Quests done are counted only on these (the list can be long).
+    local QUESTS_ON = {
+        PLAYER_LOGIN = true,
+        PLAYER_ENTERING_WORLD = true,
+        QUEST_TURNED_IN = true,
+        PLAYER_CAMPING = true,
+        PLAYER_LEAVING_WORLD = true,
+        PLAYER_LOGOUT = true,
+    }
+
+    local function settings()
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        return ForeverBuddySettings
+    end
+
+    -- "Record my next session": the box's state.
+    function Rec.next()
+        return settings().recordNext == true
+    end
+
+    function Rec.setNext(on)
+        settings().recordNext = on and true or nil
+    end
+
+    -- Seconds, as finely as the client gives them.
+    local function clock()
+        return read(GetTime) or now() or 0
+    end
+
+    local function arg1(v)
+        if v == nil then
+            return "nil"
+        end
+        if isSecret(v) then
+            return "secret"
+        end
+        local t = type(v)
+        if t == "number" or t == "boolean" then
+            return v
+        end
+        if t == "string" and KEEP[v] then
+            return v
+        end
+        return "~" -- anything else: dropped, its place kept
+    end
+
+    local function probe(event)
+        local s = {}
+        s.b = read("C_Container.GetContainerNumSlots", 0)
+        local money = read(GetMoney)
+        if type(money) == "number" and not isSecret(money) then
+            Rec.money0 = Rec.money0 or money
+            s.m = money - Rec.money0
+        end
+        s.l = read(UnitLevel, "player")
+        s.x = read(UnitXP, "player")
+        s.xm = read(UnitXPMax, "player")
+        local worn = 0
+        for slot = 1, 19 do
+            if read(GetInventoryItemID, "player", slot) then
+                worn = worn + 1
+            end
+        end
+        s.w = worn
+        if QUESTS_ON[event] then
+            local ids = read("C_QuestLog.GetAllCompletedQuestIDs")
+            s.q = type(ids) == "table" and #ids or nil
+        else
+            s.q = Rec.last and Rec.last.q -- not counted here: as it was
+        end
+        s.sv = read(GetNumSavedInstances)
+        s.c = read("InCombatLockdown") and true or false
+        s.bk, s.ml = bankOpen and true or false, mailOpen and true or false
+        for k, v in pairs(s) do
+            if isSecret(v) then
+                s[k] = "secret"
+            end
+        end
+        return s
+    end
+
+    -- PLAYER_LOGIN: start if the box was ticked, and untick it; or say once
+    -- that the last one was saved.
+    function Rec.login()
+        local cfg = settings()
+        if cfg.recordNext then
+            cfg.recordNext, cfg.recordedLast = nil, true
+            Rec.data = { addon = VERSION, events = {} }
+            Rec.t0 = clock()
+            say(GOLD_PREFIX .. "recording this session to help fix bugs (numbers only).")
+        elseif cfg.recordedLast then
+            cfg.recordedLast = nil
+            say(GOLD_PREFIX .. "last session's recording is saved. Recording is off again.")
+        end
+    end
+
+    -- Every event, before its handler: the event, its arguments, and the
+    -- probe when it changed since the last entry.
+    function Rec.add(event, ...)
+        local d = Rec.data
+        if not d or d.truncated then
+            return
+        end
+        if #d.events >= MAX then
+            d.truncated = true
+            return
+        end
+        local n = select("#", ...)
+        local args = {}
+        for i = 1, n do
+            args[i] = arg1((select(i, ...)))
+        end
+        local s = probe(event)
+        local same = Rec.last ~= nil
+        for k, v in pairs(s) do
+            same = same and Rec.last[k] == v
+        end
+        for k in pairs(Rec.last or {}) do
+            same = same and s[k] ~= nil
+        end
+        local t = clock() - Rec.t0
+        d.events[#d.events + 1] = {
+            t = math.floor(t * 10 + 0.5) / 10,
+            e = event,
+            a = n > 0 and args or nil,
+            s = not same and s or nil,
+        }
+        Rec.last = s
+    end
+end
+
 -- /fb ------------------------------------------------------------------------------
 --
 -- /fb opens the window (U1) on its last tab; /fb plan, list, errands and
@@ -3867,6 +4040,11 @@ local function slash(msg)
         U.placeButton()
         pcall(U.refresh)
         say(GOLD_PREFIX .. "minimap button " .. (C.opt("minimap") and "shown." or "hidden."))
+    elseif cmd == "record" then
+        -- SIM1 b: the same box as the Settings tab's.
+        Rec.setNext(not Rec.next())
+        pcall(U.refresh)
+        say(GOLD_PREFIX .. (Rec.next() and "recording your next session." or "recording off."))
     elseif cmd == "brief" then
         local b = lastBrief
         if not b then
@@ -4422,6 +4600,8 @@ handlers.PLAYER_LOGOUT = function()
         snapshot = S.logoutSnapshot(session.logout),
         items = items,
         sessions = sessions,
+        -- Record mode (SIM1 b): this session's recording, if it was on.
+        record = Rec.data,
         bridge = receipts and next(receipts) and receipts or nil,
         plan = progress,
         briefed = next(briefed) and briefedKept() or nil,
@@ -4452,6 +4632,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
     local handler = handlers[event]
     if not handler then
         return
+    end
+    -- Record mode (SIM1 b): from PLAYER_LOGIN, each event as it arrives.
+    if event == "PLAYER_LOGIN" then
+        pcall(Rec.login)
+    end
+    if Rec.data then
+        pcall(Rec.add, event, ...)
     end
     local ok, err = pcall(handler, ...)
     if not ok then
