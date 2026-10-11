@@ -937,6 +937,11 @@ function M.new(opts)
         -- gear and money read empty until the bags load, a moment after
         -- entering the world.
         world.torn = opts.forever and true or nil
+        -- o.events = false: loaded only; a replay (SIM1 b) fires the
+        -- recorded events itself.
+        if o.events == false then
+            return
+        end
         client.fire("ADDON_LOADED", "ForeverBuddy")
         client.fire("PLAYER_LOGIN")
         client.fire("PLAYER_ENTERING_WORLD", not o.reload, o.reload == true)
@@ -955,6 +960,11 @@ function M.new(opts)
         client.fire("PLAYER_LEAVING_WORLD")
         client.fire("PLAYER_LOGOUT")
         world.torn = nil
+        return client.save()
+    end
+
+    -- The file the client writes now (after a replay's own PLAYER_LOGOUT).
+    function client.save()
         client.settings = state.env.ForeverBuddySettings
         local db = state.env.ForeverBuddyDB
         if db == nil then
