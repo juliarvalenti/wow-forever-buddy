@@ -2,11 +2,16 @@
 
 import type { AppError, GameStatus } from "./bindings";
 
-/** What a "waiting" line waits for: the exe holding writes to the game
- *  folder ("WowB.exe"), so a wrong match shows itself, or "WoW" when the
- *  app can't tell yet (BUG-LISTS). */
+/** Blizzard's client names (`Wow.exe`, `WowB-arm64.exe`, `WowClassicT.exe`,
+ *  the macOS app): the game itself, the same pattern the write gate uses. */
+const GAME_EXE = /^(wow(classic)?[a-z]?(-64|-arm64)?\.exe|world of warcraft)$/i;
+
+/** What a "waiting" line waits for (BUG-LISTS): "WoW" when it's the game
+ *  itself or the app can't tell yet, else the exe holding writes to the
+ *  game folder ("Launcher.exe"), so a wrong match shows itself. */
 export function holder(status: GameStatus | null | undefined): string {
-  return status?.holding ?? "WoW";
+  const exe = status?.holding;
+  return exe && !GAME_EXE.test(exe) ? exe : "WoW";
 }
 
 /** "48.2 MB". `null` (an f64 the backend couldn't send) shows as a dash. */
