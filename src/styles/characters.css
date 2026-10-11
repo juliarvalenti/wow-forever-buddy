@@ -243,7 +243,8 @@
 .d-panel .bc-tag { font: 400 11px var(--sans, inherit); color: var(--soot); }
 .ch-slot .il { display: flex; align-items: center; gap: 8px; }
 /* O2: a card with its "more" menu beside it (the card is a button), and a
-   gone character's dimmed card with "Manage in Settings" under it. */
+   gone character's dimmed card with "Manage in Settings" laid in it, where
+   its (stale) progress bar would be. */
 .ch-cardbox { position: relative; display: grid; gap: 4px; align-content: start; }
 .ch-card.gone { opacity: .55; filter: saturate(.4); }
 .ch-card.gone:hover { opacity: .75; }
@@ -260,7 +261,10 @@
 .ch-pop button:hover { background: rgba(255,177,92,.08); }
 .ch-link { background: none; border: 0; padding: 0; font: inherit; color: var(--ember-2); cursor: pointer; }
 .ch-link:hover { text-decoration: underline; }
-.ch-manage { justify-self: end; font-size: 11.5px; }
+.ch-card.gone .ch-prog { visibility: hidden; }
+/* The card's padding (12px), its 80px id row and the 10px gap: the 34px
+   progress row. */
+.ch-manage { position: absolute; left: 13px; top: 102px; height: 34px; font-size: 12px; }
 .ch-hidden { margin: -6px 0 12px; font-size: 11.5px; color: var(--soot); }
 
 .bc-menu { position: relative; display: inline-flex; }
