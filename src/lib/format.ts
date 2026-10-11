@@ -1,6 +1,13 @@
 // Formatting for the D screens: sentence case, tabular numbers, no em dashes.
 
-import type { AppError } from "./bindings";
+import type { AppError, GameStatus } from "./bindings";
+
+/** What a "waiting" line waits for: the exe holding writes to the game
+ *  folder ("WowB.exe"), so a wrong match shows itself, or "WoW" when the
+ *  app can't tell yet (BUG-LISTS). */
+export function holder(status: GameStatus | null | undefined): string {
+  return status?.holding ?? "WoW";
+}
 
 /** "48.2 MB". `null` (an f64 the backend couldn't send) shows as a dash. */
 export function bytes(n: number | null | undefined): string {

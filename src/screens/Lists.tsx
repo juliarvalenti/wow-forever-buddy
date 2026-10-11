@@ -28,8 +28,9 @@ import {
 import { useApprovals } from "@/hooks/useApprovals";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useLists } from "@/hooks/useLists";
+import { useGameStatus } from "@/hooks/useGameStatus";
 import { useNotes } from "@/hooks/useNotes";
-import { ago, coins, plural } from "@/lib/format";
+import { ago, coins, holder, plural } from "@/lib/format";
 import { LoginNotes } from "@/screens/LoginNotes";
 import "@/styles/lists.css";
 
@@ -62,7 +63,7 @@ function place(h: ListItem["holders"][number]): string {
 }
 
 /** The Lists slot's state, in bridge.html's words. */
-function sent(d: Delivery): { live: boolean; text: string; hint?: string } {
+function sent(d: Delivery, waitingFor: string): { live: boolean; text: string; hint?: string } {
   switch (d.state) {
     case "synced":
       return {
@@ -72,7 +73,7 @@ function sent(d: Delivery): { live: boolean; text: string; hint?: string } {
     case "pending":
       return { live: true, text: "waiting for a sync", hint: "/reload in game to send" };
     case "waiting":
-      return { live: true, text: "waiting for WoW to close" };
+      return { live: true, text: `waiting for ${waitingFor} to close` };
     case "restart":
       return { live: true, text: "restart WoW once", hint: "after the addon update" };
     case "failed":
@@ -260,7 +261,7 @@ function SentRow({
   delivery: Delivery;
   summary: (string | null)[];
 }) {
-  const s = sent(delivery);
+  const s = sent(delivery, holder(useGameStatus()));
   return (
     <div className="ls-sent">
       {s.live ? <LiveDot /> : <StatusDot />}
