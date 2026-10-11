@@ -306,6 +306,7 @@ One window gathers what's slash-only today. Everything in it is display-only, th
     - **In game:** Login briefing, Lockouts at the entrance, Session coach (with an indented "Hide the coach in combat"), Session card at logout, Marks in your bags.
     - **Tooltips:** Your alts on item tooltips.
     - **This window:** Minimap button.
+    - **Help fix bugs** (SIM1): "Record my next session", with the grey sub-line "Numbers only: no names, chat or mail. Turns itself off when you log out." While on, at login: `Forever Buddy: recording this session to help fix bugs (numbers only).` At the next login, once: `Forever Buddy: last session's recording is saved. Recording is off again.` Nothing in chat at logout. `/fb record` toggles the same box and answers `recording your next session.` or `recording off.`
     - The same panel is registered in Esc › Options › AddOns as "Forever Buddy" (`Settings.RegisterCanvasLayoutCategory`), so both places change the same saved settings.
 - **Slash commands:** `/fb` alone opens the window on its last tab. `/fb plan`, `/fb list`, `/fb errands` and `/fb cleanup` open it on that tab (`/fb list` no longer opens the floating panel; the vendor and AH docking stay). `/fb brief`, `/fb coach`, `/fb card` and `/fb minimap` keep their current behaviour.
 - **Combat:** the window can open and close. Nothing in it changes, and Sync is disabled, as in §4.
