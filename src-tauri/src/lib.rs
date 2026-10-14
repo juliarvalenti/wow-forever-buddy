@@ -11,6 +11,8 @@ mod characters;
 mod cleanup;
 mod commands;
 mod config;
+#[cfg(test)]
+mod contract;
 mod db;
 mod error;
 mod fsx;

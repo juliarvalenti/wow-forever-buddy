@@ -88,3 +88,13 @@ jobs:
       - name: bindings up to date
         shell: bash
         run: git diff --exit-code -- src/lib/bindings.ts
+
+      # H5: cargo test's contract test rewrites the bridge slots the app
+      # builds from harness-written SavedVariables, and runs the addon's
+      # harness (in Lua 5.1, on this OS) against them. Fail if what the app
+      # writes changed without the fixtures being committed.
+      - name: bridge contract up to date
+        shell: bash
+        run: |
+          git add -N src-tauri/tests/fixtures/bridge
+          git diff --exit-code -- src-tauri/tests/fixtures/bridge
