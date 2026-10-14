@@ -16,6 +16,10 @@ local serialize = require("serialize").serialize
 local ROOT = dir .. "/../.."
 local ADDON_DIR = ROOT .. "/src-tauri/resources/addon/ForeverBuddy/"
 local FIXTURES = ROOT .. "/src-tauri/tests/fixtures/addon/"
+-- Layout snapshots (SIM4): text, not SavedVariables, so they stay out of the
+-- Rust fixtures folder, which the ingest tests read whole.
+local SNAPSHOTS = dir .. "/snapshots/"
+local CHECK = arg and arg[1] == "--check"
 local DAY, HOUR, MINUTE = 86400, 3600, 60
 
 -- Checks ---------------------------------------------------------------------
@@ -67,6 +71,72 @@ local function file(text)
         eq(meta.counts[k], v, "_meta.counts." .. k)
     end
     return db
+end
+
+-- A frame tree's layout as stable text: per widget its kind and name, its
+-- anchors (relative to a named frame, its parent, or another widget by its
+-- path), size, text and whether it's shown. Children follow in creation
+-- order, so the same build gives the same text.
+local function layoutDump(root)
+    local paths = {}
+    local function index(w, path)
+        paths[w] = path
+        for i, c in ipairs(w.children) do
+            index(c, path .. "." .. i)
+        end
+    end
+    index(root, rawget(root, "name") or "root")
+    local function rel(r)
+        if r == nil then
+            return "parent"
+        end
+        return rawget(r, "name") or paths[r] or "outside"
+    end
+    local lines = {}
+    local function walk(w, depth)
+        local parts = { string.rep("  ", depth) .. (rawget(w, "kind") or "Frame") }
+        if rawget(w, "name") then
+            parts[#parts + 1] = rawget(w, "name")
+        end
+        for _, a in ipairs(w.points) do
+            parts[#parts + 1] = string.format("%s>%s:%s(%s,%s)", a[1], rel(a[2]), a[3] or a[1], a[4], a[5])
+        end
+        if rawget(w, "width") or rawget(w, "height") then
+            parts[#parts + 1] = string.format("%sx%s", rawget(w, "width") or "?", rawget(w, "height") or "?")
+        end
+        if rawget(w, "text") and rawget(w, "text") ~= "" then
+            parts[#parts + 1] = string.format("%q", rawget(w, "text"))
+        end
+        if not w.shown then
+            parts[#parts + 1] = "hidden"
+        end
+        lines[#lines + 1] = table.concat(parts, " ")
+        for _, c in ipairs(w.children) do
+            walk(c, depth + 1)
+        end
+    end
+    walk(root, 0)
+    return table.concat(lines, "\n") .. "\n"
+end
+
+-- Compares `text` with snapshots/<name>.txt; rewrites it unless --check, so
+-- a layout change shows up as a diff to review and commit.
+local function snapshot(name, text)
+    local path = SNAPSHOTS .. name .. ".txt"
+    local f = io.open(path, "rb")
+    local current = f and f:read("*a")
+    if f then
+        f:close()
+    end
+    if current == text then
+        return
+    end
+    if CHECK then
+        fail("snapshot " .. path .. " differs from the layout now: run without --check and review the diff")
+    end
+    local out = assert(io.open(path, "wb"))
+    out:write(text)
+    out:close()
 end
 
 -- Scenarios ------------------------------------------------------------------
@@ -2154,6 +2224,51 @@ scenario("replay", function()
     end
 end)
 
+-- SIM4: the fake is as strict as the client where a mistake would otherwise
+-- pass. An unknown widget method raises (and is noted even if the addon's
+-- pcall swallows it), a misspelled anchor raises, and a secret value can't
+-- be indexed, measured or joined.
+scenario("strict_fake", function()
+    local c = client()
+    c.login(nil)
+    local f = c.global("CreateFrame")("Frame", nil, c.global("UIParent"))
+    local ok, err = pcall(function()
+        f:SetPointt("TOPLEFT")
+    end)
+    eq(ok, false, "an unknown method raises")
+    eq(tostring(err):match("not modelled in wow.lua: SetPointt") ~= nil, true, "and names it")
+    eq(c.unmodelled[1], "SetPointt", "noted for the run's check")
+    c.unmodelled = {} -- this one was on purpose
+    eq(f.tracker, nil, "an unset field is nil, not a function")
+    eq(pcall(f.SetPoint, f, "TOPLEF"), false, "a misspelled point raises")
+    eq(pcall(f.SetPoint, f, "TOP", nil, "BOTTOMLEF", 0, 0), false, "so does a misspelled relative point")
+    f:SetPoint("TOPLEFT", 8, -4)
+    f:SetPoint("TOPLEFT", c.global("UIParent"), "TOPLEFT", 10, 0)
+    eq(#f.points, 1, "the same point again replaces it")
+    eq(f.points[1][4], 10, "with its offset")
+    local s = c.secret()
+    eq(pcall(function() return s.x end), false, "a secret can't be indexed")
+    -- (# can't be made to error: Lua 5.1 ignores __len on tables.)
+    eq(pcall(function() return "x" .. s end), false, "or joined")
+    eq(pcall(function() return s + 1 end), false, "or added")
+end)
+
+-- SIM4: the window's layout on each tab, from the harness's slots, as a
+-- snapshot in snapshots/window.txt. A layout change is a diff to review.
+scenario("window_layout", function()
+    local c = client({ slots = {
+        ["Data/Plan.lua"] = PLAN, ["Data/Lists.lua"] = LISTS, ["Data/Cleanup.lua"] = CLEANUP,
+    } })
+    c.login(nil)
+    c.advance(5)
+    local parts = {}
+    for _, tab in ipairs({ "plan", "list", "errands", "cleanup" }) do
+        c.slash("/fb " .. tab)
+        parts[#parts + 1] = "== /fb " .. tab .. "\n" .. layoutDump(c.global("ForeverBuddyWindow"))
+    end
+    snapshot("window", table.concat(parts, "\n"))
+end)
+
 -- Runner ---------------------------------------------------------------------
 
 local check = arg and arg[1] == "--check"
@@ -2185,6 +2300,13 @@ for _, s in ipairs(scenarios) do
         for _, c in ipairs(clients) do
             if #c.errors > 0 then
                 ok, text = false, "errors escaped the addon:\n  " .. table.concat(c.errors, "\n  ")
+                break
+            end
+            -- Raised inside the addon's own pcalls too, so it counts even
+            -- when the addon swallowed it.
+            if #c.unmodelled > 0 then
+                ok, text = false, "widget methods wow.lua doesn't model (a typo, or model it): "
+                    .. table.concat(c.unmodelled, ", ")
                 break
             end
             local found = caught(c)

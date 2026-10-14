@@ -128,6 +128,7 @@ function M.new(opts)
     local client = {
         now = M.EPOCH,
         errors = {}, -- errors that escaped the addon's own OnEvent
+        unmodelled = {}, -- widget methods the addon called that the fake lacks
         unknown = {},
         chat = {}, -- lines the addon added to the chat frame
         settings = nil, -- ForeverBuddySettings, the account-wide file
@@ -211,9 +212,29 @@ function M.new(opts)
         return bag >= 0 and bag <= 5 or world.bank_open
     end
 
-    -- An opaque value the addon may hold but must never save.
+    -- An opaque value the addon may hold but must never save. Like the
+    -- client's, it errors on indexing, concatenation, arithmetic and
+    -- ordering. Lua 5.1 can't make == or # error on a table, so those rules
+    -- stay by inspection.
+    local function forbidden(op)
+        return function()
+            error("secret value: " .. op .. " is not allowed", 2)
+        end
+    end
+    local secretMeta = {
+        __index = forbidden("indexing"),
+        __newindex = forbidden("indexing"),
+        __concat = forbidden("concatenation"),
+        __add = forbidden("arithmetic"),
+        __sub = forbidden("arithmetic"),
+        __mul = forbidden("arithmetic"),
+        __div = forbidden("arithmetic"),
+        __unm = forbidden("arithmetic"),
+        __lt = forbidden("comparison"),
+        __le = forbidden("comparison"),
+    }
     function client.secret()
-        local s = {}
+        local s = setmetatable({}, secretMeta)
         secrets[s] = true
         return s
     end
@@ -641,20 +662,30 @@ function M.new(opts)
         return f
     end
 
-    -- Frames are also just enough UI for the plan frame: text, colour,
-    -- shown/enabled and scripts are recorded so scenarios can read and
-    -- click them; any other widget method is a no-op.
+    -- Frames are just enough UI for the addon's windows: text, colour,
+    -- shown/enabled, scripts and layout are recorded so scenarios can read
+    -- and click them. A widget method the fake doesn't model raises, and is
+    -- also noted in client.unmodelled, since the addon pcalls its UI and
+    -- would otherwise swallow it: a typo can't pass as a silent no-op (SIM4,
+    -- from Social Diary's mock). An unset lower-case field is nil, as in the
+    -- client.
     local Frame = {}
-    local function noop() end
     Frame.__index = function(_, k)
         local m = rawget(Frame, k)
         if m ~= nil then
             return m
         end
-        return noop
+        if type(k) == "string" and k:match("^%u") then
+            table.insert(client.unmodelled, k)
+            error("widget method not modelled in wow.lua: " .. k, 2)
+        end
+        return nil
     end
-    local function newWidget(parent)
-        local w = setmetatable({ events = {}, scripts = {}, children = {}, shown = true, enabled = true }, Frame)
+    local function newWidget(parent, kind)
+        local w = setmetatable({
+            events = {}, scripts = {}, children = {}, shown = true, enabled = true,
+            kind = kind, points = {}, layout = {},
+        }, Frame)
         w.parent = parent
         if parent then
             table.insert(parent.children, w)
@@ -662,15 +693,82 @@ function M.new(opts)
         return w
     end
     function Frame:CreateFontString()
-        return newWidget(self)
+        return newWidget(self, "FontString")
     end
     function Frame:CreateTexture()
-        return newWidget(self)
+        return newWidget(self, "Texture")
     end
-    -- The last anchor, { point, relativeTo, relativePoint }, so a scenario
-    -- can tell what a panel docked to.
-    function Frame:SetPoint(point, rel, relPoint)
+
+    -- Layout the client does and the fake doesn't: each call's last
+    -- arguments go on w.layout[method], for the window snapshot.
+    for _, method in ipairs({
+        "EnableMouse", "RegisterForClicks", "RegisterForDrag", "SetClampedToScreen",
+        "SetColorTexture", "SetFrameLevel", "SetFrameStrata", "SetHighlightTexture",
+        "SetJustifyH", "SetMovable", "SetToplevel", "StartMoving", "StopMovingOrSizing",
+        "SetOwner", "SetPortraitToAsset", "SetTitle",
+    }) do
+        Frame[method] = function(self, ...)
+            self.layout[method] = { ... }
+        end
+    end
+    function Frame:SetSize(w, h)
+        self.width, self.height = w, h or w
+    end
+    function Frame:SetWidth(w)
+        self.width = w
+    end
+    function Frame:SetHeight(h)
+        self.height = h
+    end
+    function Frame:SetID(id)
+        self.id = id
+    end
+    function Frame:SetScrollChild(child)
+        self.scrollChild = child
+    end
+
+    -- Anchors as the client keeps them: one per point, a point set again
+    -- replaces it, ClearAllPoints drops them all. Point names are checked,
+    -- as the client does ("TOPLEF" is an error, not a silent misplacement).
+    local ANCHORS = {}
+    for _, p in ipairs({ "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT",
+        "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }) do
+        ANCHORS[p] = true
+    end
+    -- The last anchor stays on w.point, { point, relativeTo, relativePoint },
+    -- so a scenario can tell what a panel docked to; every anchor is in
+    -- w.points, { point, relativeTo, relativePoint, x, y }.
+    function Frame:SetPoint(point, rel, relPoint, x, y)
+        if not ANCHORS[point] then
+            error("Frame:SetPoint(): invalid point " .. tostring(point), 2)
+        end
+        -- SetPoint(point, x, y): relative to the parent.
+        if type(rel) == "number" then
+            rel, relPoint, x, y = nil, nil, rel, relPoint
+        elseif type(rel) == "string" then
+            rel, relPoint, x, y = nil, rel, relPoint, x
+        end
+        if relPoint ~= nil and type(relPoint) ~= "number" and not ANCHORS[relPoint] then
+            error("Frame:SetPoint(): invalid relative point " .. tostring(relPoint), 2)
+        end
+        if type(relPoint) == "number" then
+            relPoint, x, y = nil, relPoint, x
+        end
         self.point = { point, rel, relPoint }
+        local anchor = { point, rel, relPoint, x or 0, y or 0 }
+        for i, a in ipairs(self.points) do
+            if a[1] == point then
+                self.points[i] = anchor
+                return
+            end
+        end
+        table.insert(self.points, anchor)
+    end
+    function Frame:ClearAllPoints()
+        self.points = {}
+    end
+    function Frame:SetAllPoints(rel)
+        self.points = { { "TOPLEFT", rel, "TOPLEFT", 0, 0 }, { "BOTTOMRIGHT", rel, "BOTTOMRIGHT", 0, 0 } }
     end
     function Frame:SetText(text)
         self.text = text
@@ -747,8 +845,9 @@ function M.new(opts)
             error("ForeverBuddy must not print")
         end
         env.SlashCmdList = {}
-        env.CreateFrame = function(_, name, parent)
-            local f = newWidget(parent)
+        env.CreateFrame = function(kind, name, parent)
+            local f = newWidget(parent, kind)
+            f.name = name
             table.insert(state.frames, f)
             if name then
                 env[name] = f
@@ -756,6 +855,7 @@ function M.new(opts)
             return f
         end
         env.UIParent = newWidget(nil)
+        env.UIParent.name = "UIParent"
         -- The game's windows B2 docks beside, the vendor's item buttons (ten a
         -- page), and the Send tab's To field.
         env.MerchantFrame = newWidget(env.UIParent)

@@ -17,6 +17,29 @@ On macOS, `brew install luajit` and run it with `luajit` instead (Homebrew has n
 
 A new API the addon calls needs a default in `wow.lua`'s `api` table. When the addon's output changes, run the harness and commit the fixtures with the change.
 
+## A strict fake (SIM4)
+
+The fake is as strict as the client where a mistake would otherwise pass quietly:
+
+- **Widget methods:**
+  - A widget method `wow.lua` doesn't model raises, naming the method.
+  - The miss is also recorded on the client, so the scenario fails even when the addon's own `pcall` swallowed the error.
+  - A new widget method the addon calls needs a line in `wow.lua`. If it's only layout, add it to the recorded no-ops.
+- **Anchors:** `SetPoint` refuses a misspelled point or relative point. Every anchor is kept on `w.points`, one per point, the same way the client keeps them.
+- **Fields:** an unset lower-case field is `nil`, as in the client.
+- **Secret values** error on indexing, concatenation, arithmetic and ordering. Lua 5.1 can't make `==` or `#` error on a table, so those rules stay by inspection.
+
+The `strict_fake` scenario proves each of these holds.
+
+## Layout snapshots
+
+`window_layout` opens the Forever Buddy window on each tab with the test slots and writes its frame tree to `snapshots/window.txt`. Each line holds a widget's kind, name, anchors, size, text and whether it's hidden.
+
+- **Without `--check`:** the file is rewritten.
+- **With `--check`** (CI): a difference fails the run.
+
+A change to the window's layout therefore shows up as a diff in the PR to review and commit. Snapshots live here, not in the Rust fixtures folder, because the ingest tests read that folder whole.
+
 ## Recordings (SIM1 b)
 
 The fake client only knows what we told it. The real client's timing (what it answers at login, during the logout countdown, after the teardown) comes from **recordings**.
