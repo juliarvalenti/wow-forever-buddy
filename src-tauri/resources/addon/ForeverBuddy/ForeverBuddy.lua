@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.2"
+local VERSION = "0.9.3"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -3885,6 +3885,8 @@ end
 
 do
     local MAX = 3000 -- entries; past that, cut short
+    -- Events too frequent to log one by one: how many, not when.
+    local COUNT_ONLY = { ITEM_DATA_LOAD_RESULT = true }
     -- The only strings kept as arguments: our addon's name, the unit.
     local KEEP = { [ADDON_NAME] = true, player = true }
     -- Quests done are counted only on these (the list can be long).
@@ -3990,6 +3992,13 @@ do
     function Rec.add(event, ...)
         local d = Rec.data
         if not d or d.truncated then
+            return
+        end
+        -- R2a: fires for every item the UI loads (an AH visit is hundreds),
+        -- so it's only counted, or it would use up MAX before the logout.
+        if COUNT_ONLY[event] then
+            d.counts = d.counts or {}
+            d.counts[event] = (d.counts[event] or 0) + 1
             return
         end
         if #d.events >= MAX then
@@ -4501,6 +4510,9 @@ S.GOOD_ON = {
     ZONE_CHANGED_NEW_AREA = true,
     QUEST_TURNED_IN = true,
     TRADE_SKILL_LIST_UPDATE = true,
+    -- R2a: none is taken in combat, and a throttled retry that lands in a
+    -- fight is dropped, so what changed mid-fight (loot) waits for this.
+    PLAYER_REGEN_ENABLED = true,
 }
 
 function S.takeGood(force)
@@ -4619,8 +4631,10 @@ handlers.PLAYER_LOGOUT = function()
         plan_errors = planErrors > 0 and planErrors or nil,
         list_errors = listErrors > 0 and listErrors or nil,
         session_errors = S.errors > 0 and S.errors or nil,
+        window_errors = U.errors > 0 and U.errors or nil,
         missing_events = missingEvents,
         errors = errors,
+        error_counts = S.errorCounts,
     }
     db._meta.counts = counts(db) -- last
     ForeverBuddyDB = db
@@ -4642,8 +4656,11 @@ frame:SetScript("OnEvent", function(_, event, ...)
     end
     local ok, err = pcall(handler, ...)
     if not ok then
+        -- R2a: the first message (usually the cause), and how many.
         errors = errors or {}
-        errors[event] = string.sub(tostring(err), 1, 200)
+        errors[event] = errors[event] or string.sub(tostring(err), 1, 200)
+        S.errorCounts = S.errorCounts or {}
+        S.errorCounts[event] = (S.errorCounts[event] or 0) + 1
     end
     if S.GOOD_ON[event] then
         pcall(S.takeGood)
