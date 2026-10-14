@@ -9,7 +9,13 @@ export function useGoals() {
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    commands.goalsList().then(setGoals, (e) => setError(errorText(e)));
+    commands.goalsList().then(
+      (g) => {
+        setGoals(g);
+        setError(null);
+      },
+      (e) => setError(errorText(e)),
+    );
   }, []);
   useEffect(load, [load]);
   useEvent(events.ingestCompleted, load);
@@ -40,5 +46,5 @@ export function useGoals() {
     },
     [load],
   );
-  return { goals, error, add, remove };
+  return { goals, error, add, remove, reload: load };
 }

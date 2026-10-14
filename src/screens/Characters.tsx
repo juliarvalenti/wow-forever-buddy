@@ -1208,8 +1208,13 @@ function Sheet({
       <div className="ch-topbar">
         <div className="ch-crumbs">
           <button onClick={onBack}>Characters</button>
-          <ChevronRight size={13} aria-hidden />
-          <span>{c ? fullName(c) : "…"}</span>
+          {/* G4: a failed load keeps the crumb at "Characters", not "› …". */}
+          {(c || !error) && (
+            <>
+              <ChevronRight size={13} aria-hidden />
+              <span>{c ? fullName(c) : "…"}</span>
+            </>
+          )}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {c && (
@@ -1226,7 +1231,17 @@ function Sheet({
           </Button>
         </div>
       </div>
-      {error && <Callout tone="bad">{error}</Callout>}
+      {error && (
+        <Callout tone="bad">
+          <span>
+            <b>Couldn't load this character:</b> {error.replace(/[.!?]?$/, ".")}
+          </span>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={reload}>
+            Try again
+          </Button>
+        </Callout>
+      )}
       {tagError && <Callout tone="bad">{tagError}</Callout>}
       {!sheet && !error && <p className="d-muted">Loading…</p>}
       {sheet && c && (
@@ -1379,6 +1394,20 @@ function Sheet({
                 onAccept={cleanup.accept}
                 onDismiss={cleanup.dismiss}
               />
+            )}
+            {!cleanup.cleanup && cleanup.error && (
+              // G4: the panel can't draw without its data; say why.
+              <Panel>
+                <PanelHeader title="Bag cleanup" />
+                <PanelBody>
+                  <p className="d-letter-bad" style={{ margin: 0 }}>
+                    Couldn't load bag cleanup: {cleanup.error}{" "}
+                    <Button variant="ghost" onClick={cleanup.reload}>
+                      Try again
+                    </Button>
+                  </p>
+                </PanelBody>
+              </Panel>
             )}
             <Panel>
               <PanelHeader title="Gold, 30 days">

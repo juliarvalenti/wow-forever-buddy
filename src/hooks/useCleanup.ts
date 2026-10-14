@@ -10,7 +10,13 @@ export function useCleanup(characterId: number) {
   const [cleanup, setCleanup] = useState<Cleanup | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    commands.cleanupGet(characterId).then(setCleanup, (e) => setError(errorText(e)));
+    commands.cleanupGet(characterId).then(
+      (c) => {
+        setCleanup(c);
+        setError(null);
+      },
+      (e) => setError(errorText(e)),
+    );
   }, [characterId]);
   useEffect(load, [load]);
   useEvent(events.ingestCompleted, load);
@@ -23,6 +29,7 @@ export function useCleanup(characterId: number) {
   return {
     cleanup,
     error,
+    reload: load,
     mark: (itemId: number, mark: Mark) => run(commands.cleanupMark(characterId, itemId, mark)),
     clear: (itemId: number) => run(commands.cleanupClear(characterId, itemId)),
     /** B3b: mark one suggestion with its reason, or all with `null`. */

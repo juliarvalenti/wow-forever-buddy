@@ -260,9 +260,14 @@ function Shell() {
       </aside>
 
       <main className="d-main">
-        {deferred && (
+        {(deferred || recovery.statusError) && (
           <div style={{ padding: "16px 24px 0" }}>
-            <RecoveryBanner status={recovery.status} onReview={() => setDeferred(false)} />
+            <RecoveryBanner
+              status={recovery.status}
+              statusError={recovery.statusError}
+              onReview={() => setDeferred(false)}
+              onRetry={recovery.refresh}
+            />
           </div>
         )}
         {current === "setup" && (
@@ -304,7 +309,7 @@ function Shell() {
         {current === "backups" && (
           <Backups
             game={game}
-            restoresLocked={recovery.pending}
+            restoresLocked={recovery.locked}
             folderMissing={folderMissing}
             onCheckFolder={() => setScreen("game")}
             select={openSnapshot}

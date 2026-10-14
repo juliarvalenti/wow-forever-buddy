@@ -114,6 +114,7 @@ SCENARIOS=(
   "fail-macros|dashboard&fail=*|click:css=nav button[title=\"Macros\"]|macros-readonly"
   "fail-settings|dashboard&fail=*|click:css=.d-side-foot button[title=\"Settings\"]|settings"
   "fail-setup|setup-backup&fail=backup_list,addon_status||onboarding-found"
+  "fail-recovery|dashboard&fail=restore_journal_status||dashboard"
 )
 
 echo "== build:mock"

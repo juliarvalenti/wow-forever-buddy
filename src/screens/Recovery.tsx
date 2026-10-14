@@ -203,11 +203,32 @@ function ConfirmRecovery({
 /** The persistent notice after "Decide later". */
 export function RecoveryBanner({
   status,
+  statusError,
   onReview,
+  onRetry,
 }: {
   status: RecoveryStatus | null;
+  /** G4: the restore journal couldn't be read, so restores stay locked. */
+  statusError?: string | null;
   onReview: () => void;
+  onRetry?: () => void;
 }) {
+  if (statusError) {
+    return (
+      <Callout tone="bad">
+        <span>
+          <b>Couldn't check for an unfinished restore:</b> {statusError.replace(/[.!?]?$/, ".")} Restores
+          stay locked until it can. Backups keep running.
+        </span>
+        <span className="d-grow" />
+        {onRetry && (
+          <Button variant="ghost" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </Callout>
+    );
+  }
   if (!status || status.kind === "none") return null;
   return (
     <Callout tone="stone">

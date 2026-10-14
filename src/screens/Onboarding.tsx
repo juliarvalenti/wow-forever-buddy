@@ -139,7 +139,9 @@ function Row({ done, label, right }: { done: boolean; label: string; right?: str
 /** 2. A safety copy first: starts by itself, works with WoW open. A rerun
  *  never takes a second "first" backup. */
 function BackupStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
-  const { list, progress, failed, backUpNow } = useBackups();
+  const { list, progress, failed, backUpNow, error: listError, refresh } = useBackups();
+  // G4: if the backups can't be listed, the first one never starts; say so.
+  const cantList = list == null && listError != null;
   const started = useRef(false);
   const [had, setHad] = useState<boolean | null>(null);
   useEffect(() => {
@@ -202,15 +204,18 @@ function BackupStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void
           The backup didn't finish: {failed}
         </p>
       )}
+      {cantList && <p className="d-letter-bad">Couldn't check your backups: {listError}</p>}
       <div className="d-letter-acts">
         {failed ? (
           <PrimaryButton onClick={() => backUpNow("First backup")}>Retry</PrimaryButton>
+        ) : cantList ? (
+          <PrimaryButton onClick={refresh}>Try again</PrimaryButton>
         ) : (
           <PrimaryButton onClick={onDone} disabled={!done}>
             Continue
           </PrimaryButton>
         )}
-        {failed && (
+        {(failed || cantList) && (
           <Button variant="ghost" onClick={onSkip}>
             Skip this step
           </Button>

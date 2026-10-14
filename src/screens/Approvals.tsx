@@ -322,7 +322,7 @@ export function Approvals({
   onOpenList: (id: number) => void;
 }) {
   const { approvals, error, decide } = useApprovals();
-  const { settings } = useSettings();
+  const { settings, error: settingsError, reload: reloadSettings } = useSettings();
   const on = settings?.agent_access ?? false;
   const waiting = approvals?.waiting ?? [];
   const together = waiting.filter((p) => !needsYou(p));
@@ -340,7 +340,16 @@ export function Approvals({
           <PanelHeader title="Waiting for you">
             {waiting.length > 0 && <span className="d-dim">{waiting.length} · newest first</span>}
           </PanelHeader>
-          {!settings || !approvals ? null : waiting.length > 0 ? (
+          {!settings && settingsError ? (
+            // G4: without settings the panel can't tell on from off; say
+            // why instead of staying blank.
+            <div className="ap-blank">
+              <p className="d-letter-bad">Couldn't read your settings: {settingsError}</p>
+              <Button variant="ghost" onClick={reloadSettings}>
+                Try again
+              </Button>
+            </div>
+          ) : !settings || !approvals ? null : waiting.length > 0 ? (
             <>
               {waiting.map((p) => (
                 <Waiting key={p.id} p={p} decide={decide} onOpenList={onOpenList} />

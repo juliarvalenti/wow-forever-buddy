@@ -134,9 +134,21 @@ export function useRecovery() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<RecoveryPreview | null>(null);
+  // G4: why the status couldn't be read. Unknown isn't "none": restores stay
+  // locked until it can be read (the backend refuses them too).
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    commands.restoreJournalStatus().then(setStatus, () => setStatus(null));
+    commands.restoreJournalStatus().then(
+      (s) => {
+        setStatus(s);
+        setStatusError(null);
+      },
+      (e) => {
+        setStatus(null);
+        setStatusError(errorText(e));
+      },
+    );
   }, []);
   useEffect(refresh, [refresh]);
   useEvent(events.restoreCompleted, refresh);
@@ -183,5 +195,7 @@ export function useRecovery() {
   );
 
   const pending = status != null && status.kind !== "none";
-  return { status, pending, busy, error, confirming, preview, cancel, resolve, refresh };
+  // Restores are locked while one is unfinished, or while we can't tell.
+  const locked = pending || statusError != null;
+  return { status, pending, locked, statusError, busy, error, confirming, preview, cancel, resolve, refresh };
 }
