@@ -53,6 +53,7 @@ import type {
   Tidy,
   TidyCharacter,
   Trigger,
+  UpdateStatus,
   VerifyReport,
   WtfCharacter,
 } from "@/lib/bindings";
@@ -109,6 +110,7 @@ export function installMockIpc(): void {
   // one), "setup-addon", "setup-addon-running", "setup-extras" (Finish
   // there shows the summary).
   const setup = s.startsWith("setup-") ? s.slice("setup-".length) : null;
+  const upd = new URLSearchParams(location.search).get("update");
   const running = s === "dashboard" || s === "noaddon" || s === "dashboard-missing" || s === "setup-addon-running";
   // No ForeverBuddy data yet: the v0.1 screens.
   const noAddon = s === "noaddon" || s === "dashboard-missing" || s === "characters-empty";
@@ -858,8 +860,40 @@ export function installMockIpc(): void {
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
     agent_access: ["settings-agents", "approvals", "approvals-empty", "lists-proposal"].includes(s),
-    ui: (setup ? { "onboarding.step": setup === "addon-running" ? "addon" : setup } : {}) as Record<string, string>,
+    // U2: on by default.
+    check_updates: true,
+    ui: {
+      ...(setup ? { "onboarding.step": setup === "addon-running" ? "addon" : setup } : {}),
+      // `&update=updated`: the first start after an update.
+      ...(upd === "updated" ? { "update.ran": "0.1.9" } : {}),
+    } as Record<string, string>,
   };
+  // U2 (IMPLEMENTING §23): `&update=installer|downloading|ready|waiting|portable|failed|offline`.
+  const updatePhase = (): UpdateStatus["phase"] => {
+    const version = "0.10.0";
+    switch (upd) {
+      case "installer":
+      case "portable":
+        return { kind: "available", version };
+      case "downloading":
+        return { kind: "downloading", version, percent: 42 };
+      case "ready":
+      case "waiting":
+        return { kind: "ready", version, waiting: upd === "waiting" };
+      case "failed":
+      case "offline":
+        return { kind: "failed", version, reason: upd === "failed" ? "signature" : "offline" };
+      default:
+        return { kind: "none" };
+    }
+  };
+  const updateStatus = (): UpdateStatus => ({
+    phase: updatePhase(),
+    installable: upd !== "portable",
+    last_checked: new Date(Date.now() - 40 * 60_000).toISOString(),
+    check_failed: false,
+    checking: false,
+  });
   const secrets = new Map<IntegrationId, boolean>([
     ["curseforge", s.startsWith("settings")],
     ["github", s.startsWith("settings")],
@@ -1081,10 +1115,12 @@ export function installMockIpc(): void {
       const p = patch as {
         item_icons?: boolean | null;
         agent_access?: boolean | null;
+        check_updates?: boolean | null;
         ui?: Record<string, string | null>;
       };
       if (p.item_icons != null) settings.item_icons = p.item_icons;
       if (p.agent_access != null) settings.agent_access = p.agent_access;
+      if (p.check_updates != null) settings.check_updates = p.check_updates;
       for (const [k, v] of Object.entries(p.ui ?? {}))
         if (v === null) delete settings.ui[k];
         else settings.ui[k] = v;
@@ -1119,6 +1155,11 @@ export function installMockIpc(): void {
             ]
           : [],
     }),
+    update_status: updateStatus,
+    update_check: updateStatus,
+    update_download: updateStatus,
+    update_restart: () => null,
+    update_open_release_page: () => null,
     app_info: () => ({
       version: "0.2.0",
       paths: {

@@ -24,7 +24,8 @@ import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useInstall } from "@/hooks/useInstall";
 import { useRecovery } from "@/hooks/useRestore";
-import { useSettings } from "@/hooks/useSettings";
+import { useAppInfo, useSettings } from "@/hooks/useSettings";
+import { useUpdate } from "@/hooks/useUpdate";
 import { duration } from "@/lib/format";
 import { Addons } from "@/screens/Addons";
 import { Adventure } from "@/screens/Adventure";
@@ -41,6 +42,12 @@ import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { Onboarding, SETUP_KEY, type SetupStep, STEPS } from "@/screens/Onboarding";
 import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
+import { UpdateBanner, UpdatedBanner } from "@/screens/UpdateBanner";
+
+/** settings.ui keys for U2: the version the banner's × hid, and the version
+ *  that last ran (for "Updated to …" once after an update). */
+const UPDATE_HIDDEN = "update.hidden";
+const UPDATE_RAN = "update.ran";
 
 type Screen =
   | "dashboard"
@@ -120,6 +127,22 @@ function Shell() {
   // Setup reopened from Settings › Game (O1).
   const [rerun, setRerun] = useState(false);
   const { settings, update: updateSettings } = useSettings();
+  // U2 (IMPLEMENTING §23): the update banner, and "Updated to …" once on
+  // the first start after an update, until you leave that screen.
+  const updateStatus = useUpdate();
+  const version = useAppInfo()?.version;
+  const [updateLater, setUpdateLater] = useState(false);
+  const [updated, setUpdated] = useState<{ version: string; on: Screen } | null>(null);
+  const ran = settings ? (settings.ui?.[UPDATE_RAN] ?? null) : undefined;
+  useEffect(() => {
+    if (ran === undefined || !version || ran === version) return;
+    if (ran !== null) setUpdated({ version, on: screen });
+    void updateSettings({ ui: { [UPDATE_RAN]: version } });
+    // Once per start; `screen` is only where the line first shows.
+  }, [ran, version, updateSettings]);
+  useEffect(() => {
+    if (updated && screen !== updated.on) setUpdated(null);
+  }, [screen, updated]);
   // Keep "session 1h 42m" current.
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 60_000);
@@ -260,6 +283,18 @@ function Shell() {
       </aside>
 
       <main className="d-main">
+        {current !== "setup" &&
+          (updated ? (
+            <UpdatedBanner version={updated.version} />
+          ) : (
+            <UpdateBanner
+              status={updateStatus}
+              dismissed={settings?.ui?.[UPDATE_HIDDEN] ?? null}
+              onDismiss={(v) => void updateSettings({ ui: { [UPDATE_HIDDEN]: v } })}
+              later={updateLater}
+              onLater={() => setUpdateLater(true)}
+            />
+          ))}
         {deferred && (
           <div style={{ padding: "16px 24px 0" }}>
             <RecoveryBanner status={recovery.status} onReview={() => setDeferred(false)} />

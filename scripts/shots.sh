@@ -66,6 +66,15 @@ SCENARIOS=(
   "ah-empty|ah-empty|click:css=.d-side-foot button[title=\"Settings\"];wait:text=Auction House prices|settings"
   "ah-unreadable|ah-unreadable|click:css=.d-side-foot button[title=\"Settings\"];wait:text=Auction House prices|settings"
   "settings|settings|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-svc|settings"
+  # U2: the update banner (dashboard.html?update=…; no stored shots, so next to the dashboard).
+  "update-installer|noaddon&update=installer|wait:css=.d-upd|dashboard"
+  "update-downloading|noaddon&update=downloading|wait:css=.d-upd|dashboard"
+  "update-ready|noaddon&update=ready|wait:css=.d-upd|dashboard"
+  "update-waiting|noaddon&update=waiting|wait:css=.d-upd|dashboard"
+  "update-portable|noaddon&update=portable|wait:css=.d-upd|dashboard"
+  "update-failed|noaddon&update=failed|wait:css=.d-upd|dashboard"
+  "update-updated|noaddon&update=updated|wait:css=.d-upd|dashboard"
+  "update-settings|settings|click:css=.d-side-foot button[title=\"Settings\"];hover:text=Check now|settings"
   # P2b: Approvals (approvals.html, ?state=empty|off).
   "approvals|approvals|click:css=nav button[title=\"Approvals\"];wait:css=.ap-prop|approvals"
   "approvals-empty|approvals-empty|click:css=nav button[title=\"Approvals\"];wait:css=.ap-blank|approvals"

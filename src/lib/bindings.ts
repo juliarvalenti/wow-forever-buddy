@@ -464,6 +464,22 @@ export const commands = {
 	 *  file at fault. Works without `AppState`.
 	 */
 	startupOpenDataFolder: () => __TAURI_INVOKE<null>("startup_open_data_folder"),
+	/**  Where the banner is. The UI calls this on mount, then follows `update-status`. */
+	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
+	/**  Settings › About's "Check now". Does nothing while "Check for updates" is off. */
+	updateCheck: () => __TAURI_INVOKE<UpdateStatus>("update_check"),
+	/**  "Update now" and "Try again" on the installer build: download and verify. */
+	updateDownload: () => __TAURI_INVOKE<UpdateStatus>("update_download"),
+	/**
+	 *  "Restart now": installs the downloaded update and reopens the app, once
+	 *  any backup, restore or write running now has finished.
+	 */
+	updateRestart: () => __TAURI_INVOKE<void>("update_restart"),
+	/**
+	 *  "What's new" and "Download from GitHub": the latest release's page, a
+	 *  fixed URL.
+	 */
+	updateOpenReleasePage: () => __TAURI_INVOKE<null>("update_open_release_page"),
 };
 
 /** Events */
@@ -481,6 +497,7 @@ export const events = {
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
 	sessionsChanged: makeEvent<SessionsChanged>("sessions-changed"),
+	updateStatus: makeEvent<UpdateStatus>("update-status"),
 };
 
 /* Types */
@@ -1154,6 +1171,14 @@ export type ExportReport = {
 	/**  Size of the zip. */
 	bytes: number | null,
 };
+
+export type FailReason = 
+/**  The download didn't pass its signature check. */
+"signature" | 
+/**  GitHub couldn't be reached. */
+"offline" | 
+/**  Anything else; the log has the details. */
+"other";
 
 /**  One `_<name>_` folder under the root. */
 export type Flavor = {
@@ -2236,6 +2261,11 @@ export type Settings = {
 	 */
 	agent_access?: boolean,
 	/**
+	 *  "Check for updates" (U2). On by default; off, the app never asks
+	 *  GitHub for its newest version, not even at start.
+	 */
+	check_updates?: boolean,
+	/**
 	 *  Free-form UI preferences (remembered tabs, filters). The backend never reads it.
 	 *  Strings only; the frontend JSON-encodes anything structured.
 	 */
@@ -2262,6 +2292,7 @@ export type SettingsPatch_Deserialize = {
 	integrations?: IntegrationsPatch | null,
 	item_icons?: boolean | null,
 	agent_access?: boolean | null,
+	check_updates?: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui?: { [key in string]: string | null } | null,
 };
@@ -2278,6 +2309,7 @@ export type SettingsPatch_Serialize = {
 	integrations: IntegrationsPatch | null,
 	item_icons: boolean | null,
 	agent_access: boolean | null,
+	check_updates: boolean | null,
 	/**  Set keys to a string to store them, or to null to remove them. */
 	ui: { [key in string]: string | null } | null,
 };
@@ -2455,6 +2487,32 @@ export type Totals = {
 };
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
+
+/**  Where the banner is (§23's states). */
+export type UpdatePhase = 
+/**  Up to date, or not checked yet. */
+{ kind: "none" } | 
+/**  A newer version is out. */
+{ kind: "available"; version: string } | { kind: "downloading"; version: string; percent: number | null } | 
+/**
+ *  Downloaded and verified. `waiting`: "Restart now" was clicked while a
+ *  backup, restore or write runs; it restarts once that's done.
+ */
+{ kind: "ready"; version: string; waiting: boolean } | { kind: "failed"; version: string; reason: FailReason };
+
+export type UpdateStatus = {
+	phase: UpdatePhase,
+	/**
+	 *  The installer build: "Update now" installs. False on the portable exe
+	 *  (and outside Windows), where the banner links to the release page.
+	 */
+	installable: boolean,
+	/**  When GitHub last answered (RFC 3339 UTC). */
+	last_checked: string | null,
+	/**  The last check didn't get an answer, for Settings › About. */
+	check_failed: boolean,
+	checking: boolean,
+};
 
 export type VerifyReport = {
 	snapshot_id: string,

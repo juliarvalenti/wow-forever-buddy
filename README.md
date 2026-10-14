@@ -23,6 +23,14 @@ Everything the UI needs ships inside the app — no CDN, no Google Fonts:
 - Fonts (Cinzel, Geist) come from `@fontsource` packages and are bundled at
   build time.
 
+The one network call the app makes by itself is the update check: once at
+start and once a day it fetches
+`https://github.com/juliarvalenti/wow-forever-buddy/releases/latest/download/latest.json`
+to read the newest version number. It sends no ids or data, just the app
+version in the user agent. Settings › About › "Check for updates" turns it
+off completely. An update installs only when you click it, and only after
+its signature checks out against the key built into the app.
+
 If you add more warcraftcn components, check the new files for `https://`
 URLs, and fetch binary assets straight from the GitHub repo — the shadcn CLI
 has corrupted the `.webp` files it installed from the warcraftcn registry.
