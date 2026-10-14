@@ -294,9 +294,14 @@ One window gathers what's slash-only today. Everything in it is display-only, th
   - Tooltip: "Forever Buddy", then "Click to open · Drag to move", "Right-click to hide this button" (the verbs in the game's blue), then the freshness line "From Forever Buddy · 21:04".
 - **Addon compartment:** the existing entry stays. A click opens the window now. Its checkboxes move to the Settings tab, and the compartment tooltip keeps only the name and freshness line.
 - **The window:**
-  - `ButtonFrameTemplate` with the portrait showing the same shield, titled "Forever Buddy", about 360 × 420. Movable by the title, with position and last tab saved per account. Esc closes it (`UISpecialFrames`). It never opens by itself.
+  - `ButtonFrameTemplate` with the portrait showing the same shield, titled "Forever Buddy", **about 360 × 320** (Julia's first in-game look showed 420 as mostly empty). Movable by the title, with position and last tab saved per account. Esc closes it (`UISpecialFrames`). It never opens by itself.
+  - **The template's top inset strip is the tab's header line**, never left empty: gold `GameFontNormal` on the left, grey meta on the right. "Tonight's plan" · "Winterspring · 1 of 4"; "Lists" · "2 lists"; "Errands" · "from Ellygie"; "Cleanup" · "on Ellygie"; "Settings" · "also in Esc › Options".
+  - **Scrollbar only when it scrolls:** hide the scroll bar, thumb and arrows whenever the content fits.
+  - **Empty tabs:** the message is centred vertically, with one white line and one grey hint under it ("No plan for Ellygie." / "Make one in Forever Buddy, or ask Claude for one."). Nothing else shows on an empty tab, not even the plan tracker checkbox.
   - Five `PanelTemplates` tabs along the bottom: **Plan · Lists · Errands · Cleanup · Settings**.
   - Footer on every tab: the §4 freshness line and the §5 Sync control (button, typed hint or next-login line, per probe run 4).
+  - **Rows:** item names in their quality colour with the item's 16 px icon before them (`C_Item.GetItemIconByID`). Gold is only for heads; counts and "need 173" are white, and done rows are a single grey line (no second "done").
+  - **Spacing:** 8 px above every gold section head, and 4 px between rows.
 - **Tabs** reuse the existing panels' rows and copy:
   - **Plan:** the §7 steps (current step with the gold edge, done struck through, → waypoints), and a checkbox "Show the plan tracker on screen". Empty: "No plan for Thrandor. Make one in Forever Buddy, or ask Claude for one."
   - **Lists:** every list, as in §10's panel, with "· here" when at a vendor or the AH. Empty: "No lists yet. Make one in Forever Buddy."
