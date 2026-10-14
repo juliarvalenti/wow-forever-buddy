@@ -14,8 +14,10 @@ local M = {}
 local CHUNK = "@ForeverBuddy.lua"
 local hits, entered = {}, {}
 
-local function hook(event, line)
-    local info = debug.getinfo(2, "S")
+-- Called from hook.lua's hook, so the code that ran is level 3 (level 1 is
+-- this function, 2 the shared hook).
+local function onLine(event, line)
+    local info = debug.getinfo(3, "S")
     if not info or info.source ~= CHUNK then
         return
     end
@@ -26,12 +28,16 @@ local function hook(event, line)
     end
 end
 
+local shared = require("hook")
+
 function M.start()
-    debug.sethook(hook, "cl")
+    shared.line = onLine
+    shared.install()
 end
 
 function M.stop()
-    debug.sethook()
+    shared.line = nil
+    shared.install()
 end
 
 -- Lines that hold code, by the estimate above.

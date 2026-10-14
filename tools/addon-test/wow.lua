@@ -13,8 +13,13 @@
 
 local serialize = require("serialize").serialize
 local unpack = unpack or table.unpack
+local hook = require("hook")
 
 local M = {}
+
+-- H6: set by run.lua's --budget, with hook.lua counting instructions; each
+-- client then notes what every handler call cost on client.costs.
+M.budget = false
 
 -- H2: what Forever answers outside the live phase, per API (forever.lua).
 M.FOREVER = require("forever")
@@ -114,6 +119,12 @@ local function pack(...)
     return { n = select("#", ...), ... }
 end
 
+-- A timer's name for the budget report: where its function is defined.
+local function timerLabel(fn)
+    local info = debug and debug.getinfo and debug.getinfo(fn, "S")
+    return info and ("timer " .. (info.source:match("[^/\\@]+$") or "?") .. ":" .. info.linedefined) or "timer"
+end
+
 local function applies(mode, name)
     if mode == "all" then
         return not CLOCK[name]
@@ -139,6 +150,7 @@ function M.new(opts)
         chat = {}, -- lines the addon added to the chat frame
         settings = nil, -- ForeverBuddySettings, the account-wide file
         waypoints = {}, -- C_Map.SetUserWaypoint calls
+        costs = {}, -- with M.budget: { label, n instructions, at } per handler call (H6)
     }
     for _, e in ipairs(opts.unknown_events or {}) do
         client.unknown[e] = true
@@ -1041,6 +1053,23 @@ function M.new(opts)
         return env
     end
 
+    -- Calls one of the addon's handlers as the client does, in a pcall, and
+    -- with --budget (H6) notes what it cost in VM instructions on
+    -- client.costs, against the clock. Only the outermost call counts: a
+    -- click that fires an event costs the click.
+    local depth = 0
+    local function call(label, fn, ...)
+        if not M.budget or depth > 0 then
+            return pcall(fn, ...)
+        end
+        depth = depth + 1
+        local before = hook.count
+        local res = pack(pcall(fn, ...))
+        depth = depth - 1
+        table.insert(client.costs, { label = label, n = hook.count - before, at = client.now })
+        return unpack(res, 1, res.n)
+    end
+
     function client.fire(event, ...)
         M.fired[event] = (M.fired[event] or 0) + 1
         local args = pack(...)
@@ -1053,7 +1082,7 @@ function M.new(opts)
         end
         for _, f in ipairs(state.frames) do
             if f.events[event] and f.scripts.OnEvent then
-                local ok, err = pcall(f.scripts.OnEvent, f, event, unpack(args, 1, args.n))
+                local ok, err = call(event, f.scripts.OnEvent, f, event, unpack(args, 1, args.n))
                 if not ok then
                     table.insert(client.errors, event .. ": " .. tostring(err))
                 end
@@ -1073,7 +1102,7 @@ function M.new(opts)
             end
             table.remove(state.timers, 1)
             client.now = due.at
-            local ok, err = pcall(due.fn)
+            local ok, err = call(timerLabel(due.fn), due.fn)
             if not ok then
                 table.insert(client.errors, "timer: " .. tostring(err))
             end
@@ -1445,7 +1474,7 @@ function M.new(opts)
         local env = state.env
         for key, fn in pairs(env.SlashCmdList or {}) do
             if env["SLASH_" .. key .. "1"] == cmd then
-                local ok, err = pcall(fn, rest)
+                local ok, err = call("slash " .. line, fn, rest)
                 if not ok then
                     table.insert(client.errors, "slash: " .. tostring(err))
                 end
@@ -1473,7 +1502,8 @@ function M.new(opts)
             widget.checked = not widget.checked
         end
         if fn then
-            local ok, err = pcall(fn, widget, which or "LeftButton")
+            local ok, err = call("click " .. tostring(rawget(widget, "name") or rawget(widget, "text") or "?"),
+                fn, widget, which or "LeftButton")
             if not ok then
                 table.insert(client.errors, "click: " .. tostring(err))
             end
@@ -1499,7 +1529,7 @@ function M.new(opts)
             table.insert(data.lines, { leftText = world.bound[id] })
         end
         for _, fn in ipairs(state.tooltip[0] or {}) do
-            local ok, err = pcall(fn, tooltip, data)
+            local ok, err = call("tooltip", fn, tooltip, data)
             if not ok then
                 table.insert(client.errors, "tooltip: " .. tostring(err))
             end

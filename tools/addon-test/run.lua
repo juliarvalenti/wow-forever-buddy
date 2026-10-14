@@ -28,12 +28,78 @@ local function flag(name)
     return false
 end
 local CHECK = flag("--check")
+local BUDGET = flag("--budget")
 local DAY, HOUR, MINUTE = 86400, 3600, 60
 
 -- Checks ---------------------------------------------------------------------
 
 local function fail(msg)
     error(msg, 0)
+end
+
+-- Handler budgets (H6) --------------------------------------------------------
+--
+-- With --budget, every handler call the fake client makes (an event, a
+-- timer, a slash command, a click, a tooltip) is counted in Lua VM
+-- instructions (hook.lua), and the calls at one moment of the fake clock
+-- are summed as a burst: what the client runs before it can draw the next
+-- frame. Counts, not time, so CI gives the same answer every run. The
+-- limits are Lua 5.1's counts (what CI runs; LuaJIT's differ) with room
+-- over the largest the scenarios make today, so a handler that suddenly
+-- costs several times more fails. Scenarios often take several steps at one
+-- moment, so a burst overstates a real frame; one that storms on purpose
+-- (thousands of events to hit a cap) clears c.costs after.
+local HANDLER_BUDGET = 100000
+local BURST_BUDGET = 500000
+
+local costs = { labels = {}, bursts = {} } -- for the report after the run
+
+-- Nil, or why `c`'s handler calls went over. Notes them for the report.
+local function overBudget(c, scenarioName)
+    local problem
+    local bursts, order = {}, {}
+    for _, k in ipairs(c.costs) do
+        local l = costs.labels[k.label]
+        if not l then
+            l = { max = 0, calls = 0, total = 0 }
+            costs.labels[k.label] = l
+        end
+        l.calls, l.total = l.calls + 1, l.total + k.n
+        if k.n > l.max then
+            l.max, l.where = k.n, scenarioName
+        end
+        if k.n > HANDLER_BUDGET and not problem then
+            problem = ("%s cost %d instructions, over the %d budget for one handler call"):format(
+                k.label, k.n, HANDLER_BUDGET)
+        end
+        local b = bursts[k.at]
+        if not b then
+            b = { n = 0, labels = {}, at = k.at, where = scenarioName }
+            bursts[k.at] = b
+            order[#order + 1] = b
+        end
+        b.n = b.n + k.n
+        local last = b.labels[#b.labels]
+        if last and last.label == k.label then
+            last.times = last.times + 1
+        else
+            b.labels[#b.labels + 1] = { label = k.label, times = 1 }
+        end
+    end
+    for _, b in ipairs(order) do
+        local names = {}
+        for i, l in ipairs(b.labels) do
+            names[i] = l.times > 1 and (l.label .. " x" .. l.times) or l.label
+        end
+        b.labels = table.concat(names, ", ")
+        costs.bursts[#costs.bursts + 1] = b
+        if b.n > BURST_BUDGET and not problem then
+            problem = ("handlers at one moment cost %d instructions together, over the %d burst budget: %s"):format(
+                b.n, BURST_BUDGET, b.labels)
+        end
+    end
+    c.costs = {}
+    return problem
 end
 
 local function show(v)
@@ -2155,6 +2221,7 @@ scenario("record", function()
     for _ = 1, 3100 do
         long.fire("PLAYER_MONEY")
     end
+    long.costs = {} -- a storm on purpose, not one the client would send (H6)
     local cut = file(long.logout()).record
     eq(#cut.events, 3000, "capped")
     eq(cut.truncated, true, "cut short")
@@ -2462,6 +2529,43 @@ scenario("strict_fake", function()
     eq(pcall(function() return s + 1 end), false, "or added")
 end)
 
+-- H6: with --budget, a slow handler fails its scenario. (Without it nothing
+-- is counted, and this only checks that.)
+scenario("budget", function()
+    local c = client()
+    c.login(nil)
+    -- A loop of `loops` steps costs a few instructions per step.
+    local loops = HANDLER_BUDGET
+    local f = c.global("CreateFrame")("Frame")
+    f:RegisterEvent("FB_TEST_SLOW")
+    f:SetScript("OnEvent", function()
+        local x = 0
+        for i = 1, loops do
+            x = x + i
+        end
+    end)
+    c.fire("FB_TEST_SLOW")
+    if not wow.budget then
+        eq(#c.costs, 0, "nothing counted without --budget")
+        return
+    end
+    -- Kept out of the run's report.
+    local report = costs
+    costs = { labels = {}, bursts = {} }
+    local over = overBudget(c, "budget")
+    eq(over ~= nil and over:match("^FB_TEST_SLOW cost %d+ instructions, over the") ~= nil, true,
+        "a slow handler goes over: " .. tostring(over))
+    -- Each call under the handler budget, together over the burst's.
+    loops = HANDLER_BUDGET / 10
+    for _ = 1, BURST_BUDGET / loops do
+        c.fire("FB_TEST_SLOW")
+    end
+    over = overBudget(c, "budget")
+    eq(over ~= nil and over:match("burst budget: FB_TEST_SLOW x%d+$") ~= nil, true,
+        "so do many at one moment: " .. tostring(over))
+    costs = report
+end)
+
 -- H3: what the coverage report showed no scenario reached, where it
 -- matters. (Window drags and a button tooltip stay unreached on purpose.)
 scenario("coverage_gaps", function()
@@ -2652,6 +2756,11 @@ local coverage = flag("--coverage") and require("coverage")
 if coverage then
     coverage.start()
 end
+-- H6: --budget counts what each handler call costs (wow.lua's call()).
+if BUDGET then
+    wow.budget = true
+    require("hook").install()
+end
 
 -- R2a: every error the addon catches and counts lands in _meta under one of
 -- these. No scenario expects one, so after each scenario every client's
@@ -2691,6 +2800,11 @@ for _, s in ipairs(scenarios) do
             local found = caught(c)
             if found then
                 ok, text = false, "the addon caught an error:\n  " .. found
+                break
+            end
+            local over = overBudget(c, s.name)
+            if over then
+                ok, text = false, over
                 break
             end
         end
@@ -2837,6 +2951,46 @@ if coverage then
         local f = io.open(summary, "a")
         if f then
             f:write("### Addon coverage\n\n```\n" .. report .. "```\n")
+            f:close()
+        end
+    end
+end
+
+if BUDGET then
+    local rows = {}
+    for label, l in pairs(costs.labels) do
+        rows[#rows + 1] = { label = label, l = l }
+    end
+    table.sort(rows, function(a, b)
+        return a.l.max > b.l.max
+    end)
+    table.sort(costs.bursts, function(a, b)
+        return a.n > b.n
+    end)
+    local out = {}
+    out[#out + 1] = ("Handler budgets: %d per call, %d per burst (Lua VM instructions%s)"):format(
+        HANDLER_BUDGET, BURST_BUDGET, jit and "; LuaJIT counts differ from CI's Lua 5.1" or "")
+    out[#out + 1] = "slowest handlers (most in one call, calls, average, in scenario):"
+    for i = 1, math.min(10, #rows) do
+        local r = rows[i]
+        out[#out + 1] = ("  %8d %6d %8d  %s (%s)"):format(r.l.max, r.l.calls, math.floor(r.l.total / r.l.calls), r.label, r.l.where)
+    end
+    out[#out + 1] = "largest bursts (total, scenario: handlers):"
+    for i = 1, math.min(5, #costs.bursts) do
+        local b = costs.bursts[i]
+        local labels = b.labels
+        if #labels > 90 then
+            labels = labels:sub(1, 87) .. "..."
+        end
+        out[#out + 1] = ("  %8d  %s: %s"):format(b.n, b.where, labels)
+    end
+    local report = table.concat(out, "\n") .. "\n"
+    print(report)
+    local summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary and summary ~= "" then
+        local f = io.open(summary, "a")
+        if f then
+            f:write("### Addon handler budgets\n\n```\n" .. report .. "```\n")
             f:close()
         end
     end

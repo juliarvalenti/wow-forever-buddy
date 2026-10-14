@@ -74,6 +74,16 @@ Re-breaking the login-baseline fix (BUG-ADV) makes 85 of the 200 seeds fail with
 
 When a handler or a branch that matters shows up there, add it to a scenario. `coverage_gaps` holds the ones that didn't fit anywhere else. Window drags and a button's hover tooltip are left out on purpose.
 
+## Handler budgets (H6)
+
+`--budget` (CI runs it with `--check --coverage`) counts what each of the addon's handlers costs every time the fake client calls one: an event, a timer, a slash command, a click or a tooltip. `hook.lua` counts Lua VM instructions, not time, so a CI runner's clock doesn't matter. It's also the harness's one debug hook, which coverage shares.
+
+- **Per call:** over 100,000 instructions (about 1 to 2 ms in the game's Lua) fails the scenario, naming the handler.
+- **Per burst:** the calls at one moment of the fake clock are summed, as what the client runs before it can draw the next frame. Over 500,000 fails. Scenarios often take several steps at one moment, so a burst overstates a real frame. A scenario that storms on purpose (thousands of events to reach a cap) sets `c.costs = {}` afterwards.
+- **Report:** the slowest handlers (most in one call, calls, average, and the scenario) and the largest bursts, also on the job's summary page.
+
+The limits are set from CI's Lua 5.1 counts, with room over the largest today, so they catch a handler that suddenly costs several times more, not small drift. LuaJIT runs with the JIT off while counting and gives different counts. Counts can vary slightly between runs, since `pairs` order isn't fixed. The `budget` scenario proves both checks fire.
+
 ## Layout snapshots
 
 `window_layout` opens the Forever Buddy window on each tab with the test slots and writes its frame tree to `snapshots/window.txt`. Each line holds a widget's kind, name, anchors, size, text and whether it's hidden.
