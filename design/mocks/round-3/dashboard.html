@@ -44,6 +44,23 @@
 </head>
 <body data-page="dashboard" data-wow="running">
 <main class="main">
+  <!-- U2: update banner (IMPLEMENTING §23). ?update=installer|downloading|ready|portable|failed. Top of every screen, one slim line. -->
+  <style>
+    .upd { display: none; align-items: center; gap: 10px; min-height: 36px; padding: 6px 8px 6px 12px; border-radius: var(--r); font-size: 12.5px; color: var(--chalk);
+      background: var(--grit), linear-gradient(180deg, #2f2c28, #22201d); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 0 1px #0a0908, inset 3px 0 0 var(--ember-2); }
+    .upd b { color: var(--chalk-hi); font-weight: 600; }
+    .upd .grow { flex: 1; min-width: 0; }
+    .upd a.ember { color: var(--ember-2); }
+    .upd .bar { width: 140px; }
+    .upd .x { width: 24px; height: 24px; display: grid; place-items: center; color: var(--soot); }
+    .upd .bad { color: var(--bad); }
+  </style>
+  <div class="upd" data-u="installer"><i data-i="spark" class="sm" style="color:var(--ember-2)"></i><span class="grow"><b>Forever Buddy 0.10.0 is out.</b> <a class="ember" href="#">What's new</a></span><button class="btn">Update now</button><button class="x" title="Hide until the next version">×</button></div>
+  <div class="upd" data-u="downloading"><span class="live"></span><span class="grow"><b>Downloading 0.10.0…</b> <span class="muted">You can keep using the app.</span></span><span class="bar" style="display:block"><i class="fill" style="width:42%"></i></span><span class="muted" style="font-size:11.5px">42%</span></div>
+  <div class="upd" data-u="ready"><i data-i="check" class="sm" style="color:var(--ok)"></i><span class="grow"><b>0.10.0 is ready.</b> Restart Forever Buddy to finish. It takes a few seconds.</span><button class="btn ghost">Later</button><button class="btn">Restart now</button></div>
+  <div class="upd" data-u="portable"><i data-i="spark" class="sm" style="color:var(--ember-2)"></i><span class="grow"><b>Forever Buddy 0.10.0 is out.</b> <span class="muted">This copy can't update itself.</span> <a class="ember" href="#">What's new</a></span><button class="btn">Download from GitHub</button><button class="x" title="Hide until the next version">×</button></div>
+  <div class="upd" data-u="failed"><i data-i="alert" class="sm bad"></i><span class="grow"><b>The update didn't install.</b> <span class="muted">The download didn't pass its signature check, so nothing changed.</span></span><button class="btn ghost">Download from GitHub</button><button class="btn">Try again</button><button class="x" title="Hide until the next version">×</button></div>
+  <script>(() => { const u = new URLSearchParams(location.search).get('update'); const el = u && document.querySelector('.upd[data-u="' + u + '"]'); if (el) el.style.display = 'flex'; })();</script>
   <header class="head">
     <div><h1>Dashboard</h1><div class="lede">Sunday, 4 October · Realm Ashenvale · 7 characters</div></div>
     <div class="actions">
