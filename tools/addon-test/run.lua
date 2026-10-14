@@ -2288,6 +2288,151 @@ scenario("replay", function()
     end
 end)
 
+-- H4: chaos. Each seed plays a random session (Forever's loading and
+-- teardown or not, a few APIs secret, then ~30 steps of looting, selling,
+-- combat, /reloads, deaths, zones and money) and checks what must always
+-- hold: the file parses and its counts add up, the caps hold, every gain is
+-- something the session gave, and a snapshot is never hollow. The runner's
+-- after-each checks (no escaped, unmodelled or caught errors) apply to each
+-- seed too. A seed is its own scenario, chaos_<seed>, so a failure names
+-- it; CHAOS_SEEDS=n changes how many run (default 200), CHAOS_ONLY=n runs
+-- one and prints its steps.
+local MAX_SESSIONS_ADDON, MAX_EVENTS_ADDON = 10, 2000
+-- APIs a seed may make secret: they return values the addon must guard.
+local CHAOS_SECRET = { "GetMoney", "UnitXP", "UnitLevel", "GetInventoryItemLink", "C_Container.GetContainerItemInfo" }
+
+local function rng(seed)
+    local s = (seed * 7919) % 2147483647
+    if s <= 0 then
+        s = s + 2147483646
+    end
+    return function(n)
+        s = (s * 16807) % 2147483647
+        return (s % n) + 1
+    end
+end
+
+local function chaos(seed, verbose)
+    local r = rng(seed)
+    local steps = {}
+    local function note(s)
+        steps[#steps + 1] = s
+        if verbose then
+            print("  " .. s)
+        end
+    end
+    local secret = {}
+    for _, name in ipairs(CHAOS_SECRET) do
+        if r(8) == 1 then
+            secret[name] = true
+            note("secret " .. name)
+        end
+    end
+    local forever = r(2) == 1
+    note("forever " .. tostring(forever))
+    local c = client({ forever = forever, secret = next(secret) and secret or nil })
+    -- What the bags hold, so only real items are used or sold; what the
+    -- session gave, which is all a gain may be.
+    local held = { [6948] = 1, [2589] = 4 }
+    local given = {}
+    local ITEMS = { 2589, 14047, 117, 6948 }
+    c.login(nil)
+    for _ = 1, 30 do
+        local k = r(12)
+        if k == 1 then
+            local t = r(900)
+            note("advance " .. t)
+            c.advance(t)
+        elseif k == 2 then
+            local id, n = ITEMS[r(#ITEMS)], r(5)
+            note("loot " .. id .. " x" .. n)
+            c.loot(id, n)
+            held[id], given[id] = (held[id] or 0) + n, true
+        elseif k == 3 then
+            for id, n in pairs(held) do
+                if n > 0 then
+                    note("use " .. id)
+                    c.use(id, 1)
+                    held[id] = n - 1
+                    break
+                end
+            end
+        elseif k == 4 then
+            local on = r(2) == 1
+            note("combat " .. tostring(on))
+            c.combat(on)
+        elseif k == 5 then
+            note("reload")
+            c.combat(false)
+            c.reload()
+        elseif k == 6 then
+            note("levelUp")
+            c.levelUp()
+        elseif k == 7 then
+            local xp = r(3000)
+            note("gainXp " .. xp)
+            c.gainXp(xp)
+        elseif k == 8 then
+            note("die")
+            c.die(r(500))
+        elseif k == 9 then
+            local zone = ({ "Westfall", "Duskwood", "Stormwind City" })[r(3)]
+            note("zone " .. zone)
+            c.enterZone(zone)
+        elseif k == 10 then
+            note("vendor")
+            c.openMerchant({ 117 })
+            if (held[2589] or 0) > 0 then
+                c.sell(2589, 1, 10)
+                held[2589] = held[2589] - 1
+            end
+            c.closeMerchant()
+        elseif k == 11 then
+            local m = r(50000)
+            note("money +" .. m)
+            c.setMoney(c.world.money + m)
+        else
+            note("logout countdown")
+            c.startLogout()
+            c.cancelLogout()
+        end
+    end
+    c.combat(false)
+    local text = c.logout()
+    local function check(ok, what)
+        if not ok then
+            fail("seed " .. seed .. ": " .. what .. "\n  steps: " .. table.concat(steps, "; "))
+        end
+    end
+    local okParse, db = pcall(file, text)
+    check(okParse, "the file doesn't parse or its counts don't add up: " .. tostring(db))
+    check(entries(db.sessions) <= MAX_SESSIONS_ADDON, "more than " .. MAX_SESSIONS_ADDON .. " sessions")
+    for _, s in pairs(db.sessions) do
+        check(entries(s.events) <= MAX_EVENTS_ADDON, "a session past " .. MAX_EVENTS_ADDON .. " events")
+        for _, e in pairs(s.events or {}) do
+            if e.kind == "gain" and e.how == nil then
+                check(given[e.item] == true, "a gain of " .. tostring(e.item) .. " the session never gave")
+            end
+        end
+    end
+    if db.snapshot and db.snapshot.bags then
+        check(next(db.snapshot.bags) ~= nil, "a hollow snapshot (no bags)")
+    end
+end
+
+local CHAOS_ONLY = tonumber(os.getenv("CHAOS_ONLY") or "")
+for seed = 1, CHAOS_ONLY and 0 or tonumber(os.getenv("CHAOS_SEEDS") or "") or 200 do
+    scenario("chaos_" .. seed, function()
+        chaos(seed)
+    end)
+end
+if CHAOS_ONLY then
+    scenario("chaos_" .. CHAOS_ONLY, function()
+        print("chaos seed " .. CHAOS_ONLY .. ":")
+        chaos(CHAOS_ONLY, true)
+    end)
+end
+
 -- SIM4: the fake is as strict as the client where a mistake would otherwise
 -- pass. An unknown widget method raises (and is noted even if the addon's
 -- pcall swallows it), a misspelled anchor raises, and a secret value can't

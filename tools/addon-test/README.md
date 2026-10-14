@@ -41,6 +41,29 @@ The fake is as strict as the client where a mistake would otherwise pass quietly
 
 The `strict_fake` scenario proves each of these holds.
 
+## Chaos (H4)
+
+`chaos_1` … `chaos_200` are seeded random sessions. Each seed picks a setup, plays about 30 random steps, logs out, and checks what must always hold.
+
+- **Setup:** whether Forever's loading and teardown apply, and a few APIs made secret.
+- **Steps:**
+  - time passing, loot, use, a vendor sale and money;
+  - combat on or off, `/reload` and the logout countdown;
+  - level-ups, XP, deaths and zone changes.
+- **What it checks:**
+  - the file parses and `_meta.counts` adds up;
+  - sessions and events stay within the addon's caps;
+  - every plain gain is an item the session actually gave;
+  - a snapshot is never hollow.
+- **Errors:** the runner's after-each checks (escaped, unmodelled or caught errors) apply to each seed.
+
+A failure names its seed and lists the steps. The same seed always plays the same steps.
+
+- **More seeds:** `CHAOS_SEEDS=1000 luajit tools/addon-test/run.lua` runs that many.
+- **One seed:** `CHAOS_ONLY=96 luajit tools/addon-test/run.lua` runs just that seed and prints its steps.
+
+Re-breaking the login-baseline fix (BUG-ADV) makes 85 of the 200 seeds fail with "a gain the session never gave", so the checks do bite.
+
 ## Coverage (H3)
 
 `lua5.1 tools/addon-test/run.lua --check --coverage` (what CI runs) also prints what the scenarios ran of `ForeverBuddy.lua`. On a PR, it's also on the job's summary page. `coverage.lua` collects it with a debug hook; it has no dependencies.
