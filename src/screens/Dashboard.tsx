@@ -66,6 +66,8 @@ import {
 // Copy from design/mocks/round-3/dashboard-noaddon.html (v0.1, no addon).
 
 const MISSING_WHY = "Unlocks when the game folder is found again.";
+// G4: a panel whose data didn't load, under the callout that says why.
+const COULDNT_LOAD = "Couldn't load. Try again above.";
 /** "v0.2.0 · on 7 / 7 characters". */
 function addonCount(s: AddonStatus): string {
   const on = s.enabled_on.length;
@@ -341,7 +343,11 @@ export function Dashboard({
         <span className="d-grow" />
         <span className="d-dim">from the game process</span>
       </PanelHeader>
-      {sessions && shownSessions.length === 0 ? (
+      {!sessions && sessionsError ? (
+        <PanelBody>
+          <p className="d-dim">{COULDNT_LOAD}</p>
+        </PanelBody>
+      ) : sessions && shownSessions.length === 0 ? (
         <PanelBody>
           <p className="d-muted">
             Sessions appear here after you play. Forever Buddy notes when WoW starts and stops.
@@ -471,8 +477,10 @@ export function Dashboard({
         )}
         <Tile
           label="Last backup"
-          value={last ? ago(last.created_at) : list ? "None yet" : "…"}
-          sub={last ? backupLine(last) : "The first one is taken when the game closes."}
+          value={last ? ago(last.created_at) : list ? "None yet" : backupsError ? "–" : "…"}
+          sub={
+            last ? backupLine(last) : !list && backupsError ? "couldn't load" : "The first one is taken when the game closes."
+          }
         />
         <Tile
           label="Game"
@@ -521,8 +529,8 @@ export function Dashboard({
         ) : (
           <Tile
             label="Characters found"
-            value={counted?.length ?? "…"}
-            sub="From your WTF folder"
+            value={counted?.length ?? (sessionsError ? "–" : "…")}
+            sub={!counted && sessionsError ? "couldn't load" : "From your WTF folder"}
           />
         )}
         {!withAddon && (
@@ -530,11 +538,14 @@ export function Dashboard({
             label="Backups"
             value={
               <>
-                {list?.length ?? "…"} <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
+                {list?.length ?? (backupsError ? "–" : "…")}{" "}
+                <small>{list?.length === 1 ? "snapshot" : "snapshots"}</small>
               </>
             }
             sub={
-              storage?.used_bytes != null
+              !list && backupsError
+                ? "couldn't load"
+                : storage?.used_bytes != null
                 ? storage.budget_bytes != null
                   ? `${bytes(storage.used_bytes)} of ${bytes(storage.budget_bytes)} budget`
                   : `${bytes(storage.used_bytes)} used`
@@ -751,6 +762,10 @@ export function Dashboard({
                   </li>
                 ))}
               </ul>
+            ) : !characters && (charactersError || sessionsError) ? (
+              <PanelBody>
+                <p className="d-dim">{COULDNT_LOAD}</p>
+              </PanelBody>
             ) : characters && characters.length === 0 ? (
               <PanelBody>
                 <p className="d-muted">No character folders yet. They appear after you log in once.</p>
