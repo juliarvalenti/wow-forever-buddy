@@ -2773,12 +2773,23 @@ scenario("bursts", function()
     frames.bags = c.frame(function()
         c.fire("BAG_UPDATE_DELAYED")
     end)
+    -- A session at the event cap, then the logout countdown: the card adds
+    -- up the whole session (H4b found it over budget). Fixed here, so every
+    -- run meets it, not only the chaos seeds that happen to.
+    for _ = 1, 2100 do
+        c.loot(2589, 1) -- onto the backpack's Linen Cloth stack
+    end
+    c.advance(10 * 60)
+    frames.logout = c.frame(function()
+        c.startLogout()
+    end)
     -- (Not counted under --coverage, whose hook is already set.)
     local counting = wow.cost.on and debug.gethook() == nil
     for name, n in pairs(frames) do
         eq(n > 0, counting, name .. " was counted")
     end
-    file(c.logout())
+    local db = file(c.logout())
+    eq(#db.sessions[1].events, 2000, "the session reached the cap")
 end)
 
 -- Runner ---------------------------------------------------------------------
@@ -2817,11 +2828,19 @@ end
 -- fit both.
 HANDLER_BUDGET = 150000
 FRAME_BUDGET = 400000
+-- Logging out runs these once, while the player is leaving and nothing
+-- moves on screen, and they do the session's whole bookkeeping (the card's
+-- tally, the last snapshot, the file). A capped session with full bags
+-- takes them near 140k in Lua 5.1, so they get their own, larger budget,
+-- still under the ~300k the card cost before H4b's fix.
+LOGOUT_BUDGET = 220000
+local LOGOUT = { PLAYER_CAMPING = true, PLAYER_LEAVING_WORLD = true, PLAYER_LOGOUT = true }
 
 local function overBudget(c)
     for _, call in ipairs(c.costs) do
-        if call.n > HANDLER_BUDGET then
-            return ("%s took %d instructions (budget %d)"):format(call.name, call.n, HANDLER_BUDGET)
+        local budget = LOGOUT[call.name] and LOGOUT_BUDGET or HANDLER_BUDGET
+        if call.n > budget then
+            return ("%s took %d instructions (budget %d)"):format(call.name, call.n, budget)
         end
     end
     if c.worstFrame > FRAME_BUDGET then
@@ -3016,8 +3035,8 @@ do
     end)
     local lines = {}
     if #rows > 0 then
-        lines[1] = ("Handler cost (%s instructions; budget %d per handler, %d per frame):"):format(
-            jit and "LuaJIT" or "Lua 5.1", HANDLER_BUDGET, FRAME_BUDGET)
+        lines[1] = ("Handler cost (%s instructions; budget %d per handler, %d at logout, %d per frame):"):format(
+            jit and "LuaJIT" or "Lua 5.1", HANDLER_BUDGET, LOGOUT_BUDGET, FRAME_BUDGET)
         for i = 1, math.min(8, #rows) do
             local r = rows[i]
             lines[#lines + 1] = ("  %8d  %s  (%s)"):format(r.n, r.name, r.scenario or "?")
