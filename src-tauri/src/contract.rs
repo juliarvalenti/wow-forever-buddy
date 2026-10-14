@@ -127,9 +127,19 @@ fn run_harness() {
     let script = root().join("tools/addon-test/run.lua");
     let src = std::fs::read_to_string(&script).unwrap();
     let path = script.to_string_lossy().replace('\\', "/");
+    // H4's chaos seeds: a sample here (the addon job on Linux runs them
+    // all), unless CHAOS_SEEDS or CHAOS_ONLY says otherwise.
     lua.load(format!(
         r#"arg = {{ [0] = {path:?}, "--check" }}
-        os.exit = function(code) error("the harness failed (exit " .. tostring(code) .. ")", 0) end"#
+        os.exit = function(code) error("the harness failed (exit " .. tostring(code) .. ")", 0) end
+        local getenv = os.getenv
+        os.getenv = function(k)
+            local v = getenv(k)
+            if k == "CHAOS_SEEDS" and v == nil and getenv("CHAOS_ONLY") == nil then
+                return "40"
+            end
+            return v
+        end"#
     ))
     .exec()
     .unwrap();

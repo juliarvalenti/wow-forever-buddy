@@ -74,6 +74,11 @@ opt-level = 3
 panic = "abort"
 strip = true
 
+# The Lua the harness runs in under `cargo test` (H5): optimized even in test
+# builds, or the chaos seeds and handler counting take several times as long.
+[profile.dev.package.mlua-sys]
+opt-level = 3
+
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.60", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
 # Install detection reads Blizzard's install path from HKLM (spec §1).
