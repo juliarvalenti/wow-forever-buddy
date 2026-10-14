@@ -46,10 +46,13 @@ The `strict_fake` scenario proves each of these holds.
 `chaos_1` … `chaos_200` are seeded random sessions. Each seed picks a setup, plays about 30 random steps, logs out, and checks what must always hold.
 
 - **Setup:** whether Forever's loading and teardown apply, and a few APIs made secret.
+- **Login (H4b):** plain, or by hand in another order: money before `PLAYER_LOGIN`, the bags before `PLAYER_ENTERING_WORLD`, or the bags late with a `BAG_UPDATE_DELAYED` before they've loaded and two after.
 - **Steps:**
   - time passing, loot, use, a vendor sale and money;
   - combat on or off, `/reload` and the logout countdown;
-  - level-ups, XP, deaths and zone changes.
+  - level-ups, XP, deaths and zone changes;
+  - now and then a burst of 2,001 to 2,500 loots, past the event cap on its own (H4b).
+- **Logins in a row (H4b):** one in ten seeds logs in 11 to 13 times, past the session cap. Each login logs out one of three ways (the countdown, the teardown before the countdown, or instantly), and every file written is checked.
 - **What it checks:**
   - the file parses and `_meta.counts` adds up;
   - sessions and events stay within the addon's caps;
@@ -62,7 +65,9 @@ A failure names its seed and lists the steps. The same seed always plays the sam
 - **More seeds:** `CHAOS_SEEDS=1000 luajit tools/addon-test/run.lua` runs that many.
 - **One seed:** `CHAOS_ONLY=96 luajit tools/addon-test/run.lua` runs just that seed and prints its steps.
 
-Re-breaking the login-baseline fix (BUG-ADV) makes 85 of the 200 seeds fail with "a gain the session never gave", so the checks do bite.
+The checks do bite:
+- Re-breaking the login-baseline fix (BUG-ADV) makes 85 of the 200 seeds fail with "a gain the session never gave".
+- Raising the addon's session cap fails 27 seeds, and raising its event cap fails 41. Before H4b no seed reached either cap.
 
 ## Coverage (H3)
 
