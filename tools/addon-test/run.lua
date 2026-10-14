@@ -19,7 +19,15 @@ local FIXTURES = ROOT .. "/src-tauri/tests/fixtures/addon/"
 -- Layout snapshots (SIM4): text, not SavedVariables, so they stay out of the
 -- Rust fixtures folder, which the ingest tests read whole.
 local SNAPSHOTS = dir .. "/snapshots/"
-local CHECK = arg and arg[1] == "--check"
+local function flag(name)
+    for _, a in ipairs(arg or {}) do
+        if a == name then
+            return true
+        end
+    end
+    return false
+end
+local CHECK = flag("--check")
 local DAY, HOUR, MINUTE = 86400, 3600, 60
 
 -- Checks ---------------------------------------------------------------------
@@ -2309,6 +2317,97 @@ scenario("strict_fake", function()
     eq(pcall(function() return s + 1 end), false, "or added")
 end)
 
+-- H3: what the coverage report showed no scenario reached, where it
+-- matters. (Window drags and a button tooltip stay unreached on purpose.)
+scenario("coverage_gaps", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+
+    -- Opening the bags re-tags marked items through the game's OpenAllBags
+    -- (hooksecurefunc), with no bag update.
+    local c = client({ slots = { ["Data/Cleanup.lua"] = CLEANUP } })
+    c.login(nil)
+    c.advance(5)
+    local bag = c.global("ContainerFrame1")
+    local function tagOf(slot)
+        local t = bag.buttons[slot].children[1]
+        return t and t.shown and t.texture or nil
+    end
+    c.openBags()
+    c.advance(1)
+    eq(tagOf(1), "Interface\\Minimap\\Tracking\\Mailbox", "opening the bags tags them")
+
+    -- A vendor's next page: the game redraws it with MerchantFrame_Update,
+    -- no event, and the docked list follows.
+    local v = client({ slots = { ["Data/Lists.lua"] = LISTS } })
+    v.login(nil)
+    v.openMerchant({ 117 })
+    local f = v.global("ForeverBuddyListFrame")
+    local function here(name)
+        for _, row in ipairs(f.rows) do
+            if row.shown and row.label.text and row.label.text:find(name, 1, true) then
+                return row.label.text:find("here", 1, true) ~= nil
+            end
+        end
+        return false
+    end
+    eq(here("Linen Cloth"), false, "page 1 has no linen")
+    v.merchantPage(2, { 2589 })
+    eq(here("Linen Cloth"), true, "page 2 has: the hook redrew the list")
+
+    -- Without GetInventoryItemID, a worn item's id comes from its link.
+    local l = client({ api = { GetInventoryItemID = false } })
+    local db = file(play(l, nil, 1))
+    eq(db.items[25] ~= nil, true, "the worn sword is still noted (from its link)")
+
+    -- Quitting (not logging out) shows the session card too.
+    local q = client()
+    q.login(nil)
+    q.advance(30 * MINUTE)
+    q.gainXp(1000) -- the card needs a session with something in it
+    q.advance(30 * MINUTE)
+    q.fire("PLAYER_QUITING")
+    eq(q.global("ForeverBuddyCardFrame").shown, true, "the card on /quit")
+
+    -- Five facts: the briefing shows four and points at /fb brief.
+    local b = client({ slots = {
+        ["Data/Briefing.lua"] = briefingSlot(), ["Data/Lists.lua"] = LISTS, ["Data/Plan.lua"] = PLAN,
+    } })
+    b.world.questlog = { { questID = 176, done = true } }
+    b.world.durability = { [5] = { 20, 100 } }
+    b.login(nil)
+    b.advance(5)
+    eq(b.chat[1]:match("and more: /fb brief$") ~= nil, true, "capped at four: " .. tostring(b.chat[1]))
+    eq(b.chat[1]:sub(1, #PREFIX), PREFIX, "one line")
+
+    -- Plate: a paladin at 60 can wear it, a priest can't.
+    local alts = '\t["alts"] = {\n'
+        .. alt("Thrandor", "PALADIN", 60, {}, nil, "Vargur")
+        .. alt("Grom", "PALADIN", 60, { [1] = 40 })
+        .. alt("Sela", "PRIEST", 60, { [1] = 10 })
+        .. '\t},\n'
+    local p = client({ slots = {
+        ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", alts .. '\t["items"] = {},\n'),
+        ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", alts .. '\t["items"] = {},\n'),
+    } })
+    p.login(nil)
+    p.world.equipped[1] = 10004 -- this character wears it, so it isn't the best fit
+    local line = table.concat(p.hover(10004), "\n")
+    eq(line:find("Grom", 1, true) ~= nil, true, "a paladin can wear plate: " .. line)
+    eq(line:find("Sela", 1, true), nil, "a priest can't")
+
+    -- Two Settings boxes no scenario ticked: the coach, and record mode.
+    local s = client()
+    s.login(nil)
+    s.click(setting(s, "Session coach"))
+    eq(s.global("ForeverBuddySettings").coach, true, "the coach box turns it on")
+    eq(s.global("ForeverBuddyCoachFrame").shown, true, "and shows it")
+    local rec = setting(s, "Record my next session")
+    s.click(rec)
+    eq(s.global("ForeverBuddySettings").recordNext, true, "record mode armed")
+    s.click(rec)
+    eq(s.global("ForeverBuddySettings").recordNext, nil, "and disarmed, nothing left saved")
+end)
+
 -- SIM4: the window's layout on each tab, from the harness's slots, as a
 -- snapshot in snapshots/window.txt. A layout change is a diff to review.
 scenario("window_layout", function()
@@ -2401,8 +2500,13 @@ end)
 
 -- Runner ---------------------------------------------------------------------
 
-local check = arg and arg[1] == "--check"
+local check = CHECK
 local failures, stale = 0, 0
+-- H3: --coverage notes what the scenarios ran of ForeverBuddy.lua.
+local coverage = flag("--coverage") and require("coverage")
+if coverage then
+    coverage.start()
+end
 
 -- R2a: every error the addon catches and counts lands in _meta under one of
 -- these. No scenario expects one, so after each scenario every client's
@@ -2575,6 +2679,21 @@ do
     for _, p in ipairs(problems) do
         failures = failures + 1
         print("FAIL fidelity: " .. p)
+    end
+end
+
+if coverage then
+    coverage.stop()
+    local report = coverage.report(wow.readFile(ADDON_DIR .. "ForeverBuddy.lua"))
+    print(report)
+    -- On a PR, the job's summary page shows it too.
+    local summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary and summary ~= "" then
+        local f = io.open(summary, "a")
+        if f then
+            f:write("### Addon coverage\n\n```\n" .. report .. "```\n")
+            f:close()
+        end
     end
 end
 

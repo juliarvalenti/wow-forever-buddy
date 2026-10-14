@@ -39,4 +39,6 @@ jobs:
 
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
 
-      - run: lua5.1 tools/addon-test/run.lua --check
+      # --coverage prints what the scenarios ran of ForeverBuddy.lua (H3) and
+      # puts it on the job's summary page.
+      - run: lua5.1 tools/addon-test/run.lua --check --coverage

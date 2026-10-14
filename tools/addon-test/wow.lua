@@ -904,6 +904,23 @@ function M.new(opts)
         for i = 1, 10 do
             env["MerchantItem" .. i .. "ItemButton"] = newWidget(env.MerchantFrame)
         end
+        -- The game's own functions the addon hooks: MerchantFrame_Update
+        -- redraws a vendor page, the bag ones open the bag frames (H3: these
+        -- hooks never ran in the harness before). hooksecurefunc runs the
+        -- hook after the original, as the client does.
+        env.MerchantFrame_Update = function() end
+        for _, name in ipairs({ "OpenAllBags", "ToggleAllBags", "OpenBag", "ToggleBag", "ToggleBackpack" }) do
+            env[name] = function() end
+        end
+        env.hooksecurefunc = function(name, hook)
+            local original = env[name]
+            assert(type(original) == "function", "hooksecurefunc: no function " .. tostring(name))
+            env[name] = function(...)
+                local r = pack(original(...))
+                hook(...)
+                return unpack(r, 1, r.n)
+            end
+        end
         env.AuctionHouseFrame = newWidget(env.UIParent)
         env.MailFrame = newWidget(env.UIParent)
         env.SendMailNameEditBox = newWidget(env.MailFrame)
@@ -1306,6 +1323,19 @@ function M.new(opts)
     function client.openMerchant(items)
         world.merchant = items or {}
         client.fire("MERCHANT_SHOW")
+    end
+
+    -- The vendor turns to another page: what it sells there, and the game
+    -- redraws it through MerchantFrame_Update (no event).
+    function client.merchantPage(page, items)
+        world.merchant = items or {}
+        state.env.MerchantFrame.page = page
+        state.env.MerchantFrame_Update()
+    end
+
+    -- The player opens the bags (B key): the game's OpenAllBags.
+    function client.openBags()
+        state.env.OpenAllBags()
     end
 
     -- The auction house: opened, browsed (ids in the results), one item's
