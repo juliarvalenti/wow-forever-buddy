@@ -39,6 +39,16 @@ The fake is as strict as the client where a mistake would otherwise pass quietly
 
 The `strict_fake` scenario proves each of these holds.
 
+## Coverage (H3)
+
+`lua5.1 tools/addon-test/run.lua --check --coverage` (what CI runs) also prints what the scenarios ran of `ForeverBuddy.lua`. On a PR, it's also on the job's summary page. `coverage.lua` collects it with a debug hook; it has no dependencies.
+
+- **Lines:** lines run against an estimate of the code lines. Lua 5.1 can't list a chunk's executable lines, so blank lines, comments, closing keywords, bare `local` declarations and table-constructor entries don't count.
+- **Event handlers and other functions never entered.** This list is exact, and it's the part to act on.
+- **Unrun stretches of 3 or more code lines** inside functions that did run: branches, roughly.
+
+When a handler or a branch that matters shows up there, add it to a scenario. `coverage_gaps` holds the ones that didn't fit anywhere else. Window drags and a button's hover tooltip are left out on purpose.
+
 ## Layout snapshots
 
 `window_layout` opens the Forever Buddy window on each tab with the test slots and writes its frame tree to `snapshots/window.txt`. Each line holds a widget's kind, name, anchors, size, text and whether it's hidden.
