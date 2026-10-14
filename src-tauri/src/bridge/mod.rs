@@ -12,6 +12,8 @@
 //! The first producer is the tooltip index (`tooltip`, spec §5).
 
 pub mod briefing;
+#[cfg(test)]
+mod gate_tests;
 pub mod tooltip;
 
 use rusqlite::{params, OptionalExtension};
