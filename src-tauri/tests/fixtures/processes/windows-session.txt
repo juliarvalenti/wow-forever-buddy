@@ -1,0 +1,60 @@
+# A Windows play session, as the process list shows it to the write gate (G3).
+#
+# The layout is Blizzard's as documented, not yet a capture from Julia's
+# machine. Battle.net and its helpers live in Program Files (x86)\Battle.net,
+# the update agent in ProgramData\Battle.net\Agent, and the voice proxy in
+# the game's Utils folder:
+#   https://www.file.net/process/battle.net%20helper.exe.html
+#   https://file.info/windows/agent_exe.html
+#   https://www.file.net/process/wowvoiceproxy.exe.html
+#
+# Format: "== <step>" starts a step; each line after it is one process,
+# "name|path" (an empty path: access denied). {WOW} is the WoW folder.
+# "expect: free" or "expect: held <exe>" is what the gate must say then.
+
+== Battle.net open, WoW not started yet
+Battle.net.exe|C:/Program Files (x86)/Battle.net/Battle.net.exe
+Battle.net.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net.exe
+Battle.net Helper.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net Helper.exe
+Battle.net Helper.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net Helper.exe
+Agent.exe|C:/ProgramData/Battle.net/Agent/Agent.9361/Agent.exe
+explorer.exe|C:/Windows/explorer.exe
+expect: free
+
+== WoW running, with its voice proxy
+Battle.net.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net.exe
+Battle.net Helper.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net Helper.exe
+Agent.exe|C:/ProgramData/Battle.net/Agent/Agent.9361/Agent.exe
+WowB.exe|{WOW}/_classic_beta_/WowB.exe
+WowVoiceProxy.exe|{WOW}/_classic_beta_/Utils/WowVoiceProxy.exe
+expect: held WowB.exe
+
+== WoW running, its path unreadable (another user, or elevated)
+Agent.exe|C:/ProgramData/Battle.net/Agent/Agent.9361/Agent.exe
+WowB.exe|
+expect: held WowB.exe
+
+== WoW crashed: the crash reporter is up, the game is gone
+Battle.net.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net.exe
+BlizzardError.exe|{WOW}/_classic_beta_/BlizzardError.exe
+WowVoiceProxy.exe|{WOW}/_classic_beta_/Utils/WowVoiceProxy.exe
+expect: free
+
+== WoW closed; the voice proxy and the reporter's folder linger
+Battle.net Helper.exe|C:/Program Files (x86)/Battle.net/Battle.net.15634/Battle.net Helper.exe
+WowVoiceProxy.exe|{WOW}/_classic_beta_/Utils/WowVoiceProxy.exe
+Reporter.exe|{WOW}/_classic_beta_/Blizzard Error/Reporter.exe
+Agent.exe|C:/ProgramData/Battle.net/Agent/Agent.9361/Agent.exe
+expect: free
+
+== Something else in the WoW folder (a renamed game fails closed)
+Launcher.exe|{WOW}/Launcher.exe
+expect: held Launcher.exe
+
+== A WoW-named exe outside the folder (another install)
+Wow.exe|D:/Games/World of Warcraft/_retail_/Wow.exe
+expect: held Wow.exe
+
+== Everything closed
+explorer.exe|C:/Windows/explorer.exe
+expect: free
