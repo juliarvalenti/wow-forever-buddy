@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.4"
+local VERSION = "0.9.5"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -2932,22 +2932,34 @@ local function tally()
     if type(level) == "number" and type(s.start.level) == "number" and level > s.start.level then
         out.ding = level
     end
+    -- Gains are added up per item first, then each item is priced and
+    -- ranked once (H6: a 2,000-event session made the logout card and the
+    -- coach's tick go over budget). In the order first gained, so a tie for
+    -- best find still goes to the earlier one.
+    local gained, order = {}, {}
     for _, e in ipairs(s.events or {}) do
         if e.kind == "quest" then
             out.quests = out.quests + 1
         elseif e.kind == "gain" and e.how == nil and type(e.item) == "number" then
-            local n = num(e.count)
-            out.loot = out.loot + n
-            local p = scanPrice(e.item)
-            if p then
-                out.worth, out.priced = out.worth + p * n, true
+            if not gained[e.item] then
+                gained[e.item] = 0
+                order[#order + 1] = e.item
             end
-            local info = items[e.item]
-            local q = info and num(info.quality) or 0
-            if info and q >= 2 and (not out.best or q > out.best.q
-                or (q == out.best.q and num(info.ilvl) > num(out.best.ilvl))) then
-                out.best = { name = info.name, q = q, ilvl = info.ilvl }
-            end
+            gained[e.item] = gained[e.item] + num(e.count)
+        end
+    end
+    for _, id in ipairs(order) do
+        local n = gained[id]
+        out.loot = out.loot + n
+        local p = scanPrice(id)
+        if p then
+            out.worth, out.priced = out.worth + p * n, true
+        end
+        local info = items[id]
+        local q = info and num(info.quality) or 0
+        if info and q >= 2 and (not out.best or q > out.best.q
+            or (q == out.best.q and num(info.ilvl) > num(out.best.ilvl))) then
+            out.best = { name = info.name, q = q, ilvl = info.ilvl }
         end
     end
     if xp and out.length > 0 then

@@ -40,9 +40,13 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
 
       # --coverage prints what the scenarios ran of ForeverBuddy.lua (H3) and
-      # puts it on the job's summary page.
+      # puts it on the job's summary page. A sample of the chaos seeds is
+      # enough for coverage; the run below plays them all.
       - run: lua5.1 tools/addon-test/run.lua --check --coverage
+        env:
+          CHAOS_SEEDS: "40"
 
       # H6: again without coverage's hook, so each handler's cost is counted
-      # and held to its budget; the slowest go on the summary page.
+      # and held to its budget; the slowest go on the summary page. All the
+      # chaos seeds: their long sessions are where the budgets bite (H4b).
       - run: lua5.1 tools/addon-test/run.lua --check
