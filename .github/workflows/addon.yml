@@ -42,3 +42,7 @@ jobs:
       # --coverage prints what the scenarios ran of ForeverBuddy.lua (H3) and
       # puts it on the job's summary page.
       - run: lua5.1 tools/addon-test/run.lua --check --coverage
+
+      # H6: again without coverage's hook, so each handler's cost is counted
+      # and held to its budget; the slowest go on the summary page.
+      - run: lua5.1 tools/addon-test/run.lua --check

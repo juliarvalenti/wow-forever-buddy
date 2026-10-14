@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario snapshot). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.9.3",
+		["addon"] = "0.9.4",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,

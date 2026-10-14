@@ -22,6 +22,63 @@ M.FOREVER = require("forever")
 -- per API name, and events fired.
 M.calls, M.fired = {}, {}
 
+-- H6: what the addon's code costs, in Lua VM instructions, counted by a
+-- debug hook. Instructions, not milliseconds: the same on every run of the
+-- same interpreter, where wall-clock time would flake on a busy CI runner.
+-- (LuaJIT counts its own bytecode, so its numbers differ from Lua 5.1's;
+-- the budgets in run.lua have room for both. JIT is off while counting,
+-- since compiled code doesn't call hooks.)
+--
+-- A handler is one call into the addon: an event's OnEvent, a timer, a
+-- slash command or a click. A frame is what a scenario runs inside
+-- client.frame(fn): a burst the client delivers in one frame (a page of
+-- AH results, hundreds of item loads), run back to back.
+-- When another hook is already set (the --coverage run), nothing is counted.
+local COUNT_STEP = 10
+M.cost = {
+    worst = {}, -- handler name -> { n = instructions, scenario = name }
+    frame = { n = 0 }, -- the costliest frame: { n, scenario, at }
+    scenario = nil, -- set by run.lua, for the report
+    on = debug and debug.sethook ~= nil,
+}
+if M.cost.on and jit and jit.off then
+    jit.off()
+end
+
+-- Runs fn(...) and returns what it returns, counting its cost under `name`
+-- into the client's `budget` record.
+local function metered(client, name, fn, ...)
+    if not M.cost.on or debug.gethook() then
+        return fn(...)
+    end
+    local n = 0
+    M.cost.metering = true
+    debug.sethook(function()
+        n = n + 1
+    end, "", COUNT_STEP)
+    local r = (function(...)
+        return { n = select("#", ...), ... }
+    end)(pcall(fn, ...))
+    debug.sethook()
+    M.cost.metering = false
+    local cost = n * COUNT_STEP
+    local w = M.cost.worst[name]
+    if not w or cost > w.n then
+        M.cost.worst[name] = { n = cost, scenario = M.cost.scenario }
+    end
+    client.costs[#client.costs + 1] = { name = name, n = cost }
+    -- Inside client.frame: part of that frame's cost.
+    local f = client.inFrame
+    if f then
+        f.n = f.n + cost
+    end
+    if not r[1] then
+        error(r[2], 0)
+    end
+    return unpack(r, 2, r.n)
+end
+M.metered = metered
+
 -- Fri 2 Oct 2026, 18:00 UTC: a fixed clock keeps the fixtures stable.
 M.EPOCH = 1790964000
 
@@ -139,7 +196,28 @@ function M.new(opts)
         chat = {}, -- lines the addon added to the chat frame
         settings = nil, -- ForeverBuddySettings, the account-wide file
         waypoints = {}, -- C_Map.SetUserWaypoint calls
+        -- H6: each call into the addon, { name, n = instructions }, and the
+        -- costliest client.frame (see `metered`).
+        costs = {},
+        worstFrame = 0,
     }
+
+    -- H6: runs fn as one frame of the client: everything the addon does
+    -- inside counts toward one frame's cost. Returns that cost.
+    function client.frame(fn)
+        local f = { n = 0 }
+        client.inFrame = f
+        local ok, err = pcall(fn)
+        client.inFrame = nil
+        if not ok then
+            error(err, 0)
+        end
+        client.worstFrame = math.max(client.worstFrame, f.n)
+        if f.n > M.cost.frame.n then
+            M.cost.frame = { n = f.n, scenario = M.cost.scenario }
+        end
+        return f.n
+    end
     for _, e in ipairs(opts.unknown_events or {}) do
         client.unknown[e] = true
     end
@@ -677,6 +755,15 @@ function M.new(opts)
                     return PHASED[instead]()
                 end
             end
+            -- H6: the real client's APIs are C, so the fake's Lua for them
+            -- isn't the addon's cost: the count pauses while it runs.
+            local hook, mask, count = debug.gethook()
+            if hook and M.cost.metering then
+                debug.sethook()
+                local r = pack(f(...))
+                debug.sethook(hook, mask, count)
+                return unpack(r, 1, r.n)
+            end
             return f(...)
         end
     end
@@ -1053,7 +1140,7 @@ function M.new(opts)
         end
         for _, f in ipairs(state.frames) do
             if f.events[event] and f.scripts.OnEvent then
-                local ok, err = pcall(f.scripts.OnEvent, f, event, unpack(args, 1, args.n))
+                local ok, err = metered(client, event, pcall, f.scripts.OnEvent, f, event, unpack(args, 1, args.n))
                 if not ok then
                     table.insert(client.errors, event .. ": " .. tostring(err))
                 end
@@ -1073,7 +1160,7 @@ function M.new(opts)
             end
             table.remove(state.timers, 1)
             client.now = due.at
-            local ok, err = pcall(due.fn)
+            local ok, err = metered(client, "timer", pcall, due.fn)
             if not ok then
                 table.insert(client.errors, "timer: " .. tostring(err))
             end
@@ -1445,7 +1532,7 @@ function M.new(opts)
         local env = state.env
         for key, fn in pairs(env.SlashCmdList or {}) do
             if env["SLASH_" .. key .. "1"] == cmd then
-                local ok, err = pcall(fn, rest)
+                local ok, err = metered(client, rest ~= "" and (cmd .. " " .. rest) or cmd, pcall, fn, rest)
                 if not ok then
                     table.insert(client.errors, "slash: " .. tostring(err))
                 end
@@ -1473,7 +1560,7 @@ function M.new(opts)
             widget.checked = not widget.checked
         end
         if fn then
-            local ok, err = pcall(fn, widget, which or "LeftButton")
+            local ok, err = metered(client, "click", pcall, fn, widget, which or "LeftButton")
             if not ok then
                 table.insert(client.errors, "click: " .. tostring(err))
             end
