@@ -13,7 +13,7 @@ On macOS, `brew install luajit` and run it with `luajit` instead (Homebrew has n
   - It also models a small game world (money, XP, zone, bags, gear, repair cost). Helpers such as `loot`, `sell`, `die`, `turnIn` and `bank` change that world and fire the events the client would.
   - Any API can be made secret, throwing or missing. `RegisterEvent` can refuse named events, and chosen events can deliver secret arguments.
 - `serialize.lua`: writes a table the way the client writes SavedVariables, with keys sorted.
-- `run.lua`: the scenarios. Each one checks the file the addon wrote, including `_meta.counts` against its own recount. Scenarios that return a file save it as `<scenario>.lua`.
+- `run.lua`: the scenarios. Each one checks the file the addon wrote, including `_meta.counts` against its own recount. After every scenario, each client's file must have no caught errors (`_meta.errors` and the `*_errors` counters). Scenarios that return a file save it as `<scenario>.lua`.
 
 A new API the addon calls needs a default in `wow.lua`'s `api` table. When the addon's output changes, run the harness and commit the fixtures with the change.
 
@@ -32,7 +32,7 @@ The fake client only knows what we told it. The real client's timing (what it an
   - `c`: combat
   - `bk`, `ml`: bank and mailbox open
 
-  There are no names, chat, mail, zones or item names, and time is seconds since login.
+  There are no names, chat, mail, zones or item names, and time is seconds since login. `ITEM_DATA_LOAD_RESULT`, which fires for every item the UI loads, is only counted (`counts`), not logged.
 - **Replaying:** the `replay` scenario plays each recording back. The probes drive the fake client (no backpack means the character isn't readable: `torn`), and the events fire in order. Then it checks that:
   - the file has no hollow snapshot
   - logging in isn't a gain

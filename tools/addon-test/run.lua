@@ -444,6 +444,34 @@ scenario("forever", function()
     eq(file(text).snapshot, nil, "no hollow snapshot")
 end)
 
+-- R2a: no snapshot is taken in combat, and the throttled retry that lands
+-- mid-fight is dropped. Leaving combat takes one, so loot from the fight is
+-- in the file even when nothing else changes before an instant logout.
+scenario("combat_loot", function()
+    local c = stocked({ forever = true })
+    c.login(nil)
+    c.advance(10 * MINUTE)
+    c.give(117, 2) -- a good snapshot, out of combat
+    local function linen(items)
+        local n = 0
+        for _, item in pairs(items) do
+            if item and (item.id == 2589 or item.link == wow.link(2589)) then
+                n = n + item.count
+            end
+        end
+        return n
+    end
+    local before = linen(c.world.bags[0].slots)
+    c.combat(true)
+    c.advance(5)
+    c.loot(2589, 3) -- inside the throttle window: a retry is scheduled
+    c.advance(30) -- it fires while still fighting, and does nothing
+    c.combat(false)
+    c.advance(5)
+    local snap = file(c.logout()).snapshot
+    eq(linen(snap.bags[0].items), before + 3, "the fight's loot is in the snapshot")
+end)
+
 -- The bank and mailbox can only be read there, so a session without a visit
 -- carries the last ones forward instead of wiping them (probe runs 2-3).
 scenario("carry_forward", function()
@@ -1988,6 +2016,10 @@ scenario("record", function()
     c.setMoney(26000)
     c.openMailbox()
     c.closeMailbox()
+    -- R2a: item loads (hundreds at the AH) are counted, not logged.
+    for _ = 1, 50 do
+        c.fire("ITEM_DATA_LOAD_RESULT", 117, true)
+    end
     c.advance(MINUTE)
     local text = c.logout()
     local db = file(text)
@@ -1997,6 +2029,12 @@ scenario("record", function()
     eq(r.events[#r.events].e, "PLAYER_LOGOUT", "to the logout")
     eq(r.events[1].s.m, 0, "money is the change since the first probe")
     eq(c.settings.recordNext, nil, "turned itself off")
+    local loads = 0
+    for _, e in ipairs(r.events) do
+        loads = loads + (e.e == "ITEM_DATA_LOAD_RESULT" and 1 or 0)
+    end
+    eq(loads, 0, "item loads aren't logged one by one")
+    eq(r.counts.ITEM_DATA_LOAD_RESULT >= 50, true, "they're counted")
 
     -- Numbers only: no string from the game but event names and the
     -- allowlist (and the markers for what was dropped).
@@ -2121,6 +2159,25 @@ end)
 local check = arg and arg[1] == "--check"
 local failures, stale = 0, 0
 
+-- R2a: every error the addon catches and counts lands in _meta under one of
+-- these. No scenario expects one, so after each scenario every client's
+-- file must have none of them.
+local CAUGHT = { "errors", "error_counts", "tooltip_errors", "plan_errors", "list_errors", "session_errors", "window_errors" }
+
+local function caught(c)
+    local okSave, saved = pcall(c.save)
+    local db = okSave and saved and wow.parse(saved, "ForeverBuddyDB")
+    local meta = type(db) == "table" and db._meta
+    if type(meta) ~= "table" then
+        return nil
+    end
+    for _, k in ipairs(CAUGHT) do
+        if meta[k] ~= nil then
+            return "_meta." .. k .. " = " .. serialize("x", meta[k])
+        end
+    end
+end
+
 for _, s in ipairs(scenarios) do
     clients = {}
     local ok, text = xpcall(s.fn, debug.traceback)
@@ -2128,6 +2185,11 @@ for _, s in ipairs(scenarios) do
         for _, c in ipairs(clients) do
             if #c.errors > 0 then
                 ok, text = false, "errors escaped the addon:\n  " .. table.concat(c.errors, "\n  ")
+                break
+            end
+            local found = caught(c)
+            if found then
+                ok, text = false, "the addon caught an error:\n  " .. found
                 break
             end
         end
