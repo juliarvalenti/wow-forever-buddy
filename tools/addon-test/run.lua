@@ -2643,6 +2643,72 @@ scenario("contract", function()
     end
 end)
 
+-- H6: the bursts the client delivers in a single frame, each run as one
+-- frame against FRAME_BUDGET: a full page of AH results with a list docked,
+-- hundreds of item loads, the quest log updating over and over with a plan
+-- loaded, a full mailbox, and full bags changing. The runner fails the
+-- scenario if any handler or frame is over budget.
+scenario("bursts", function()
+    local c = client({ slots = { ["Data/Plan.lua"] = PLAN, ["Data/Lists.lua"] = LISTS, ["Data/Cleanup.lua"] = CLEANUP } })
+    local ids = {}
+    for id in pairs(wow.ITEMS) do
+        ids[#ids + 1] = id
+    end
+    table.sort(ids)
+    -- Full bags: four 16-slot bags beside the backpack, every slot used.
+    for bag = 1, 4 do
+        local slots = {}
+        for slot = 1, 16 do
+            slots[slot] = { id = ids[(bag * 16 + slot) % #ids + 1], count = slot }
+        end
+        c.world.bags[bag] = { size = 16, slots = slots }
+    end
+    c.world.questlog = {}
+    for i = 1, 25 do
+        c.world.questlog[i] = { questID = 1000 + i, done = i % 3 == 0 }
+    end
+    for i = 1, 50 do
+        c.world.inbox[i] = { sender = "Alt" .. i, subject = "Stuff", money = i, cod = 0, days = 20,
+            items = { { id = ids[i % #ids + 1], count = 2 } } }
+    end
+    c.login(nil)
+    c.advance(10)
+
+    local frames = {}
+    c.openAuctionHouse()
+    frames.ah = c.frame(function()
+        local page = {}
+        for i = 1, 500 do
+            page[i] = ids[i % #ids + 1]
+        end
+        c.browseAuctions(page)
+    end)
+    c.closeAuctionHouse()
+    frames.items = c.frame(function()
+        for i = 1, 300 do
+            c.fire("ITEM_DATA_LOAD_RESULT", ids[i % #ids + 1], true)
+        end
+    end)
+    frames.quests = c.frame(function()
+        for _ = 1, 20 do
+            c.fire("QUEST_LOG_UPDATE")
+        end
+    end)
+    frames.mail = c.frame(function()
+        c.openMailbox()
+    end)
+    c.closeMailbox()
+    frames.bags = c.frame(function()
+        c.fire("BAG_UPDATE_DELAYED")
+    end)
+    -- (Not counted under --coverage, whose hook is already set.)
+    local counting = wow.cost.on and debug.gethook() == nil
+    for name, n in pairs(frames) do
+        eq(n > 0, counting, name .. " was counted")
+    end
+    file(c.logout())
+end)
+
 -- Runner ---------------------------------------------------------------------
 
 local check = CHECK
@@ -2672,8 +2738,28 @@ local function caught(c)
     end
 end
 
+-- H6: budgets, in Lua VM instructions (wow.lua's `metered`). A plain Lua
+-- 5.1 interpreter, like the game's, runs very roughly 100M of them a
+-- second, so a handler gets about 1.5 ms and a frame about 4 ms of the
+-- 16 ms a 60 fps frame has. Lua 5.1 counts run ~1.6 times LuaJIT's; these
+-- fit both.
+HANDLER_BUDGET = 150000
+FRAME_BUDGET = 400000
+
+local function overBudget(c)
+    for _, call in ipairs(c.costs) do
+        if call.n > HANDLER_BUDGET then
+            return ("%s took %d instructions (budget %d)"):format(call.name, call.n, HANDLER_BUDGET)
+        end
+    end
+    if c.worstFrame > FRAME_BUDGET then
+        return ("a frame took %d instructions (budget %d)"):format(c.worstFrame, FRAME_BUDGET)
+    end
+end
+
 for _, s in ipairs(scenarios) do
     clients = {}
+    wow.cost.scenario = s.name
     local ok, text = xpcall(s.fn, debug.traceback)
     if ok then
         for _, c in ipairs(clients) do
@@ -2691,6 +2777,11 @@ for _, s in ipairs(scenarios) do
             local found = caught(c)
             if found then
                 ok, text = false, "the addon caught an error:\n  " .. found
+                break
+            end
+            local slow = overBudget(c)
+            if slow then
+                ok, text = false, "over the time budget: " .. slow
                 break
             end
         end
@@ -2840,6 +2931,38 @@ if coverage then
             f:close()
         end
     end
+end
+
+-- H6: the costliest handlers and frame of the run, in Lua VM instructions.
+do
+    local rows = {}
+    for name, w in pairs(wow.cost.worst) do
+        rows[#rows + 1] = { name = name, n = w.n, scenario = w.scenario }
+    end
+    table.sort(rows, function(a, b)
+        return a.n > b.n or (a.n == b.n and a.name < b.name)
+    end)
+    local lines = {}
+    if #rows > 0 then
+        lines[1] = ("Handler cost (%s instructions; budget %d per handler, %d per frame):"):format(
+            jit and "LuaJIT" or "Lua 5.1", HANDLER_BUDGET, FRAME_BUDGET)
+        for i = 1, math.min(8, #rows) do
+            local r = rows[i]
+            lines[#lines + 1] = ("  %8d  %s  (%s)"):format(r.n, r.name, r.scenario or "?")
+        end
+        local f = wow.cost.frame
+        lines[#lines + 1] = ("  costliest frame: %d (%s)"):format(f.n, f.scenario or "?")
+        -- On a PR, the job's summary page shows it too.
+        local summary = os.getenv("GITHUB_STEP_SUMMARY")
+        local out = summary and summary ~= "" and io.open(summary, "a")
+        if out then
+            out:write("### Handler cost\n\n```\n" .. table.concat(lines, "\n") .. "\n```\n")
+            out:close()
+        end
+    else
+        lines[1] = "Handler cost: not counted (another debug hook is set, e.g. --coverage)"
+    end
+    print(table.concat(lines, "\n"))
 end
 
 if stale > 0 then

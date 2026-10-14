@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.3"
+local VERSION = "0.9.4"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -442,12 +442,18 @@ local function scanMail()
             items = {},
         }
         if type(itemCount) == "number" and itemCount > 0 then
+            -- Attachments can be anywhere in the 16 slots (one taken leaves
+            -- a gap), so look until the letter's count is found (H6: a full
+            -- mailbox probed every slot of every letter).
             for a = 1, ATTACHMENTS do
                 local link = read(GetInboxItemLink, i, a)
                 if link then
                     local _, id, _, count = read(GetInboxItem, i, a)
                     letter.items[#letter.items + 1] = { link = link, count = count }
                     noteItem(id or linkItemID(link))
+                    if #letter.items >= itemCount then
+                        break
+                    end
                 end
             end
         end
