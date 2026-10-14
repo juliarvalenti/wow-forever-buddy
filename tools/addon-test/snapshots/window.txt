@@ -1,0 +1,409 @@
+== /fb plan
+Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
+  Frame TOPLEFT>parent:TOPLEFT(60,0) TOPRIGHT>parent:TOPRIGHT(-26,0) ?x24
+  FontString BOTTOMLEFT>parent:BOTTOMLEFT(14,12) "From Forever Buddy · 16:53"
+  FontString BOTTOMRIGHT>parent:BOTTOMRIGHT(-14,12) "Type /reload to sync"
+  Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow:BOTTOMLEFT(11,2) "Plan"
+  Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindowTab1:TOPRIGHT(3,0) "Lists"
+  Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindowTab2:TOPRIGHT(3,0) "Errands"
+  Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindowTab3:TOPRIGHT(3,0) "Cleanup"
+  Button ForeverBuddyWindowTab5 TOPLEFT>ForeverBuddyWindowTab4:TOPRIGHT(3,0) "Settings"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34)
+    Frame 316x192
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "0 of 4 done"
+      CheckButton TOPLEFT>parent:TOPLEFT(8,-4) 24x24
+        FontString LEFT>ForeverBuddyWindow.9.1.4:RIGHT(2,0) "Show the plan tracker on screen"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-36) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "1. Take Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.5.2:BOTTOMLEFT(0,-1) "Elwynn Forest · Marshal Dughan"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-68) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "2. Find ||Hitem:1||h[Hogger]||h by the river"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.6.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-100) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "3. Defeat Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.7.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-132) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "4. Hand in Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.8.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x380
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      FontString TOPLEFT>parent:TOPLEFT(14,-8) "In game"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-30) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.5:RIGHT(2,0) "Login briefing"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-56) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
+      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
+      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
+      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+
+== /fb list
+Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
+  Frame TOPLEFT>parent:TOPLEFT(60,0) TOPRIGHT>parent:TOPRIGHT(-26,0) ?x24
+  FontString BOTTOMLEFT>parent:BOTTOMLEFT(14,12) "From Forever Buddy · 16:53"
+  FontString BOTTOMRIGHT>parent:BOTTOMRIGHT(-14,12) "Type /reload to sync"
+  Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow:BOTTOMLEFT(11,2) "Plan"
+  Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindowTab1:TOPRIGHT(3,0) "Lists"
+  Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindowTab2:TOPRIGHT(3,0) "Errands"
+  Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindowTab3:TOPRIGHT(3,0) "Cleanup"
+  Button ForeverBuddyWindowTab5 TOPLEFT>ForeverBuddyWindowTab4:TOPRIGHT(3,0) "Settings"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x192
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "0 of 4 done"
+      CheckButton TOPLEFT>parent:TOPLEFT(8,-4) 24x24
+        FontString LEFT>ForeverBuddyWindow.9.1.4:RIGHT(2,0) "Show the plan tracker on screen"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-36) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "1. Take Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.5.2:BOTTOMLEFT(0,-1) "Elwynn Forest · Marshal Dughan"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-68) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "2. Find ||Hitem:1||h[Hogger]||h by the river"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.6.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-100) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "3. Defeat Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.7.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-132) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "4. Hand in Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.8.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34)
+    Frame 316x176
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8) "Tailoring · Raid night ]] ||cffff0000x"
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-28) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Runecloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 26"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.4.1:BOTTOMLEFT(0,-1) "|cffffffffSela|r has 4 in bank, still 26 short · ~1g 12s at last scan"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-60) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 6"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.5.1:BOTTOMLEFT(0,-1) "you have 4 in bags"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-92) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Mooncloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 2"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.6.1:BOTTOMLEFT(0,-1) "your alts have 0"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-124) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Tough Jerky"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "done"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.7.1:BOTTOMLEFT(0,-1) "done"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x380
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      FontString TOPLEFT>parent:TOPLEFT(14,-8) "In game"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-30) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.5:RIGHT(2,0) "Login briefing"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-56) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
+      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
+      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
+      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+
+== /fb errands
+Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
+  Frame TOPLEFT>parent:TOPLEFT(60,0) TOPRIGHT>parent:TOPRIGHT(-26,0) ?x24
+  FontString BOTTOMLEFT>parent:BOTTOMLEFT(14,12) "From Forever Buddy · 16:53"
+  FontString BOTTOMRIGHT>parent:BOTTOMRIGHT(-14,12) "Type /reload to sync"
+  Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow:BOTTOMLEFT(11,2) "Plan"
+  Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindowTab1:TOPRIGHT(3,0) "Lists"
+  Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindowTab2:TOPRIGHT(3,0) "Errands"
+  Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindowTab3:TOPRIGHT(3,0) "Cleanup"
+  Button ForeverBuddyWindowTab5 TOPLEFT>ForeverBuddyWindowTab4:TOPRIGHT(3,0) "Settings"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x192
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "0 of 4 done"
+      CheckButton TOPLEFT>parent:TOPLEFT(8,-4) 24x24
+        FontString LEFT>ForeverBuddyWindow.9.1.4:RIGHT(2,0) "Show the plan tracker on screen"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-36) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "1. Take Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.5.2:BOTTOMLEFT(0,-1) "Elwynn Forest · Marshal Dughan"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-68) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "2. Find ||Hitem:1||h[Hogger]||h by the river"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.6.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-100) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "3. Defeat Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.7.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-132) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "4. Hand in Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.8.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x176
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8) "Tailoring · Raid night ]] ||cffff0000x"
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-28) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Runecloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 26"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.4.1:BOTTOMLEFT(0,-1) "|cffffffffSela|r has 4 in bank, still 26 short · ~1g 12s at last scan"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-60) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 6"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.5.1:BOTTOMLEFT(0,-1) "you have 4 in bags"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-92) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Mooncloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 2"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.6.1:BOTTOMLEFT(0,-1) "your alts have 0"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-124) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Tough Jerky"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "done"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.7.1:BOTTOMLEFT(0,-1) "done"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34)
+    Frame 316x216
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8) "from |cffc79c6eThrandor|r"
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "Fill recipient works at a mailbox. Nothing is attached or sent for you."
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-28) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Runecloth ×20 to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.4.1:BOTTOMLEFT(0,-1) "20 in your bank · visit the bank first"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.4.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-84) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth ×4 to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.5.1:BOTTOMLEFT(0,-1) "you have 4 in bags · Sela's Tailoring list"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.5.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-140) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Hearthstone to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.6.1:BOTTOMLEFT(0,-1) "in your bags · marked in Forever Buddy"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.6.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x64
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x380
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      FontString TOPLEFT>parent:TOPLEFT(14,-8) "In game"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-30) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.5:RIGHT(2,0) "Login briefing"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-56) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
+      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
+      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
+      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+
+== /fb cleanup
+Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
+  Frame TOPLEFT>parent:TOPLEFT(60,0) TOPRIGHT>parent:TOPRIGHT(-26,0) ?x24
+  FontString BOTTOMLEFT>parent:BOTTOMLEFT(14,12) "From Forever Buddy · 16:53"
+  FontString BOTTOMRIGHT>parent:BOTTOMRIGHT(-14,12) "Type /reload to sync"
+  Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow:BOTTOMLEFT(11,2) "Plan"
+  Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindowTab1:TOPRIGHT(3,0) "Lists"
+  Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindowTab2:TOPRIGHT(3,0) "Errands"
+  Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindowTab3:TOPRIGHT(3,0) "Cleanup"
+  Button ForeverBuddyWindowTab5 TOPLEFT>ForeverBuddyWindowTab4:TOPRIGHT(3,0) "Settings"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x192
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "0 of 4 done"
+      CheckButton TOPLEFT>parent:TOPLEFT(8,-4) 24x24
+        FontString LEFT>ForeverBuddyWindow.9.1.4:RIGHT(2,0) "Show the plan tracker on screen"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-36) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "1. Take Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.5.2:BOTTOMLEFT(0,-1) "Elwynn Forest · Marshal Dughan"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-68) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "2. Find ||Hitem:1||h[Hogger]||h by the river"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.6.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-100) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "3. Defeat Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.7.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+      Frame TOPLEFT>ForeverBuddyWindow.9.1:TOPLEFT(18,-132) 290x30
+        Texture LEFT>parent:LEFT(-6,0) 2x26 hidden
+        FontString TOPLEFT>parent:TOPLEFT(0,-2) "4. Hand in Wanted: Hogger"
+        FontString TOPLEFT>ForeverBuddyWindow.9.1.8.2:BOTTOMLEFT(0,-1) "Elwynn Forest"
+        Button RIGHT>parent:RIGHT(0,0) 24x18 "→"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x176
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8) "Tailoring · Raid night ]] ||cffff0000x"
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-28) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Runecloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 26"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.4.1:BOTTOMLEFT(0,-1) "|cffffffffSela|r has 4 in bank, still 26 short · ~1g 12s at last scan"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-60) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 6"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.5.1:BOTTOMLEFT(0,-1) "you have 4 in bags"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-92) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Mooncloth"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "need 2"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.6.1:BOTTOMLEFT(0,-1) "your alts have 0"
+      Frame TOPLEFT>ForeverBuddyWindow.10.1:TOPLEFT(12,-124) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Tough Jerky"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "done"
+        FontString TOPLEFT>ForeverBuddyWindow.10.1.7.1:BOTTOMLEFT(0,-1) "done"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x216
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8) "from |cffc79c6eThrandor|r"
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "Fill recipient works at a mailbox. Nothing is attached or sent for you."
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-28) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Runecloth ×20 to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.4.1:BOTTOMLEFT(0,-1) "20 in your bank · visit the bank first"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.4.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-84) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth ×4 to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.5.1:BOTTOMLEFT(0,-1) "you have 4 in bags · Sela's Tailoring list"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.5.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+      Frame TOPLEFT>ForeverBuddyWindow.11.1:TOPLEFT(12,-140) 280x54
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Hearthstone to |cffffffffSela|r"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0)
+        FontString TOPLEFT>ForeverBuddyWindow.11.1.6.1:BOTTOMLEFT(0,-1) "in your bags · marked in Forever Buddy"
+        Button TOPLEFT>ForeverBuddyWindow.11.1.6.3:BOTTOMLEFT(0,-3) 110x20 "Fill recipient"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34)
+    Frame 316x112
+      FontString TOPLEFT>parent:TOPLEFT(12,-8) "4 to sell · ~52c at a vendor · 1 to send"
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x? "Mark items in the Forever Buddy app."
+      Frame TOPLEFT>ForeverBuddyWindow.12.1:TOPLEFT(12,-28) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Hearthstone"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "→ |cffffffffSela|r"
+        FontString TOPLEFT>ForeverBuddyWindow.12.1.4.1:BOTTOMLEFT(0,-1)
+      Frame TOPLEFT>ForeverBuddyWindow.12.1:TOPLEFT(12,-60) 280x30
+        FontString TOPLEFT>parent:TOPLEFT(0,0) "Linen Cloth ×4"
+        FontString TOPRIGHT>parent:TOPRIGHT(0,0) "sell"
+        FontString TOPLEFT>ForeverBuddyWindow.12.1.5.1:BOTTOMLEFT(0,-1) "grey"
+  ScrollFrame TOPLEFT>ForeverBuddyWindow:TOPLEFT(10,-64) BOTTOMRIGHT>ForeverBuddyWindow:BOTTOMRIGHT(-30,34) hidden
+    Frame 316x380
+      FontString TOPLEFT>parent:TOPLEFT(12,-8)
+      FontString TOPRIGHT>parent:TOPRIGHT(-8,-8)
+      FontString BOTTOMLEFT>parent:BOTTOMLEFT(12,8) 290x?
+      FontString TOPLEFT>parent:TOPLEFT(14,-8) "In game"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-30) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.5:RIGHT(2,0) "Login briefing"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-56) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
+      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
+      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
+      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+        FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
