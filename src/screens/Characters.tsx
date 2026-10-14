@@ -1380,6 +1380,20 @@ function Sheet({
                 onDismiss={cleanup.dismiss}
               />
             )}
+            {!cleanup.cleanup && cleanup.error && (
+              // G4: the panel can't draw without its data; say why.
+              <Panel>
+                <PanelHeader title="Bag cleanup" />
+                <PanelBody>
+                  <p className="d-letter-bad" style={{ margin: 0 }}>
+                    Couldn't load bag cleanup: {cleanup.error}{" "}
+                    <Button variant="ghost" onClick={cleanup.reload}>
+                      Try again
+                    </Button>
+                  </p>
+                </PanelBody>
+              </Panel>
+            )}
             <Panel>
               <PanelHeader title="Gold, 30 days">
                 {change != null && change !== 0 && (

@@ -73,14 +73,22 @@ export function useWatchlist() {
 /** What the alts carry that's worth selling (at least `minValue` copper). */
 export function useWorthSelling(minValue: number) {
   const [rows, setRows] = useState<Sell[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
     commands.ahWorthSelling(minValue).then(
-      (r) => setRows(r.map(sell)),
-      () => setRows(null),
+      (r) => {
+        setRows(r.map(sell));
+        setError(null);
+      },
+      // G4: say why, rather than an empty list.
+      (e) => {
+        setRows(null);
+        setError(errorText(e));
+      },
     );
   }, [minValue]);
   useLive(load);
-  return rows;
+  return { rows, error, reload: load };
 }
 
 /** One item's whole history (the screen slices the range itself, so the

@@ -234,8 +234,8 @@ export function Dashboard({
   /** New goal's "Collect items…": item goals are Lists. */
   onNewList: () => void;
 }) {
-  const { list, storage, progress, failed, backUpNow, refresh: refreshBackups } = useBackups();
-  const { sessions, characters, refresh: refreshSessions } = useSessions();
+  const { list, storage, progress, failed, backUpNow, error: backupsError, refresh: refreshBackups } = useBackups();
+  const { sessions, characters, error: sessionsError, refresh: refreshSessions } = useSessions();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   useEffect(() => {
@@ -258,13 +258,26 @@ export function Dashboard({
   const installWhy = `Close WoW first. ${updating ? "Updating" : "Installing"} writes to your game folder.`;
   // With the addon's data (V9, dashboard.html): account gold, the last
   // adventure and the roster with gold. Without it, the v0.1 state stays.
-  const { overview } = useCharacters();
+  const { overview, error: charactersError, refresh: refreshCharacters } = useCharacters();
   const lockouts = useLockouts();
   const goals = useGoals();
   const [newGoal, setNewGoal] = useState(false);
   const withAddon = (overview?.characters.length ?? 0) > 0;
-  const { ledger } = useLedger("week");
-  const lastAdventure = useLastAdventure();
+  const { ledger, error: ledgerError, refresh: refreshLedger } = useLedger("week");
+  const { adventure: lastAdventure, error: adventureError, reload: reloadAdventure } = useLastAdventure();
+  // G4: what couldn't load, said once at the top with one Try again,
+  // instead of tiles left at "…" and a "ledger is blank" that isn't true.
+  const loadErrors = [charactersError, backupsError, sessionsError, ledgerError, adventureError, goals.error].filter(
+    (e): e is string => e != null,
+  );
+  const retryAll = () => {
+    refreshCharacters();
+    refreshBackups();
+    refreshSessions();
+    refreshLedger();
+    reloadAdventure();
+    goals.reload();
+  };
   const byGold = [...(overview?.characters ?? [])].sort((a, b) => (b.money ?? 0) - (a.money ?? 0));
   const chars = overview?.characters ?? [];
   const topLevel = Math.max(0, ...chars.map((c) => c.level ?? 0));
@@ -281,7 +294,8 @@ export function Dashboard({
   const lastEnded = sessions?.find((s) => s.ended_at);
 
   // The setup card (step 1 offers the addon) gives way to Last adventure.
-  const setupShown = !(withAddon && lastAdventure);
+  // Not when the characters couldn't load: that isn't "no addon yet".
+  const setupShown = !(withAddon && lastAdventure) && !charactersError;
   // While step 1 offers the addon, its button is the page's one bronze.
   const addonOffered = setupShown && addon.status != null && !addonCurrent;
   const BackUpButton = addonOffered ? Button : PrimaryButton;
@@ -429,6 +443,18 @@ export function Dashboard({
         </Callout>
       )}
       {openError && <Callout tone="bad">{openError}</Callout>}
+      {loadErrors.length > 0 && (
+        <Callout tone="bad">
+          <span>
+            <b>Some of the dashboard couldn't load:</b> {loadErrors[0].replace(/[.!?]?$/, ".")}
+            {loadErrors.length > 1 && <span className="d-dim"> (and {loadErrors.length - 1} more)</span>}
+          </span>
+          <span className="d-grow" />
+          <Button variant="ghost" onClick={retryAll}>
+            Try again
+          </Button>
+        </Callout>
+      )}
 
       <section className="d-strip">
         {withAddon && (
@@ -521,6 +547,9 @@ export function Dashboard({
       <section className="d-cols">
         {withAddon && lastAdventure ? (
           <LastAdventure a={lastAdventure} onOpen={onOpenAdventure} />
+        ) : charactersError ? (
+          // Couldn't load: the callout above says so, not "ledger is blank".
+          <div />
         ) : (
         <Record ruled tilt>
           <PanelHeader title="Your ledger is blank">

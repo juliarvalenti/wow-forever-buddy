@@ -1,25 +1,37 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { commands, events, type Adventure } from "@/lib/bindings";
 import { PanelBody, PanelHeader, Record } from "@/components/d";
 import { useEvent } from "@/hooks/useEvent";
-import { gold, sessionWhen, span } from "@/lib/format";
+import { errorText, gold, sessionWhen, span } from "@/lib/format";
 import { ItemName, label } from "@/screens/Adventure";
 import { Crest, classStyle } from "@/screens/Characters";
 
 // The Dashboard's "Last adventure" card (design/mocks/round-3/dashboard.html,
 // V9): the newest adventure, condensed, with a way into the full recap.
 
-/** The newest adventure, followed as new notes are read. `undefined` while
- *  loading, `null` when there's none yet. */
+/** The newest adventure, followed as new notes are read. `adventure` is
+ *  `undefined` while loading or if it couldn't load (then `error` says why),
+ *  `null` when there's none yet. */
 export function useLastAdventure() {
   const [adventure, setAdventure] = useState<Adventure | null | undefined>(undefined);
-  const load = () => {
-    commands.adventureGet(null).then(setAdventure, () => setAdventure(null));
-  };
-  useEffect(load, []);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    commands.adventureGet(null).then(
+      (a) => {
+        setAdventure(a);
+        setError(null);
+      },
+      // G4: a failure isn't "no adventure yet".
+      (e) => {
+        setAdventure(undefined);
+        setError(errorText(e));
+      },
+    );
+  }, []);
+  useEffect(load, [load]);
   useEvent(events.ingestCompleted, load);
-  return adventure;
+  return { adventure, error, reload: load };
 }
 
 export function LastAdventure({ a, onOpen }: { a: Adventure; onOpen: (id: number) => void }) {

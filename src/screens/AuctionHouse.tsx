@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Clock, RefreshCw, Search, Star } from "lucide-react";
 import type { AhStatus } from "@/lib/bindings";
-import { Callout, ItemIcon, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
+import { Button, Callout, ItemIcon, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
 import {
   type History,
   type Item,
@@ -58,7 +58,7 @@ export function AuctionHouse() {
   const selling = useWorthSelling(MIN_VALUE);
   const [picked, setPicked] = useState<number | null>(null);
   // Until one is picked: the first watched item, else the most valuable to sell.
-  const shown = picked ?? watch.items?.[0]?.item_id ?? selling?.[0]?.item.item_id ?? null;
+  const shown = picked ?? watch.items?.[0]?.item_id ?? selling.rows?.[0]?.item.item_id ?? null;
 
   return (
     <Page>
@@ -79,7 +79,7 @@ export function AuctionHouse() {
                 watched={(watch.items ?? []).some((w) => w.item_id === shown)}
                 onWatch={(id, on) => watch.setWatched(id, on)}
               />
-              <WorthSelling rows={selling} onPick={setPicked} />
+              <WorthSelling rows={selling.rows} error={selling.error} onRetry={selling.reload} onPick={setPicked} />
             </div>
             <Watchlist items={watch.items} shown={shown} onPick={setPicked} />
           </section>
@@ -510,14 +510,33 @@ function whereLine(s: Sell): string {
   return `${head} · +${more.toLocaleString()} ${alts > 1 || rest[0].character_id !== first.character_id ? `on ${plural(alts, "alt", "alts")}` : "elsewhere"}`;
 }
 
-function WorthSelling({ rows, onPick }: { rows: Sell[] | null; onPick: (id: number) => void }) {
+function WorthSelling({
+  rows,
+  error,
+  onRetry,
+  onPick,
+}: {
+  rows: Sell[] | null;
+  error: string | null;
+  onRetry: () => void;
+  onPick: (id: number) => void;
+}) {
   return (
     <Panel>
       <PanelHeader title="Worth selling">
         <span className="d-grow" />
         <span className="d-dim">on your alts · over 50g</span>
       </PanelHeader>
-      {rows && rows.length === 0 ? (
+      {error ? (
+        <PanelBody>
+          <p className="d-letter-bad" style={{ margin: 0 }}>
+            Couldn't work out what's worth selling: {error}{" "}
+            <Button variant="ghost" onClick={onRetry}>
+              Try again
+            </Button>
+          </p>
+        </PanelBody>
+      ) : rows && rows.length === 0 ? (
         <PanelBody>
           <p className="d-muted" style={{ margin: 0 }}>
             Nothing your alts carry is worth over 50g at your last scan.
