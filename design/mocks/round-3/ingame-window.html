@@ -37,7 +37,16 @@
   .hd b { font-weight: 400; color: var(--gold); font-size: 13.5px; text-shadow: 0 1px 1px #000; }
   .hd .x { margin-left: auto; width: 18px; height: 18px; display: grid; place-items: center; font: 13px sans-serif; color: #e2c46a; border-radius: 3px;
     background: linear-gradient(180deg, #7a1a10, #3e0b06); box-shadow: inset 0 0 0 1px #b8913a; }
-  .body { padding: 10px 12px 8px; min-height: 330px; font-size: 12px; display: grid; align-content: start; gap: 6px; }
+  .body { padding: 10px 12px 8px; min-height: 230px; font-size: 12px; display: grid; align-content: start; gap: 6px; }
+  /* the template's top inset: the tab's header line (U1b) */
+  .sub { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px 6px 56px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.25); }
+  .sub b { font-weight: 400; color: var(--gold); font-size: 12.5px; }
+  .sub span { margin-left: auto; color: var(--dim); font-size: 11px; }
+  .pane.lists .row small { padding-left: 19px; }
+  .ico16 { display: inline-block; width: 14px; height: 14px; margin-right: 5px; vertical-align: -2px; border-radius: 2px; box-shadow: 0 0 0 1px #000; }
+  .emptyc { display: grid; place-items: center; align-content: center; min-height: 210px; text-align: center; gap: 4px; }
+  .emptyc small { color: var(--dim); font-size: 11px; }
+  .sec + .sec, .cb + .sec { margin-top: 8px; }
   .sec { font-size: 11.5px; color: var(--gold); margin-top: 4px; }
   .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
   .row .r { font-size: 11px; color: var(--dim); white-space: nowrap; }
@@ -80,10 +89,11 @@
     <div class="frame">
       <div class="hd"><span class="portrait"><svg viewBox="0 0 24 24"><path d="M12 2.5l8 3v6c0 5.4-3.6 8.9-8 10.5-4.4-1.6-8-5.1-8-10.5v-6z" fill="#c9a23a" stroke="#3a2a10" stroke-width="1"/><path d="M8 9l4 4 4-4M8 13l4 4 4-4" fill="none" stroke="#2a1b0e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b id="title">Forever Buddy</b><span class="x">×</span></div>
 
+      <div class="sub" id="sub"><b></b><span></span></div>
       <div class="body">
-        <!-- PLAN -->
-        <div class="pane plan" style="gap:6px">
-          <div class="sec">Tonight's plan · Winterspring</div>
+        <!-- PLAN (?empty shows the centred empty state) -->
+        <div class="pane plan emptyc" data-empty><span>No plan for Ellygie.</span><small>Make one in Forever Buddy, or ask Claude for one.</small></div>
+        <div class="pane plan" style="gap:6px" data-full>
           <div class="row done"><span class="t">1  Fly to Everlook</span><span class="r"></span></div>
           <div class="row cur"><span class="t">2  Accept "Are We There, Yeti?"</span><span class="r">→</span><small>Everlook</small></div>
           <div class="row"><span class="t">3  Collect 10 Thick Yeti Fur</span><span class="r">→</span><small>Owl Wing Thicket</small></div>
@@ -93,22 +103,20 @@
         <!-- LISTS -->
         <div class="pane lists">
           <div class="sec">Tailoring · for <span class="pri">Sela</span></div>
-          <div class="row"><span class="t">Runecloth</span><span class="r">need 26</span><small><span class="pri">Sela</span> has 4 in bank · ~1g 12s at last scan</small></div>
-          <div class="row"><span class="t">Rune Thread</span><span class="r">need 6</span><small>your alts have 0</small></div>
-          <div class="row"><span class="t" style="color:var(--grey)">Felcloth</span><span class="r">done</span></div>
+          <div class="row"><span class="t"><i class="ico16" style="background:#d9d2c2"></i>Runecloth</span><span class="r" style="color:#fff">need 26</span><small><span class="pri">Sela</span> has 4 in bank · ~1g 12s at last scan</small></div>
+          <div class="row"><span class="t"><i class="ico16" style="background:#c8bfae"></i>Rune Thread</span><span class="r" style="color:#fff">need 6</span><small>your alts have 0</small></div>
+          <div class="row"><span class="t" style="color:var(--grey)"><i class="ico16" style="background:#5d7a3c;opacity:.6"></i>Felcloth · done</span><span class="r"></span></div>
           <div class="sec">Raid night</div>
-          <div class="row"><span class="t">Tough Jerky</span><span class="r">done</span><small><span class="rog">Kaelor</span> has 25 in bags</small></div>
+          <div class="row"><span class="t" style="color:var(--grey)"><i class="ico16" style="background:#9b7a52;opacity:.6"></i>Tough Jerky · done</span><span class="r"></span></div>
         </div>
         <!-- ERRANDS -->
         <div class="pane errands">
-          <div class="sec">From <span class="pal">Thrandor</span></div>
           <div class="row"><span class="t">Runecloth ×20 to <span class="pri">Sela</span></span><span class="r"></span><small>20 in your bank · visit the bank first</small></div>
           <div class="row"><span class="t"><span class="q3">Felcloth Hood</span> to <span class="pri">Sela</span></span><span class="r"></span><small>in your bags · marked in Forever Buddy</small></div>
           <div style="margin-top:8px;color:var(--dim);font-size:11px">Fill recipient works at a mailbox. Nothing is attached or sent for you.</div>
         </div>
         <!-- CLEANUP -->
         <div class="pane cleanup">
-          <div class="sec">Marked on <span class="pal">Thrandor</span></div>
           <div class="row"><span class="t"><span class="q0">Broken Fang</span> ×6</span><span class="r">sell · grey</span></div>
           <div class="row"><span class="t"><span class="q3">Truestrike Shoulders</span></span><span class="r">→ <span class="rog">Kaelor</span> · +9 item level</span></div>
           <div style="margin-top:8px;color:var(--dim);font-size:11px">6 to sell · ~36c at a vendor · 1 to send. Mark items in the Forever Buddy app.</div>
@@ -142,6 +150,13 @@
   document.body.dataset.tab = tab;
   if (p.get('skin') === 'classic') document.getElementById('world').classList.add('classic');
   document.querySelectorAll('.tab').forEach(t => { if (t.dataset.t === tab) t.classList.add('on'); });
+  // U1b: the header line in the template's top inset, per tab
+  const SUB = { plan: ["Tonight's plan", 'Winterspring · 1 of 4'], lists: ['Lists', '2 lists'], errands: ['Errands', 'from Thrandor'],
+    cleanup: ['Cleanup', 'on Thrandor'], settings: ['Settings', 'also in Esc › Options'] }[tab];
+  const empty = p.has('empty') && tab === 'plan';
+  if (empty) SUB[1] = '';
+  document.querySelector('#sub b').textContent = SUB[0]; document.querySelector('#sub span').textContent = SUB[1];
+  document.querySelectorAll(empty ? '[data-full]' : '[data-empty]').forEach(e => e.remove());
 </script>
 </body>
 </html>
