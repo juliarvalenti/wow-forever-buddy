@@ -445,3 +445,16 @@ Some characters disappear from WTF (deleted, renamed or moved). They can be **hi
   - Buttons: a ghost **Cancel** and a red-text **Forget Oldmain** (not bronze).
   - After: a green line in the panel, "Oldmain was removed from Forever Buddy.", and Oldmain moves to Forgotten.
 - **Never:** touching WTF, backups or SavedVariables, forgetting a character whose folder still exists, forgetting from a card, or forgetting without the dialog.
+
+## 23. U2: update banner (`dashboard.html?update=installer|downloading|ready|portable|failed`)
+One slim stone line at the top of every screen's main column, above the page header, when a newer version is out. It's the ember-edged strip used for "Decide later" (§4), so it reads as status rather than a warning. Not during the first-run flow (§20).
+- **Installer build** (`installer`): a spark icon, "**Forever Buddy 0.10.0 is out.**", an ember link **What's new** (opens the release page), a stone **Update now**, and a × titled "Hide until the next version".
+- **Downloading** (`downloading`): a live dot, "**Downloading 0.10.0…** You can keep using the app.", and a small bar with a percentage. There's no cancel; it's quick, and leaving it changes nothing.
+- **Ready** (`ready`): a green check, "**0.10.0 is ready.** Restart Forever Buddy to finish. It takes a few seconds.", with a ghost **Later** and a stone **Restart now**. If a backup, restore or write is running, Restart now is a `LockedAction` with the title "Restarts after the backup finishes", and it restarts by itself when that's done. **Later** installs it at the next app start.
+- **Portable exe** (`portable`): "**Forever Buddy 0.10.0 is out.** This copy can't update itself.", **What's new**, and a stone **Download from GitHub** (the release page), plus the ×.
+- **Failed** (`failed`), the only red thing on screen: "**The update didn't install.**" then the reason in plain words: "The download didn't pass its signature check, so nothing changed." or "Couldn't reach GitHub. You're offline or it's down." Buttons: a ghost **Download from GitHub** and a stone **Try again**, plus the ×.
+- **Dismissing (×)** hides the banner until a newer version than the dismissed one appears. It never comes back for the same version.
+- **After updating:** once, on the next start, a green line in the same place, "Updated to 0.10.0. What's new", which goes away on its own after you leave the screen.
+- **The addon:** an app update can bring a newer ForeverBuddy addon. That's already handled by the Dashboard's Game folder row ("Update addon", locked while WoW runs), so the banner never mentions the addon.
+- **Settings › About:** a switch "Check for updates", on by default, with the grey line "Once at start and once a day. It only asks GitHub for the newest version number." Under it: "Last checked 21:04 · You're up to date" and a ghost **Check now**. Off means no network call at all.
+- **Never:** a modal, installing without a click, a banner while the switch is off, a countdown, or "You should update" wording.
