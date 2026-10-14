@@ -16,6 +16,12 @@ local unpack = unpack or table.unpack
 
 local M = {}
 
+-- H2: what Forever answers outside the live phase, per API (forever.lua).
+M.FOREVER = require("forever")
+-- Across every client in the run, for run.lua's coverage printout: calls
+-- per API name, and events fired.
+M.calls, M.fired = {}, {}
+
 -- Fri 2 Oct 2026, 18:00 UTC: a fixed clock keeps the fixtures stable.
 M.EPOCH = 1790964000
 
@@ -145,6 +151,9 @@ function M.new(opts)
     -- The character's game state, which the APIs report. Scenarios change it
     -- through the helpers below, which fire the events the client would.
     local world = {
+        -- "loading", "live" or "torn" (forever.lua). Outside "live", the
+        -- APIs answer as forever.lua's rows say, not from the fields below.
+        phase = "live",
         money = 25000,
         xp = 1200,
         level = 12,
@@ -206,7 +215,7 @@ function M.new(opts)
     end
 
     local function readable(bag)
-        if world.torn then
+        if world.phase ~= "live" then
             return false
         end
         return bag >= 0 and bag <= 5 or world.bank_open
@@ -281,17 +290,16 @@ function M.new(opts)
         GetBuildInfo = function()
             return "1.60.1", "70009", "Sep 30 2026", 16001
         end,
+        -- Outside the live phase these answer as forever.lua says (H2).
         GetMoney = function()
-            return world.torn and 0 or world.money
+            return world.money
         end,
-        -- Torn down (opts.forever at logout), the character reads as level
-        -- 0 with no XP, quests, professions or saves, as in Julia's file.
         UnitXP = function()
-            return world.torn and 0 or world.xp
+            return world.xp
         end,
         UnitLevel = function(unit)
             if unit == "player" then
-                return world.torn and 0 or world.level
+                return world.level
             end
         end,
         GetRealZoneText = function()
@@ -310,7 +318,7 @@ function M.new(opts)
             return d.name, d.kind, d.difficulty, d.difficultyName
         end,
         GetInventoryItemID = function(_, slot)
-            return not world.torn and world.equipped[slot] or nil
+            return world.equipped[slot]
         end,
         GetRepairAllCost = function()
             return world.repair, world.repair > 0
@@ -394,6 +402,25 @@ function M.new(opts)
             end
             return false
         end,
+        -- H2: called by the addon but missing from the fake until now.
+        ["C_QuestLog.ReadyForTurnIn"] = function(id)
+            for _, q in ipairs(world.questlog) do
+                if q.questID == id then
+                    return q.done == true
+                end
+            end
+            return false
+        end,
+        ["C_Item.GetItemNameByID"] = function(id)
+            return M.ITEMS[id]
+        end,
+        GetMaxPlayerLevel = function()
+            return 60
+        end,
+        -- Seconds since the machine started, as finely as the client gives.
+        GetTime = function()
+            return client.now - M.EPOCH + 5000
+        end,
         GetInventoryItemDurability = function(slot)
             local d = world.durability[slot]
             if d then
@@ -401,9 +428,6 @@ function M.new(opts)
             end
         end,
         ["C_QuestLog.GetAllCompletedQuestIDs"] = function()
-            if world.torn then
-                return {}
-            end
             local copy = {}
             for i, id in ipairs(world.quests_done) do
                 copy[i] = id
@@ -575,13 +599,10 @@ function M.new(opts)
             return world.subzone or ""
         end,
         GetInventoryItemLink = function(_, slot)
-            local id = not world.torn and world.equipped[slot]
+            local id = world.equipped[slot]
             return id and M.link(id) or nil
         end,
         GetProfessions = function()
-            if world.torn then
-                return
-            end
             local p = world.professions
             return p[1] and 1, p[2] and 2, p[3] and 3, p[4] and 4, p[5] and 5
         end,
@@ -605,7 +626,7 @@ function M.new(opts)
             end)
         end,
         GetNumSavedInstances = function()
-            return world.torn and 0 or #world.lockouts
+            return #world.lockouts
         end,
         GetSavedInstanceInfo = function(i)
             local l = world.lockouts[i]
@@ -642,7 +663,26 @@ function M.new(opts)
         api[name] = f or nil
     end
 
+    -- What `name` answers in a phase other than "live", per forever.lua.
+    local PHASED = { [0] = function() return 0 end, ["nil"] = function() end, ["{}"] = function() return {} end }
+    local function phased(name, f)
+        local row = M.FOREVER[name] or {}
+        return function(...)
+            M.calls[name] = (M.calls[name] or 0) + 1
+            local phase = world.phase
+            if phase ~= "live" then
+                assert(phase == "loading" or phase == "torn", "unknown phase " .. tostring(phase))
+                local instead = row[phase]
+                if instead ~= nil then
+                    return PHASED[instead]()
+                end
+            end
+            return f(...)
+        end
+    end
+
     local function wrap(name, f)
+        f = phased(name, f)
         if applies(opts.throw, name) then
             return function()
                 error(name .. ": fake failure")
@@ -968,10 +1008,24 @@ function M.new(opts)
                 t[key] = wrap(name, f)
             end
         end
+        -- The rest forever.lua lists (C_Timer, date, the cursor...) are set
+        -- up above, outside `api`: counted and phased the same way.
+        for name in pairs(M.FOREVER) do
+            if not api[name] then
+                local t, key = env, name
+                for part, rest in name:gmatch("([^%.]+)%.(.*)") do
+                    t, key = type(t[part]) == "table" and t[part] or {}, rest
+                end
+                if type(t[key]) == "function" then
+                    t[key] = phased(name, t[key])
+                end
+            end
+        end
         return env
     end
 
     function client.fire(event, ...)
+        M.fired[event] = (M.fired[event] or 0) + 1
         local args = pack(...)
         if opts.secret_args and opts.secret_args[event] then
             for i = 1, args.n do
@@ -1033,10 +1087,10 @@ function M.new(opts)
         end
         -- The account-wide settings, kept across logins like the client does.
         state.env.ForeverBuddySettings = client.settings
-        -- opts.forever: like Julia's client (BUG-SATCHELS), the bags,
-        -- gear and money read empty until the bags load, a moment after
-        -- entering the world.
-        world.torn = opts.forever and true or nil
+        -- opts.forever: like Julia's client (BUG-SATCHELS, AUDIT-F), the
+        -- character isn't up until the bags load, a moment after entering
+        -- the world.
+        world.phase = opts.forever and "loading" or "live"
         -- o.events = false: loaded only; a replay (SIM1 b) fires the
         -- recorded events itself.
         if o.events == false then
@@ -1047,7 +1101,7 @@ function M.new(opts)
         client.fire("PLAYER_ENTERING_WORLD", not o.reload, o.reload == true)
         if opts.forever then
             client.advance(1)
-            world.torn = nil
+            world.phase = "live"
             client.fire("BAG_UPDATE_DELAYED")
         end
     end
@@ -1056,10 +1110,12 @@ function M.new(opts)
     -- Logs out and returns the file the client would write.
     function client.logout()
         -- opts.forever: torn down before the addon hears about it.
-        world.torn = opts.forever and true or nil
+        if opts.forever then
+            world.phase = "torn"
+        end
         client.fire("PLAYER_LEAVING_WORLD")
         client.fire("PLAYER_LOGOUT")
-        world.torn = nil
+        world.phase = "live"
         return client.save()
     end
 

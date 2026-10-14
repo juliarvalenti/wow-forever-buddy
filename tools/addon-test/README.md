@@ -15,7 +15,15 @@ On macOS, `brew install luajit` and run it with `luajit` instead (Homebrew has n
 - `serialize.lua`: writes a table the way the client writes SavedVariables, with keys sorted.
 - `run.lua`: the scenarios. Each one checks the file the addon wrote, including `_meta.counts` against its own recount. After every scenario, each client's file must have no caught errors (`_meta.errors` and the `*_errors` counters). Scenarios that return a file save it as `<scenario>.lua`.
 
-A new API the addon calls needs a default in `wow.lua`'s `api` table. When the addon's output changes, run the harness and commit the fixtures with the change.
+- `forever.lua`: how WoW: Forever answers each API the addon calls, by phase (H2). The phases are `loading` (PLAYER_LOGIN until the bags load), `live`, and `torn` (the logout teardown). Each row says what the API returns instead of its live answer in each phase (`0`, `"nil"`, `"{}"`, or nothing for "as live"), and where we know that from (`recording`, `report` with the ticket, or `assumed`). Outside `live`, every mocked API answers from its row, so the phase behaviour lives in this one table.
+
+A new API the addon calls needs a mock in `wow.lua`'s `api` table and a row in `forever.lua`. The run fails without either, and its last lines print the coverage:
+- how many APIs are mocked and have a row;
+- how many of those rows come from a report or recording, and how many are assumed;
+- how many are confirmed by a real recording;
+- which APIs and handled events no scenario reaches.
+
+When the addon's output changes, run the harness and commit the fixtures with the change.
 
 ## A strict fake (SIM4)
 
@@ -56,11 +64,11 @@ The fake client only knows what we told it. The real client's timing (what it an
   - `bk`, `ml`: bank and mailbox open
 
   There are no names, chat, mail, zones or item names, and time is seconds since login. `ITEM_DATA_LOAD_RESULT`, which fires for every item the UI loads, is only counted (`counts`), not logged.
-- **Replaying:** the `replay` scenario plays each recording back. The probes drive the fake client (no backpack means the character isn't readable: `torn`), and the events fire in order. Then it checks that:
+- **Replaying:** the `replay` scenario plays each recording back. The probes drive the fake client's phase (no backpack means the character isn't up: `loading` before the first live probe, `torn` after), and the events fire in order. For a real recording, each probe taken outside `live` is also checked against `forever.lua`: a row the recording contradicts fails the run, and one it agrees with counts as confirmed. Then it checks that:
   - the file has no hollow snapshot
   - logging in isn't a gain
   - the snapshot's money and saves are the last readable ones
   - there are no addon errors
 
   `record.lua` (a synthetic recording from the `record` scenario) is always replayed.
-- **Adding a real one:** copy the `record` table from the player's file into a fixture and add it to `recordings` in the `replay` scenario. Read it through first, even though it's numbers only.
+- **Adding a real one:** copy the `record` table from the player's file into a fixture (`ForeverBuddyDB = { record = ... }`, nothing else from the file) and add its name to `REAL` in `run.lua`. Read it through first, even though it's numbers only. Its first run is where `assumed` rows become confirmed or get corrected.

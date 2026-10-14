@@ -468,7 +468,7 @@ scenario("forever", function()
     c.advance(MINUTE)
     -- The logout card, read after the teardown has begun: the gold is this
     -- session's +10s from play, not the whole purse lost to a 0.
-    c.world.torn = true
+    c.world.phase = "torn"
     c.startLogout()
     local card = c.global("ForeverBuddyCardFrame")
     local gold
@@ -2155,11 +2155,11 @@ end)
 
 -- Replays a recording (SIM1 b): the fake client answers as the probes say,
 -- the recorded events fire in order, and what the addon writes has to hold
--- up. A probe with no backpack is the client before it's up or after the
--- teardown (`torn`).
+-- up. A probe with no backpack is the client before it's up (`loading`) or
+-- after the teardown (`torn`). `onProbe(phase, probe)`, if given, sees each.
 local REPLAY_MONEY = 100000
 
-local function replay(rec)
+local function replay(rec, onProbe)
     local c = client({ forever = true })
     c.login(nil, { events = false })
     local w, t, last = c.world, 0, nil
@@ -2167,13 +2167,23 @@ local function replay(rec)
     for i = 1, 10 do
         lockouts[i] = { name = "Instance " .. i, reset = 3 * DAY, raid = false, difficulty = "Normal" }
     end
+    local wasLive = false
     for _, e in ipairs(rec.events) do
         c.advance(math.max(0, e.t - t))
         t = e.t
         local s = e.s
         if s then
             last = s
-            w.torn = not (type(s.b) == "number" and s.b > 0) or nil
+            -- H2: no backpack means the character isn't up: before the
+            -- first live look it's still loading, after one it's torn.
+            if type(s.b) == "number" and s.b > 0 then
+                w.phase, wasLive = "live", true
+            else
+                w.phase = wasLive and "torn" or "loading"
+            end
+            if onProbe then
+                onProbe(w.phase, s)
+            end
             if type(s.m) == "number" then
                 w.money = REPLAY_MONEY + s.m
             end
@@ -2194,10 +2204,56 @@ local function replay(rec)
     return file(c.save()), last
 end
 
+-- Real sessions from Julia's client (record mode), each a fixture holding
+-- `ForeverBuddyDB = { record = ... }` (README › Recordings). Unlike the
+-- synthetic one, which the fake itself made, these say what Forever does.
+local REAL = {}
+
+-- H2: what forever.lua's rows predict a probe shows outside the live phase,
+-- checked against real recordings. A probe key -> how to read the API's
+-- answer from it (all counts or levels, so "not up" is 0).
+local PROBED = { b = true, l = true, x = true, w = true, q = true, sv = true }
+local confirmed = {} -- API name -> the recording that confirmed its row
+
+local function crossCheck(recName)
+    local rows = {}
+    for api, r in pairs(wow.FOREVER) do
+        if r.probe and PROBED[r.probe] then
+            rows[r.probe] = { api = api, row = r }
+        end
+    end
+    local liveSeen = {} -- probe key -> a live probe had it above 0
+    return function(phase, s)
+        for key, v in pairs(rows) do
+            local got = s[key]
+            if type(got) == "number" then
+                if phase == "live" then
+                    liveSeen[key] = liveSeen[key] or got > 0
+                else
+                    local emptied = v.row[phase] ~= nil
+                    if emptied and got ~= 0 then
+                        fail(("forever.lua: %s reads empty while %s, but recording %s shows %s=%s"):format(
+                            v.api, phase, recName, key, tostring(got)))
+                    elseif not emptied and got == 0 and liveSeen[key] then
+                        fail(("forever.lua: %s answers as live while %s, but recording %s shows %s=0"):format(
+                            v.api, phase, recName, key))
+                    elseif liveSeen[key] then
+                        confirmed[v.api] = confirmed[v.api] or recName
+                    end
+                end
+            end
+        end
+    end
+end
+
 scenario("replay", function()
     local recordings = { synthetic = file(wow.readFile(FIXTURES .. "record.lua")).record }
+    for _, name in ipairs(REAL) do
+        recordings[name] = wow.parse(wow.readFile(FIXTURES .. name .. ".lua"), "ForeverBuddyDB").record
+    end
     for name, rec in pairs(recordings) do
-        local db = replay(rec)
+        local real = name ~= "synthetic"
+        local db = replay(rec, real and crossCheck(name) or nil)
         eq(db._meta.errors, nil, name .. ": no addon errors")
         local gains = 0
         for _, s in ipairs(db.sessions) do
@@ -2267,6 +2323,24 @@ scenario("window_layout", function()
         parts[#parts + 1] = "== /fb " .. tab .. "\n" .. layoutDump(c.global("ForeverBuddyWindow"))
     end
     snapshot("window", table.concat(parts, "\n"))
+end)
+
+-- H2: the cross-check itself, on made-up probes: rows that agree with a
+-- recording are confirmed, and one it contradicts fails the run.
+scenario("forever_rows", function()
+    local check = crossCheck("made-up")
+    check("live", { b = 16, l = 12, x = 500, w = 3, q = 2, sv = 1 })
+    check("torn", { b = 0, l = 0, x = 0, w = 0, q = 0, sv = 0 })
+    eq(confirmed.UnitLevel, "made-up", "a torn level of 0 confirms UnitLevel's row")
+    eq(confirmed["C_Container.GetContainerNumSlots"], "made-up", "and the backpack's")
+    local ok, err = pcall(check, "torn", { b = 0, l = 12 })
+    eq(ok, false, "a level that survives the teardown contradicts the row")
+    eq(tostring(err):find("UnitLevel reads empty while torn", 1, true) ~= nil, true, "and says which: " .. tostring(err))
+    for api, by in pairs(confirmed) do
+        if by == "made-up" then
+            confirmed[api] = nil
+        end
+    end
 end)
 
 -- Runner ---------------------------------------------------------------------
@@ -2341,6 +2415,110 @@ for _, s in ipairs(scenarios) do
         end
     else
         print("ok   " .. s.name)
+    end
+end
+
+-- Forever fidelity (H2) ------------------------------------------------------
+--
+-- Every API the addon calls (through read(), which is how it reaches the
+-- client) needs a row in forever.lua and a mock here; fails otherwise. Then
+-- a printout: how much of that is modelled, confirmed and exercised.
+
+do
+    local src = wow.readFile(ADDON_DIR .. "ForeverBuddy.lua")
+    local apis, events = {}, {}
+    for name in src:gmatch('read%("([%w_%.]+)"') do
+        apis[name] = true
+    end
+    -- read(GetMoney), read(Minimap.GetWidth, Minimap); not a local's
+    -- method (read(pos.GetXY, pos)).
+    for name in src:gmatch("read%(([%a_][%w_%.]*)") do
+        if name:match("^%u") or name == "date" then
+            apis[name] = true
+        end
+    end
+    for name in src:gmatch("\nhandlers%.([%u_]+) = ") do
+        events[name] = true
+    end
+
+    local probe = client()
+    probe.login(nil)
+    local function mocked(name)
+        local v = probe.global(name:match("^[^%.]+"))
+        for part in name:gmatch("%.([^%.]+)") do
+            v = type(v) == "table" and v[part] or nil
+        end
+        return v ~= nil
+    end
+
+    local names, problems = {}, {}
+    for name in pairs(apis) do
+        names[#names + 1] = name
+    end
+    table.sort(names)
+    local rowed, phased, reported, assumed, called, unmocked, uncalled = 0, 0, 0, 0, 0, {}, {}
+    for _, name in ipairs(names) do
+        local row = wow.FOREVER[name]
+        if not row then
+            problems[#problems + 1] = name .. " has no row in forever.lua (what does Forever return while loading and torn?)"
+        else
+            rowed = rowed + 1
+            if row.loading ~= nil or row.torn ~= nil then
+                phased = phased + 1
+            end
+            if row.from == "report" or row.from == "recording" then
+                reported = reported + 1
+            else
+                assumed = assumed + 1
+            end
+        end
+        if not mocked(name) then
+            unmocked[#unmocked + 1] = name
+        end
+        if wow.calls[name] then
+            called = called + 1
+        else
+            uncalled[#uncalled + 1] = name
+        end
+    end
+    for name in pairs(wow.FOREVER) do
+        if not apis[name] then
+            problems[#problems + 1] = "forever.lua has a row for " .. name .. ", which the addon no longer calls"
+        end
+    end
+    for _, name in ipairs(unmocked) do
+        problems[#problems + 1] = name .. " isn't mocked in wow.lua"
+    end
+
+    local handled, fired, unfired = 0, 0, {}
+    for name in pairs(events) do
+        handled = handled + 1
+        if wow.fired[name] then
+            fired = fired + 1
+        else
+            unfired[#unfired + 1] = name
+        end
+    end
+    table.sort(unfired)
+    local nConfirmed = 0
+    for _ in pairs(confirmed) do
+        nConfirmed = nConfirmed + 1
+    end
+
+    print(("Forever fidelity: %d APIs the addon calls, %d mocked, %d with a row in forever.lua"):format(
+        #names, #names - #unmocked, rowed))
+    print(("  %d answer differently while loading or torn; %d rows from a report or recording, %d assumed"):format(
+        phased, reported, assumed))
+    print(("  %d confirmed by a real recording%s"):format(nConfirmed,
+        #REAL == 0 and " (none yet: README › Recordings)" or ""))
+    print(("  %d called by the scenarios; never called: %s"):format(called,
+        #uncalled > 0 and table.concat(uncalled, ", ") or "none"))
+    print(("Events: %d handled, %d fired by the scenarios; never fired: %s"):format(handled, fired,
+        #unfired > 0 and table.concat(unfired, ", ") or "none"))
+    table.sort(problems)
+    for _, p in ipairs(problems) do
+        failures = failures + 1
+        print("FAIL fidelity: " .. p)
     end
 end
 
