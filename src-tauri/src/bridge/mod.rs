@@ -350,36 +350,10 @@ pub(crate) fn send(
     // Only the slots the installed addon's TOC lists: the game wouldn't load
     // the others, and an older addon keeps getting the ones it knows.
     let listed = addon::listed_slots(&target.game);
-    let has = |s: Slot| listed.contains(&s);
     if listed.is_empty() {
         return Ok(Sent::NoAddon);
     }
-    let mut slots = Vec::new();
-    let mut too_large = false;
-    if has(Slot::Tooltip1) && has(Slot::Tooltip2) {
-        let built = tooltip::build(db, flavor, stamp)?;
-        too_large = built.too_large;
-        slots.extend(built.slots);
-    }
-    if has(Slot::Plan) {
-        let mut body = header(stamp);
-        body.hash.extend(crate::plans::slot_entries(db, flavor)?);
-        slots.push((Slot::Plan, render(Slot::Plan, body)?));
-    }
-    if has(Slot::Briefing) {
-        slots.push((Slot::Briefing, briefing::build(db, flavor, stamp)?));
-    }
-    if has(Slot::Lists) {
-        let mut body = header(stamp);
-        body.hash.extend(crate::lists::slot_entries(db, flavor)?);
-        slots.push((Slot::Lists, render(Slot::Lists, body)?));
-    }
-    if has(Slot::Cleanup) {
-        let mut body = header(stamp);
-        body.hash.extend(crate::cleanup::slot_entries(db, flavor)?);
-        slots.push((Slot::Cleanup, render(Slot::Cleanup, body)?));
-    }
-    let built = tooltip::Built { slots, too_large };
+    let built = build(db, flavor, stamp, &listed)?;
     if built
         .slots
         .iter()
@@ -414,6 +388,43 @@ pub(crate) fn send(
     };
     record(db, flavor, &built.slots, stamp, status, None)?;
     Ok(sent)
+}
+
+/// Every slot in `listed`, built from the db: what `send` writes. H5's
+/// contract test builds them the same way.
+pub(crate) fn build(
+    db: &Db,
+    flavor: &str,
+    stamp: i64,
+    listed: &[Slot],
+) -> AppResult<tooltip::Built> {
+    let has = |s: Slot| listed.contains(&s);
+    let mut slots = Vec::new();
+    let mut too_large = false;
+    if has(Slot::Tooltip1) && has(Slot::Tooltip2) {
+        let built = tooltip::build(db, flavor, stamp)?;
+        too_large = built.too_large;
+        slots.extend(built.slots);
+    }
+    if has(Slot::Plan) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::plans::slot_entries(db, flavor)?);
+        slots.push((Slot::Plan, render(Slot::Plan, body)?));
+    }
+    if has(Slot::Briefing) {
+        slots.push((Slot::Briefing, briefing::build(db, flavor, stamp)?));
+    }
+    if has(Slot::Lists) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::lists::slot_entries(db, flavor)?);
+        slots.push((Slot::Lists, render(Slot::Lists, body)?));
+    }
+    if has(Slot::Cleanup) {
+        let mut body = header(stamp);
+        body.hash.extend(crate::cleanup::slot_entries(db, flavor)?);
+        slots.push((Slot::Cleanup, render(Slot::Cleanup, body)?));
+    }
+    Ok(tooltip::Built { slots, too_large })
 }
 
 /// Whether the slot's file already holds this data (its stamp aside).

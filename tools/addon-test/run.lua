@@ -2343,6 +2343,62 @@ scenario("forever_rows", function()
     end
 end)
 
+-- H5: the slots the app actually writes, not hand-written ones. The Rust
+-- test src-tauri/src/contract.rs ingests lists.lua (from this harness),
+-- adds a list, a plan, a cleanup mark and a login note for Thrandor, and
+-- writes every slot to src-tauri/tests/fixtures/bridge/ the way
+-- send_to_game does. The addon has to accept each one and use what's in it.
+local BRIDGE = ROOT .. "/src-tauri/tests/fixtures/bridge/"
+local BRIDGE_STAMP = 1790960000 -- contract.rs's STAMP
+
+local function texts(rows)
+    local out = {}
+    for _, r in ipairs(rows or {}) do
+        if r.shown ~= false and r.label and r.label.text then
+            out[#out + 1] = r.label.text
+        end
+    end
+    return table.concat(out, " | ")
+end
+
+scenario("contract", function()
+    local names = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
+    local slots = {}
+    for _, name in ipairs(names) do
+        slots["Data/" .. name .. ".lua"] = wow.readFile(BRIDGE .. name .. ".lua")
+    end
+    local c = client({ slots = slots })
+    c.login(nil)
+    c.advance(10)
+
+    -- Briefing: this character's login note, on its own line.
+    eq(table.concat(c.chat, "\n"):find("Train Tailoring", 1, true) ~= nil, true,
+        "the login note from the Briefing slot: " .. table.concat(c.chat, " / "))
+
+    -- Plan: the window's Plan tab has the steps.
+    c.slash("/fb plan")
+    local w = c.global("ForeverBuddyWindow")
+    eq(w.panes[1].rows[1].label.text, "1. Take Wanted: Hogger", "the Plan slot's first step")
+
+    -- Lists: the list and its item.
+    c.slash("/fb list")
+    local lists = texts(w.panes[2].rows)
+    eq(lists:find("Linen Cloth", 1, true) ~= nil, true, "the Lists slot's item: " .. lists)
+
+    -- Cleanup: the marked item.
+    c.slash("/fb cleanup")
+    local cleanup = texts(w.panes[4].rows)
+    eq(cleanup:find("Linen Cloth", 1, true) ~= nil, true, "the Cleanup slot's mark: " .. cleanup)
+
+    -- Every slot was read, at the schema this addon knows.
+    local db = file(c.logout())
+    for _, name in ipairs(names) do
+        local r = db.bridge and db.bridge[name]
+        eq(r and r.stamp, BRIDGE_STAMP, name .. " was loaded")
+        eq(r and r.schema, 1, name .. "'s schema")
+    end
+end)
+
 -- Runner ---------------------------------------------------------------------
 
 local check = arg and arg[1] == "--check"
