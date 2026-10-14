@@ -96,6 +96,24 @@ SCENARIOS=(
   "addons-linked|addons-linked|click:css=nav button[title=\"Addons\"];click:css=.ad-table tr:has-text(\"Questie\");wait:text=linked folder|addons-edit"
   "macros|characters|click:css=nav button[title=\"Macros\"];wait:css=.mc-code|macros-readonly"
   "macros-empty|macros-empty|click:css=nav button[title=\"Macros\"];wait:text=WoW writes them when you log out|macros-readonly"
+  # G4: each screen when its commands fail (`&fail=` in the mock: a list of
+  # commands, a trailing * for a prefix, * for all). The shell needs none
+  # of them, so the nav still works. A blank or forever-"…" screen here is
+  # a bug. The mock shot beside it is the screen's normal state.
+  "fail-dashboard|dashboard&fail=*||dashboard"
+  "fail-characters|dashboard&fail=*|click:css=nav button[title=\"Characters\"]|characters"
+  "fail-sheet|characters&fail=character_detail,cleanup_get,plans_list,quests_available,character_quests,notes_list|click:css=nav button[title=\"Characters\"];click:css=.ch-card >> text=Thrandor|character"
+  "fail-ledger|dashboard&fail=*|click:css=nav button[title=\"Ledger\"]|gold"
+  "fail-adventures|dashboard&fail=*|click:css=nav button[title=\"Adventures\"]|session"
+  "fail-lists|dashboard&fail=*|click:css=nav button[title=\"Lists\"]|lists"
+  "fail-ah|dashboard&fail=ah_watchlist,ah_worth_selling,ah_history,ah_goods_worth|click:css=nav button[title=\"Auction House\"]|ah"
+  "fail-approvals|approvals&fail=*|click:css=nav button[title=\"Approvals\"]|approvals"
+  "fail-backups|dashboard&fail=*|$NAV|backups"
+  "fail-game|dashboard&fail=*|click:css=nav button[title=\"Game folder\"]|dashboard-folder-missing"
+  "fail-addons|dashboard&fail=*|click:css=nav button[title=\"Addons\"]|addons-readonly"
+  "fail-macros|dashboard&fail=*|click:css=nav button[title=\"Macros\"]|macros-readonly"
+  "fail-settings|dashboard&fail=*|click:css=.d-side-foot button[title=\"Settings\"]|settings"
+  "fail-setup|setup-backup&fail=backup_list,addon_status||onboarding-found"
 )
 
 echo "== build:mock"

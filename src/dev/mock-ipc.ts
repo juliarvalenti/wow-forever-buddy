@@ -1833,9 +1833,20 @@ export function installMockIpc(): void {
       noAddon || noPrices ? [] : (itemIds as number[]).filter((id) => id % 5 !== 0).map((id) => [id, 2_000 + (id % 97) * 1_100]),
   };
 
+  // G4: `?fail=characters_overview,ledger_*` makes those commands reject
+  // (a trailing * matches a prefix; `*` alone is every command), so each
+  // screen's error state can be shot instead of guessed at.
+  const fail = (new URLSearchParams(location.search).get("fail") ?? "")
+    .split(",")
+    .map((f) => f.trim())
+    .filter(Boolean);
+  const fails = (cmd: string) =>
+    fail.some((f) => (f.endsWith("*") ? cmd.startsWith(f.slice(0, -1)) : cmd === f));
+
   mockWindows("main");
   mockIPC(
     (cmd, args) => {
+      if (fails(cmd)) throw { kind: "Io", detail: `${cmd} failed (mock)` };
       const handler = handlers[cmd];
       if (!handler) throw { kind: "NotFound", detail: `mock: no handler for ${cmd}` };
       return handler((args ?? {}) as Args);
