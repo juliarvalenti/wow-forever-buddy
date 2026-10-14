@@ -21,6 +21,7 @@ import { useBackups } from "@/hooks/useBackups";
 import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
 import { useAppInfo, useSecrets, useSettings } from "@/hooks/useSettings";
+import { useUpdate } from "@/hooks/useUpdate";
 import { ago, bytes, errorText, plural } from "@/lib/format";
 import { DataPanel } from "@/screens/SettingsData";
 
@@ -305,6 +306,11 @@ export function Settings({
                 Entertainment, Inc.
               </div>
             </div>
+            <UpdateCheck
+              on={settings?.check_updates ?? true}
+              ready={settings != null}
+              onChange={(v) => update({ check_updates: v })}
+            />
           </Panel>
         </div>
       </section>
@@ -482,6 +488,51 @@ function SwitchRow({
       <div className="ctl">
         <Switch checked={checked} onChange={onChange} label={title} disabled={disabled} />
       </div>
+    </div>
+  );
+}
+
+/** U2: Settings › About's "Check for updates" (IMPLEMENTING §23). Off means
+ *  no network call at all, so "Check now" goes with it. */
+function UpdateCheck({
+  on,
+  ready,
+  onChange,
+}: {
+  on: boolean;
+  ready: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const status = useUpdate();
+  const last = status?.last_checked ? new Date(status.last_checked) : null;
+  const when =
+    last &&
+    (last.toDateString() === new Date().toDateString()
+      ? last.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : last.toLocaleDateString([], { day: "numeric", month: "short" }));
+  const phase = status?.phase;
+  const result = status?.check_failed
+    ? "Couldn't reach GitHub"
+    : phase && phase.kind !== "none"
+      ? `${phase.version} is out`
+      : "You're up to date";
+  return (
+    <div className="st-set">
+      <div className="t">Check for updates</div>
+      <div className="d">Once at start and once a day. It only asks GitHub for the newest version number.</div>
+      <div className="ctl">
+        <Switch checked={on} onChange={onChange} label="Check for updates" disabled={!ready} />
+      </div>
+      {on && (
+        <div className="d" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+          <span>
+            {status?.checking ? "Checking…" : when ? `Last checked ${when} · ${result}` : "Not checked yet"}
+          </span>
+          <Button variant="ghost" disabled={status?.checking} onClick={() => void commands.updateCheck()}>
+            Check now
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -26,3 +26,4 @@ pub mod secrets;
 pub mod sessions;
 pub mod settings;
 pub mod tidy;
+pub mod update;

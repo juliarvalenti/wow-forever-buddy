@@ -35,6 +35,7 @@ pub mod sv;
 mod test_support;
 mod tidy;
 mod triggers;
+mod update;
 
 use std::sync::mpsc::Sender;
 
@@ -148,6 +149,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_open_folder,
             commands::app::startup_failure,
             commands::app::startup_open_data_folder,
+            commands::update::update_status,
+            commands::update::update_check,
+            commands::update::update_download,
+            commands::update::update_restart,
+            commands::update::update_open_release_page,
         ])
         .events(tauri_specta::collect_events![
             InstallChanged,
@@ -162,7 +168,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sessions::SessionsChanged,
             ah::PricesUpdated,
             ingest::IngestCompleted,
-            proposals::ApprovalsChanged
+            proposals::ApprovalsChanged,
+            update::UpdateStatus
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -192,10 +199,19 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol("icon", icon_protocol)
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            // U2: managed before anything can fail, so its commands always
+            // have state. The check itself starts once the core is up.
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+            app.manage(update::Updates::new(
+                exe_dir.is_some_and(|d| update::is_installed(&d)),
+            ));
             let paths = AppPaths::resolve(app.handle())?;
             let core = match AppCore::new(paths.clone()) {
                 Ok(core) => core,
@@ -215,6 +231,7 @@ pub fn run() {
             // shows right away and hears about the result via the event.
             // Automatic backups start after it, since they need the install.
             let handle = app.handle().clone();
+            update::spawn(&handle);
             // v0.2 ingest: reads each character's ForeverBuddy.lua.
             let ingest = spawn_ingest(&handle);
             let install_handle = handle.clone();
@@ -313,8 +330,19 @@ pub fn run() {
             );
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // U2 "Later": a downloaded update installs as the app closes,
+            // without reopening it, so the next start is the new version.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(updates) = app.try_state::<update::Updates>() {
+                    if updates.ready() {
+                        update::install(app, &updates, false);
+                    }
+                }
+            }
+        });
 }
 
 /// `icon://localhost/<fileDataId>` (`http://icon.localhost/…` on Windows):

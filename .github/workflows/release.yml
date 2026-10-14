@@ -40,13 +40,23 @@ jobs:
 
       - run: npm ci
 
+      # U2: the installer is signed with the updater key (two repo secrets,
+      # used only here), and latest.json plus each .sig go up with the
+      # release. The app checks latest.json and verifies the signature with
+      # the public key in tauri.conf.json before installing anything.
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ github.event.release.id }}
           uploadPlainBinary: true
           uploadWorkflowArtifacts: true
+          uploadUpdaterJson: true
+          # Updates go through the NSIS installer (the one the app checks
+          # for), not the .msi.
+          updaterJsonPreferNsis: true
 
       # BUG-MCP: the release exe (a Windows GUI-subsystem program, unlike the
       # test build) started the way an agent client starts it, over pipes.
