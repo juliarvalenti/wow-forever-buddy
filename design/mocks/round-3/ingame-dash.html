@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game dashboard · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* U1c: a dashboard-style Forever Buddy window (Julia: "more dashboardy"). Still drawn only from Blizzard pieces:
+     ButtonFrameTemplate, InsetFrameTemplate cards, StatusBar fills, item icons, GameFont colours.
+     ?tab=home|plan|lists|errands|cleanup|settings  ·  ?skin=classic. Rules: INGAME §17b. */
+  :root { --gold: #ffd100; --white: #f1ece0; --grey: #8f8a7c; --dim: #a9a291; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: var(--white); font: 13px/1.4 "Friz Quadrata TT", Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; color: #d8cfc0; margin-bottom: 4px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 14px; }
+  .lede a { color: #ffb15c; }
+  .world { position: relative; height: 620px; max-width: 1100px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+
+  .win { position: absolute; left: 50px; top: 40px; width: 640px; }
+  .frame { background: rgba(10,10,12,.94); border-radius: 6px; box-shadow: 0 0 0 1px #4d4a44, 0 0 0 2px #000, 0 10px 26px rgba(0,0,0,.75); }
+  .classic .frame { border-radius: 8px; box-shadow: 0 0 0 2px #8a7a55, 0 0 0 4px #2b241a, 0 0 0 5px #a8956a, 0 10px 22px rgba(0,0,0,.7); }
+  .hd { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 62px; position: relative; background: linear-gradient(180deg, #2a2824, #1a1917); border-radius: 6px 6px 0 0; border-bottom: 1px solid #3a3731; min-height: 32px; }
+  .portrait { position: absolute; left: -10px; top: -12px; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 45% 40%, #2b2620, #0e0d0b); box-shadow: 0 0 0 3px #8a7348, 0 0 0 4px #000, 0 3px 8px rgba(0,0,0,.7); }
+  .portrait svg { width: 34px; height: 34px; }
+  .hd b { font-weight: 400; color: var(--gold); font-size: 13.5px; text-shadow: 0 1px 1px #000; }
+  .hd .who { color: var(--dim); font-size: 12px; }
+  .hd .x { margin-left: auto; width: 18px; height: 18px; display: grid; place-items: center; font: 13px sans-serif; color: #e2c46a; border-radius: 3px;
+    background: linear-gradient(180deg, #7a1a10, #3e0b06); box-shadow: inset 0 0 0 1px #b8913a; }
+
+  .cols { display: grid; grid-template-columns: 150px minmax(0, 1fr); min-height: 330px; }
+  /* side nav: like the Collections journal's side buttons */
+  .nav { padding: 12px 8px; border-right: 1px solid rgba(255,255,255,.07); background: rgba(0,0,0,.25); display: grid; align-content: start; gap: 3px; }
+  .nav a { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: center; height: 30px; padding: 0 8px; border-radius: 3px; color: var(--gold); font-size: 12.5px; text-decoration: none; }
+  .nav a .n { color: var(--white); font-size: 11px; min-width: 18px; text-align: center; padding: 0 5px; border-radius: 8px; background: rgba(255,255,255,.08); }
+  .nav a.on { background: linear-gradient(90deg, rgba(255,209,0,.18), rgba(255,209,0,.04)); box-shadow: inset 2px 0 0 var(--gold); color: #fff; }
+  .nav a svg { width: 16px; height: 16px; }
+  .nav .sep { height: 1px; background: rgba(255,255,255,.07); margin: 6px 2px; }
+
+  .main { padding: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* InsetFrameTemplate cards */
+  .card { background: rgba(0,0,0,.45); border-radius: 4px; box-shadow: inset 0 0 0 1px #3d3a34, inset 0 2px 6px rgba(0,0,0,.8); padding: 9px 10px 10px; display: grid; gap: 6px; align-content: start; min-height: 96px; cursor: pointer; }
+  .card:hover { box-shadow: inset 0 0 0 1px #8a7348, inset 0 2px 6px rgba(0,0,0,.8); }
+  .card .h { display: flex; align-items: baseline; gap: 8px; }
+  .card .h b { font-weight: 400; color: var(--gold); font-size: 12.5px; }
+  .card .h span { margin-left: auto; color: var(--dim); font-size: 11px; }
+  .big { font-size: 20px; color: #fff; line-height: 1.1; }
+  .big small { font-size: 11.5px; color: var(--dim); margin-left: 4px; }
+  .line { font-size: 11.5px; color: var(--white); }
+  .line.dim { color: var(--dim); }
+  .sbar { height: 10px; border-radius: 2px; background: rgba(0,0,0,.6); box-shadow: inset 0 0 0 1px #3d3a34; overflow: hidden; }
+  .sbar i { display: block; height: 100%; }
+  .sbar .xp { background: linear-gradient(180deg, #a35ad6, #6a2f99); }
+  .sbar .go { background: linear-gradient(180deg, #ffd34d, #b8860b); }
+  .sbar .ok { background: linear-gradient(180deg, #4fe04f, #1f8f1f); }
+  .icons { display: flex; gap: 4px; }
+  .ic { width: 22px; height: 22px; border-radius: 3px; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(255,255,255,.12); position: relative; }
+  .ic.q2 { box-shadow: 0 0 0 1px #1eff00, inset 0 0 0 1px rgba(255,255,255,.12); }
+  .ic.q3 { box-shadow: 0 0 0 1px #0070dd, inset 0 0 0 1px rgba(255,255,255,.12); }
+  .ic b { position: absolute; right: 1px; bottom: -1px; font: 700 9px sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+  .pal { color: #f48cba; } .dru { color: #ff7c0a; } .pri { color: #fff; } .rog { color: #fff468; } .hun { color: #aad372; } .mag { color: #3fc7eb; }
+  .here { color: var(--gold); }
+  .wide { grid-column: 1 / -1; }
+
+  .ft { display: flex; align-items: center; gap: 8px; padding: 7px 12px 9px; border-top: 1px solid rgba(255,255,255,.1); font-size: 11px; color: var(--dim); }
+  .ft .r { margin-left: auto; }
+  .note { position: absolute; right: 22px; bottom: 18px; width: 300px; font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+  .pane { display: none; }
+  body[data-tab="home"] .pane.home { display: grid; }
+  .stub { display: none; place-items: center; min-height: 300px; color: var(--dim); font-size: 12px; text-align: center; }
+  body:not([data-tab="home"]) .stub { display: grid; }
+</style>
+</head>
+<body>
+<h1>In-game dashboard (U1c)</h1>
+<p class="lede">A bolder take on the Forever Buddy window. <a href="?tab=home">Overview</a> · <a href="?tab=home&skin=classic">classic skin</a>. Rules in <a href="INGAME.md">INGAME.md</a> §17b. The other sections keep U1's rows (see <a href="ingame-window.html?tab=lists">ingame-window.html</a>).</p>
+
+<div class="world" id="world">
+  <div class="win">
+    <div class="frame">
+      <div class="hd"><span class="portrait"><svg viewBox="0 0 24 24"><path d="M12 2.5l8 3v6c0 5.4-3.6 8.9-8 10.5-4.4-1.6-8-5.1-8-10.5v-6z" fill="#c9a23a" stroke="#3a2a10" stroke-width="1"/><path d="M8 9l4 4 4-4M8 13l4 4 4-4" fill="none" stroke="#2a1b0e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>Forever Buddy</b><span class="who">· <span class="pal">Thrandor</span>, level 58</span><span class="x">×</span></div>
+
+      <div class="cols">
+        <nav class="nav">
+          <a href="?tab=home" data-t="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6v8H4z"/></svg>Overview<span></span></a>
+          <a href="?tab=plan" data-t="plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Plan<span class="n">1/4</span></a>
+          <a href="?tab=goals" data-t="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/></svg>Goals<span class="n">2</span></a>
+          <a href="?tab=lists" data-t="lists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 7h12l-1 12H7z M9 7a3 3 0 0 1 6 0"/></svg>Lists<span class="n">3</span></a>
+          <a href="?tab=errands" data-t="errands"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v11H4z M4 7l8 6 8-6"/></svg>Errands<span class="n">2</span></a>
+          <a href="?tab=cleanup" data-t="cleanup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 8v8M9 10h4.5a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3H15"/></svg>Cleanup<span class="n">7</span></a>
+          <div class="sep"></div>
+          <a href="?tab=settings" data-t="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Settings<span></span></a>
+        </nav>
+
+        <div class="main">
+          <div class="pane home grid">
+            <div class="card"><div class="h"><b>Tonight's plan</b><span>Winterspring</span></div>
+              <div class="big">1 <small>of 4 done</small></div>
+              <div class="sbar"><i class="go" style="width:25%"></i></div>
+              <div class="line">Next: Accept "Are We There, Yeti?" <span class="dim line">· Everlook →</span></div></div>
+
+            <div class="card"><div class="h"><b>Goals</b><span>2 active</span></div>
+              <div class="line">Level 60 by Fri <span class="line dim">· 1.4 to go</span></div>
+              <div class="sbar"><i class="xp" style="width:72%"></i></div>
+              <div class="line">500g for the mount <span class="line dim">· 288g to go</span></div>
+              <div class="sbar"><i class="go" style="width:42%"></i></div></div>
+
+            <div class="card"><div class="h"><b>This session</b><span>1h 42m</span></div>
+              <div class="big" style="color:#1eff00">+312g <small>184g an hour</small></div>
+              <div class="line">87,000 XP an hour <span class="line dim">· level 59 in ~41 min</span></div>
+              <div class="line dim">47 items gained · ~96g at last scan</div></div>
+
+            <div class="card"><div class="h"><b>Lists</b><span>3 still needed</span></div>
+              <div class="icons"><span class="ic" style="background:#d9d2c2"><b>26</b></span><span class="ic" style="background:#c8bfae"><b>6</b></span><span class="ic q2" style="background:#6b4fa0"><b>4</b></span></div>
+              <div class="line">Runecloth, Rune Thread, Mooncloth</div>
+              <div class="line dim">Nothing on your lists is sold here</div></div>
+
+            <div class="card"><div class="h"><b>Errands</b><span>at a mailbox</span></div>
+              <div class="icons"><span class="ic" style="background:#d9d2c2"><b>20</b></span><span class="ic q3" style="background:#3a5a8a"></span></div>
+              <div class="line">2 to send to <span class="pri">Sela</span></div>
+              <div class="line dim">Fill recipient works at the mailbox</div></div>
+
+            <div class="card"><div class="h"><b>Lockouts</b><span>this week</span></div>
+              <div class="line">Molten Core <span class="line dim">· resets Tue</span></div>
+              <div class="line" style="margin-top:-4px"><span class="dru">Velyra</span>, <span class="pal">Thrandor</span></div>
+              <div class="line">Onyxia's Lair <span class="line dim">· resets Wed</span></div>
+              <div class="line" style="margin-top:-4px"><span class="pal">Thrandor</span></div></div>
+          </div>
+          <div class="stub">This section keeps U1's rows (ingame-window.html), with the header line from U1b.</div>
+        </div>
+      </div>
+
+      <div class="ft"><span>From Forever Buddy · 21:04</span><span class="r">Type /reload to sync</span></div>
+    </div>
+  </div>
+  <div class="note">Overview is the default. Each card opens its section; cards with nothing to say are left out and the rest close up. The side nav counts are live where the game knows (bags, lockouts) and as of the last sync otherwise.</div>
+</div>
+<script>
+  const p = new URLSearchParams(location.search);
+  const tab = p.get('tab') || 'home';
+  document.body.dataset.tab = tab;
+  if (p.get('skin') === 'classic') document.getElementById('world').classList.add('classic');
+  document.querySelectorAll('.nav a').forEach(a => { if (a.dataset.t === tab) a.classList.add('on'); });
+</script>
+</body>
+</html>
