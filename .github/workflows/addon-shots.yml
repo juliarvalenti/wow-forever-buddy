@@ -1,0 +1,78 @@
+name: Addon pictures
+
+# G1: pictures of the in-game window, one per tab, filled and empty, for the
+# designer to check against the mock. tools/addon-shots/scene.lua runs the
+# addon in WOWAPI (the WoW: Forever client emulator), vendored with our
+# patches in tools/wowapi. The PNGs are the run's "addon-pictures" artifact.
+
+on:
+  pull_request:
+    paths:
+      - src-tauri/resources/addon/**
+      - src-tauri/tests/fixtures/bridge/**
+      - tools/addon-shots/**
+      - tools/wowapi/**
+      - .github/workflows/addon-shots.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pictures:
+    runs-on: ubuntu-latest
+    steps:
+      # WOWAPI and Chrome run in this job, so the token stays out of .git/config.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # (The runner context isn't available in a job's env.)
+      - run: |
+          echo "WOWAPI_CACHE=$RUNNER_TEMP/wowapi-cache" >> "$GITHUB_ENV"
+          echo "OUT=$RUNNER_TEMP/addon-pictures" >> "$GITHUB_ENV"
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
+
+      # WOWAPI downloads the game's UI art (Gethe/wow-ui-textures, wago.tools)
+      # the first time it's drawn; keep it between runs.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/wowapi-cache
+          key: wowapi-art-${{ hashFiles('tools/wowapi/ORIGIN.md') }}-${{ github.run_id }}
+          restore-keys: wowapi-art-${{ hashFiles('tools/wowapi/ORIGIN.md') }}-
+
+      # WOWAPI's data/ isn't committed (security review on #199).
+      - name: Fetch WOWAPI's data at the vendored commit
+        run: tools/wowapi/fetch-data.sh
+
+      - name: Draw the window
+        run: lua5.1 tools/addon-shots/scene.lua "$OUT"
+
+      - name: SVG to PNG (headless Chrome, at 2x)
+        run: |
+          cd "$OUT"
+          for svg in *.svg; do
+            w=$(grep -o -m1 'width="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
+            h=$(grep -o -m1 'height="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
+            google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+              --force-device-scale-factor=2 --window-size="$w,$h" \
+              --screenshot="$OUT/${svg%.svg}.png" "file://$OUT/$svg" 2>/dev/null
+          done
+          ls -la *.png
+          {
+            echo "### In-game window pictures"
+            echo
+            echo "One PNG per tab, with the app's slots (filled-*) and the shipped empty ones (empty-*):"
+            echo "the **addon-pictures** artifact of this run."
+            echo
+            for png in *.png; do echo "- $png"; done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only the PNGs. Never the art cache, and never commit either (security review on #199).
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: addon-pictures
+          path: ${{ runner.temp }}/addon-pictures/*.png
+          if-no-files-found: error
+          retention-days: 14
