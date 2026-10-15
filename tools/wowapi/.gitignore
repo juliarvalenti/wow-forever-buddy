@@ -1,0 +1,5 @@
+# WOWAPI's data/ (Blizzard API docs, global strings, atlas and icon lists) is
+# never committed: fetch-data.sh fills it from the pinned commit.
+wowapi/data/
+# The game art WOWAPI downloads on first use (wowapi/assets.lua).
+.wowtest/
