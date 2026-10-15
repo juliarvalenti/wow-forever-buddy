@@ -341,7 +341,7 @@ for i, n in ipairs(LAYERS) do LAYER_INDEX[n] = i end
 local TOOLTIP_BACKDROP = { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
   tile = true, tileSize = 16, edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } }
 
-local function frame(ctx, obj)
+local function frameBody(ctx, obj)
   local sim = ctx.sim
   local st = sim.widgetState
   local s = st[obj]
@@ -493,6 +493,26 @@ local function frame(ctx, obj)
         num(x + 2), num(y - 3), esc(s.name)))
     end
   end
+end
+
+-- WFB patch (G1): a frame inside a ScrollFrame is clipped to it, as in the
+-- client, so a pane taller than its window doesn't draw past the edge.
+local function frame(ctx, obj)
+  local st = ctx.sim.widgetState
+  local p = st[obj].parent
+  while p and st[p] and st[p].type ~= "ScrollFrame" do p = st[p].parent end
+  if not (p and st[p]) then return frameBody(ctx, obj) end
+  ctx.clips = ctx.clips or {}
+  if not ctx.clips[p] then
+    local l, b, w, h = layout.rect(ctx.sim, p)
+    if not l then return frameBody(ctx, obj) end
+    ctx.clips[p] = "wfbclip" .. (#ctx.defs + 1)
+    ctx.defs[#ctx.defs + 1] = string.format('<clipPath id="%s"><rect x="%s" y="%s" width="%s" height="%s"/></clipPath>',
+      ctx.clips[p], num(l), num(H - b - h), num(w), num(h))
+  end
+  ctx:add('<g clip-path="url(#' .. ctx.clips[p] .. ')">')
+  frameBody(ctx, obj)
+  ctx:add('</g>')
 end
 
 ------------------------------------------------------------------ page

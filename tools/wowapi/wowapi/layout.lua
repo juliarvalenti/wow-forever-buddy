@@ -135,7 +135,18 @@ function M.rect(sim, obj, visiting)
   local s = state[obj]
   if not s then return nil end
   if s.fixedRect then return s.fixedRect[1], s.fixedRect[2], s.fixedRect[3], s.fixedRect[4] end
-  if #s.points == 0 then return nil end
+  if #s.points == 0 then
+    -- WFB patch (G1): a ScrollFrame places its scroll child at its own top
+    -- left, moved up by the vertical scroll, as in the client. Without this
+    -- an unanchored scroll child isn't drawn.
+    local parent = s.parent and state[s.parent]
+    if not (parent and parent.scrollChild == obj) then return nil end
+    local pl, pb, _, ph = M.rect(sim, s.parent, visiting)
+    if not pl then return nil end
+    local es = M.effectiveScale(state, obj)
+    local w, h = (s.width or 0) * es, (s.height or 0) * es
+    return pl, pb + ph - h + (parent.vscroll or 0) * es, w, h
+  end
   visiting = visiting or {}
   if visiting[obj] then return nil end
   visiting[obj] = true

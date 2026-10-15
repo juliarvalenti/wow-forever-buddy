@@ -139,6 +139,19 @@ function M.install(sim, env)
   rawset(env, "CallbackRegistryMixin", CallbackRegistryMixin)
   rawset(env, "CallbackRegistry", CallbackRegistryMixin)
 
+  ------------------------------------------------------------ panel tabs
+  -- WFB patch (G1): PanelTemplates' tab helpers. A PanelTabButtonTemplate
+  -- tab has no width of its own; the client sizes it to its label plus the
+  -- template's ends. Without these the tabs are 0 wide and pile up.
+  rawset(env, "PanelTemplates_TabResize", function(tab, padding, absoluteSize, minWidth, maxWidth)
+    local width = absoluteSize or (tab:GetTextWidth() + 32 + (padding or 0))
+    if minWidth then width = math.max(width, minWidth) end
+    if maxWidth then width = math.min(width, maxWidth) end
+    tab:SetWidth(width)
+  end)
+  rawset(env, "PanelTemplates_SetNumTabs", function(frame, n) frame.numTabs = n end)
+  rawset(env, "PanelTemplates_SetTab", function(frame, id) frame.selectedTab = id end)
+
   ------------------------------------------------------------ time & text formatting
   local function plural(n, word) return n .. " " .. word .. (n == 1 and "" or "s") end
   rawset(env, "SecondsToTime", function(seconds, noSeconds, notAbbreviated, maxCount, roundUp)
