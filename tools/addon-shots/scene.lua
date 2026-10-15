@@ -98,6 +98,9 @@ local written = {}
 
 -- The whole screen as SVG, cropped to the window.
 local function shot(sim, name)
+    if art then
+        sim:_registerAddonArt() -- the addon's own textures (its portrait icon)
+    end
     local svg = render.svg(sim, { art = art, embed = true })
     local l, b, w, h = bounds(sim)
     local y = layout.SCREEN_H - (b + h)

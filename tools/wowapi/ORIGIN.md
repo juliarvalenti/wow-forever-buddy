@@ -16,6 +16,7 @@ Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the co
 
 - `layout.lua`: a ScrollFrame's scroll child is placed at the frame's top left, moved up by the vertical scroll, as in the client. Without this, the window's panes draw empty.
 - `framexml.lua`: `PanelTemplates_TabResize`, `_SetNumTabs` and `_SetTab`. A `PanelTabButtonTemplate` tab is sized to its label plus the template's ends, as in the client. Without this, the tabs are 0 wide and pile up.
+- `templates.lua`: `PortraitFrameTemplate`'s portrait is placed over the top-left corner (62×62 at -5, 7), as in the client. Without this, the window has no portrait.
 - `render.lua`: a frame inside a ScrollFrame is clipped to it. Without this, a pane taller than its window (Settings) draws past the window's edge.
 
 ## Updating

@@ -230,6 +230,12 @@ function M.builtins(env)
     obj.GetTitleText = function(self) return self.TitleText end
     obj.PortraitContainer = create(sim, "Frame", nil, obj)
     obj.PortraitContainer.portrait = create(sim, "Texture", nil, obj.PortraitContainer)
+    -- WFB patch (G1): the portrait sits over the top-left corner, as in the
+    -- client; unplaced, it isn't drawn.
+    obj.PortraitContainer:SetPoint("TOPLEFT", -5, 7)
+    obj.PortraitContainer:SetSize(62, 62)
+    obj.PortraitContainer:SetFrameLevel(obj:GetFrameLevel() + 2)
+    obj.PortraitContainer.portrait:SetAllPoints()
     obj.SetPortraitToAsset = function(self, tex) self.PortraitContainer.portrait:SetTexture(tex) end
   end
   B.ButtonFrameTemplate = function(sim, obj, create)
