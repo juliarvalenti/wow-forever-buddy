@@ -2336,9 +2336,42 @@ local function chaos(seed, verbose)
     local held = { [6948] = 1, [2589] = 4 }
     local given = {}
     local ITEMS = { 2589, 14047, 117, 6948 }
-    c.login(nil)
-    for _ = 1, 30 do
-        local k = r(12)
+    -- H4b: the client's login in different orders. Plain, or by hand:
+    -- money before PLAYER_LOGIN, the bags before PLAYER_ENTERING_WORLD, or
+    -- the bags late with a BAG_UPDATE_DELAYED before they've loaded and two
+    -- after.
+    local function login(text)
+        local how = r(4)
+        if how == 1 then
+            note("login")
+            c.login(text)
+            return
+        end
+        c.login(text, { events = false })
+        c.fire("ADDON_LOADED", "ForeverBuddy")
+        if how == 2 then
+            note("login: money first")
+            c.fire("PLAYER_MONEY")
+        end
+        c.fire("PLAYER_LOGIN")
+        if how == 3 then
+            note("login: bags before entering the world")
+            c.world.phase = "live"
+            c.fire("BAG_UPDATE_DELAYED")
+            c.fire("PLAYER_ENTERING_WORLD", true, false)
+        else
+            note("login: bags late, and twice")
+            c.fire("PLAYER_ENTERING_WORLD", true, false)
+            c.advance(r(30))
+            c.fire("BAG_UPDATE_DELAYED")
+            c.world.phase = "live"
+            c.fire("BAG_UPDATE_DELAYED")
+            c.fire("BAG_UPDATE_DELAYED")
+        end
+    end
+
+    local function step()
+        local k = r(13)
         if k == 1 then
             local t = r(900)
             note("advance " .. t)
@@ -2391,32 +2424,71 @@ local function chaos(seed, verbose)
             local m = r(50000)
             note("money +" .. m)
             c.setMoney(c.world.money + m)
+        elseif k == 12 and r(12) == 1 then
+            -- H4b: a burst of loot, past the event cap on its own.
+            local n = MAX_EVENTS_ADDON + r(500)
+            note("burst of " .. n .. " loots")
+            for i = 1, n do
+                local id = ITEMS[(i % #ITEMS) + 1]
+                c.loot(id, 1)
+                held[id], given[id] = (held[id] or 0) + 1, true
+            end
         else
             note("logout countdown")
             c.startLogout()
             c.cancelLogout()
         end
     end
-    c.combat(false)
-    local text = c.logout()
+
     local function check(ok, what)
         if not ok then
             fail("seed " .. seed .. ": " .. what .. "\n  steps: " .. table.concat(steps, "; "))
         end
     end
-    local okParse, db = pcall(file, text)
-    check(okParse, "the file doesn't parse or its counts don't add up: " .. tostring(db))
-    check(entries(db.sessions) <= MAX_SESSIONS_ADDON, "more than " .. MAX_SESSIONS_ADDON .. " sessions")
-    for _, s in pairs(db.sessions) do
-        check(entries(s.events) <= MAX_EVENTS_ADDON, "a session past " .. MAX_EVENTS_ADDON .. " events")
-        for _, e in pairs(s.events or {}) do
-            if e.kind == "gain" and e.how == nil then
-                check(given[e.item] == true, "a gain of " .. tostring(e.item) .. " the session never gave")
+    local function checkFile(text)
+        local okParse, db = pcall(file, text)
+        check(okParse, "the file doesn't parse or its counts don't add up: " .. tostring(db))
+        check(entries(db.sessions) <= MAX_SESSIONS_ADDON, "more than " .. MAX_SESSIONS_ADDON .. " sessions")
+        for _, s in pairs(db.sessions) do
+            check(entries(s.events) <= MAX_EVENTS_ADDON, "a session past " .. MAX_EVENTS_ADDON .. " events")
+            for _, e in pairs(s.events or {}) do
+                if e.kind == "gain" and e.how == nil then
+                    check(given[e.item] == true, "a gain of " .. tostring(e.item) .. " the session never gave")
+                end
             end
         end
+        if db.snapshot then
+            check(type(db.snapshot.bags) == "table" and db.snapshot.bags[0] ~= nil,
+                "a hollow snapshot (no backpack)")
+        end
     end
-    if db.snapshot and db.snapshot.bags then
-        check(next(db.snapshot.bags) ~= nil, "a hollow snapshot (no bags)")
+
+    -- One login, or now and then (H4b) a chain of 11 to 13, past the
+    -- session cap. Each logs out one of three ways, and every file written
+    -- is checked.
+    local text
+    local logins = r(10) == 1 and 10 + r(3) or 1
+    for n = 1, logins do
+        login(text)
+        for _ = 1, n == 1 and 30 or r(5) do
+            step()
+        end
+        c.combat(false)
+        local out = r(3)
+        if out == 1 then
+            note("logout: countdown")
+            c.startLogout()
+            c.advance(r(20))
+        elseif out == 2 and forever then
+            note("logout: teardown before the countdown")
+            c.world.phase = "torn"
+            c.startLogout()
+        else
+            note("logout: instant")
+        end
+        text = c.logout()
+        checkFile(text)
+        c.advance(r(3600))
     end
 end
 
@@ -2701,12 +2773,23 @@ scenario("bursts", function()
     frames.bags = c.frame(function()
         c.fire("BAG_UPDATE_DELAYED")
     end)
+    -- A session at the event cap, then the logout countdown: the card adds
+    -- up the whole session (H4b found it over budget). Fixed here, so every
+    -- run meets it, not only the chaos seeds that happen to.
+    for _ = 1, 2100 do
+        c.loot(2589, 1) -- onto the backpack's Linen Cloth stack
+    end
+    c.advance(10 * 60)
+    frames.logout = c.frame(function()
+        c.startLogout()
+    end)
     -- (Not counted under --coverage, whose hook is already set.)
     local counting = wow.cost.on and debug.gethook() == nil
     for name, n in pairs(frames) do
         eq(n > 0, counting, name .. " was counted")
     end
-    file(c.logout())
+    local db = file(c.logout())
+    eq(#db.sessions[1].events, 2000, "the session reached the cap")
 end)
 
 -- Runner ---------------------------------------------------------------------
@@ -2745,11 +2828,19 @@ end
 -- fit both.
 HANDLER_BUDGET = 150000
 FRAME_BUDGET = 400000
+-- Logging out runs these once, while the player is leaving and nothing
+-- moves on screen, and they do the session's whole bookkeeping (the card's
+-- tally, the last snapshot, the file). A capped session with full bags
+-- takes them near 140k in Lua 5.1, so they get their own, larger budget,
+-- still under the ~300k the card cost before H4b's fix.
+LOGOUT_BUDGET = 220000
+local LOGOUT = { PLAYER_CAMPING = true, PLAYER_LEAVING_WORLD = true, PLAYER_LOGOUT = true }
 
 local function overBudget(c)
     for _, call in ipairs(c.costs) do
-        if call.n > HANDLER_BUDGET then
-            return ("%s took %d instructions (budget %d)"):format(call.name, call.n, HANDLER_BUDGET)
+        local budget = LOGOUT[call.name] and LOGOUT_BUDGET or HANDLER_BUDGET
+        if call.n > budget then
+            return ("%s took %d instructions (budget %d)"):format(call.name, call.n, budget)
         end
     end
     if c.worstFrame > FRAME_BUDGET then
@@ -2944,8 +3035,8 @@ do
     end)
     local lines = {}
     if #rows > 0 then
-        lines[1] = ("Handler cost (%s instructions; budget %d per handler, %d per frame):"):format(
-            jit and "LuaJIT" or "Lua 5.1", HANDLER_BUDGET, FRAME_BUDGET)
+        lines[1] = ("Handler cost (%s instructions; budget %d per handler, %d at logout, %d per frame):"):format(
+            jit and "LuaJIT" or "Lua 5.1", HANDLER_BUDGET, LOGOUT_BUDGET, FRAME_BUDGET)
         for i = 1, math.min(8, #rows) do
             local r = rows[i]
             lines[#lines + 1] = ("  %8d  %s  (%s)"):format(r.n, r.name, r.scenario or "?")
