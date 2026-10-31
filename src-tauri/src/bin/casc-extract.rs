@@ -4,12 +4,17 @@
 //! gives the bytes. The cache is keyed by build, like icons, and is never
 //! committed: it's Blizzard's files, refetched per build.
 //!
+//! Dev only, behind the casc-dev feature (the shipped app carries no
+//! decryption code); build and run it with:
+//!
+//!     cargo build --features casc-dev --bin casc-extract
 //!     casc-extract --flavor "/Applications/World of Warcraft/_forever_" \
 //!         --listfile tools/casc-listfile/files.csv
 //!
 //! Text and XML are written raw; `.blp` textures are decoded to PNG. Files
 //! the game hasn't downloaded yet are reported, not fatal: one login in
-//! game streams them in, and the next run takes them.
+//! game streams them in, and the next run takes them. Encrypted files are
+//! skipped unless `--tactkeys` names wowdev's public key list.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -62,17 +67,18 @@ fn main() -> ExitCode {
         eprintln!("the listfile at {} has no usable rows", listfile.display());
         return ExitCode::FAILURE;
     }
-    let tactkeys = tactkeys.unwrap_or_else(default_tactkeys);
-    let keys = match casc::load_tact_keys(&tactkeys) {
-        Ok(keys) if !keys.is_empty() => Some(keys),
-        Ok(_) | Err(_) => {
-            eprintln!(
-                "no TACT keys at {}: encrypted files will stay encrypted",
-                tactkeys.display()
-            );
-            eprintln!("fetch them first: tools/casc-listfile/fetch-tactkeys.sh");
-            None
-        }
+    // Keys are opt-in: none of the default set is encrypted, so --tactkeys
+    // only matters when a run reports encrypted files.
+    let keys = match tactkeys {
+        Some(path) => match casc::load_tact_keys(&path) {
+            Ok(keys) => Some(keys),
+            Err(e) => {
+                eprintln!("can't read the TACT keys at {}: {e}", path.display());
+                eprintln!("fetch them first: tools/casc-listfile/fetch-tactkeys.sh");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
     };
     let filters = (!filters.is_empty()).then_some(filters);
     let filters: Vec<String> = filters
@@ -141,6 +147,12 @@ fn main() -> ExitCode {
         "not downloaded yet {}, not in this build {}, failed {}",
         summary.not_local, summary.missing, summary.failed
     );
+    if summary.encrypted > 0 {
+        println!(
+            "encrypted, no key: {} (--tactkeys reads them)",
+            summary.encrypted
+        );
+    }
     if summary.not_local > 0 {
         println!("log in once in game, so the client downloads them, then run this again");
     }
@@ -157,10 +169,6 @@ fn default_listfile() -> PathBuf {
     Path::new("tools").join("casc-listfile").join("files.csv")
 }
 
-fn default_tactkeys() -> PathBuf {
-    Path::new("tools").join("casc-listfile").join("WoW.txt")
-}
-
 fn app_cache() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -174,7 +182,7 @@ fn usage_then_exit(problem: String) -> ! {
     eprintln!(
         "usage: casc-extract --flavor <flavor dir> [--out <cache dir>] \\\n\
          \x20        [--listfile <csv>] [--tactkeys <WoW.txt>] \\\n\
-         \x20        [--filter <path prefix>]... [--dry-run]"
+         \x20        [--filter <path prefix>]... [--dry-run] [--verbose]"
     );
     std::process::exit(2);
 }

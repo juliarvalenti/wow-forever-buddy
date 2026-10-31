@@ -21,7 +21,9 @@ mod extract;
 mod icons;
 mod idx;
 mod root;
+#[cfg(feature = "casc-dev")]
 mod salsa;
+#[cfg(feature = "casc-dev")]
 mod tact;
 
 use std::collections::{HashMap, HashSet};
@@ -34,7 +36,12 @@ use crate::fsx::read::{open_shared, safe_read};
 pub use config::{hex, BuildInfo};
 pub use extract::{parse_listfile, run, Entry, Summary, DEFAULT_FILTERS};
 pub use icons::{build_dir, cache_path, IconCache};
+#[cfg(feature = "casc-dev")]
 pub use tact::{load as load_tact_keys, parse as parse_tact_keys, TactKeys};
+// The shipped reader has no key table to load, so the type the store holds
+// is blte's empty placeholder: `None` is its only possible value.
+#[cfg(not(feature = "casc-dev"))]
+use blte::TactKeys;
 
 /// A 16-byte content or encoding key.
 pub type Key = [u8; 16];
@@ -93,7 +100,8 @@ struct Store {
     /// Each bucket's index, read on first use (`None` if it wouldn't parse).
     buckets: [OnceLock<Option<idx::Entries>>; idx::BUCKETS],
     /// The public TACT keys, when the caller loaded them; without them
-    /// encrypted files fail with `Encrypted`, as they always did.
+    /// encrypted files fail with `Encrypted`, as they always did. Only
+    /// the casc-dev build can hold any (see the type note above).
     keys: Option<TactKeys>,
 }
 
@@ -154,7 +162,9 @@ impl Casc {
         self.store.indexes.iter().flatten().cloned().collect()
     }
 
-    /// Reads encrypted files too, under the public TACT keys.
+    /// Reads encrypted files too, under the public TACT keys. Only the
+    /// casc-dev build has this; the shipped reader is unencrypted-only.
+    #[cfg(feature = "casc-dev")]
     pub fn with_keys(mut self, keys: TactKeys) -> Casc {
         self.store.keys = Some(keys);
         self

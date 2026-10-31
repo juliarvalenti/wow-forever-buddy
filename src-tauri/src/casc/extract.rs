@@ -100,6 +100,9 @@ pub struct Summary {
     pub not_local: u32,
     /// In the listfile but not in this build's root.
     pub missing: u32,
+    /// Encrypted, and no key table was loaded (or it lacks the name).
+    /// Distinct from `failed`: the file may be readable with --tactkeys.
+    pub encrypted: u32,
     /// Refused paths, unreadable files, decode and write failures.
     pub failed: u32,
     pub bytes: u64,
@@ -157,6 +160,12 @@ pub fn run(
                 }
                 summary.missing += 1;
             }
+            Err(Fail::Encrypted) => {
+                if verbose {
+                    eprintln!("encrypted, no key: {}", entry.path);
+                }
+                summary.encrypted += 1;
+            }
             Err(Fail::Broken(why)) => {
                 if verbose {
                     eprintln!("failed: {}: {why}", entry.path);
@@ -180,6 +189,7 @@ fn target(dir: &Path, rel: &Path) -> PathBuf {
 enum Fail {
     NotLocal,
     Missing,
+    Encrypted,
     Broken(String),
 }
 
@@ -204,6 +214,7 @@ fn read(casc: &Casc, ckey: &super::Key) -> Result<Vec<u8>, Fail> {
     casc.by_ckey(ckey).map_err(|e| match e {
         CascError::NotLocal => Fail::NotLocal,
         CascError::Missing(_) => Fail::Missing,
+        CascError::Encrypted => Fail::Encrypted,
         other => Fail::Broken(other.to_string()),
     })
 }
@@ -284,11 +295,17 @@ mod tests {
         ];
 
         // LOCKED's chunk is encrypted and the traversal path is refused;
-        // both fail on their own.
+        // both fail on their own, the encrypted one in its own bucket.
         let mut summary = run(&casc, out.path(), &listfile, &filters, false, false);
         assert_eq!(
-            (summary.extracted, summary.not_local, summary.missing, summary.failed),
-            (1, 1, 1, 2),
+            (
+                summary.extracted,
+                summary.not_local,
+                summary.missing,
+                summary.encrypted,
+                summary.failed
+            ),
+            (1, 1, 1, 1, 1),
             "{summary:?}"
         );
         let png = icons::build_dir(out.path(), &casc.build).join("interface/buttons/ui-icon.png");

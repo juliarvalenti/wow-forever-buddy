@@ -6,12 +6,23 @@
 //! without a key table, or for a name it doesn't have, they fail with
 //! `Encrypted` rather than coming back as garbage. Every size is checked
 //! against `cap` before anything is allocated or inflated.
+//!
+//! The decryptor exists only behind the casc-dev feature. The shipped
+//! reader is unencrypted-only: its `E` branch fails with `Encrypted`
+//! before a key could even be asked for.
 
 use std::io::Read;
 
 use super::bytes::Bytes;
+#[cfg(feature = "casc-dev")]
 use super::tact::TactKeys;
 use super::{CascError, CascResult};
+
+/// The key table type the `E` chunks need. Only casc-dev has a real one
+/// (`tact.rs`); otherwise this placeholder has no values, so `None` is the
+/// only thing a caller can pass.
+#[cfg(not(feature = "casc-dev"))]
+pub(crate) enum TactKeys {}
 
 /// Chunks in one file. Real files have at most a few thousand.
 const MAX_CHUNKS: usize = 1 << 16;
@@ -77,8 +88,17 @@ fn chunk(
         }
         b'Z' => inflate(body, room, out)?,
         b'E' => {
-            let plain = decrypt(body, keys, frame)?;
-            inflate(&plain, room, out)?;
+            // The casc-dev build decrypts; the shipped one stops here.
+            #[cfg(feature = "casc-dev")]
+            {
+                let plain = decrypt(body, keys, frame)?;
+                inflate(&plain, room, out)?;
+            }
+            #[cfg(not(feature = "casc-dev"))]
+            {
+                let _ = (keys, frame);
+                return Err(CascError::Encrypted);
+            }
         }
         _ => return Err(CascError::Bad("BLTE chunk mode")),
     }
@@ -105,6 +125,7 @@ fn inflate(body: &[u8], room: usize, out: &mut Vec<u8>) -> CascResult<()> {
 /// Decrypts an encrypted chunk: key name, IV and cipher type in a header
 /// (CascLib's `CascDecrypt`), then the chunk's bytes under Salsa20. The
 /// frame index salts the IV, so every chunk of a file uses its own nonce.
+#[cfg(feature = "casc-dev")]
 fn decrypt(body: &[u8], keys: Option<&TactKeys>, frame: u32) -> CascResult<Vec<u8>> {
     let keys = keys.ok_or(CascError::Encrypted)?;
     let mut b = Bytes::new(body);
@@ -199,6 +220,7 @@ pub(crate) mod tests {
 
     /// A BLTE whose every chunk is encrypted under `key`, each chunk's nonce
     /// salted with its own frame index, the way Blizzard writes them.
+    #[cfg(feature = "casc-dev")]
     fn encode_encrypted(name: &[u8; 8], key: &[u8; 16], plains: &[&[u8]]) -> Vec<u8> {
         let bodies: Vec<Vec<u8>> = plains
             .iter()
@@ -242,14 +264,18 @@ pub(crate) mod tests {
         out
     }
 
+    #[cfg(feature = "casc-dev")]
     const KEY_NAME: &[u8; 8] = b"01234567";
+    #[cfg(feature = "casc-dev")]
     const KEY: &[u8; 16] = b"abcdefghijklmnop";
 
+    #[cfg(feature = "casc-dev")]
     fn keys_for(name: &[u8; 8], key: &[u8; 16]) -> TactKeys {
         let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02X}")).collect::<String>();
         super::super::tact::parse(&format!("{} {}", hex(name), hex(key)))
     }
 
+    #[cfg(feature = "casc-dev")]
     #[test]
     fn encrypted_chunks_decrypt_frame_by_frame() {
         let file = encode_encrypted(KEY_NAME, KEY, &[b"frame zero ", b"frame one"]);
@@ -259,6 +285,7 @@ pub(crate) mod tests {
         assert_eq!(plain, b"frame zero frame one");
     }
 
+    #[cfg(feature = "casc-dev")]
     #[test]
     fn a_name_the_keys_lack_stays_encrypted() {
         let keys = keys_for(b"00000000", KEY);
@@ -272,6 +299,7 @@ pub(crate) mod tests {
         assert_eq!(decode_with(&plain, 1024, Some(&keys)).unwrap(), b"ok");
     }
 
+    #[cfg(feature = "casc-dev")]
     #[test]
     fn a_malformed_encrypted_header_is_bad_not_a_panic() {
         let keys = keys_for(KEY_NAME, KEY);

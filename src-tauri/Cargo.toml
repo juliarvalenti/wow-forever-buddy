@@ -14,6 +14,19 @@ edition = "2021"
 name = "wow_forever_buddy_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The CASC extract CLI and the TACT-key decryptor it carries. A dev tool:
+# the shipped app never enables it, so its binary reads unencrypted files
+# only and carries no decryption code at all.
+casc-dev = []
+
+# The Interface extract tool (ticket CASC2). Dev only: build it with
+#   cargo build --features casc-dev --bin casc-extract
+[[bin]]
+name = "casc-extract"
+path = "src/bin/casc-extract.rs"
+required-features = ["casc-dev"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
