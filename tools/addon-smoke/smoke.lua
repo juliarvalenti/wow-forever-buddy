@@ -28,6 +28,18 @@ local function fail(msg)
     os.exit(2)
 end
 
+-- `s` as one POSIX shell word: single-quoted, with each ' written as '\''.
+-- (Lua's %q is a Lua literal, not shell quoting: a folder name could break
+-- out of it.)
+local function sq(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+local function sh(cmd)
+    local r = os.execute(cmd)
+    return r == 0 or r == true
+end
+
 local f = io.open(WOWAPI .. "/wowapi/data/apidocs.lua", "rb")
 if not f then
     fail("WOWAPI's data is missing: run tools/wowapi/fetch-data.sh first")
@@ -82,12 +94,32 @@ if opts.install then
     end
     local Installer = require("wowapi.installer")
     local inst = Installer.new({ root = dest, log = function() end })
+    -- Every entry is owner/repo@<full commit SHA>: the report is repeatable,
+    -- and nobody can change the code we run by pushing to a branch. We
+    -- fetch that one commit ourselves and hand the installer the folder.
+    local pinned = dest .. "/pinned"
+    sh("mkdir -p " .. sq(pinned))
     for line in io.lines(list) do
-        local repo = line:match("^%s*([^#%s]+)")
-        if repo then
-            io.write("fetching " .. repo .. " ... ")
-            local ok, err = pcall(inst.install, inst, repo)
-            print(ok and "ok" or ("failed: " .. tostring(err)))
+        local entry = line:match("^%s*([^#%s]+)")
+        if entry then
+            local owner, repo, sha = entry:match("^([%w%-_%.]+)/([%w%-_%.]+)@(%x+)$")
+            if not sha or #sha ~= 40 then
+                fail(list .. ": '" .. entry .. "' must be owner/repo@<40-hex commit SHA>")
+            end
+            io.write("fetching " .. owner .. "/" .. repo .. " at " .. sha:sub(1, 12) .. " ... ")
+            local work = pinned .. "/" .. repo
+            local url = "https://github.com/" .. owner .. "/" .. repo .. ".git"
+            local okFetch = sh("rm -rf " .. sq(work) .. " && git init -q " .. sq(work)
+                .. " && git -C " .. sq(work) .. " fetch -q --depth 1 " .. sq(url) .. " " .. sq(sha)
+                .. " && git -C " .. sq(work) .. " checkout -q FETCH_HEAD"
+                .. " && git -C " .. sq(work) .. " submodule update -q --init --recursive --depth 1")
+            local head = okFetch and io.popen("git -C " .. sq(work) .. " rev-parse HEAD"):read("*l")
+            if head ~= sha then
+                print("failed: could not fetch that commit")
+            else
+                local ok, err = pcall(inst.install, inst, work)
+                print(ok and "ok" or ("failed: " .. tostring(err)))
+            end
         end
     end
     addonsDir = dest .. "/AddOns"
@@ -107,7 +139,7 @@ if opts.only then
     end
 end
 local names = {}
-for name in io.popen('ls "' .. addonsDir .. '"'):lines() do
+for name in io.popen("ls " .. sq(addonsDir)):lines() do
     if not only or only[name] then
         names[#names + 1] = name
     end
@@ -204,8 +236,8 @@ local tmp = os.tmpname()
 
 local function runIsolated(name)
     os.remove(tmp)
-    local cmd = ("ulimit -v 2000000 2>/dev/null; %s%s %q --one %q %q %q"):format(
-        hasTimeout and ("timeout " .. LIMIT_S .. " ") or "", lua, arg[0], name, tmp, addonsDir)
+    local cmd = ("ulimit -v 2000000 2>/dev/null; %s%s %s --one %s %s %s"):format(
+        hasTimeout and ("timeout " .. LIMIT_S .. " ") or "", sq(lua), sq(arg[0]), sq(name), sq(tmp), sq(addonsDir))
     local status = os.execute(cmd)
     local chunk = loadfile(tmp)
     if chunk then

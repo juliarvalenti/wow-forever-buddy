@@ -10,7 +10,7 @@ Runs addons headless through WOWAPI (`tools/wowapi`, the WoW: Forever client emu
 
 It's a building block for P4's "configure other addons": before Claude proposes settings for an addon, we know whether it even runs on Forever.
 
-**Third-party code runs only in CI,** on a throwaway runner with a read-only token, never on a developer's machine. Run the **Addon smoke test** workflow by hand (Actions › Addon smoke test › Run workflow, optionally with a comma list of folders). The report goes on the run's summary page and into the `addon-smoke` artifact. `addons.txt` is the list, as GitHub `owner/repo`. Each is fetched and packaged as the CurseForge packager would (`.pkgmeta` externals, move-folders) by WOWAPI's installer.
+**Third-party code runs only in CI,** on a throwaway runner with a read-only token, never on a developer's machine. Run the **Addon smoke test** workflow by hand (Actions › Addon smoke test › Run workflow, optionally with a comma list of folders). The report goes on the run's summary page and into the `addon-smoke` artifact. `addons.txt` is the list, as GitHub `owner/repo@<full commit SHA>` (SIM5c). An entry without a pin is refused, so a report is repeatable and nobody can change the code we run by pushing to a branch. Each pinned commit is fetched, then packaged as the CurseForge packager would (`.pkgmeta` externals, move-folders) by WOWAPI's installer. Those externals are libraries the addon's own `.pkgmeta` names, so they aren't pinned. To move an addon on, replace its SHA and review the run's report on the PR.
 
 **Locally,** only on code we wrote or a folder you trust:
 
