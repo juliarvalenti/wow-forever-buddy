@@ -49,7 +49,21 @@ pub struct Opt {
     /// Turning it on lets the addon do something in the game for you
     /// (§8): never approved together with others.
     pub acts: bool,
+    /// A number's range.
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    /// A choice's values.
+    #[serde(default)]
+    pub values: Option<Vec<String>>,
+    /// Text's length in bytes (the addon counts bytes too); 200 if unset.
+    #[serde(default)]
+    pub max_length: Option<usize>,
 }
+
+/// Text's length when the declaration doesn't say.
+const MAX_TEXT: usize = 200;
 
 pub fn schema() -> &'static Schema {
     static SCHEMA: OnceLock<Schema> = OnceLock::new();
@@ -66,12 +80,42 @@ pub fn option(id: &str) -> Option<&'static Opt> {
 /// Option id → value.
 pub type Values = BTreeMap<String, Value>;
 
-/// Whether `v` is a value of the option's declared type.
+/// Whether `v` is a value the declaration allows: its type, and for a
+/// number its range, for a choice one of its values, for text its length
+/// and no control characters. The addon's `U.prefs.fits` checks the same
+/// before applying anything.
 fn fits(o: &Opt, v: &Value) -> bool {
     match o.kind.as_str() {
         "bool" => v.is_boolean(),
-        // No other type is declared yet; one that is needs its check here.
+        "number" => v.as_f64().is_some_and(|n| {
+            n.is_finite() && o.min.is_none_or(|m| n >= m) && o.max.is_none_or(|m| n <= m)
+        }),
+        "enum" => v
+            .as_str()
+            .is_some_and(|s| o.values.iter().flatten().any(|x| x == s)),
+        "string" => v.as_str().is_some_and(|s| {
+            s.len() <= o.max_length.unwrap_or(MAX_TEXT) && !s.contains(|c: char| c.is_control())
+        }),
+        // Any other type: nothing is accepted until it has its check here.
         _ => false,
+    }
+}
+
+/// What an option takes, in words for the agent.
+fn allowed(o: &Opt) -> String {
+    let n = |v: Option<f64>| v.map_or_else(|| "any".to_string(), |v| v.to_string());
+    match o.kind.as_str() {
+        "bool" => "true or false".into(),
+        "number" => format!("a number from {} to {}", n(o.min), n(o.max)),
+        "enum" => format!(
+            "one of: {}",
+            o.values.clone().unwrap_or_default().join(", ")
+        ),
+        "string" => format!(
+            "text of at most {} bytes, on one line",
+            o.max_length.unwrap_or(MAX_TEXT)
+        ),
+        _ => "a value this version can't set".into(),
     }
 }
 
@@ -291,15 +335,7 @@ pub fn check(
             )
         })?;
         if !fits(o, &ch.value) {
-            return Err(format!(
-                "{} takes {}",
-                o.id,
-                if o.kind == "bool" {
-                    "true or false"
-                } else {
-                    "a value this version can't set"
-                }
-            ));
+            return Err(format!("{} takes {}", o.id, allowed(o)));
         }
         if out.iter().any(|(b, _)| b.option == o.id) {
             return Err(format!("{} is changed twice", o.id));
@@ -586,6 +622,47 @@ mod tests {
         for o in &schema().options {
             assert!(fits(o, &o.default), "{}", o.id);
         }
+    }
+
+    /// Security's P4b note: every type is checked for range, choice and
+    /// length, the same cases as the harness's `settings_fits`.
+    #[test]
+    fn values_are_checked_for_range_choice_and_length() {
+        let decl = |extra: Value| -> Opt {
+            let mut o = json!({ "id": "x.y", "module": "x", "section": "X", "type": "bool",
+                                "default": false, "label": "L", "help": "H", "acts": false });
+            o.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            serde_json::from_value(o).unwrap()
+        };
+        let num = decl(json!({ "type": "number", "min": 0, "max": 1 }));
+        let choice = decl(json!({ "type": "enum", "values": ["left", "right"] }));
+        let text = decl(json!({ "type": "string", "maxLength": 5 }));
+        let any_text = decl(json!({ "type": "string" }));
+        for (o, v, want) in [
+            (&decl(json!({})), json!(true), true),
+            (&decl(json!({})), json!("true"), false),
+            (&num, json!(0), true),
+            (&num, json!(1), true),
+            (&num, json!(0.5), true),
+            (&num, json!(-0.1), false),
+            (&num, json!(1.5), false),
+            (&num, json!("0.5"), false),
+            (&choice, json!("left"), true),
+            (&choice, json!("up"), false),
+            (&choice, json!(1), false),
+            (&text, json!("hello"), true),
+            (&text, json!("hello!"), false),
+            (&text, json!("a\nb"), false),
+            (&any_text, json!("x".repeat(200)), true),
+            (&any_text, json!("x".repeat(201)), false),
+            (&decl(json!({ "type": "color" })), json!("ff0000"), false),
+        ] {
+            assert_eq!(fits(o, &v), want, "{} {v}", o.kind);
+        }
+        assert_eq!(allowed(&num), "a number from 0 to 1");
+        assert_eq!(allowed(&choice), "one of: left, right");
     }
 
     #[test]
