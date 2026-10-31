@@ -135,8 +135,25 @@ local function run(name)
             sim:Advance(5)
         end)
     end
+    -- Errors, the same message counted once ("(x5)"), with the ones that are
+    -- WOWAPI's limits, not the addon's, kept apart.
+    local seen, order = {}, {}
+    result.emulator = {}
     for _, e in ipairs(sim.errors) do
-        result.errors[#result.errors + 1] = tostring(e.message or e)
+        local msg = tostring(e.message or e):gsub("\n.*", "")
+        if msg:find("LibSharedMedia%-3%.0: Attempt to register an invalid") then
+            -- WOWAPI loads no media files, so every font and texture an
+            -- addon registers with LibSharedMedia fails its check here.
+            result.emulator[#result.emulator + 1] = msg
+        else
+            if not seen[msg] then
+                order[#order + 1] = msg
+            end
+            seen[msg] = (seen[msg] or 0) + 1
+        end
+    end
+    for _, msg in ipairs(order) do
+        result.errors[#result.errors + 1] = seen[msg] > 1 and ("%s (x%d)"):format(msg, seen[msg]) or msg
     end
     for _, b in ipairs(sim.blockedActions or {}) do
         result.blocked[#result.blocked + 1] = ("[%s] %s: %s"):format(b.kind, b.addon, b.action)
@@ -223,11 +240,13 @@ add("# Addon smoke test")
 add("")
 add(("%d addons from `%s`, each run headless through WOWAPI (Interface 16001, secret values on): log in, idle, combat in and out, /reload."):format(#results, addonsDir))
 add("")
-add("| Addon | Loaded | Lua errors | Blocked | Stubbed calls | Unknown globals |")
-add("|---|---|---|---|---|---|")
+add("Lua errors count each distinct message once. \"Emulator\" counts errors that are WOWAPI's limits, not the addon's (it loads no media files, so LibSharedMedia rejects every font and texture).")
+add("")
+add("| Addon | Loaded | Lua errors | Blocked | Stubbed calls | Unknown globals | Emulator |")
+add("|---|---|---|---|---|---|---|")
 for _, r in ipairs(results) do
-    add(("| %s | %s | %d | %d | %d | %d |"):format(r.name, r.loaded and "yes" or ("no: " .. r.reason),
-        #r.errors, #r.blocked, #r.stubbed, #r.undefined))
+    add(("| %s | %s | %d | %d | %d | %d | %d |"):format(r.name, r.loaded and "yes" or ("no: " .. r.reason),
+        #r.errors, #r.blocked, #r.stubbed, #r.undefined, #(r.emulator or {})))
 end
 for _, r in ipairs(results) do
     if #r.errors + #r.blocked + #r.undefined > 0 then
