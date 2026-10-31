@@ -1,4 +1,4 @@
-# The community listfile (wow-listfile's FileDataID -> path map) and the
-# Blizzard files extracted from the game's CASC storage are never
-# committed: fetch-listfile.sh and casc-extract fill them locally.
+# The community listfile and the public TACT key list are fetched, never
+# committed: Blizzard's names and the community's keys are not ours to ship.
 files.csv
+WoW.txt

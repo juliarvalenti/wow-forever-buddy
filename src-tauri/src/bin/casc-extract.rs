@@ -20,6 +20,7 @@ fn main() -> ExitCode {
     let mut flavor: Option<PathBuf> = None;
     let mut out: Option<PathBuf> = None;
     let mut listfile: Option<PathBuf> = None;
+    let mut tactkeys: Option<PathBuf> = None;
     let mut filters: Vec<String> = Vec::new();
     let mut dry_run = false;
     let args = std::env::args().skip(1);
@@ -33,6 +34,7 @@ fn main() -> ExitCode {
             "--flavor" => flavor = Some(PathBuf::from(value())),
             "--out" => out = Some(PathBuf::from(value())),
             "--listfile" => listfile = Some(PathBuf::from(value())),
+            "--tactkeys" => tactkeys = Some(PathBuf::from(value())),
             "--filter" => filters.push(value()),
             "--dry-run" => dry_run = true,
             other => usage_then_exit(format!("unknown argument {other}")),
@@ -56,6 +58,18 @@ fn main() -> ExitCode {
         eprintln!("the listfile at {} has no usable rows", listfile.display());
         return ExitCode::FAILURE;
     }
+    let tactkeys = tactkeys.unwrap_or_else(default_tactkeys);
+    let keys = match casc::load_tact_keys(&tactkeys) {
+        Ok(keys) if !keys.is_empty() => Some(keys),
+        Ok(_) | Err(_) => {
+            eprintln!(
+                "no TACT keys at {}: encrypted files will stay encrypted",
+                tactkeys.display()
+            );
+            eprintln!("fetch them first: tools/casc-listfile/fetch-tactkeys.sh");
+            None
+        }
+    };
     let filters = (!filters.is_empty()).then_some(filters);
     let filters: Vec<String> = filters
         .unwrap_or_else(|| casc::DEFAULT_FILTERS.iter().map(|f| f.to_string()).collect());
@@ -81,6 +95,11 @@ fn main() -> ExitCode {
             eprintln!("can't open the game's CASC storage: {e}");
             return ExitCode::FAILURE;
         }
+    };
+    // Keys are optional: with them the encrypted Interface code reads too.
+    let storage = match keys {
+        Some(keys) => storage.with_keys(keys),
+        None => storage,
     };
     let out = out.unwrap_or_else(default_cache);
     let summary = casc::run(&storage, &out, &entries, &filters, dry_run);
@@ -112,6 +131,10 @@ fn default_listfile() -> PathBuf {
     Path::new("tools").join("casc-listfile").join("files.csv")
 }
 
+fn default_tactkeys() -> PathBuf {
+    Path::new("tools").join("casc-listfile").join("WoW.txt")
+}
+
 fn app_cache() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -124,7 +147,8 @@ fn usage_then_exit(problem: String) -> ! {
     eprintln!();
     eprintln!(
         "usage: casc-extract --flavor <flavor dir> [--out <cache dir>] \\\n\
-         \x20        [--listfile <csv>] [--filter <path prefix>]... [--dry-run]"
+         \x20        [--listfile <csv>] [--tactkeys <WoW.txt>] \\\n\
+         \x20        [--filter <path prefix>]... [--dry-run]"
     );
     std::process::exit(2);
 }

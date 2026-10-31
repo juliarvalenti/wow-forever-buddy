@@ -9,7 +9,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 dest="$here/files.csv"
 [ -f "$dest" ] && exit 0
 
-url=https://raw.githubusercontent.com/wow-listfile/listfile/master/files.csv
+# wowdev/wow-listfile publishes the CSV as a release download; capitals kept
+# so extracted paths read like the game's own (interface/AddOns/...).
+url=https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile-withcapitals.csv
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 curl -fsSL "$url" -o "$tmp"

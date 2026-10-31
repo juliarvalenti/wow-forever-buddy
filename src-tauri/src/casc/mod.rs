@@ -21,6 +21,8 @@ mod extract;
 mod icons;
 mod idx;
 mod root;
+mod salsa;
+mod tact;
 
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
@@ -32,6 +34,7 @@ use crate::fsx::read::{open_shared, safe_read};
 pub use config::{hex, BuildInfo};
 pub use extract::{parse_listfile, run, Entry, Summary, DEFAULT_FILTERS};
 pub use icons::{build_dir, cache_path, IconCache};
+pub use tact::{load as load_tact_keys, parse as parse_tact_keys, TactKeys};
 
 /// A 16-byte content or encoding key.
 pub type Key = [u8; 16];
@@ -89,6 +92,9 @@ struct Store {
     indexes: [Option<PathBuf>; idx::BUCKETS],
     /// Each bucket's index, read on first use (`None` if it wouldn't parse).
     buckets: [OnceLock<Option<idx::Entries>>; idx::BUCKETS],
+    /// The public TACT keys, when the caller loaded them; without them
+    /// encrypted files fail with `Encrypted`, as they always did.
+    keys: Option<TactKeys>,
 }
 
 /// The installed build for a flavor folder (`<WoW root>/_classic_beta_`):
@@ -128,6 +134,7 @@ impl Casc {
             indexes: idx::newest(&data_dir)?,
             data_dir,
             buckets: std::array::from_fn(|_| OnceLock::new()),
+            keys: None,
         };
         let encoding = encoding::Encoding::parse(store.read(&encoding_ekey, MAX_META)?)?;
         let root_ekey = encoding
@@ -145,6 +152,12 @@ impl Casc {
     /// The local index files this was opened with (see `index_set`).
     pub fn index_set(&self) -> Vec<PathBuf> {
         self.store.indexes.iter().flatten().cloned().collect()
+    }
+
+    /// Reads encrypted files too, under the public TACT keys.
+    pub fn with_keys(mut self, keys: TactKeys) -> Casc {
+        self.store.keys = Some(keys);
+        self
     }
 
     /// Content keys for the FileDataIDs that exist in this build.
@@ -190,7 +203,7 @@ impl Store {
             file.read_exact(&mut span)?;
         } // handle closed before decoding
         check_archive_header(&span, ekey, loc.size)?;
-        blte::decode(&span[ARCHIVE_HEADER..], cap)
+        blte::decode_with(&span[ARCHIVE_HEADER..], cap, self.keys.as_ref())
     }
 }
 
