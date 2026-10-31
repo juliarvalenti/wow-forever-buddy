@@ -1,0 +1,56 @@
+name: Addon smoke test
+
+# SIM5b: popular addons (tools/addon-smoke/addons.txt), fetched from GitHub
+# and run headless through WOWAPI, one at a time: what fails to load, Lua
+# errors, blocked actions, and calls WOWAPI only stubs. Third-party code runs
+# only here, on a throwaway runner with a read-only token and no secrets,
+# never on a developer's machine. Run by hand; the report is on the run's
+# summary page and in the "addon-smoke" artifact.
+
+on:
+  # A change to the tool or its list runs it, so the PR shows the report.
+  pull_request:
+    paths:
+      - tools/addon-smoke/**
+      - .github/workflows/addon-smoke.yml
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma list of addon folders to run (empty: all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Third-party code runs in this job, so the token stays out of .git/config.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
+
+      - name: Fetch WOWAPI's data at the vendored commit
+        run: tools/wowapi/fetch-data.sh
+
+      - name: Fetch the addons and run them
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          OUT="$RUNNER_TEMP/addon-smoke"
+          mkdir -p "$OUT"
+          set -- --install tools/addon-smoke/addons.txt "$OUT/wt" --md "$OUT/report.md"
+          if [ -n "$ONLY" ]; then set -- "$@" --only "$ONLY"; fi
+          lua5.1 tools/addon-smoke/smoke.lua "$@"
+          cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: addon-smoke
+          path: ${{ runner.temp }}/addon-smoke/report.md
+          retention-days: 14
