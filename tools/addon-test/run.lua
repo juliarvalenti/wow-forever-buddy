@@ -2034,15 +2034,65 @@ scenario("window", function()
     eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
         .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
         .. "Your alts on item tooltips ✓, Minimap button ✓, Record my next session", "every toggle")
-    eq(w.panes[5].checks[4].enabled, false, "combat hiding waits for the coach")
+    -- U1d: a dependent option isn't shown until its parent is on, and the
+    -- rows below move up rather than leave a gap.
+    local checks = w.panes[5].checks
+    eq(checks[4].shown, false, "combat hiding shows only with the coach")
+    local cardY = checks[5].points[1][5]
+    c.click(checks[3])
+    eq(checks[4].shown, true, "coach on: combat hiding appears")
+    eq(checks[4].points[1][4], 34, "indented under the coach")
+    eq(checks[5].points[1][5], cardY - 26, "and the card moves down to make room")
+    c.click(checks[3])
+    eq(checks[4].shown, false, "coach off: gone again")
+    eq(checks[5].points[1][5], cardY, "no gap left")
+    -- Every box has its one line on hover.
+    for _, cb in ipairs(checks) do
+        cb.scripts.OnEnter(cb)
+        local tip = c.global("GameTooltip").lines
+        eq(tip[1], cb.label.text, "the hover names " .. cb.label.text)
+        eq(type(tip[2]) == "string" and #tip[2] > 10, true, cb.label.text .. " has a line: " .. tostring(tip[2]))
+        cb.scripts.OnLeave(cb)
+    end
+
+    -- Esc › Options › AddOns: the client's vertical layout, the same
+    -- toggles as rows, each with its line as the tooltip.
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "in Esc › Options › AddOns")
+    eq(options.vertical, true, "the vertical layout, not a canvas")
+    local rows = {}
+    for _, init in ipairs(options.layout.inits) do
+        rows[#rows + 1] = init.kind == "header" and ("[" .. init.text .. "]") or init.setting.name
+    end
+    eq(table.concat(rows, ", "), "[In game], Login briefing, Lockouts at the entrance, Session coach, "
+        .. "Hide the coach in combat, Session card at logout, Marks in your bags, [Tooltips], "
+        .. "Your alts on item tooltips, [This window], Minimap button, [Help fix bugs], Record my next session",
+        "every row in order")
+    local function row(name)
+        for _, init in ipairs(options.layout.inits) do
+            if init.kind == "checkbox" and init.setting.name == name then
+                return init
+            end
+        end
+    end
+    local combatRow, coachRow = row("Hide the coach in combat"), row("Session coach")
+    eq(combatRow.parent, coachRow, "combat hiding hangs off the coach")
+    eq(combatRow:IsShown(), false, "and isn't shown while it's off")
+    coachRow.setting:SetValue(true)
+    eq(combatRow:IsShown(), true, "shown once the coach is on")
+    eq(checks[3].checked, true, "and the window's tab agrees")
+    coachRow.setting:SetValue(false)
+    eq(row("Login briefing").tooltip,
+        "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
+        "the hover line is the row's tooltip")
+    eq(row("Login briefing").setting.default, true, "Defaults puts it back on")
     local brief = w.panes[5].checks[1]
     c.click(brief)
     eq(c.global("ForeverBuddySettings").briefing, false, "saved per account")
-    eq(options.frame.checks[1].checked, false, "the Options copy follows")
-    c.click(brief)
-    eq(c.global("ForeverBuddySettings").briefing, nil, "on again")
+    eq(row("Login briefing").setting:GetValue(), false, "the Options row follows")
+    row("Login briefing").setting:SetValue(true)
+    eq(c.global("ForeverBuddySettings").briefing, nil, "on again, from Options")
+    eq(brief.checked, true, "and the tab follows")
     c.click(w.panes[5].checks[2])
     eq(c.global("ForeverBuddySettings").lockouts, false, "lockouts off is saved")
     c.click(w.panes[5].checks[2])
@@ -2790,6 +2840,102 @@ scenario("bursts", function()
     end
     local db = file(c.logout())
     eq(#db.sessions[1].events, 2000, "the session reached the cap")
+end)
+
+-- U1d: the coach strip, the plan tracker and the logout card are placed in
+-- Edit Mode. Opening it shows each one (built if it never has been) with
+-- its name, drags them, and saves where they're dropped; closing it hides
+-- the previews again. Outside Edit Mode they don't move.
+scenario("edit_mode", function()
+    local c = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    c.login(nil)
+    c.advance(10)
+    eq(c.global("ForeverBuddyCoachFrame"), nil, "the coach isn't built (it's off)")
+
+    c.editMode(true)
+    local frames = {
+        coach = c.global("ForeverBuddyCoachFrame"),
+        plan = c.global("ForeverBuddyPlanFrame"),
+        card = c.global("ForeverBuddyCardFrame"),
+    }
+    local names = {
+        coach = "Forever Buddy: session coach",
+        plan = "Forever Buddy: tonight's plan",
+        card = "Forever Buddy: logout card",
+    }
+    for key, f in pairs(frames) do
+        eq(f ~= nil, true, key .. " is built for Edit Mode")
+        eq(f.shown, true, key .. " shows while placing")
+        eq(f.editOverlay.shown, true, key .. " is highlighted")
+        eq(f.editOverlay.label.text, names[key], key .. " is named")
+        eq(f:IsMouseEnabled(), true, key .. " takes the mouse to be dragged")
+        -- Dragged and dropped somewhere else: kept.
+        f.scripts.OnDragStart(f)
+        eq(f.layout.StartMoving ~= nil, true, key .. " moves")
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", c.global("UIParent"), "CENTER", 100, -50)
+        f.scripts.OnDragStop(f)
+        local at = c.global("ForeverBuddySettings")[key .. "At"]
+        eq(at and table.concat(at, ","), "CENTER,100,-50", key .. "'s place is saved")
+    end
+
+    c.editMode(false)
+    for key, f in pairs(frames) do
+        eq(f.shown, false, key .. "'s preview goes away")
+        eq(f.editOverlay.shown, false, key .. "'s highlight goes")
+        f.layout.StartMoving = nil
+        f.scripts.OnDragStart(f)
+        eq(f.layout.StartMoving, nil, key .. " doesn't move outside Edit Mode")
+    end
+    eq(frames.coach:IsMouseEnabled(), false, "the coach takes no clicks outside it")
+    eq(frames.card:IsMouseEnabled(), false, "nor does the card (only its ×)")
+
+    -- Shown for real later, they're where they were left.
+    c.click(setting(c, "Session coach"))
+    local f = c.global("ForeverBuddyCoachFrame")
+    eq(f.shown, true, "the coach on")
+    eq(f.points[1][1] .. "," .. f.points[1][4] .. "," .. f.points[1][5], "CENTER,100,-50", "where it was placed")
+
+    -- A frame shown before Edit Mode stays shown after it.
+    c.editMode(true)
+    c.editMode(false)
+    eq(f.shown, true, "the coach stays on")
+
+    -- Next login: built where they were placed.
+    local text = c.logout()
+    local again = client({ slots = { ["Data/Plan.lua"] = PLAN } })
+    again.settings = c.settings
+    again.login(text)
+    again.slash("/fb plan")
+    again.click(again.global("ForeverBuddyWindow").panes[1].tracker)
+    local plan = again.global("ForeverBuddyPlanFrame")
+    eq(plan.points[1][1] .. "," .. plan.points[1][4], "CENTER,100", "the plan tracker too, next time")
+    file(again.logout())
+end)
+
+-- U1d: a client without Edit Mode keeps the old way (drag any time), and
+-- one without the vertical Settings layout gets the canvas page.
+scenario("settings_fallbacks", function()
+    local c = client({ noEditMode = true, canvasOnly = true })
+    c.login(nil)
+    c.advance(10)
+    local coach = setting(c, "Session coach")
+    c.click(coach)
+    local f = c.global("ForeverBuddyCoachFrame")
+    eq(f:IsMouseEnabled(), true, "no Edit Mode: the coach takes the mouse")
+    f.scripts.OnDragStart(f)
+    eq(f.layout.StartMoving ~= nil, true, "and drags any time")
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", c.global("UIParent"), "TOPLEFT", 80, -120)
+    f.scripts.OnDragStop(f)
+    eq(table.concat(c.global("ForeverBuddySettings").coachAt, ","), "TOPLEFT,80,-120", "saved as before")
+
+    local options = c.global("Settings").categories[1]
+    eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
+    eq(options.vertical, nil, "as the canvas")
+    eq(#options.frame.checks, 9, "with every toggle")
+    eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
+    file(c.logout())
 end)
 
 -- Runner ---------------------------------------------------------------------
