@@ -898,7 +898,7 @@ scenario("plan", function()
     eq(tab.rows[3].go.enabled, false, "no recorded position")
     eq(tab.footer.text, "0 of 4 done", "progress")
     eq(w.fresh.text:match("^From Forever Buddy · %d%d:%d%d") ~= nil, true, "the freshness line")
-    eq(w.sync.text, "Type /reload to sync", "typed sync (INGAME §5 C)")
+    eq(w.syncButton.shown ~= false and w.sync.text, "", "a Sync button, no typed line (B4)")
     eq(tab.tracker.checked, false, "the tracker is off")
     -- Its checkbox shows the §7 tracker.
     c.click(tab.tracker)
@@ -2152,7 +2152,7 @@ scenario("window", function()
     eq(b.scripts.OnUpdate, nil, "stops following")
 
     c.slash("/fb sync")
-    eq(c.chat[#c.chat], PREFIX .. "type /reload to sync.", "typed sync (INGAME §5 C)")
+    eq(c.world.requests.reload, 1, "/fb sync reloads (B4; the sync scenario has the rest)")
 end)
 
 -- Record mode (SIM1 b): "Record my next session" records one session, then
@@ -3275,6 +3275,57 @@ scenario("edit_mode", function()
     local plan = again.global("ForeverBuddyPlanFrame")
     eq(plan.points[1][1] .. "," .. plan.points[1][4], "CENTER,100", "the plan tracker too, next time")
     file(again.logout())
+end)
+
+-- B4: Sync reloads the UI, ReloadUI() first in the click or keypress, and
+-- _meta.sync says what came of it. Refused once, it's "Type /reload" for good.
+scenario("sync", function()
+    local c = client()
+    c.login(nil)
+    c.advance(5)
+    c.slash("/fb")
+    local win = c.global("ForeverBuddyWindow")
+    eq(win.syncButton.shown ~= false, true, "the footer has a Sync button")
+    eq(win.sync.text, "", "and no typed fallback beside it")
+
+    -- The click: the client reloads, and the next file says it did.
+    c.click(win.syncButton)
+    eq(c.world.requests.reload, 1, "the click calls ReloadUI")
+    local db = wow.parse(c.reload(), "ForeverBuddyDB")
+    eq(db._meta.sync.result, "pending", "asked for, written by the reload itself")
+    db = wow.parse(c.logout(), "ForeverBuddyDB")
+    eq(db._meta.sync.result, "reloaded", "the load after it was a reload")
+    eq(c.settings.syncAsked, nil, "and the ask is cleared")
+
+    -- /fb sync does the same from the keyboard. A plain login after it
+    -- (no reload came) is "unknown".
+    c.login(nil)
+    c.slash("/fb sync")
+    eq(c.world.requests.reload, 2, "/fb sync calls ReloadUI")
+    c.logout()
+    c.login(nil)
+    db = wow.parse(c.logout(), "ForeverBuddyDB")
+    eq(db._meta.sync.result, "unknown", "a login, not a reload, after the ask")
+
+    -- Refused: the chat says so, the footer goes back to typing, for good.
+    c.login(nil)
+    c.world.reloadBlocked = true
+    c.chat = {}
+    c.slash("/fb")
+    win = c.global("ForeverBuddyWindow")
+    c.click(win.syncButton)
+    eq(c.chat[#c.chat], "|cffffd100Forever Buddy:|r the game didn't let the addon reload. Type /reload to sync.", "the chat says why")
+    eq(win.syncButton.shown, false, "the button goes")
+    eq(win.sync.text, "Type /reload to sync", "the typed way is back")
+    db = wow.parse(c.logout(), "ForeverBuddyDB")
+    eq(db._meta.sync.result, "blocked", "the file says it was refused")
+    c.login(nil)
+    c.slash("/fb sync")
+    eq(c.world.requests.reload, 3, "refused, /fb sync no longer calls it")
+    eq(c.chat[#c.chat], "|cffffd100Forever Buddy:|r type /reload to sync.", "it says to type it")
+    c.slash("/fb")
+    eq(c.global("ForeverBuddyWindow").syncButton.shown, false, "still gone after a login")
+    file(c.logout())
 end)
 
 -- U1d: a client without Edit Mode keeps the old way (drag any time), and

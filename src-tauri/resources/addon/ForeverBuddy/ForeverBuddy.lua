@@ -3472,8 +3472,58 @@ end
 -- the minimap button, the addon compartment or /fb, never by itself. It
 -- shows what the other panels show; the only things it changes are our own
 -- settings. In combat it can open and close, but nothing in it changes.
--- Sync is typed (INGAME §5 C): ReloadUI is protected on Forever, and a
--- secure /reload button waits on probe run 4.
+-- Sync (B4): the footer's Sync button and /fb sync reload the UI, so the
+-- game loads what the app sent. Forever lets addon code reload only inside
+-- a click or keypress, and only if ReloadUI() comes first in it (from
+-- EllesmereUI, which ships it: R3), so both call it before anything else.
+-- If the game refuses (ADDON_ACTION_BLOCKED), the footer goes back to
+-- "Type /reload to sync" for good. What happened goes in the file as
+-- _meta.sync, so one click from Julia confirms it.
+U.sync = {}
+do
+    local function cfgs()
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        return ForeverBuddySettings
+    end
+
+    -- The game refused it once: typing /reload is the way here.
+    function U.sync.refused()
+        return cfgs().syncBlocked == true
+    end
+
+    -- Right after ReloadUI() in a click: noted where the reload's own
+    -- write keeps it (account settings), so the next load can tell. A
+    -- refusal can already have come, inside the ReloadUI() call.
+    function U.sync.asked()
+        if U.sync.refused() then
+            return
+        end
+        local t = now()
+        cfgs().syncAsked = t
+        U.sync.outcome = { asked = t, result = "pending" }
+    end
+
+    -- ADDON_ACTION_BLOCKED for our ReloadUI().
+    function U.sync.blocked()
+        local c = cfgs()
+        c.syncBlocked, c.syncAsked = true, nil
+        U.sync.outcome = { asked = now(), result = "blocked" }
+        say(GOLD_PREFIX .. "the game didn't let the addon reload. Type /reload to sync.")
+        pcall(U.refresh)
+    end
+
+    -- PLAYER_ENTERING_WORLD: a sync asked for before this load reloaded
+    -- if this is a /reload; a login after it means it didn't happen.
+    function U.sync.loaded(isReload)
+        local c = cfgs()
+        if type(c.syncAsked) == "number" then
+            U.sync.outcome = { asked = c.syncAsked, result = isReload and "reloaded" or "unknown" }
+            c.syncAsked = nil
+        end
+    end
+end
 
 do
     local ICON = "Interface\\AddOns\\ForeverBuddy\\Media\\Icon"
@@ -4035,8 +4085,18 @@ do
         end
         win.fresh = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         win.fresh:SetPoint("BOTTOMLEFT", 14, 12)
+        -- B4: Sync reloads, ReloadUI() first thing in the click. The typed
+        -- way stays as the line beside it once the game has refused.
         win.sync = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         win.sync:SetPoint("BOTTOMRIGHT", -14, 12)
+        win.syncButton = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+        win.syncButton:SetSize(70, 20)
+        win.syncButton:SetPoint("BOTTOMRIGHT", -10, 8)
+        win.syncButton:SetText("Sync")
+        win.syncButton:SetScript("OnClick", function()
+            read(ReloadUI)
+            U.sync.asked()
+        end)
         win.Tabs = {}
         for i, name in ipairs(TABS) do
             local tab = CreateFrame("Button", "ForeverBuddyWindowTab" .. i, win, "PanelTabButtonTemplate")
@@ -4090,7 +4150,10 @@ do
             U.errors = U.errors + 1
         end
         win.fresh:SetText(U.fresh(newest(SOURCES[i])))
-        win.sync:SetText("Type /reload to sync")
+        -- The button, or once the game has refused it, the typed way.
+        local refused = U.sync.refused()
+        win.syncButton:SetShown(not refused)
+        win.sync:SetText(refused and "Type /reload to sync" or "")
     end
 
     -- Opens on tab `i`, or the last one used.
@@ -4397,6 +4460,14 @@ end
 local TAB = { plan = 1, list = 2, errands = 3, cleanup = 4 }
 
 local function slash(msg)
+    -- B4: /fb sync reloads, ReloadUI() before anything else the keypress
+    -- does (unless the game has refused it before: then it says to type
+    -- /reload, below).
+    if type(msg) == "string" and string.lower(msg):match("^%s*sync%s*$") and not U.sync.refused() then
+        read(ReloadUI)
+        U.sync.asked()
+        return
+    end
     local cmd = type(msg) == "string" and string.lower(string.match(msg, "^%s*(.-)%s*$")) or ""
     if cmd == "" or TAB[cmd] then
         if not pcall(U.show, TAB[cmd]) then
@@ -4504,6 +4575,8 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     if not inventory then
         scanBags()
     end
+    -- B4: did a Sync asked for before this load reload?
+    pcall(U.sync.loaded, isReloadingUi == true)
     -- L2: every time we enter somewhere. After /reload the instance we're in
     -- counts as said, so a later ghost run back in stays quiet too.
     if isReloadingUi then
@@ -4801,6 +4874,13 @@ handlers.TRADE_SKILL_LIST_UPDATE = function()
     pcall(R.scan)
 end
 
+-- B4: the client refused our ReloadUI() (not first in a click or keypress).
+handlers.ADDON_ACTION_BLOCKED = function(addon, fn)
+    if arg(addon) == ADDON_NAME and tostring(arg(fn)):find("ReloadUI", 1, true) then
+        pcall(U.sync.blocked)
+    end
+end
+
 handlers.TIME_PLAYED_MSG = function(total, level)
     total, level = arg(total), arg(level)
     if type(total) == "number" then
@@ -4995,6 +5075,8 @@ handlers.PLAYER_LOGOUT = function()
         missing_events = missingEvents,
         errors = errors,
         error_counts = S.errorCounts,
+        -- B4: the last Sync: { asked, result = pending|reloaded|blocked|unknown }.
+        sync = U.sync.outcome,
     }
     db._meta.counts = counts(db) -- last
     ForeverBuddyDB = db

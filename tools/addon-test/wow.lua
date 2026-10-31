@@ -269,7 +269,9 @@ function M.new(opts)
         -- Items whose info the client hasn't cached: GetItemInfo returns nil
         -- until RequestLoadItemDataByID loads it.
         uncached = {},
-        requests = { played = 0, raid = 0, items = 0 },
+        requests = { played = 0, raid = 0, items = 0, reload = 0 },
+        -- B4: the client refuses addon reloads, firing ADDON_ACTION_BLOCKED.
+        reloadBlocked = false,
         combat = false, -- InCombatLockdown
         shift = false, -- IsShiftKeyDown
         bound = {}, -- id -> the bind line its tooltip shows ("Soulbound")
@@ -713,6 +715,15 @@ function M.new(opts)
                 local since = client.now - M.EPOCH
                 client.fire("TIME_PLAYED_MSG", world.played + since, world.played_level + since)
             end)
+        end,
+        -- B4: counts the call; the scenario then runs client.reload() (or
+        -- doesn't). Refused, the client fires ADDON_ACTION_BLOCKED at once,
+        -- inside the click, as for any blocked protected call.
+        ReloadUI = function()
+            world.requests.reload = world.requests.reload + 1
+            if world.reloadBlocked then
+                client.fire("ADDON_ACTION_BLOCKED", "ForeverBuddy", "ReloadUI()")
+            end
         end,
         RequestRaidInfo = function()
             world.requests.raid = world.requests.raid + 1
