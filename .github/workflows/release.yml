@@ -1,7 +1,8 @@
 # Publishing a GitHub release builds the Windows app and attaches it to that
 # release: an installer (*-setup.exe), a portable .exe you can run directly,
 # and the ForeverBuddy addon on its own (ForeverBuddy-<addon version>.zip, to
-# unzip into Interface/AddOns). "Run workflow" on the Actions tab builds the
+# unzip into Interface/AddOns), plus the probe addon (ForeverBuddyProbe-<its
+# version>.zip, for one-off checks). "Run workflow" on the Actions tab builds the
 # same things as downloadable workflow artifacts, without touching any
 # release.
 name: Release
@@ -88,3 +89,37 @@ jobs:
         with:
           name: ${{ steps.addon.outputs.zip }}
           path: ${{ steps.addon.outputs.zip }}
+
+      # The probe addon (tools/probe-addon/ForeverBuddyProbe), for one-off
+      # checks on Julia's client such as SIM5a's /fbprobe census. Only the
+      # addon folder is zipped: results/ beside it holds real run files.
+      - name: Zip the probe addon
+        id: probe
+        shell: pwsh
+        run: |
+          $toc = Get-Content tools/probe-addon/ForeverBuddyProbe/ForeverBuddyProbe.toc
+          $version = ($toc | Select-String '^## Version:\s*(\S+)').Matches[0].Groups[1].Value
+          if (-not $version) { throw "No '## Version:' line in ForeverBuddyProbe.toc" }
+          $zip = "ForeverBuddyProbe-$version.zip"
+          Push-Location tools/probe-addon
+          7z a -tzip "$env:GITHUB_WORKSPACE/$zip" ForeverBuddyProbe
+          if ($LASTEXITCODE -ne 0) { throw "7z failed" }
+          Pop-Location
+          # The first "Path =" line is the archive itself; the rest are entries.
+          $entries = 7z l -slt "$env:GITHUB_WORKSPACE/$zip" | Select-String '^Path = ' | Select-Object -Skip 1 | ForEach-Object { $_.Line.Substring(7) }
+          $stray = $entries | Where-Object { $_ -notmatch '^ForeverBuddyProbe([/\\]|$)' }
+          if ($stray) { throw "Probe zip has files outside ForeverBuddyProbe/: $stray" }
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Attach the probe addon to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          ZIP: ${{ steps.probe.outputs.zip }}
+        run: gh release upload "$env:TAG" "$env:ZIP" --clobber
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.probe.outputs.zip }}
+          path: ${{ steps.probe.outputs.zip }}
