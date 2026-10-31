@@ -45,7 +45,8 @@ pub fn parse(text: &str) -> TactKeys {
 }
 
 pub fn load(path: &Path) -> CascResult<TactKeys> {
-    let text = std::fs::read_to_string(path).map_err(|e| super::CascError::Missing(e.to_string()))?;
+    let text =
+        std::fs::read_to_string(path).map_err(|e| super::CascError::Missing(e.to_string()))?;
     Ok(parse(&text))
 }
 
@@ -87,8 +88,8 @@ mod tests {
         assert_eq!(
             keys.get(&[0x00, 0x01, 0xC7, 0x72, 0xCC, 0xC2, 0x1F, 0x2D]),
             Some(&[
-                0xBD, 0xC5, 0x18, 0x62, 0xAB, 0xED, 0x79, 0xB2, 0xDE, 0x48, 0xC8, 0xE7, 0xE6,
-                0x6C, 0x62, 0x00
+                0xBD, 0xC5, 0x18, 0x62, 0xAB, 0xED, 0x79, 0xB2, 0xDE, 0x48, 0xC8, 0xE7, 0xE6, 0x6C,
+                0x62, 0x00
             ])
         );
         let missing = [0xEE; 8];

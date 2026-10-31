@@ -36,7 +36,14 @@ pub fn decode_with(data: &[u8], cap: usize, keys: Option<&TactKeys>) -> CascResu
     if header_size == 0 {
         // One chunk, no table: the rest of the file.
         let mut out = Vec::new();
-        chunk(b.take(b.remaining(), "BLTE chunk")?, None, cap, keys, 0, &mut out)?;
+        chunk(
+            b.take(b.remaining(), "BLTE chunk")?,
+            None,
+            cap,
+            keys,
+            0,
+            &mut out,
+        )?;
         return Ok(out);
     }
     let flags = b.u8("BLTE flags")?;
@@ -58,7 +65,14 @@ pub fn decode_with(data: &[u8], cap: usize, keys: Option<&TactKeys>) -> CascResu
     }
     let mut out = Vec::with_capacity(total);
     for (frame, &(comp, decomp)) in table.iter().enumerate() {
-        chunk(b.take(comp, "BLTE chunk")?, Some(decomp), cap, keys, frame as u32, &mut out)?;
+        chunk(
+            b.take(comp, "BLTE chunk")?,
+            Some(decomp),
+            cap,
+            keys,
+            frame as u32,
+            &mut out,
+        )?;
     }
     Ok(out)
 }
@@ -226,10 +240,8 @@ pub(crate) mod tests {
             .iter()
             .enumerate()
             .map(|(frame, plain)| {
-                let mut z = flate2::write::ZlibEncoder::new(
-                    Vec::new(),
-                    flate2::Compression::default(),
-                );
+                let mut z =
+                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
                 z.write_all(plain).unwrap();
                 let mut body = z.finish().unwrap();
                 // The header carries the plain IV; the cipher's nonce is the
@@ -305,8 +317,8 @@ pub(crate) mod tests {
         let keys = keys_for(KEY_NAME, KEY);
         // name size, iv size and cipher type are each checked in turn.
         for body in [
-            [0x03u8].as_slice(),               // no name
-            [8u8, 1, 2, 3, 4, 5, 6, 7, 8].as_slice(), // iv size not 4 or 8
+            [0x03u8].as_slice(),                                           // no name
+            [8u8, 1, 2, 3, 4, 5, 6, 7, 8].as_slice(),                      // iv size not 4 or 8
             [8u8, 1, 2, 3, 4, 5, 6, 7, 8, 4, 1, 2, 3, 4, b'X'].as_slice(), // not Salsa20
         ] {
             let file = encode(&[(b'E', body)]);

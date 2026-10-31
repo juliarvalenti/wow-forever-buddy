@@ -120,7 +120,10 @@ pub fn run(
     verbose: bool,
 ) -> Summary {
     let mut summary = Summary::default();
-    let picked: Vec<&Entry> = listfile.iter().filter(|e| selected(&e.path, filters)).collect();
+    let picked: Vec<&Entry> = listfile
+        .iter()
+        .filter(|e| selected(&e.path, filters))
+        .collect();
     // One root scan covers all of them, like the icon cache's fill.
     let ids: HashSet<u32> = picked.iter().map(|e| e.id).collect();
     let ckeys = casc.ckeys(&ids);
@@ -180,7 +183,10 @@ pub fn run(
 /// Where a file lands: `.blp` becomes `.png`, like the icon cache.
 fn target(dir: &Path, rel: &Path) -> PathBuf {
     let mut path = dir.join(rel);
-    if rel.extension().is_some_and(|e| e.eq_ignore_ascii_case("blp")) {
+    if rel
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("blp"))
+    {
         path.set_extension("png");
     }
     path
@@ -196,7 +202,10 @@ enum Fail {
 fn extract_one(casc: &Casc, ckey: Option<&super::Key>, path: &Path) -> Result<u64, Fail> {
     let ckey = ckey.ok_or(Fail::Missing)?;
     let data = read(casc, ckey)?;
-    let bytes = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
+    let bytes = if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("png"))
+    {
         blp::decode(&data)
             .map_err(|e| Fail::Broken(e.to_string()))
             .and_then(|image| blp::to_png(&image).map_err(|e| Fail::Broken(e.to_string())))?
@@ -225,9 +234,8 @@ mod tests {
 
     #[test]
     fn listfile_rows_parse_in_either_column_order() {
-        let rows = parse_listfile(
-            "1;interface/framexml/foo.lua\ninterface/bar.lua;2\n\nno-id;no-path\n",
-        );
+        let rows =
+            parse_listfile("1;interface/framexml/foo.lua\ninterface/bar.lua;2\n\nno-id;no-path\n");
         assert_eq!(
             rows,
             [
@@ -258,8 +266,14 @@ mod tests {
 
     #[test]
     fn unsafe_paths_are_refused() {
-        assert_eq!(safe_rel("interface/common/ok.lua"), Some("interface/common/ok.lua".into()));
-        assert_eq!(safe_rel("\\interface\\buttons\\ok.blp"), Some("interface/buttons/ok.blp".into()));
+        assert_eq!(
+            safe_rel("interface/common/ok.lua"),
+            Some("interface/common/ok.lua".into())
+        );
+        assert_eq!(
+            safe_rel("\\interface\\buttons\\ok.blp"),
+            Some("interface/buttons/ok.blp".into())
+        );
         for bad in [
             "",
             "..",
@@ -281,17 +295,36 @@ mod tests {
         let mut install = install();
         let casc = Casc::open(&install.flavor).unwrap();
         let out = tempfile::tempdir().unwrap();
-        let filters: Vec<String> = ["interface/framexml", "interface/buttons", "interface/common"]
-            .iter()
-            .map(|f| f.to_string())
-            .collect();
+        let filters: Vec<String> = [
+            "interface/framexml",
+            "interface/buttons",
+            "interface/common",
+        ]
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
         let listfile = vec![
-            Entry { id: ICON, path: "Interface/Buttons/UI-Icon.blp".into() },
-            Entry { id: LOCKED, path: "interface/common/locked.lua".into() },
-            Entry { id: STREAMED, path: "interface/framexml/streamed.lua".into() },
-            Entry { id: 999, path: "interface/common/not-in-build.lua".into() },
+            Entry {
+                id: ICON,
+                path: "Interface/Buttons/UI-Icon.blp".into(),
+            },
+            Entry {
+                id: LOCKED,
+                path: "interface/common/locked.lua".into(),
+            },
+            Entry {
+                id: STREAMED,
+                path: "interface/framexml/streamed.lua".into(),
+            },
+            Entry {
+                id: 999,
+                path: "interface/common/not-in-build.lua".into(),
+            },
             // Inside the filters but refused by the path check.
-            Entry { id: ICON, path: "interface/common/../../secrets.lua".into() },
+            Entry {
+                id: ICON,
+                path: "interface/common/../../secrets.lua".into(),
+            },
         ];
 
         // LOCKED's chunk is encrypted and the traversal path is refused;
@@ -341,9 +374,18 @@ mod tests {
         let casc = Casc::open(&install.flavor).unwrap();
         let out = tempfile::tempdir().unwrap();
         let filters: Vec<String> = vec!["interface/buttons".into()];
-        let listfile = [Entry { id: ICON, path: "interface/buttons/icon.blp".into() }];
+        let listfile = [Entry {
+            id: ICON,
+            path: "interface/buttons/icon.blp".into(),
+        }];
         let summary = run(&casc, out.path(), &listfile, &filters, true, false);
-        assert_eq!(summary, Summary { extracted: 1, ..Summary::default() });
+        assert_eq!(
+            summary,
+            Summary {
+                extracted: 1,
+                ..Summary::default()
+            }
+        );
         assert!(!icons::build_dir(out.path(), &casc.build).exists());
     }
 }

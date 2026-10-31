@@ -81,13 +81,20 @@ fn main() -> ExitCode {
         None => None,
     };
     let filters = (!filters.is_empty()).then_some(filters);
-    let filters: Vec<String> = filters
-        .unwrap_or_else(|| casc::DEFAULT_FILTERS.iter().map(|f| f.to_string()).collect());
+    let filters: Vec<String> = filters.unwrap_or_else(|| {
+        casc::DEFAULT_FILTERS
+            .iter()
+            .map(|f| f.to_string())
+            .collect()
+    });
 
     let build = match casc::build_of(&flavor) {
         Ok(build) => build,
         Err(e) => {
-            eprintln!("can't read the installed build at {}: {e}", flavor.display());
+            eprintln!(
+                "can't read the installed build at {}: {e}",
+                flavor.display()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -121,16 +128,16 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        let text = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join("\n");
+        let text = ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         if let Err(e) = std::fs::write(&path, text) {
             eprintln!("can't write the ID list at {}: {e}", path.display());
             return ExitCode::FAILURE;
         }
-        println!(
-            "wrote {} file IDs to {}",
-            ids.len(),
-            path.display()
-        );
+        println!("wrote {} file IDs to {}", ids.len(), path.display());
         return ExitCode::SUCCESS;
     }
     let out = out.unwrap_or_else(default_cache);
