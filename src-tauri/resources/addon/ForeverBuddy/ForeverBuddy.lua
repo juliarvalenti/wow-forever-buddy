@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.7"
+local VERSION = "0.9.8"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -49,11 +49,17 @@ local function pack(...)
     return { n = select("#", ...), ... }
 end
 
+-- A secret value, or a table we can't read all of: a secret table, or one
+-- holding secrets that indexing would raise on (canaccesstable, R3a).
 local function isSecret(v)
     if issecretvalue and issecretvalue(v) then
         return true
     end
-    return type(v) == "table" and issecrettable ~= nil and issecrettable(v) == true
+    if type(v) ~= "table" then
+        return false
+    end
+    return (issecrettable ~= nil and issecrettable(v) == true)
+        or (canaccesstable ~= nil and canaccesstable(v) == false)
 end
 
 -- "C_Item.GetItemInfo" -> that function, or nil if any part is missing.
@@ -3918,6 +3924,54 @@ do
         panes[i] = p
     end
 
+    -- EllesmereUI's look (R3a, its SKINNING_API.md): with EllesmereUI
+    -- installed and its skinning on for us, it hands us `S` (U.skin) and
+    -- paints the window in the player's theme. Its calls are idempotent and
+    -- change art by alpha only. Without EllesmereUI none of this runs. (On U,
+    -- not in locals: this file is at Lua 5.1's 200-locals limit.)
+    function U.skinned(f, frame, ...)
+        if type(f) == "function" and frame and not pcall(f, frame, ...) then
+            U.errors = U.errors + 1
+        end
+    end
+
+    -- Shows tab `i` as the selected one in EllesmereUI's tab style: we
+    -- switch tabs ourselves, so it's told which.
+    function U.skinTabs(i)
+        if U.skin and win then
+            for k, tab in ipairs(win.Tabs) do
+                U.skinned(U.skin.SetTabSelection, tab, k == i)
+            end
+        end
+    end
+
+    function U.applySkin()
+        local S = U.skin
+        if not S or not win then
+            return
+        end
+        U.skinned(S.Shell, win)
+        U.skinned(S.CloseButton, win.CloseButton)
+        for _, tab in ipairs(win.Tabs) do
+            U.skinned(S.Tab, tab)
+        end
+        for _, p in ipairs(panes) do
+            U.skinned(S.ScrollBar, p.scroll.ScrollBar)
+            U.skinned(S.Checkbox, p.tracker)
+            for _, cb in ipairs(p.checks or {}) do
+                U.skinned(S.Checkbox, cb)
+            end
+        end
+        U.skinTabs(win.current)
+    end
+
+    if type(EllesmereUI) == "table" and type(EllesmereUI.RegisterSkin) == "function" then
+        pcall(EllesmereUI.RegisterSkin, "ForeverBuddy", function(S)
+            U.skin = S
+            U.applySkin()
+        end)
+    end
+
     local function build()
         win = CreateFrame("Frame", "ForeverBuddyWindow", UIParent, "ButtonFrameTemplate")
         win:SetSize(W, H)
@@ -3985,6 +4039,7 @@ do
         end
         win.panes = panes
         win:Hide()
+        U.applySkin()
     end
 
     -- Redraws the open tab and both copies of the settings. Nothing changes
@@ -4028,6 +4083,7 @@ do
         if type(PanelTemplates_SetTab) == "function" then
             pcall(PanelTemplates_SetTab, win, i)
         end
+        U.skinTabs(i)
         win:Show()
         U.refresh()
     end
