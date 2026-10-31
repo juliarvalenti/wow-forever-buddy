@@ -14,11 +14,12 @@ import {
   Shield,
   SquareTerminal,
   Users,
+  X,
 } from "lucide-react";
 import { type CharacterCard, commands, type StartupFailure } from "@/lib/bindings";
 import { Button, Callout, LiveDot, StatusDot } from "@/components/d";
 import { useAhStatus } from "@/hooks/useAh";
-import { useApprovalsWaiting, useSettingsTrial } from "@/hooks/useApprovals";
+import { approvalsChanged, useApprovalsWaiting, useSettingsTrial } from "@/hooks/useApprovals";
 import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
@@ -95,6 +96,15 @@ function Shell() {
   // for that set of settings (Approvals itself has the full panel).
   const trial = useSettingsTrial();
   const [trialSeen, setTrialSeen] = useState<number | null>(null);
+  const keepSettings = (keep: boolean) => {
+    if (!trial) return;
+    setTrialSeen(trial.profile);
+    // If it fails, Approvals still has the question (and says why there).
+    commands
+      .approvalsKeepSettings(keep)
+      .catch(() => {})
+      .finally(approvalsChanged);
+  };
   // With the addon's data: who logged out last (RFC 3339 UTC sorts as time).
   const { overview } = useCharacters();
   const lastPlayed = overview?.characters.reduce<CharacterCard | null>(
@@ -280,18 +290,28 @@ function Shell() {
               <span>
                 <b>New settings are in the game.</b> Keep them, or go back to how it was?
               </span>
-              <span className="d-grow" />
-              <Button variant="ghost" onClick={() => setTrialSeen(trial.profile)}>
-                Not now
-              </Button>
-              <Button
+              <button
+                className="d-link"
                 onClick={() => {
                   setTrialSeen(trial.profile);
                   setScreen("approvals");
                 }}
               >
                 See changes
+              </button>
+              <span className="d-grow" />
+              <Button variant="ghost" onClick={() => keepSettings(false)}>
+                Go back
               </Button>
+              <Button onClick={() => keepSettings(true)}>Keep</Button>
+              <button
+                className="d-link"
+                title="Not now"
+                aria-label="Not now"
+                onClick={() => setTrialSeen(trial.profile)}
+              >
+                <X size={14} aria-hidden />
+              </button>
             </Callout>
           </div>
         )}
