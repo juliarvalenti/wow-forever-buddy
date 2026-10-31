@@ -1,11 +1,15 @@
-# Popular addons for the smoke test (SIM5b), as GitHub owner/repo.
-# Each was checked to exist on 2026-10-31. Baganator and Auctionator have no
-# official GitHub source to fetch, so they wait for a real AddOns folder.
-EllesmereGaming/EllesmereUI
-Numynum/EnhanceQoL
-Tercioo/Details-Damage-Meter
-Jaliborc/Bagnon
-Jaliborc/BagBrother  # Bagnon's required dependency
-tullamods/OmniCC
-BigWigsMods/BigWigs
-# Questie/Questie    # about 400 MB to clone: opt in by removing the '#'
+# Popular addons for the smoke test (SIM5b), as GitHub owner/repo@<commit SHA>.
+# Pinned to a full commit, so a report is repeatable and nobody can change the
+# code we run by pushing to a branch (SIM5c). To move one on: look up the new
+# commit (gh api repos/<owner>/<repo>/commits/HEAD -q .sha), replace the SHA,
+# and review the run's report on the PR. Pins checked 2026-10-31.
+# Baganator and Auctionator have no official GitHub source to fetch, so they
+# wait for a real AddOns folder.
+EllesmereGaming/EllesmereUI@18a2bbe8785d3b8e40ccc912f79ce0bda39b65c3
+Numynum/EnhanceQoL@507e9d4a8c35f56a168982ed74748ba4deafb3f2
+Tercioo/Details-Damage-Meter@d1e8ad7226616b4a796eebc6ca3ed905ef410b64
+Jaliborc/Bagnon@40bedea73dd1a4597b921d7cf4c0ffb6b134fca5
+Jaliborc/BagBrother@0c5f459f5bd2b6d3fff77979c85cddd31ce5ce02  # Bagnon's required dependency
+tullamods/OmniCC@81e0891abd044516f0a300fc6043f9870e99f96a
+BigWigsMods/BigWigs@d8a51d2fb631d457276fa22677c5c1d0bce56d68
+# Questie/Questie@62ae63250ae373b77634e2da3cf521ea46c50a67  # about 400 MB to clone: opt in by removing the '#'
