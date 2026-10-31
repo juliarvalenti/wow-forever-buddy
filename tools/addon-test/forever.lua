@@ -96,6 +96,7 @@ return {
     IsShiftKeyDown = { from = "assumed" },
     InCombatLockdown = { from = "assumed" },
     ["C_Timer.After"] = { from = "assumed" },
+    ["Settings.NotifyUpdate"] = { from = "assumed" },
     RequestTimePlayed = { from = "assumed" },
     RequestRaidInfo = { from = "assumed" },
     ["C_Map.SetUserWaypoint"] = { from = "assumed" },

@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.5"
+local VERSION = "0.9.6"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -526,6 +526,130 @@ function C.setOpt(key, on)
         ForeverBuddySettings[key] = nil
     else
         ForeverBuddySettings[key] = false
+    end
+end
+
+-- Placement in Edit Mode (U1d) --------------------------------------------------------
+--
+-- The coach strip, the plan tracker and the logout card are placed in
+-- Blizzard's Edit Mode, like the game's own frames, so where they sit isn't
+-- a setting. While Edit Mode is open each one shows (as a preview if it's
+-- hidden) with a blue highlight and its name, and drags; outside it, they
+-- stay put. A client without Edit Mode keeps the old way: drag them any
+-- time. Positions are saved per account as ForeverBuddySettings.<key>At =
+-- { point, x, y }, the shape coachAt always had.
+U.edit = { on = false, makers = {}, frames = {} }
+do
+    local E = U.edit
+
+    -- Edit Mode is there to be entered (the Midnight-era client has it).
+    function E.native()
+        return type(EventRegistry) == "table" and type(EventRegistry.RegisterCallback) == "function"
+            and type(EditModeManagerFrame) == "table"
+    end
+
+    function E.place(key, f, ...)
+        local at = type(ForeverBuddySettings) == "table" and ForeverBuddySettings[key .. "At"]
+        f:ClearAllPoints()
+        if type(at) == "table" and type(at[1]) == "string" and type(at[2]) == "number" and type(at[3]) == "number" then
+            f:SetPoint(at[1], UIParent, at[1], at[2], at[3])
+        else
+            f:SetPoint(...)
+        end
+    end
+
+    local function save(key, f)
+        local ok, point, _, _, x, y = pcall(f.GetPoint, f)
+        if ok and type(point) == "string" and type(x) == "number" and type(y) == "number" then
+            if type(ForeverBuddySettings) ~= "table" then
+                ForeverBuddySettings = {}
+            end
+            ForeverBuddySettings[key .. "At"] = { point, x, y }
+        end
+    end
+
+    -- Into Edit Mode (shown, highlighted, taking the mouse) or back out to
+    -- how it was. Once each way: a frame built while Edit Mode opens is
+    -- reached twice.
+    local function editing(f, on)
+        if on == (f.editOverlay:IsShown() and true or false) then
+            return
+        end
+        f.editOverlay:SetShown(on)
+        if on then
+            f.editWasShown, f.editMouse = f:IsShown(), f:IsMouseEnabled()
+            f:EnableMouse(true)
+            f:Show()
+        else
+            f:EnableMouse(f.editMouse and true or false)
+            if not f.editWasShown then
+                f:Hide()
+            end
+        end
+    end
+
+    -- Makes `f` placeable under `key`, named `label` in Edit Mode. A frame
+    -- built lazily also sets E.makers[key], so Edit Mode can build it to
+    -- place it before it has ever shown.
+    function E.add(key, label, f)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", function(frame)
+            if E.on or not E.native() then
+                frame:StartMoving()
+            end
+        end)
+        f:SetScript("OnDragStop", function(frame)
+            frame:StopMovingOrSizing()
+            save(key, frame)
+        end)
+        local o = CreateFrame("Frame", nil, f)
+        o:SetAllPoints(f)
+        o:SetFrameLevel(f:GetFrameLevel() + 20)
+        o.tint = o:CreateTexture(nil, "OVERLAY")
+        o.tint:SetAllPoints(o)
+        o.tint:SetColorTexture(0.25, 0.55, 1, 0.3)
+        o.label = o:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        o.label:SetPoint("CENTER", o, "CENTER", 0, 0)
+        o.label:SetText(label)
+        o:Hide()
+        f.editOverlay = o
+        E.frames[key] = f
+        if E.on then
+            editing(f, true)
+        end
+    end
+
+    function E.enter()
+        E.on = true
+        for key, make in pairs(E.makers) do
+            if not E.frames[key] then
+                pcall(make)
+            end
+        end
+        for _, f in pairs(E.frames) do
+            editing(f, true)
+        end
+    end
+
+    function E.exit()
+        E.on = false
+        for _, f in pairs(E.frames) do
+            editing(f, false)
+        end
+    end
+
+    -- PLAYER_LOGIN: follow Edit Mode opening and closing.
+    function E.hook()
+        if not E.native() then
+            return
+        end
+        EventRegistry:RegisterCallback("EditMode.Enter", function()
+            pcall(E.enter)
+        end, E)
+        EventRegistry:RegisterCallback("EditMode.Exit", function()
+            pcall(E.exit)
+        end, E)
     end
 end
 
@@ -2032,24 +2156,29 @@ function renderPlan()
     end
 end
 
-local function togglePlan()
-    if not planFrame then
-        local f = CreateFrame("Frame", "ForeverBuddyPlanFrame", UIParent, "BackdropTemplate")
-        f:SetSize(280, 80)
-        f:SetPoint("RIGHT", UIParent, "RIGHT", -60, 80)
-        f:SetMovable(true)
-        f:EnableMouse(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.title:SetPoint("TOPLEFT", 10, -8)
-        f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        f.footer:SetPoint("BOTTOMLEFT", 10, 8)
-        f.rows = {}
-        f:Hide()
-        planFrame = f
+-- The plan tracker, placed in Edit Mode (U1d) like the coach. (A field,
+-- not a local: the main chunk is at Lua's 200-local limit.)
+function U.edit.makers.plan()
+    if planFrame then
+        return planFrame
     end
+    local f = CreateFrame("Frame", "ForeverBuddyPlanFrame", UIParent, "BackdropTemplate")
+    f:SetSize(280, 80)
+    f:EnableMouse(not U.edit.native())
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.title:SetPoint("TOPLEFT", 10, -8)
+    f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.footer:SetPoint("BOTTOMLEFT", 10, 8)
+    f.rows = {}
+    f:Hide()
+    U.edit.place("plan", f, "RIGHT", UIParent, "RIGHT", -60, 80)
+    planFrame = f
+    U.edit.add("plan", "Forever Buddy: tonight's plan", f)
+    return f
+end
+
+local function togglePlan()
+    U.edit.makers.plan()
     if planFrame:IsShown() then
         planFrame:Hide()
     else
@@ -3042,37 +3171,30 @@ local function coachTick()
     read("C_Timer.After", COACH_EVERY, coachTick)
 end
 
+-- Placed in Edit Mode (U1d); takes no clicks then, so it never gets in the
+-- way (without Edit Mode it takes them, to be dragged).
+function U.edit.makers.coach()
+    if coachFrame then
+        return coachFrame
+    end
+    local f = CreateFrame("Frame", "ForeverBuddyCoachFrame", UIParent, "DefaultPanelFlatTemplate")
+    f:SetSize(210, 100)
+    f:EnableMouse(not U.edit.native())
+    f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.heading:SetPoint("TOPLEFT", 10, -6)
+    f.heading:SetText("This session")
+    f.meta = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.meta:SetPoint("TOPRIGHT", -10, -8)
+    f.rows = {}
+    f:Hide() -- new frames start shown; the timer starts on the first Show
+    U.edit.place("coach", f, "TOPLEFT", UIParent, "TOPLEFT", 40, -200)
+    coachFrame = f
+    U.edit.add("coach", "Forever Buddy: session coach", f)
+    return f
+end
+
 local function showCoach()
-    if not coachFrame then
-        local f = CreateFrame("Frame", "ForeverBuddyCoachFrame", UIParent, "DefaultPanelFlatTemplate")
-        f:SetSize(210, 100)
-        f:SetMovable(true)
-        f:EnableMouse(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", function(frame)
-            frame:StopMovingOrSizing()
-            local ok, point, _, _, x, y = pcall(frame.GetPoint, frame)
-            if ok and type(point) == "string" and type(x) == "number" and type(y) == "number" then
-                settings().coachAt = { point, x, y }
-            end
-        end)
-        f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.heading:SetPoint("TOPLEFT", 10, -6)
-        f.heading:SetText("This session")
-        f.meta = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        f.meta:SetPoint("TOPRIGHT", -10, -8)
-        f.rows = {}
-        f:Hide() -- new frames start shown; the timer starts on the first Show
-        coachFrame = f
-    end
-    local at = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.coachAt
-    coachFrame:ClearAllPoints()
-    if type(at) == "table" and type(at[1]) == "string" and type(at[2]) == "number" and type(at[3]) == "number" then
-        coachFrame:SetPoint(at[1], UIParent, at[1], at[2], at[3])
-    else
-        coachFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 40, -200)
-    end
+    U.edit.makers.coach()
     if coachHidesInCombat() and read("InCombatLockdown") then
         return
     end
@@ -3123,6 +3245,38 @@ end
 
 local SHORT = 5 * 60 -- a session this short with nothing but Played gets no card
 
+-- Placed in Edit Mode (U1d), where it shows as a preview with this
+-- character's title; only its × takes the mouse otherwise.
+function S.makeCard()
+    if cardFrame then
+        return cardFrame
+    end
+    local f = CreateFrame("Frame", "ForeverBuddyCardFrame", UIParent, "DefaultPanelFlatTemplate")
+    f:SetSize(270, 120)
+    f:SetFrameStrata("DIALOG")
+    f:EnableMouse(false)
+    f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.heading:SetPoint("TOPLEFT", 10, -6)
+    f.heading:SetText(cardTitle())
+    f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.close:SetPoint("TOPRIGHT", 2, 2)
+    f.close:SetScript("OnClick", function()
+        f:Hide()
+    end)
+    f.ding = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    f.ding:SetPoint("TOPLEFT", 12, -28)
+    f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.footer:SetPoint("BOTTOMLEFT", 12, 8)
+    f.footer:SetText("In Adventures after you close WoW")
+    f.rows = {}
+    f:Hide()
+    U.edit.place("card", f, "TOP", UIParent, "TOP", 0, -40)
+    cardFrame = f
+    U.edit.add("card", "Forever Buddy: logout card", f)
+    return f
+end
+U.edit.makers.card = S.makeCard
+
 -- The logout card: shown during the countdown, above the game's dialog;
 -- only its × takes the mouse.
 local function showCard()
@@ -3144,28 +3298,7 @@ local function showCard()
     if s.length < SHORT and #lines == 1 and not s.ding then
         return
     end
-    if not cardFrame then
-        local f = CreateFrame("Frame", "ForeverBuddyCardFrame", UIParent, "DefaultPanelFlatTemplate")
-        f:SetSize(270, 120)
-        f:SetFrameStrata("DIALOG")
-        f:SetPoint("TOP", UIParent, "TOP", 0, -40)
-        f:EnableMouse(false)
-        f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.heading:SetPoint("TOPLEFT", 10, -6)
-        f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-        f.close:SetPoint("TOPRIGHT", 2, 2)
-        f.close:SetScript("OnClick", function()
-            f:Hide()
-        end)
-        f.ding = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        f.ding:SetPoint("TOPLEFT", 12, -28)
-        f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        f.footer:SetPoint("BOTTOMLEFT", 12, 8)
-        f.footer:SetText("In Adventures after you close WoW")
-        f.rows = {}
-        cardFrame = f
-    end
-    local f = cardFrame
+    local f = S.makeCard()
     f.heading:SetText(cardTitle())
     f.ding:SetText(s.ding and ("Ding! Level " .. s.ding) or "")
     f.ding:SetShown(s.ding ~= nil)
@@ -3490,22 +3623,61 @@ do
         function() end, -- Settings: its checkboxes are refreshed with the rest
     }
 
-    -- Settings: every toggle, here and in Esc › Options › AddOns.
+    -- Settings: every toggle, declared once, read by both the window's
+    -- Settings tab and Esc › Options › AddOns (U1d). `key` names it (and
+    -- its Options setting), `description` is the one line shown on hover,
+    -- `default` is what Options' "Defaults" goes back to, and `parent`
+    -- names the option it depends on: it shows only while that one is on.
     local OPTIONS = {
         { head = "In game" },
-        { label = "Login briefing", get = briefingOn, set = setBriefing },
-        { label = "Lockouts at the entrance", get = L.on, set = L.set },
         {
+            key = "briefing",
+            label = "Login briefing",
+            description = "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
+            default = true,
+            get = briefingOn,
+            set = setBriefing,
+        },
+        {
+            key = "lockouts",
+            label = "Lockouts at the entrance",
+            description = "When you enter a dungeon or raid, says which of your other characters are saved there.",
+            default = true,
+            get = L.on,
+            set = L.set,
+        },
+        {
+            key = "coach",
             label = "Session coach",
+            description = "A small strip with this session's gold, experience and loot.",
+            default = false,
             get = S.coachOn,
             set = function(on)
                 S.guarded(S.setCoach, on)
             end,
         },
-        { label = "Hide the coach in combat", indent = true, get = S.hidesInCombat, set = S.setCoachCombat },
-        { label = "Session card at logout", get = S.cardOn, set = S.setCard },
         {
+            key = "coachCombat",
+            label = "Hide the coach in combat",
+            description = "Steps out of the way while you fight.",
+            default = false,
+            parent = "coach",
+            get = S.hidesInCombat,
+            set = S.setCoachCombat,
+        },
+        {
+            key = "card",
+            label = "Session card at logout",
+            description = "A short summary of the session during the logout countdown.",
+            default = true,
+            get = S.cardOn,
+            set = S.setCard,
+        },
+        {
+            key = "bagMarks",
             label = "Marks in your bags",
+            description = "Coin and letter marks on items you marked to sell or send in Forever Buddy.",
+            default = true,
             get = function()
                 return C.opt("bagMarks")
             end,
@@ -3516,7 +3688,10 @@ do
         },
         { head = "Tooltips" },
         {
+            key = "tooltips",
             label = "Your alts on item tooltips",
+            description = "Which of your other characters hold an item, and where.",
+            default = true,
             get = function()
                 return C.opt("tooltips")
             end,
@@ -3526,7 +3701,10 @@ do
         },
         { head = "This window" },
         {
+            key = "minimap",
             label = "Minimap button",
+            description = "Click to open Forever Buddy. Drag to move.",
+            default = true,
             get = function()
                 return C.opt("minimap")
             end,
@@ -3538,8 +3716,11 @@ do
         -- Record mode (SIM1 b): the next login session only.
         { head = "Help fix bugs" },
         {
+            key = "record",
             label = "Record my next session",
             sub = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
+            description = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
+            default = false,
             get = function()
                 return Rec.next()
             end,
@@ -3549,27 +3730,70 @@ do
         },
     }
 
+    -- (Fields, not locals, below: the main chunk is at Lua's 200-local limit.)
+    OPTIONS.byKey = {} -- key -> its row
+    for _, o in ipairs(OPTIONS) do
+        if o.key then
+            OPTIONS.byKey[o.key] = o
+        end
+    end
+
+    -- An option whose parent is off isn't shown at all (U1d).
+    function OPTIONS.shows(o)
+        local parent = o.parent and OPTIONS.byKey[o.parent]
+        return not parent or parent.get() and true or false
+    end
+
+    -- Ticks every box, shows only the options whose parent is on, and lays
+    -- the rows out again so a hidden one leaves no gap.
     local function refreshChecks(checks)
-        for _, cb in ipairs(checks) do
-            cb:SetChecked(cb.option.get() and true or false)
-            if cb.option.indent then
-                cb:SetEnabled(S.coachOn())
+        local y = checks.top
+        for _, item in ipairs(checks.items) do
+            if item.head then
+                item.head:ClearAllPoints()
+                item.head:SetPoint("TOPLEFT", 14, y)
+                y = y - 22
+            else
+                local cb, o = item.cb, item.cb.option
+                cb:SetChecked(o.get() and true or false)
+                local shown = OPTIONS.shows(o)
+                cb:SetShown(shown)
+                if shown then
+                    cb:ClearAllPoints()
+                    cb:SetPoint("TOPLEFT", o.parent and 34 or 14, y)
+                    y = y - 26 - (cb.sub and 16 or 0)
+                end
             end
         end
     end
 
+    -- The option's name and its one line, on hover (U1d).
+    function OPTIONS.tip(cb)
+        cb:SetScript("OnEnter", function(b)
+            if type(GameTooltip) == "table" then
+                GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+                GameTooltip:SetText(b.option.label, 1, 1, 1)
+                GameTooltip:AddLine(b.option.description, 1, 0.82, 0, true)
+                GameTooltip:Show()
+            end
+        end)
+        cb:SetScript("OnLeave", function()
+            if type(GameTooltip) == "table" then
+                GameTooltip:Hide()
+            end
+        end)
+    end
+
     local function buildOptions(parent, y)
-        local checks = {}
+        local checks = { top = y, items = {} }
         for _, o in ipairs(OPTIONS) do
             if o.head then
                 local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                h:SetPoint("TOPLEFT", 14, y)
                 h:SetText(o.head)
-                y = y - 22
+                checks.items[#checks.items + 1] = { head = h }
             else
                 local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
                 cb:SetSize(24, 24)
-                cb:SetPoint("TOPLEFT", o.indent and 34 or 14, y)
                 cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
                 cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
                 cb.label:SetText(o.label)
@@ -3580,7 +3804,6 @@ do
                     cb.sub:SetWidth(W - 90)
                     cb.sub:SetJustifyH("LEFT")
                     cb.sub:SetText(o.sub)
-                    y = y - 16
                 end
                 cb.option = o
                 cb:SetScript("OnClick", function(b)
@@ -3590,16 +3813,81 @@ do
                     end
                     U.refresh()
                 end)
+                OPTIONS.tip(cb)
                 checks[#checks + 1] = cb
-                y = y - 26
+                checks.items[#checks.items + 1] = { cb = cb }
             end
         end
+        refreshChecks(checks)
         return checks
     end
 
-    -- The same toggles as a canvas in Esc › Options › AddOns.
+    -- Esc › Options › AddOns, the client's own way (U1d): a vertical
+    -- layout of Blizzard's rows, with the hover line as each row's tooltip
+    -- and a dependent row shown only while its parent is on. Each setting
+    -- is a proxy onto the same get and set as the window's Settings tab.
+    function OPTIONS.vertical()
+        local category, layout = Settings.RegisterVerticalLayoutCategory("Forever Buddy")
+        local inits = {}
+        for _, o in ipairs(OPTIONS) do
+            if o.head then
+                if layout and type(CreateSettingsListSectionHeaderInitializer) == "function" then
+                    layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(o.head))
+                end
+            else
+                local variable = "FOREVERBUDDY_" .. o.key:upper()
+                local setting = Settings.RegisterProxySetting(category, variable,
+                    Settings.VarType.Boolean, o.label, o.default and true or false,
+                    function()
+                        return o.get() and true or false
+                    end,
+                    function(on)
+                        -- As in the window: nothing changes in combat, and
+                        -- the box goes back (re-read a moment later, not
+                        -- from inside its own set).
+                        if read("InCombatLockdown") then
+                            read("C_Timer.After", 0, function()
+                                read("Settings.NotifyUpdate", variable)
+                            end)
+                        elseif not pcall(o.set, on and true or false) then
+                            U.errors = U.errors + 1
+                        end
+                        U.refresh()
+                    end)
+                local init = Settings.CreateCheckbox(category, setting, o.description)
+                inits[o.key] = init
+                local parent = o.parent and inits[o.parent]
+                if parent then
+                    local function parentOn()
+                        return OPTIONS.byKey[o.parent].get() and true or false
+                    end
+                    init:SetParentInitializer(parent, parentOn)
+                    if type(init.AddShownPredicate) == "function" then
+                        init:AddShownPredicate(parentOn)
+                    end
+                end
+            end
+        end
+        Settings.RegisterAddOnCategory(category)
+        return category
+    end
+
+    -- The page in Esc › Options › AddOns: the vertical layout where the
+    -- client has it, else the same toggles as a canvas.
     local function registerOptions()
-        if type(Settings) ~= "table" or type(Settings.RegisterCanvasLayoutCategory) ~= "function" then
+        if type(Settings) ~= "table" then
+            return
+        end
+        if type(Settings.RegisterVerticalLayoutCategory) == "function"
+            and type(Settings.RegisterProxySetting) == "function"
+            and type(Settings.CreateCheckbox) == "function"
+            and type(Settings.VarType) == "table" then
+            if pcall(OPTIONS.vertical) then
+                return
+            end
+            U.errors = U.errors + 1
+        end
+        if type(Settings.RegisterCanvasLayoutCategory) ~= "function" then
             return
         end
         -- No parent: the Settings panel takes it and shows it.
@@ -3883,6 +4171,7 @@ do
     function U.login()
         makeButton()
         registerOptions()
+        U.edit.hook()
         if cfg().planTracker and plan and not (planFrame and planFrame:IsShown()) and not pcall(togglePlan) then
             planErrors = planErrors + 1
         end

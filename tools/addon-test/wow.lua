@@ -853,6 +853,15 @@ function M.new(opts)
     function Frame:SetScrollChild(child)
         self.scrollChild = child
     end
+    -- U1d: what the recorded layout calls set, read back.
+    function Frame:GetFrameLevel()
+        local l = self.layout.SetFrameLevel
+        return l and l[1] or 1
+    end
+    function Frame:IsMouseEnabled()
+        local m = self.layout.EnableMouse
+        return m ~= nil and m[1] ~= false and m[1] ~= nil
+    end
 
     -- Anchors as the client keeps them: one per point, a point set again
     -- replaces it, ClearAllPoints drops them all. Point names are checked,
@@ -893,6 +902,13 @@ function M.new(opts)
     end
     function Frame:ClearAllPoints()
         self.points = {}
+    end
+    -- point, relativeTo, relativePoint, x, y of anchor i (1 by default).
+    function Frame:GetPoint(i)
+        local a = self.points[i or 1]
+        if a then
+            return a[1], a[2], a[3] or a[1], a[4], a[5]
+        end
     end
     function Frame:SetAllPoints(rel)
         self.points = { { "TOPLEFT", rel, "TOPLEFT", 0, 0 }, { "BOTTOMRIGHT", rel, "BOTTOMRIGHT", 0, 0 } }
@@ -1037,6 +1053,73 @@ function M.new(opts)
                 table.insert(env.Settings.categories, category)
             end,
         }
+        -- U1d: the client's vertical layout (11.0 on), as far as the addon
+        -- uses it. category.layout.inits holds the rows in order: headers
+        -- { kind = "header", text } and checkboxes { kind = "checkbox",
+        -- setting, tooltip, parent, IsShown() }; a setting's GetValue and
+        -- SetValue go through the addon's proxy functions. opts.canvasOnly:
+        -- an older client, with the canvas only.
+        if not opts.canvasOnly then
+            local S = env.Settings
+            S.VarType = { Boolean = "boolean", Number = "number", String = "string" }
+            -- The Options page re-reads a setting (its variable is noted).
+            S.notified = {}
+            S.NotifyUpdate = function(variable)
+                table.insert(S.notified, variable)
+            end
+            S.RegisterVerticalLayoutCategory = function(name)
+                local layout = { inits = {} }
+                function layout:AddInitializer(init)
+                    table.insert(self.inits, init)
+                end
+                return { name = name, layout = layout, settings = {}, vertical = true }, layout
+            end
+            S.RegisterProxySetting = function(category, variable, varType, name, default, get, set)
+                assert(type(variable) == "string" and category.settings[variable] == nil, "a unique variable")
+                assert(varType == S.VarType.Boolean and type(default) == "boolean", "a boolean setting")
+                local setting = { variable = variable, name = name, default = default }
+                function setting:GetValue()
+                    return get()
+                end
+                function setting:SetValue(v)
+                    set(v)
+                end
+                category.settings[variable] = setting
+                return setting
+            end
+            S.CreateCheckbox = function(category, setting, tooltip)
+                local init = { kind = "checkbox", setting = setting, tooltip = tooltip, shownIf = {} }
+                function init:SetParentInitializer(parent, modify)
+                    self.parent, self.modify = parent, modify
+                end
+                function init:AddShownPredicate(fn)
+                    table.insert(self.shownIf, fn)
+                end
+                function init:IsShown()
+                    for _, fn in ipairs(self.shownIf) do
+                        if not fn() then
+                            return false
+                        end
+                    end
+                    return true
+                end
+                category.layout:AddInitializer(init)
+                return init
+            end
+            env.CreateSettingsListSectionHeaderInitializer = function(text)
+                return { kind = "header", text = text }
+            end
+        end
+        -- U1d: Edit Mode, as the client announces it (client.editMode).
+        -- opts.noEditMode: a client without it.
+        if not opts.noEditMode then
+            env.EditModeManagerFrame = newWidget(env.UIParent)
+            env.EventRegistry = { callbacks = {} }
+            function env.EventRegistry:RegisterCallback(event, fn, owner)
+                self.callbacks[event] = self.callbacks[event] or {}
+                table.insert(self.callbacks[event], { fn = fn, owner = owner })
+            end
+        end
         env.GameTooltip = newWidget(env.UIParent)
         env.GameTooltip.SetText = function(self, text)
             self.lines = { text }
@@ -1592,6 +1675,19 @@ function M.new(opts)
             end
         end
         return lines
+    end
+
+    -- U1d: Edit Mode opens (true) or closes (false), with the callbacks the
+    -- client fires through EventRegistry.
+    function client.editMode(on)
+        local registry = state.env.EventRegistry
+        assert(registry, "this client has no Edit Mode")
+        for _, cb in ipairs(registry.callbacks[on and "EditMode.Enter" or "EditMode.Exit"] or {}) do
+            local ok, err = pcall(cb.fn, cb.owner)
+            if not ok then
+                table.insert(client.errors, "edit mode: " .. tostring(err))
+            end
+        end
     end
 
     -- /reload: the file is written, then everything loads again from it.

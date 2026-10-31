@@ -62,20 +62,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
-      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+      CheckButton 24x24 hidden
         FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-108) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
-      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
         FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
@@ -159,20 +159,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
-      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+      CheckButton 24x24 hidden
         FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-108) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
-      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
         FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
@@ -271,20 +271,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
-      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+      CheckButton 24x24 hidden
         FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-108) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
-      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
         FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
@@ -391,19 +391,19 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.13.1.6:RIGHT(2,0) "Lockouts at the entrance"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-82) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.7:RIGHT(2,0) "Session coach"
-      CheckButton TOPLEFT>parent:TOPLEFT(34,-108) 24x24
+      CheckButton 24x24 hidden
         FontString LEFT>ForeverBuddyWindow.13.1.8:RIGHT(2,0) "Hide the coach in combat"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-108) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.9:RIGHT(2,0) "Session card at logout"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-160) 24x24
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-134) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.10:RIGHT(2,0) "Marks in your bags"
-      FontString TOPLEFT>parent:TOPLEFT(14,-186) "Tooltips"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-208) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-234) "This window"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-282) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-304) 24x24
+      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
         FontString LEFT>ForeverBuddyWindow.13.1.16:RIGHT(2,0) "Record my next session"
         FontString TOPLEFT>ForeverBuddyWindow.13.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
