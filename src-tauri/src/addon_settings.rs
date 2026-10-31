@@ -401,13 +401,30 @@ pub fn approve(db: &Db, flavor: &str, b: &SettingBody, now: i64) -> AppResult<()
             .and_then(|p| p.base.clone())
             .unwrap_or_else(|| in_game(s.as_ref()));
         vals.insert(o.id.clone(), b.value.clone());
-        tx.execute(
-            "INSERT INTO addon_profiles (flavor, vals, base, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![flavor, json(&vals), json(&base), now],
-        )?;
+        insert_profile(&tx, flavor, &vals, Some(&base), now)?;
         tx.commit()?;
         Ok(())
     })
+}
+
+/// A new profile, numbered above every profile stored and every one a game
+/// has reported applying. After a restore from an older backup the db's own
+/// numbers start lower than the game's, and the addon would skip those.
+fn insert_profile(
+    tx: &Transaction<'_>,
+    flavor: &str,
+    vals: &Values,
+    base: Option<&Values>,
+    now: i64,
+) -> AppResult<()> {
+    tx.execute(
+        "INSERT INTO addon_profiles (id, flavor, vals, base, created_at)
+         VALUES (max(coalesce((SELECT max(id) FROM addon_profiles), 0),
+                     coalesce((SELECT max(profile) FROM addon_settings_seen), 0)) + 1,
+                 ?1, ?2, ?3, ?4)",
+        params![flavor, json(vals), base.map(json), now],
+    )?;
+    Ok(())
 }
 
 // ---- the slot --------------------------------------------------------------
@@ -506,10 +523,7 @@ pub fn decide(db: &Db, flavor: &str, keep: bool, now: i64) -> AppResult<()> {
         )?;
         if !keep {
             let base = p.base.clone().unwrap_or_default();
-            tx.execute(
-                "INSERT INTO addon_profiles (flavor, vals, base, created_at) VALUES (?1, ?2, NULL, ?3)",
-                params![flavor, json(&base), now],
-            )?;
+            insert_profile(&tx, flavor, &base, None, now)?;
         }
         tx.commit()?;
         Ok(())
@@ -682,6 +696,26 @@ mod tests {
         logout(&db, Some(back), vals, 500);
         assert!(trial(&db, FLAVOR).unwrap().is_none());
         assert!(decide(&db, FLAVOR, true, 600).is_err(), "nothing to decide");
+    }
+
+    /// After a restore from an older backup the db has no profiles, but the
+    /// game has applied profile 40: the next one must be numbered above it,
+    /// or the addon would skip it.
+    #[test]
+    fn after_a_restore_new_profiles_are_numbered_above_the_games() {
+        let db = Db::open_in_memory().unwrap();
+        logout(&db, Some(40), defaults(), 100);
+        let coach = SettingBody {
+            option: "window.coach".into(),
+            value: json!(true),
+        };
+        approve(&db, FLAVOR, &coach, 200).unwrap();
+        let (id, vals) = slot(&db);
+        assert_eq!(id, 41);
+        // And going back after it is numbered above that.
+        logout(&db, Some(41), vals, 300);
+        decide(&db, FLAVOR, false, 400).unwrap();
+        assert_eq!(slot(&db).0, 42);
     }
 
     #[test]

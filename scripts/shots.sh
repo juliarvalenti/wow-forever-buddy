@@ -68,6 +68,8 @@ SCENARIOS=(
   "settings|settings|click:css=.d-side-foot button[title=\"Settings\"];wait:css=.st-svc|settings"
   # P2b: Approvals (approvals.html, ?state=empty|off).
   "approvals|approvals|click:css=nav button[title=\"Approvals\"];wait:css=.ap-prop|approvals"
+  # P4b: the game picked up new settings; the top strip asks once (next to the dashboard).
+  "settings-trial|settings-trial|wait:text=New settings are in the game|dashboard"
   "approvals-empty|approvals-empty|click:css=nav button[title=\"Approvals\"];wait:css=.ap-blank|approvals"
   "approvals-off|approvals-off|click:css=nav button[title=\"Approvals\"];wait:css=.ap-blank|approvals"
   # G1: New goal from Characters' header (no goals yet), and a refused one.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { type Approvals, commands, type Decision, events } from "@/lib/bindings";
+import { type Approvals, commands, type Decision, events, type Trial } from "@/lib/bindings";
 import { useEvent } from "@/hooks/useEvent";
 import { errorText } from "@/lib/format";
 
@@ -64,4 +64,17 @@ export function useApprovalsWaiting(): number {
   }, []);
   useReload(load);
   return n;
+}
+
+/** P4b: settings the game applied, waiting for "Keep or go back?" (the top strip). */
+export function useSettingsTrial(): Trial | null {
+  const [trial, setTrial] = useState<Trial | null>(null);
+  const load = useCallback(() => {
+    commands.approvalsList().then(
+      (a) => setTrial(a.trial),
+      () => setTrial(null),
+    );
+  }, []);
+  useReload(load);
+  return trial;
 }

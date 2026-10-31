@@ -95,6 +95,7 @@ export const SCENARIOS = [
   "approvals", // P2b: a new note, a conflict, and the Decided list
   "approvals-empty", // agent access on, nothing waiting
   "approvals-off", // agent access off
+  "settings-trial", // P4b: the game picked up new settings; the top strip asks keep or go back
   "tidy", // O2: Kaelor's folder is gone, Sela is hidden, Oldmain was forgotten (Characters, Settings › Data)
 ] as const;
 
@@ -335,9 +336,10 @@ export function installMockIpc(): void {
             }),
           ]
         : [],
-    // P4b: settings the game picked up at the last login, asked once.
+    // P4b: settings the game picked up at the last login, asked once (on
+    // the dashboard it's the top strip).
     trial:
-      s === "approvals"
+      s === "approvals" || s === "settings-trial"
         ? { profile: 3, changes: [{ label: "Session coach", from: "off", to: "on" }] }
         : null,
   };
