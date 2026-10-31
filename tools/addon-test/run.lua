@@ -2093,6 +2093,15 @@ scenario("window", function()
     row("Login briefing").setting:SetValue(true)
     eq(c.global("ForeverBuddySettings").briefing, nil, "on again, from Options")
     eq(brief.checked, true, "and the tab follows")
+    -- In combat, a click in Options changes nothing, and the page re-reads
+    -- the setting so its box goes back.
+    c.world.combat = true
+    row("Login briefing").setting:SetValue(false)
+    eq(c.global("ForeverBuddySettings").briefing, nil, "nothing saved in combat")
+    c.advance(1)
+    local notified = c.global("Settings").notified
+    eq(notified[#notified], "FOREVERBUDDY_BRIEFING", "the Options box is told to go back")
+    c.world.combat = false
     c.click(w.panes[5].checks[2])
     eq(c.global("ForeverBuddySettings").lockouts, false, "lockouts off is saved")
     c.click(w.panes[5].checks[2])

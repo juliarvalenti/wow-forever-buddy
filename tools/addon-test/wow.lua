@@ -1062,6 +1062,11 @@ function M.new(opts)
         if not opts.canvasOnly then
             local S = env.Settings
             S.VarType = { Boolean = "boolean", Number = "number", String = "string" }
+            -- The Options page re-reads a setting (its variable is noted).
+            S.notified = {}
+            S.NotifyUpdate = function(variable)
+                table.insert(S.notified, variable)
+            end
             S.RegisterVerticalLayoutCategory = function(name)
                 local layout = { inits = {} }
                 function layout:AddInitializer(init)

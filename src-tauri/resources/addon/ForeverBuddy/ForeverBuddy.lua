@@ -3835,14 +3835,21 @@ do
                     layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(o.head))
                 end
             else
-                local setting = Settings.RegisterProxySetting(category, "FOREVERBUDDY_" .. o.key:upper(),
+                local variable = "FOREVERBUDDY_" .. o.key:upper()
+                local setting = Settings.RegisterProxySetting(category, variable,
                     Settings.VarType.Boolean, o.label, o.default and true or false,
                     function()
                         return o.get() and true or false
                     end,
                     function(on)
-                        -- As in the window: nothing changes in combat.
-                        if not read("InCombatLockdown") and not pcall(o.set, on and true or false) then
+                        -- As in the window: nothing changes in combat, and
+                        -- the box goes back (re-read a moment later, not
+                        -- from inside its own set).
+                        if read("InCombatLockdown") then
+                            read("C_Timer.After", 0, function()
+                                read("Settings.NotifyUpdate", variable)
+                            end)
+                        elseif not pcall(o.set, on and true or false) then
                             U.errors = U.errors + 1
                         end
                         U.refresh()
