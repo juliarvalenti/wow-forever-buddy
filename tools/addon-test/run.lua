@@ -2934,6 +2934,71 @@ scenario("census", function()
     eq(names["C_Timer.After"], true, "a namespace's members are")
 end)
 
+-- SIM5d: Blizzard's API docs, read from a made-up extract in their format:
+-- the docs folder, and one UI addon beside it.
+scenario("apidocs", function()
+    local apidocs = require("apidocs")
+    local root = os.tmpname()
+    os.remove(root)
+    local docs = root .. "/blizzard_apidocumentationgenerated"
+    assert(os.execute("mkdir -p '" .. docs .. "' '" .. root .. "/blizzard_mailframe'"))
+    local function write(path, text)
+        local w = assert(io.open(path, "w"))
+        w:write(text)
+        w:close()
+    end
+    write(docs .. "/itemdocumentation.lua", [[
+local Item = {
+    Name = "Item", Type = "System", Namespace = "C_Item",
+    Functions = {
+        { Name = "GetItemCount", Type = "Function", SecretArguments = "AllowedWhenUntainted",
+          Arguments = { { Name = "itemInfo", Type = "ItemInfo", Nilable = false } },
+          Returns = { { Name = "count", Type = "number", Nilable = false },
+                      { Name = "icon", Type = "fileID", Nilable = true } } },
+    },
+    Events = {
+        { Name = "BagUpdate", Type = "Event", LiteralName = "BAG_UPDATE",
+          Payload = { { Name = "bagID", Type = "BagIndex", Nilable = false } } },
+    },
+}
+APIDocumentation:AddDocumentationTable(Item)
+]])
+    write(docs .. "/simpleframeapidocumentation.lua", [[
+local SimpleFrameAPI = {
+    Name = "SimpleFrameAPI", Type = "ScriptObject",
+    Functions = { { Name = "SetScript", Type = "Function", SecretReturnsForAspect = { Enum.SecretAspect.ObjectSecurity } } },
+}
+APIDocumentation:AddDocumentationTable(SimpleFrameAPI)
+]])
+    write(docs .. "/constantsdocumentation.lua", [[
+local C = { Name = "Constants", Type = "System", Tables = { { Value = Constants.X.MAX + 1 } } }
+APIDocumentation:AddDocumentationTable(C)
+]])
+    write(root .. "/blizzard_mailframe/mailframe.xml", [[
+<OnClick>HandleModifiedItemClick(GetInboxItemLink(InboxFrame.openMailID, self:GetID()));</OnClick>
+]])
+    local index = apidocs.load(docs)
+    os.execute("rm -rf '" .. root .. "'")
+
+    eq(#index.failed, 0, "docs naming enums and constants load")
+    eq(index.systems, 3, "every system")
+    eq(apidocs.where(index, "C_Item.GetItemCount"), "documented", "a namespaced function")
+    eq(table.concat(index.functions["C_Item.GetItemCount"].secrets, ","), "SecretArguments=AllowedWhenUntainted",
+        "with its secret flags")
+    eq(index.events.BAG_UPDATE ~= nil, true, "an event, by its literal name")
+    eq(apidocs.where(index, "UIParent.SetScript"), "documented", "a frame's method, documented per widget type")
+    eq(apidocs.where(index, "GetInboxItemLink"), "code", "undocumented, but Blizzard's XML calls it")
+    eq(apidocs.where(index, "InboxFrame.GetID"), "code", "a method Blizzard's code calls")
+    eq(apidocs.where(index, "C_TradeSkillUI.GetAllRecipeIDs"), nil, "in neither")
+    eq(apidocs.stub(index, "C_Item.GetItemCount"), table.concat({
+        "        -- C_Item.GetItemCount(itemInfo) -> count: number, icon: fileID?",
+        "        -- Secret: SecretArguments=AllowedWhenUntainted",
+        '        ["C_Item.GetItemCount"] = function(itemInfo)',
+        "            return 0, nil",
+        "        end,",
+    }, "\n"), "a stub shaped as documented")
+end)
+
 -- H2: the cross-check itself, on made-up probes: rows that agree with a
 -- recording are confirmed, and one it contradicts fails the run.
 scenario("forever_rows", function()
@@ -3601,6 +3666,33 @@ do
         end
     end
 
+    -- SIM5d: Blizzard's own API docs, where the CASC extract has put them in
+    -- the app's cache (never on CI). Every handled event must be documented.
+    -- An API in neither the docs nor Blizzard's UI code is only a warning:
+    -- old C functions are often undocumented, so the census decides.
+    local docsNote = "no Blizzard API docs here (the CASC extract, see tools/addon-test/apidocs.lua)"
+    local apidocs = require("apidocs")
+    local docsDir = apidocs.find()
+    if docsDir then
+        local index = apidocs.load(docsDir)
+        local nowhere = {}
+        for _, name in ipairs(names) do
+            if not apidocs.where(index, name) then
+                nowhere[#nowhere + 1] = name
+            end
+        end
+        local documented = 0
+        for name in pairs(events) do
+            if index.events[name] then
+                documented = documented + 1
+            else
+                problems[#problems + 1] = name .. " isn't an event in Blizzard's API docs"
+            end
+        end
+        docsNote = ("Blizzard's API docs: %d handled events documented; APIs in neither the docs nor its UI code: %s"):format(
+            documented, #nowhere > 0 and table.concat(nowhere, ", ") or "none")
+    end
+
     local handled, fired, unfired = 0, 0, {}
     for name in pairs(events) do
         handled = handled + 1
@@ -3623,6 +3715,7 @@ do
     print(("  %d confirmed by a real recording%s"):format(nConfirmed,
         #REAL == 0 and " (none yet: README › Recordings)" or ""))
     print("  API names: " .. censusNote)
+    print("  " .. docsNote)
     print(("  %d called by the scenarios; never called: %s"):format(called,
         #uncalled > 0 and table.concat(uncalled, ", ") or "none"))
     print(("Events: %d handled, %d fired by the scenarios; never fired: %s"):format(handled, fired,
