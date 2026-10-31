@@ -36,6 +36,19 @@ When the addon's output changes, run the harness and commit the fixtures with th
 - `settings_matrix` runs every declared value. Each option is set on and then off from the Options page, with a session played through and the file it writes checked. The value must be kept at the next login. Then every option off, and every option on.
 - A new option needs its declaration, its get and set, then a run of the harness and a commit of the schema.
 
+## The Forever census (SIM5a)
+
+Our fakes, this harness and WOWAPI, say what the client defines. The census records what the real one does: every global's name and type, one level into each table (`C_Item.GetItemInfo`), two under `Enum`, and each widget type's methods. It holds names and types only, never values, and skips any name containing the character's own name.
+
+1. **In game,** with the probe addon (`tools/probe-addon/ForeverBuddyProbe`, version 4) installed: `/fbprobe census`. It loads the auction house UI first, so its frames are counted, then walks the globals a slice per frame and prints "census done". Then `/reload` to save it.
+2. **Copy** `WTF/Account/<ACCOUNT>/SavedVariables/ForeverBuddyProbe.lua` to `tools/probe-addon/results/census.lua` and commit it.
+3. **The report:** `luajit tools/addon-test/census.lua tools/probe-addon/results/census.lua` (add `--all` for every name). It lists:
+   - the APIs ForeverBuddy calls that Forever doesn't have (each one is a bug);
+   - the names and widget methods our fake gives the addon that Forever doesn't have, where a test could pass on a lie;
+   - WOWAPI against Forever, both ways.
+
+Once `results/census.lua` exists, the H2 fidelity check also fails the run if the addon calls anything the census doesn't list. The `census` scenario tests the lookups on a made-up census.
+
 ## A strict fake (SIM4)
 
 The fake is as strict as the client where a mistake would otherwise pass quietly:

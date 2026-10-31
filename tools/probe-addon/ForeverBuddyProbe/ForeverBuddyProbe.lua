@@ -24,7 +24,7 @@
 -- only: numbers and booleans kept, strings replaced by "<string:LENGTH>".
 
 local ADDON_NAME = ...
-local PROBE_VERSION = 3
+local PROBE_VERSION = 4
 local MAX_SAMPLES = 5
 
 -- Sections whose strings are redacted (see the header).
@@ -547,7 +547,149 @@ for _, event in ipairs(EVENTS) do
     end
 end
 
+-- Census (SIM5a, probe version 4) ---------------------------------------------
+--
+-- /fbprobe census records what the client defines: the name and type of every
+-- global, one level into each table (C_Item.GetItemInfo, Settings.*), two for
+-- Enum (Enum.BagIndex.Keyring), and the methods of each widget type. Names
+-- and types only, never values. tools/addon-test/census.lua diffs it against
+-- our fake client (wow.lua) and WOWAPI. The walk runs CENSUS_SLICE globals a
+-- frame, so the client's script watchdog never fires (addon bible 4.17).
+-- Any name containing this character's own name is skipped.
+
+local CENSUS_SLICE = 400
+local CENSUS_MEMBERS = 2000 -- per table; a bigger one notes how many it skipped
+local WIDGETS = { "Frame", "Button", "CheckButton", "EditBox", "ScrollFrame", "Slider", "StatusBar",
+    "Cooldown", "GameTooltip", "MessageFrame", "ScrollingMessageFrame", "Model", "ColorSelect" }
+local censusRunning = false
+
+-- One letter per type: f function, t table, w widget, s string, n number,
+-- b boolean, u userdata, x secret, ? unreadable.
+local function kind(v)
+    local ok, k = pcall(function()
+        if isSecret(v) then
+            return "x"
+        end
+        local t = type(v)
+        if t == "table" and type(rawget(v, 0)) == "userdata" then
+            return "w"
+        end
+        return ({ ["function"] = "f", table = "t", string = "s", number = "n", boolean = "b", userdata = "u" })[t] or t
+    end)
+    return ok and k or "?"
+end
+
+-- A table's string keys and their kinds, capped.
+local function members(tbl)
+    local out, n, more = {}, 0, 0
+    pcall(function()
+        for k, v in pairs(tbl) do
+            if type(k) == "string" then
+                if n < CENSUS_MEMBERS then
+                    out[k] = kind(v)
+                    n = n + 1
+                else
+                    more = more + 1
+                end
+            end
+        end
+    end)
+    if more > 0 then
+        out["<more>"] = more
+    end
+    return out
+end
+
+-- Each widget type's methods, from the metatable of a hidden one we make.
+local function widgetMethods()
+    local out = {}
+    local function methodsOf(obj)
+        local mt = obj and getmetatable(obj)
+        local index = mt and mt.__index
+        return type(index) == "table" and members(index) or nil
+    end
+    for _, t in ipairs(WIDGETS) do
+        local ok, f = pcall(CreateFrame, t)
+        if ok and f then
+            pcall(f.Hide, f)
+            out[t] = methodsOf(f)
+        end
+    end
+    local ok, f = pcall(CreateFrame, "Frame")
+    if ok and f then
+        local okT, tex = pcall(f.CreateTexture, f)
+        out.Texture = okT and methodsOf(tex) or nil
+        local okF, fs = pcall(f.CreateFontString, f)
+        out.FontString = okF and methodsOf(fs) or nil
+    end
+    return out
+end
+
+local function census()
+    if censusRunning then
+        print("ForeverBuddy Probe: the census is already running.")
+        return
+    end
+    censusRunning = true
+    -- Load-on-demand UI our fakes model: loaded first, so its frames are in.
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_AuctionHouseUI")
+    end
+    local me = UnitName("player")
+    local keys, skipped = {}, 0
+    for k in pairs(_G) do
+        if type(k) == "string" then
+            if me and me ~= "" and string.find(k, me, 1, true) then
+                skipped = skipped + 1
+            else
+                keys[#keys + 1] = k
+            end
+        end
+    end
+    local globals, tables = {}, {}
+    local i = 1
+    print(string.format("ForeverBuddy Probe: census of %d globals started.", #keys))
+    local function step()
+        local stop = math.min(i + CENSUS_SLICE - 1, #keys)
+        for j = i, stop do
+            local name = keys[j]
+            local v = rawget(_G, name)
+            local k = kind(v)
+            globals[name] = k
+            if k == "t" then
+                tables[name] = members(v)
+                if name == "Enum" then
+                    for sub, sk in pairs(tables[name]) do
+                        if sk == "t" then
+                            tables["Enum." .. sub] = members(v[sub])
+                        end
+                    end
+                end
+            end
+        end
+        i = stop + 1
+        if i <= #keys then
+            C_Timer.After(0, step)
+            return
+        end
+        local version, build, date, toc = GetBuildInfo()
+        db.census = {
+            probeVersion = PROBE_VERSION,
+            at = now(),
+            build = { version = version, build = build, date = date, toc = toc },
+            globals = globals,
+            tables = tables,
+            widgets = widgetMethods(),
+            skipped = skipped,
+        }
+        censusRunning = false
+        print(string.format("ForeverBuddy Probe: census done, %d globals. Type /reload (or log out) to save it.", #keys))
+    end
+    step()
+end
+
 -- /fbprobe            summary
+-- /fbprobe census     the client's globals, names and types only (SIM5a)
 -- /fbprobe scan       full auction house scan (AH must be open; throttled)
 -- /fbprobe search     one commodity search for Linen Cloth (AH must be open)
 -- /fbprobe reload     the two reload buttons (Bridge v0.4 spike)
@@ -556,6 +698,14 @@ SlashCmdList.FBPROBE = function(msg)
     msg = (msg or ""):lower()
     if msg == "reload" then
         showReloadButtons()
+        return
+    end
+    if msg == "census" then
+        if not db then
+            print("ForeverBuddy Probe: not loaded yet.")
+            return
+        end
+        census()
         return
     end
     if not char then

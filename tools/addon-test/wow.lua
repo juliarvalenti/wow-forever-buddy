@@ -1684,6 +1684,23 @@ function M.new(opts)
         return state.env[name]
     end
 
+    -- SIM5a's census diff: the whole environment the fake gives the addon,
+    -- and the widget methods it models (Frame's keys, bar its metamethods).
+    function client.env()
+        return state.env
+    end
+
+    function client.widgetMethods()
+        local out = {}
+        for k in pairs(Frame) do
+            if type(k) == "string" and not k:match("^__") then
+                out[#out + 1] = k
+            end
+        end
+        table.sort(out)
+        return out
+    end
+
     -- Clicks a widget: its OnClick, as the client calls it.
     function client.click(widget, which)
         local fn = widget.scripts.OnClick
