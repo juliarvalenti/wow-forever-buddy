@@ -301,8 +301,10 @@ local function carried()
     end
     local before = secretHits
     local counts = {}
-    for bag = 0, 5 do
-        local size = read("C_Container.GetContainerNumSlots", bag)
+    -- The keyring is bag -2 on Forever (addon bible 2.19): a key moved onto
+    -- it is still carried. -1 is the bank, which isn't.
+    for bag = -2, 5 do
+        local size = bag ~= -1 and read("C_Container.GetContainerNumSlots", bag)
         for slot = 1, type(size) == "number" and size or 0 do
             local info = read("C_Container.GetContainerItemInfo", bag, slot)
             if type(info) == "table" then
@@ -1557,6 +1559,15 @@ local function hookTooltips()
     end
     hooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        -- A forbidden tooltip, or one whose owner is (a nameplate's aura
+        -- button), allows nothing but IsForbidden (addon bible 3.19).
+        if tooltip.IsForbidden and tooltip:IsForbidden() then
+            return
+        end
+        local owner = tooltip.GetOwner and tooltip:GetOwner()
+        if owner and owner.IsForbidden and owner:IsForbidden() then
+            return
+        end
         -- U1: "Your alts on item tooltips" (C.opt is filled in further down).
         if C.opt("tooltips") and not pcall(addItemLines, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
@@ -2798,17 +2809,30 @@ do
     end
 
     -- Re-tag when a bag opens (the game builds its buttons then).
+    -- Opening bags fires several of these hooks at once (OpenAllBags opens
+    -- each bag): one re-tag on the next frame covers them all, through a
+    -- callback made once rather than a new closure and timer per hook
+    -- (addon bible 4.12).
+    function C.tagSoon()
+        C.tagPending = false
+        pcall(C.tagBags)
+    end
+
+    local function bagsOpened()
+        if not C.tagPending then
+            C.tagPending = true
+            read("C_Timer.After", 0, C.tagSoon)
+        end
+    end
+
     function C.hook()
-        if type(hooksecurefunc) ~= "function" then
+        if C.hooked or type(hooksecurefunc) ~= "function" then
             return
         end
+        C.hooked = true
         for _, name in ipairs({ "OpenAllBags", "ToggleAllBags", "OpenBag", "ToggleBag", "ToggleBackpack" }) do
             if type(rawget(_G, name)) == "function" then
-                pcall(hooksecurefunc, name, function()
-                    read("C_Timer.After", 0, function()
-                        pcall(C.tagBags)
-                    end)
-                end)
+                pcall(hooksecurefunc, name, bagsOpened)
             end
         end
     end
@@ -4256,11 +4280,12 @@ do
     end
 
     local function arg1(v)
-        if v == nil then
-            return "nil"
-        end
+        -- Secret first: even a nil test may not be safe on one (addon bible 2.2).
         if isSecret(v) then
             return "secret"
+        end
+        if v == nil then
+            return "nil"
         end
         local t = type(v)
         if t == "number" or t == "boolean" then

@@ -298,7 +298,8 @@ function M.new(opts)
         if world.phase ~= "live" then
             return false
         end
-        return bag >= 0 and bag <= 5 or world.bank_open
+        -- -2 is the keyring, carried like the bags.
+        return bag >= -2 and bag ~= -1 and bag <= 5 or world.bank_open
     end
 
     -- An opaque value the addon may hold but must never save. Like the
@@ -1688,14 +1689,39 @@ function M.new(opts)
 
     -- Shows the item tooltip for `id`: the game's own line, then whatever
     -- the item post-calls add. Returns the lines as "left" or "left | right".
-    function client.hover(id)
+    -- `forbidden` = "tooltip" or "owner" makes that one forbidden (a
+    -- nameplate aura button's tooltip, say): then IsForbidden is the only
+    -- method it allows.
+    function client.hover(id, forbidden)
         local lines = { M.ITEMS[id] or ("Item " .. id) }
-        local tooltip = {
-            AddLine = function(_, text)
-                table.insert(lines, text)
+        -- Noted on client.errors (which fails the scenario) as well as
+        -- raised, since the addon's own pcall would swallow the raise.
+        local function guarded(fn)
+            return function(...)
+                if forbidden then
+                    table.insert(client.errors, "tooltip: wrote to a forbidden tooltip")
+                    error("forbidden tooltip", 2)
+                end
+                return fn(...)
+            end
+        end
+        local owner = {
+            IsForbidden = function()
+                return forbidden == "owner"
             end,
-            AddDoubleLine = function(_, left, right)
+        }
+        local tooltip = {
+            AddLine = guarded(function(_, text)
+                table.insert(lines, text)
+            end),
+            AddDoubleLine = guarded(function(_, left, right)
                 table.insert(lines, left .. " | " .. right)
+            end),
+            IsForbidden = function()
+                return forbidden == "tooltip"
+            end,
+            GetOwner = function()
+                return owner
             end,
         }
         -- The tooltip's data, as TooltipDataProcessor passes it: the id and

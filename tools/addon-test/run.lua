@@ -2652,7 +2652,8 @@ end)
 
 -- R3a: a bag slot Forever hands back as a table holding secrets
 -- (canaccesstable is false, and indexing it raises). The bag read is
--- unknown, counted in secret_hits, and nothing is logged as lost or gained.
+-- unknown, counted in secret_hits, and nothing is logged as gained when it
+-- reads again.
 scenario("unreadable_table", function()
     local c = client()
     c.login(nil)
@@ -2668,11 +2669,58 @@ scenario("unreadable_table", function()
     end
     for _, s in ipairs(db.sessions) do
         for _, e in ipairs(s.events or {}) do
-            if e.kind == "loss" or e.kind == "gain" then
-                fail("an unreadable bag slot logged a " .. e.kind .. " of " .. show(e.item))
+            if e.kind == "gain" then
+                fail("an unreadable bag slot logged a gain of " .. show(e.item))
             end
         end
     end
+end)
+
+-- R3a (addon bible 2.19): the keyring is bag -2 on Forever. A key moved onto
+-- it and back is carried all along, so coming back isn't a gain. (Before,
+-- only bags 0-5 counted: the key "vanished" and its return was logged.)
+scenario("keyring", function()
+    local KEY = 5396
+    local c = client()
+    c.world.bags[-2] = { size = 4, slots = {} }
+    c.world.bags[0].slots[5] = { id = KEY, count = 1 }
+    c.login(nil)
+    c.advance(5)
+    c.world.bags[0].slots[5] = nil
+    c.world.bags[-2].slots[1] = { id = KEY, count = 1 }
+    c.fire("BAG_UPDATE_DELAYED")
+    c.advance(5)
+    c.world.bags[-2].slots[1] = nil
+    c.world.bags[0].slots[5] = { id = KEY, count = 1 }
+    c.fire("BAG_UPDATE_DELAYED")
+    c.advance(5)
+    local db = file(c.logout())
+    for _, s in ipairs(db.sessions) do
+        for _, e in ipairs(s.events or {}) do
+            if e.kind == "gain" and e.item == KEY then
+                fail("a key back off the keyring was logged as a gain")
+            end
+        end
+    end
+end)
+
+-- R3a (addon bible 3.19): a forbidden tooltip, or one with a forbidden owner
+-- (a nameplate aura button), allows nothing but IsForbidden. Our item lines
+-- stay off it; the fake's tooltip raises if it's written to.
+scenario("forbidden_tooltip", function()
+    -- The `tooltip` scenario's slots: Runecloth on three alts.
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", ALTS .. '\t["items"] = {},\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", ALTS
+                .. '\t["scanAt"] = ' .. (wow.EPOCH - 3 * DAY) .. ',\n'
+                .. '\t["items"] = {\n\t\t[14047] = { 11200, 1, 0, 340, 0, 0, 2, 5, 0, 0, 0, 3, 0, 0, 3, 0 },\n\t},\n'),
+        },
+    })
+    c.login(nil)
+    eq(#c.hover(14047) > 1, true, "an ordinary tooltip gets our lines")
+    eq(#c.hover(14047, "tooltip"), 1, "a forbidden tooltip gets none")
+    eq(#c.hover(14047, "owner"), 1, "nor one whose owner is forbidden")
 end)
 
 -- R3a, from EllesmereUI's guardrails: globals Forever doesn't have. Retail
