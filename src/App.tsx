@@ -305,7 +305,7 @@ function Shell() {
               </Button>
               <Button onClick={() => keepSettings(true)}>Keep</Button>
               <button
-                className="d-link"
+                className="d-x"
                 title="Not now"
                 aria-label="Not now"
                 onClick={() => setTrialSeen(trial.profile)}
