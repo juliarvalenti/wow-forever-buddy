@@ -2900,6 +2900,40 @@ scenario("window_layout", function()
     snapshot("window", table.concat(parts, "\n"))
 end)
 
+-- SIM5a: the census lookups, on a made-up census in the probe's format. The
+-- real one, once committed, is checked against the addon's APIs in H2's
+-- fidelity block below.
+scenario("census", function()
+    local censusLib = require("census")
+    local text = serialize("ForeverBuddyProbeDB", { census = {
+        build = { build = "test" },
+        globals = { GetMoney = "f", C_Item = "t", Enum = "t", UIParent = "w" },
+        tables = {
+            C_Item = { GetItemInfo = "f" },
+            Enum = { BagIndex = "t" },
+            ["Enum.BagIndex"] = { Keyring = "n" },
+        },
+    } })
+    local cen = censusLib.load(text, wow.parse)
+    eq(censusLib.kind(cen, "GetMoney"), "f", "a global")
+    eq(censusLib.kind(cen, "C_Item.GetItemInfo"), "f", "one level into a table")
+    eq(censusLib.kind(cen, "Enum.BagIndex.Keyring"), "n", "two under Enum")
+    eq(censusLib.kind(cen, "C_Item.GetItemCount"), nil, "a member it lacks")
+    eq(censusLib.kind(cen, "GetItemInfo"), nil, "a global it lacks")
+    local absent = censusLib.absent(cen, { GetMoney = true, GetItemInfo = true, ["C_Item.GetItemInfo"] = true })
+    eq(table.concat(absent, ","), "GetItemInfo", "absent() lists only what it lacks")
+    local _, why = censusLib.load(serialize("ForeverBuddyProbeDB", { characters = {} }), wow.parse)
+    eq(why ~= nil and why:match("no census") ~= nil, true, "a probe file without a census says so")
+
+    -- Our fake's frames are widgets, not namespaces: their fields aren't names.
+    local c = client()
+    c.login(nil)
+    local names = censusLib.names(c.env())
+    eq(names.UIParent, true, "the fake's UIParent is a name")
+    eq(names["UIParent.children"], nil, "its fields aren't")
+    eq(names["C_Timer.After"], true, "a namespace's members are")
+end)
+
 -- H2: the cross-check itself, on made-up probes: rows that agree with a
 -- recording are confirmed, and one it contradicts fails the run.
 scenario("forever_rows", function()
@@ -3487,6 +3521,35 @@ do
         problems[#problems + 1] = name .. " isn't mocked in wow.lua"
     end
 
+    -- SIM5a: once a real client's census is committed, every API the addon
+    -- calls must be in it. (tools/addon-test/census.lua has the full report.)
+    local censusText = (function()
+        local f = io.open(dir .. "/../probe-addon/results/census.lua", "rb")
+        if not f then
+            return nil
+        end
+        local s = f:read("*a")
+        f:close()
+        return s
+    end)()
+    local censusNote = "no census yet (/fbprobe census, see tools/addon-test/census.lua)"
+    if censusText then
+        local censusLib = require("census")
+        local cen, why = censusLib.load(censusText, wow.parse)
+        if not cen then
+            problems[#problems + 1] = "tools/probe-addon/results/census.lua: " .. why
+        else
+            local b = cen.build or {}
+            censusNote = ("checked against the census of build %s"):format(tostring(b.build))
+            for _, name in ipairs(names) do
+                if censusLib.kind(cen, name) == nil then
+                    problems[#problems + 1] = name .. " isn't in the real Forever client (census, build "
+                        .. tostring(b.build) .. ")"
+                end
+            end
+        end
+    end
+
     local handled, fired, unfired = 0, 0, {}
     for name in pairs(events) do
         handled = handled + 1
@@ -3508,6 +3571,7 @@ do
         phased, reported, assumed))
     print(("  %d confirmed by a real recording%s"):format(nConfirmed,
         #REAL == 0 and " (none yet: README › Recordings)" or ""))
+    print("  API names: " .. censusNote)
     print(("  %d called by the scenarios; never called: %s"):format(called,
         #uncalled > 0 and table.concat(uncalled, ", ") or "none"))
     print(("Events: %d handled, %d fired by the scenarios; never fired: %s"):format(handled, fired,
