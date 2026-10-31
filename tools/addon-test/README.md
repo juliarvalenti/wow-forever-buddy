@@ -31,6 +31,11 @@ When the addon's output changes, run the harness and commit the fixtures with th
 
 **The bridge contract (H5):** the `contract` scenario loads the slot files in `src-tauri/tests/fixtures/bridge/` as the game would and checks the addon uses each one. Those files aren't written by hand: `src-tauri/src/contract.rs` ingests this harness's `lists.lua`, adds a list, a plan, a cleanup mark and a login note, and builds every slot the way the app's `send_to_game` does. It then runs this harness (Lua 5.1, through mlua) inside `cargo test`, so CI checks the chain on Windows and macOS, and fails if the slots changed without the fixtures being committed. If you change a slot's format, run `cargo test contract` and commit the fixtures.
 
+**The settings schema (P4a):** the addon's settings are declared once, in `ForeverBuddy/Settings.lua`: id, module, section, type, default, label, help, parent and acts. The window's Settings tab and Esc › Options read that list; what each option does is in `ForeverBuddy.lua`, by id, and the addon refuses to load if a declared option does nothing.
+- `settings_schema` checks every declaration and generates `src-tauri/resources/settings-schema.json` for the app. Under `--check`, a stale file fails, so commit it with the change.
+- `settings_matrix` runs every declared value. Each option is set on and then off from the Options page, with a session played through and the file it writes checked. The value must be kept at the next login. Then every option off, and every option on.
+- A new option needs its declaration, its get and set, then a run of the harness and a commit of the schema.
+
 ## A strict fake (SIM4)
 
 The fake is as strict as the client where a mistake would otherwise pass quietly:

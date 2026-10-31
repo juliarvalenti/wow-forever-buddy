@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "options": [
+    {
+      "id": "window.briefing",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": true,
+      "label": "Login briefing",
+      "help": "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
+      "acts": false
+    },
+    {
+      "id": "window.lockouts",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": true,
+      "label": "Lockouts at the entrance",
+      "help": "When you enter a dungeon or raid, says which of your other characters are saved there.",
+      "acts": false
+    },
+    {
+      "id": "window.coach",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": false,
+      "label": "Session coach",
+      "help": "A small strip with this session's gold, experience and loot.",
+      "acts": false
+    },
+    {
+      "id": "window.coachCombat",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": false,
+      "label": "Hide the coach in combat",
+      "help": "Steps out of the way while you fight.",
+      "parent": "window.coach",
+      "acts": false
+    },
+    {
+      "id": "window.card",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": true,
+      "label": "Session card at logout",
+      "help": "A short summary of the session during the logout countdown.",
+      "acts": false
+    },
+    {
+      "id": "window.bagMarks",
+      "module": "window",
+      "section": "In game",
+      "type": "bool",
+      "default": true,
+      "label": "Marks in your bags",
+      "help": "Coin and letter marks on items you marked to sell or send in Forever Buddy.",
+      "acts": false
+    },
+    {
+      "id": "tooltips.alts",
+      "module": "tooltips",
+      "section": "Tooltips",
+      "type": "bool",
+      "default": true,
+      "label": "Your alts on item tooltips",
+      "help": "Which of your other characters hold an item, and where.",
+      "acts": false
+    },
+    {
+      "id": "window.minimap",
+      "module": "window",
+      "section": "This window",
+      "type": "bool",
+      "default": true,
+      "label": "Minimap button",
+      "help": "Click to open Forever Buddy. Drag to move.",
+      "acts": false
+    },
+    {
+      "id": "window.record",
+      "module": "window",
+      "section": "Help fix bugs",
+      "type": "bool",
+      "default": false,
+      "label": "Record my next session",
+      "help": "Numbers only: no names, chat or mail. Turns itself off when you log out.",
+      "acts": false,
+      "showHelp": true
+    }
+  ]
+}

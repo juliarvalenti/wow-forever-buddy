@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.6"
+local VERSION = "0.9.7"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -3623,61 +3623,49 @@ do
         function() end, -- Settings: its checkboxes are refreshed with the rest
     }
 
-    -- Settings: every toggle, declared once, read by both the window's
-    -- Settings tab and Esc › Options › AddOns (U1d). `key` names it (and
-    -- its Options setting), `description` is the one line shown on hover,
-    -- `default` is what Options' "Defaults" goes back to, and `parent`
-    -- names the option it depends on: it shows only while that one is on.
-    local OPTIONS = {
-        { head = "In game" },
-        {
-            key = "briefing",
-            label = "Login briefing",
-            description = "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
-            default = true,
-            get = briefingOn,
-            set = setBriefing,
-        },
-        {
-            key = "lockouts",
-            label = "Lockouts at the entrance",
-            description = "When you enter a dungeon or raid, says which of your other characters are saved there.",
-            default = true,
-            get = L.on,
-            set = L.set,
-        },
-        {
-            key = "coach",
-            label = "Session coach",
-            description = "A small strip with this session's gold, experience and loot.",
-            default = false,
+    -- Settings: every toggle is declared once, in Settings.lua (P4a: id,
+    -- label, help, parent, default, acts), and read by both the window's
+    -- Settings tab and Esc › Options › AddOns (U1d). What each one does is
+    -- here, by id. OPTIONS is that list with a heading row wherever the
+    -- section changes; each option row has the declaration's fields as
+    -- key (the id), label, description (the help), default and parent,
+    -- plus get and set. (Built in a function: the main chunk is at Lua's
+    -- 200-local limit.)
+    local OPTIONS = (function(declared, does)
+        local list, section = {}, nil
+        for _, d in ipairs(declared) do
+            local act = does[d.id]
+            if not act then
+                error("Settings.lua declares " .. tostring(d.id) .. ", which nothing here does")
+            end
+            if d.section ~= section then
+                section = d.section
+                list[#list + 1] = { head = section }
+            end
+            list[#list + 1] = {
+                key = d.id,
+                label = d.label,
+                description = d.help,
+                default = d.default,
+                parent = d.parent,
+                sub = d.showHelp and d.help or nil,
+                get = act.get,
+                set = act.set,
+            }
+        end
+        return list
+    end)(select(2, ...).settings.options, {
+        ["window.briefing"] = { get = briefingOn, set = setBriefing },
+        ["window.lockouts"] = { get = L.on, set = L.set },
+        ["window.coach"] = {
             get = S.coachOn,
             set = function(on)
                 S.guarded(S.setCoach, on)
             end,
         },
-        {
-            key = "coachCombat",
-            label = "Hide the coach in combat",
-            description = "Steps out of the way while you fight.",
-            default = false,
-            parent = "coach",
-            get = S.hidesInCombat,
-            set = S.setCoachCombat,
-        },
-        {
-            key = "card",
-            label = "Session card at logout",
-            description = "A short summary of the session during the logout countdown.",
-            default = true,
-            get = S.cardOn,
-            set = S.setCard,
-        },
-        {
-            key = "bagMarks",
-            label = "Marks in your bags",
-            description = "Coin and letter marks on items you marked to sell or send in Forever Buddy.",
-            default = true,
+        ["window.coachCombat"] = { get = S.hidesInCombat, set = S.setCoachCombat },
+        ["window.card"] = { get = S.cardOn, set = S.setCard },
+        ["window.bagMarks"] = {
             get = function()
                 return C.opt("bagMarks")
             end,
@@ -3686,12 +3674,7 @@ do
                 pcall(C.tagBags)
             end,
         },
-        { head = "Tooltips" },
-        {
-            key = "tooltips",
-            label = "Your alts on item tooltips",
-            description = "Which of your other characters hold an item, and where.",
-            default = true,
+        ["tooltips.alts"] = {
             get = function()
                 return C.opt("tooltips")
             end,
@@ -3699,12 +3682,7 @@ do
                 C.setOpt("tooltips", on)
             end,
         },
-        { head = "This window" },
-        {
-            key = "minimap",
-            label = "Minimap button",
-            description = "Click to open Forever Buddy. Drag to move.",
-            default = true,
+        ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
             end,
@@ -3714,13 +3692,7 @@ do
             end,
         },
         -- Record mode (SIM1 b): the next login session only.
-        { head = "Help fix bugs" },
-        {
-            key = "record",
-            label = "Record my next session",
-            sub = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
-            description = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
-            default = false,
+        ["window.record"] = {
             get = function()
                 return Rec.next()
             end,
@@ -3728,7 +3700,7 @@ do
                 Rec.setNext(on)
             end,
         },
-    }
+    })
 
     -- (Fields, not locals, below: the main chunk is at Lua's 200-local limit.)
     OPTIONS.byKey = {} -- key -> its row
@@ -3835,7 +3807,7 @@ do
                     layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(o.head))
                 end
             else
-                local variable = "FOREVERBUDDY_" .. o.key:upper()
+                local variable = "FOREVERBUDDY_" .. o.key:gsub("%.", "_"):upper()
                 local setting = Settings.RegisterProxySetting(category, variable,
                     Settings.VarType.Boolean, o.label, o.default and true or false,
                     function()
