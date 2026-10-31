@@ -9,7 +9,7 @@ import { classStyle } from "@/screens/Characters";
 import { GoalPreview } from "@/screens/Goals";
 
 // design/mocks/round-3/approvals.html, IMPLEMENTING §17; rules from
-// docs/specs/agent-mcp.md §4. Every proposed string (note text, reason, the
+// context/specs/agent-mcp §4. Every proposed string (note text, reason, the
 // producer) is React text, never HTML. The producer is quoted as a claim.
 // Three kinds: login notes, quest plans (the active plan alongside) and list
 // changes (only the items that change, the old need struck through).

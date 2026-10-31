@@ -505,7 +505,7 @@ const TOOL_WORDS: Record<string, string> = {
   list_proposals: "checked its suggestions",
 };
 
-/** P2a (docs/specs/agent-mcp.md §1): the switch, what to paste into an agent
+/** P2a (context/specs/agent-mcp §1): the switch, what to paste into an agent
  *  client, and the agent's recent calls. Every string from the activity list
  *  (the client's name for itself) is shown as text. */
 function Agents({ on, ready, onChange }: { on: boolean; ready: boolean; onChange: (v: boolean) => void }) {

@@ -1,5 +1,5 @@
 -- ForeverBuddy Probe: checks, on the live Forever client, that the APIs the
--- feature matrix (docs/specs/feature-matrix.md) relies on exist AND return
+-- feature matrix (context/specs/feature-matrix) relies on exist AND return
 -- real data, not nil or secret values. Everything is written to
 -- ForeverBuddyProbeDB, one top-level table, keyed by character.
 --

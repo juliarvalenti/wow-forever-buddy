@@ -7,7 +7,7 @@
 //! slot (`slot_entries`).
 //!
 //! A producer sends only text, a quest id and a zone per step
-//! (docs/specs/agent-mcp.md §3). Where to go comes from the app's own quest
+//! (context/specs/agent-mcp §3). Where to go comes from the app's own quest
 //! log (Q1b): the giver and position recorded when that quest was taken or
 //! handed in, so a waypoint is never a position an agent made up. Every
 //! string is checked for length here and shown as plain text in game.

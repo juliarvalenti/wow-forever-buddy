@@ -1,4 +1,4 @@
-//! Ingest (docs/specs/v0.2-addon.md §4): reading each character's
+//! Ingest (context/specs/v0.2-addon §4): reading each character's
 //! `ForeverBuddy.lua` into the db.
 //!
 //! When: a scan at app start (after replaying backups, below), after WoW

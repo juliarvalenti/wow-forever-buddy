@@ -1,4 +1,4 @@
-//! The bridge, app → addon (docs/specs/bridge-v0.4.md §2): fixed data files
+//! The bridge, app → addon (context/specs/bridge-v0.4 §2): fixed data files
 //! ("slots") inside our own addon folder that the addon loads at login or
 //! `/reload`.
 //!

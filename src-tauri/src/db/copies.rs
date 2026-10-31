@@ -1,4 +1,4 @@
-//! Daily copies of the database (docs/specs/v0.2-addon.md §4, "The database
+//! Daily copies of the database (context/specs/v0.2-addon §4, "The database
 //! stops being disposable"). Gold history and adventures can't be rebuilt
 //! from the game's files, so once a day the db is copied with `VACUUM INTO`
 //! to `<local data>/db-copies/buddy-<date>.db`, keeping the last 7. When the
