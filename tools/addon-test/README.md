@@ -52,7 +52,7 @@ The `strict_fake` scenario proves each of these holds.
 
 ## From the addon bible (R3a)
 
-Scenarios for rules in `docs/addon-bible` (now in room memories, `procedures/addon-bible/*`):
+Scenarios for rules in the addon bible (room memory `procedures/addon-bible/*`; "2.18" is rule 2.18):
 
 - `forever_globals` (2.18): fails if `ForeverBuddy.lua` names a global Forever doesn't have (bare `GetItemInfo`, the old spec functions and others), so use the `C_` form. The list comes from EllesmereUI's CI guardrails.
 - `unreadable_table` (2.7): a bag slot Forever hands back as a table holding secrets. `client.unreadable()` makes one: `canaccesstable` says false, and indexing it raises.

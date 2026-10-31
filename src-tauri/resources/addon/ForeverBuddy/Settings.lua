@@ -1,4 +1,4 @@
--- ForeverBuddy's settings, declared once (P4a, docs/specs/p4-claude-settings.md §2).
+-- ForeverBuddy's settings, declared once (P4a, context/specs/p4-claude-settings §2).
 --
 -- Data only: what each option is, not what it does (that's in
 -- ForeverBuddy.lua, by id). The window's Settings tab and Esc › Options ›

@@ -1,5 +1,5 @@
 -- ForeverBuddy: notes down each character at logout for WoW Forever Buddy
--- (docs/specs/v0.2-addon.md §2). Everything goes into ForeverBuddyDB, this
+-- (context/specs/v0.2-addon §2). Everything goes into ForeverBuddyDB, this
 -- character's SavedVariables, which the app reads after the game closes.
 --
 -- The rules this file keeps (spec §2, "Hard rules"):
@@ -16,7 +16,7 @@
 --   Blizzard function replaced, nothing protected, no automation.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
--- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
+-- The app → addon bridge (context/specs/bridge-v0.4): the app writes data
 -- files into Data/, listed in the TOC before this file. Their values are
 -- data only and never run, passed to a macro, a secure attribute or a frame
 -- name; this file reads their header and saves a receipt so the app knows
