@@ -167,6 +167,7 @@ export function installMockIpc(): void {
     list: null,
     bags: null,
     goal: null,
+    setting: null,
     ...extra,
   });
   // G1 (dashboard.html): Brannic to 55 by Friday, Fizzwick's mount gold, and
@@ -275,6 +276,21 @@ export function installMockIpc(): void {
               reason: "Level 55 opens the Searing Gorge quests you asked about.",
               goal: { character_id: 4, character: "Brannic", class: "hunter", kind: "level", target: 55, label: null, by: inDays(5) },
             }),
+            // P4b: one addon setting per row.
+            proposal(8, 6, "Claude Desktop", {
+              kind: "settings",
+              reason: "You asked for a minimal screen while questing.",
+              setting: {
+                option: "window.minimap",
+                label: "Minimap button",
+                help: "Click to open Forever Buddy. Drag to move.",
+                section: "This window",
+                from: "on",
+                to: "off",
+                acts: false,
+                same: false,
+              },
+            }),
             proposal(2, 12, "Claude Desktop", {
               note: {
                 ...noteView(1, "Coinpurse", "warrior", "Relist the Arcanite Bars above 36g, and post the Thorium Bars from the bank."),
@@ -319,6 +335,11 @@ export function installMockIpc(): void {
             }),
           ]
         : [],
+    // P4b: settings the game picked up at the last login, asked once.
+    trial:
+      s === "approvals"
+        ? { profile: 3, changes: [{ label: "Session coach", from: "off", to: "on" }] }
+        : null,
   };
 
   // V7's alts: id, name, surname, class, race, level, copper, zone, mins ago, extra.
@@ -1411,6 +1432,11 @@ export function installMockIpc(): void {
       approvals.waiting = approvals.waiting.filter((w) => w.id !== id);
       const status = decision === "decline" ? "discarded" : "applied";
       approvals.decided.unshift({ ...p, status, decided_at: iso(0) });
+      return null;
+    },
+    approvals_keep_settings: () => {
+      if (!approvals.trial) throw { kind: "NotFound", message: "new settings to keep or undo" };
+      approvals.trial = null;
       return null;
     },
     notes_delete: ({ id }) => {

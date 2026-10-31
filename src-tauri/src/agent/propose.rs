@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::Paths;
+use crate::addon_settings::SettingsProposal;
 use crate::db::Db;
 use crate::goals::{self, GoalKind};
 use crate::proposals::bags::{BagProposal, ProposedMark};
@@ -27,7 +28,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 6] = [
+const TOOLS: [Tool; 7] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -108,6 +109,20 @@ const TOOLS: [Tool; 6] = [
                 "by": { "type": "string", "description": "Optional deadline, YYYY-MM-DD." },
                 "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
               "required": ["kind", "target"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "propose_settings",
+        description: "Suggests changes to the Forever Buddy addon's in-game settings (get_settings lists them, with their ids and values now). Each change is its own row in the player's Approvals, shown with our label for the option, its old and new value, and your reason; the player approves each one, and approved settings reach the game at its next login. An option that requires another works only while that one is on, so turn the parent on in the same proposal. Up to 50 changes.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "changes": { "type": "array", "minItems": 1, "maxItems": crate::addon_settings::MAX_CHANGES, "items": { "type": "object", "properties": {
+                    "option": { "type": "string", "description": "An option id from get_settings, e.g. \"window.coach\"." },
+                    "value": { "description": "The new value, of the option's type (true or false for an on/off option)." },
+                    "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+                    "required": ["option", "value"], "additionalProperties": false } } },
+              "required": ["changes"], "additionalProperties": false })
         },
     },
     Tool {
@@ -333,6 +348,20 @@ pub fn call(
             let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
             stage(&db, paths, flavor, client, proposals::GOAL, a.reason, body)
         }
+        "propose_settings" => {
+            let p: SettingsProposal = args(raw)?;
+            let rows = crate::addon_settings::check(&db, flavor, &p)?;
+            if proposals::waiting_count(&db, flavor).map_err(|e| e.to_string())? + rows.len() as i64
+                > proposals::MAX_PENDING
+            {
+                return Err(format!(
+                    "That would make more than {} suggestions waiting for the player. Try again once they've decided some, or send fewer changes.",
+                    proposals::MAX_PENDING
+                ));
+            }
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::SETTINGS, None, body)
+        }
         "list_proposals" => {
             args::<NoArgs>(raw)?;
             let a = proposals::list(&db, flavor, now).map_err(|e| e.to_string())?;
@@ -355,6 +384,7 @@ pub fn call(
                     "list": p.list.as_ref().map(|l| l.name.clone()),
                     "bag_marks_for": p.bags.as_ref().map(|b| b.character.clone()),
                     "goal_for": p.goal.as_ref().map(|g| g.character.clone().unwrap_or_else(|| "the account".into())),
+                    "setting": p.setting.as_ref().map(|s| json!({ "option": s.option, "from": s.from, "to": s.to })),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();

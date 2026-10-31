@@ -784,7 +784,7 @@ scenario("toc", function()
     -- The bridge slots load first, so their globals exist when the addon runs.
     eq(table.concat(files, ", "),
         "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, Data/Cleanup.lua, "
-            .. "Settings.lua, ForeverBuddy.lua", "files")
+            .. "Data/Settings.lua, Settings.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -2971,7 +2971,7 @@ local function texts(rows)
 end
 
 scenario("contract", function()
-    local names = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
+    local names = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings" }
     local slots = {}
     for _, name in ipairs(names) do
         slots["Data/" .. name .. ".lua"] = wow.readFile(BRIDGE .. name .. ".lua")
@@ -3001,6 +3001,9 @@ scenario("contract", function()
 
     -- Every slot was read, at the schema this addon knows.
     local db = file(c.logout())
+    -- Settings: the approved profile was applied (the coach is on).
+    eq(db.settings.values["window.coach"], true, "the Settings slot's profile")
+    eq(type(db.settings.profile), "number", "and its number is kept")
     for _, name in ipairs(names) do
         local r = db.bridge and db.bridge[name]
         eq(r and r.stamp, BRIDGE_STAMP, name .. " was loaded")
@@ -3238,6 +3241,79 @@ scenario("settings_matrix", function()
         end
         file(again.logout())
     end
+end)
+
+-- P4b: the Settings slot as the app writes it: a numbered profile.
+local function settingsSlot(profile, values, schema)
+    local parts = {}
+    for k, v in pairs(values) do
+        parts[#parts + 1] = string.format("[%q] = %s", k, type(v) == "string" and string.format("%q", v) or tostring(v))
+    end
+    table.sort(parts)
+    return string.format(
+        "ForeverBuddyData_Settings = { schema = %d, stamp = 1790960000, profile = %d, values = { %s } }\n",
+        schema or 1, profile, table.concat(parts, ", "))
+end
+
+-- P4b: a profile approved in the app is applied once, at login, through
+-- each option's own set. After that the player's own toggles win until a
+-- newer profile comes. The file says every option's value and the last
+-- profile applied, so the app knows what the game has.
+scenario("settings_slot", function()
+    local coach
+    for i, o in ipairs(declared().options) do
+        if o.id == "window.coach" then
+            coach = i
+        end
+    end
+    local function values(c)
+        local db = file(c.logout())
+        return db.settings.values, db.settings.profile, db
+    end
+
+    local c = client({ slots = { ["Data/Settings.lua"] = settingsSlot(5, {
+        ["window.coach"] = true,
+        ["window.minimap"] = false,
+        ["window.card"] = "yes", -- not this option's type
+        ["window.nope"] = true, -- not an option this addon has
+    }) } })
+    c.login(nil)
+    c.advance(10)
+    eq(optionRows(c)[coach].setting:GetValue(), true, "the coach is on")
+    eq(c.chat[#c.chat], PREFIX .. "new settings from the app are on. Keep them or go back in Forever Buddy.",
+        "it says so")
+    local v, profile, db = values(c)
+    eq(profile, 5, "the file says which profile it applied")
+    eq(v["window.coach"], true, "and the values: the coach")
+    eq(v["window.minimap"], false, "the minimap button")
+    eq(v["window.card"], true, "a value of the wrong type is left alone")
+    eq(v["window.nope"], nil, "an option this addon doesn't have isn't")
+    eq(db.bridge.Settings.stamp, 1790960000, "the slot's receipt")
+
+    -- Your own toggle wins: the same profile isn't applied again.
+    c.login(nil)
+    optionRows(c)[coach].setting:SetValue(false)
+    c.logout()
+    c.chat = {}
+    c.login(nil)
+    eq(optionRows(c)[coach].setting:GetValue(), false, "the coach stays off")
+    eq(#c.chat == 0 or not c.chat[#c.chat]:find("new settings", 1, true), true, "nothing said")
+    v, profile = values(c)
+    eq(profile, 5, "still profile 5")
+
+    -- A newer profile is applied; one from a newer app (schema) isn't.
+    local newer = client({ slots = { ["Data/Settings.lua"] = settingsSlot(6, { ["window.coach"] = true }) } })
+    newer.settings = c.settings
+    newer.login(nil)
+    eq(optionRows(newer)[coach].setting:GetValue(), true, "profile 6 turns it back on")
+    v, profile = values(newer)
+    eq(profile, 6, "profile 6")
+    local future = client({ slots = { ["Data/Settings.lua"] = settingsSlot(7, { ["window.coach"] = false }, 2) } })
+    future.settings = newer.settings
+    future.login(nil)
+    eq(optionRows(future)[coach].setting:GetValue(), true, "a newer slot schema isn't read")
+    v, profile = values(future)
+    eq(profile, 6, "so nothing new was applied")
 end)
 
 -- U1d: the coach strip, the plan tracker and the logout card are placed in

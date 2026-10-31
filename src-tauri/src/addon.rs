@@ -26,8 +26,9 @@ const TOC: &str = "ForeverBuddy.toc";
 /// there WoW doesn't see the folder, so a half-finished install is ignored.
 /// `Data/` holds the bridge's slot stubs (`bridge::Slot::stub`), which the
 /// app replaces with generated data. `Media/` holds our own art (U1).
-/// `Settings.lua` declares the addon's settings (P4a).
-const FILES: [(&str, &[u8]); 10] = [
+/// `Settings.lua` declares the addon's settings (P4a); `Data/Settings.lua`
+/// is the slot that carries a profile approved in the app (P4b).
+const FILES: [(&str, &[u8]); 11] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -63,6 +64,10 @@ const FILES: [(&str, &[u8]); 10] = [
     (
         "Data/Cleanup.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Cleanup.lua"),
+    ),
+    (
+        "Data/Settings.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/Settings.lua"),
     ),
     (
         TOC,
@@ -313,7 +318,7 @@ mod tests {
 
     #[test]
     fn reads_versions_from_tocs() {
-        assert_eq!(bundled_version(), "0.9.8");
+        assert_eq!(bundled_version(), "0.9.9");
         assert_eq!(
             toc_version(b"## Interface: 16001\r\n##Version:  0.1.9 \r\n"),
             Some("0.1.9".into())
@@ -336,7 +341,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let after = status(&t.target.game).unwrap();
-        assert_eq!(after.installed_version.as_deref(), Some("0.9.8"));
+        assert_eq!(after.installed_version.as_deref(), Some("0.9.9"));
         assert!(!after.update_available);
         for (name, bytes) in FILES {
             let path = t.flavor.join(FOLDER).join(name);
@@ -356,7 +361,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let s = status(&t.target.game).unwrap();
-        assert_eq!(s.installed_version.as_deref(), Some("0.9.8"));
+        assert_eq!(s.installed_version.as_deref(), Some("0.9.9"));
         assert!(!s.update_available);
     }
 

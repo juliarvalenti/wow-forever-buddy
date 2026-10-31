@@ -38,7 +38,7 @@ struct Tool {
 
 const CHARACTER_ARG: &str = "The character's name as list_characters gives it (\"Thrandor Vargur\"), or just the first name when only one character has it.";
 
-const TOOLS: [Tool; 10] = [
+const TOOLS: [Tool; 11] = [
     Tool {
         name: "list_characters",
         description: "Every character Forever Buddy has seen: name, class, race, level, zone, gold (copper), item level, rested XP and when it was last seen. Start here.",
@@ -124,6 +124,15 @@ const TOOLS: [Tool; 10] = [
                     "required": ["character"], "additionalProperties": false })
         },
     },
+    // P4b: the addon's own settings.
+    Tool {
+        name: "get_settings",
+        description: "The Forever Buddy addon's in-game settings: each option's id, label, help text, type, default, the option it requires, whether it lets the addon act in the game, and its value now (as the game had it at the last logout, or as the player has approved since). Settings are account-wide. See propose_settings to suggest changes.",
+        schema: || {
+            json!({ "type": "object", "properties": { "module": { "type": "string", "description": "Only this module's options, e.g. \"window\" or \"tooltips\"." } },
+                    "additionalProperties": false })
+        },
+    },
 ];
 
 pub fn list() -> Vec<Value> {
@@ -152,6 +161,12 @@ struct NoArgs {}
 #[serde(deny_unknown_fields)]
 struct CharacterArgs {
     character: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModuleArgs {
+    module: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -233,6 +248,10 @@ pub fn call(db_path: &Path, flavor: &str, name: &str, raw: &Value) -> Result<Val
             get_lockouts(&db, flavor)
         }
         "get_bag_marks" => get_bag_marks(&db, flavor, &args::<CharacterArgs>(raw)?.character),
+        "get_settings" => {
+            crate::addon_settings::read(&db, flavor, args::<ModuleArgs>(raw)?.module.as_deref())
+                .map_err(db_error)
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }

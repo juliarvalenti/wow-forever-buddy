@@ -1,4 +1,5 @@
 mod addon;
+mod addon_settings;
 mod addons;
 mod adventures;
 pub mod agent;
@@ -69,6 +70,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::approvals::approvals_list,
             commands::approvals::approvals_waiting,
             commands::approvals::approvals_decide,
+            commands::approvals::approvals_keep_settings,
             commands::ledger::ledger_get,
             commands::ledger::ledger_export_csv,
             commands::macros::macros_list,

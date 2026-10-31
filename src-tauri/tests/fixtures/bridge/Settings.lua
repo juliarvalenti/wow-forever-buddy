@@ -1,0 +1,17 @@
+ForeverBuddyData_Settings = {
+	["schema"] = 1,
+	["stamp"] = 1790960000,
+	["app"] = "test",
+	["profile"] = 1,
+	["values"] = {
+		["tooltips.alts"] = true,
+		["window.bagMarks"] = true,
+		["window.briefing"] = true,
+		["window.card"] = true,
+		["window.coach"] = true,
+		["window.coachCombat"] = false,
+		["window.lockouts"] = true,
+		["window.minimap"] = true,
+		["window.record"] = false,
+	},
+}

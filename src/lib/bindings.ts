@@ -125,6 +125,11 @@ export const commands = {
 	 */
 	approvalsDecide: (id: number, decision: Decision) => __TAURI_INVOKE<null>("approvals_decide", { id, decision }),
 	/**
+	 *  P4b: "Keep the new settings or go back?", asked once after the game has
+	 *  applied them. Going back sends the old settings to the game.
+	 */
+	approvalsKeepSettings: (keep: boolean) => __TAURI_INVOKE<null>("approvals_keep_settings", { keep }),
+	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
 	 *  journal, over `range`, in the user's time zone.
 	 */
@@ -815,6 +820,8 @@ export type Approvals = {
 	waiting: Proposal[],
 	/**  The last 30 days, newest first: approved, declined, not queued. */
 	decided: Proposal[],
+	/**  P4b: settings the game has applied, waiting for "Keep or go back?". */
+	trial: Trial | null,
 };
 
 /**
@@ -1939,6 +1946,8 @@ export type Proposal = {
 	bags: BagMarksView | null,
 	/**  "Goal for Kaelor" (G1). */
 	goal: GoalView | null,
+	/**  One addon setting: "Session coach: off → on" (P4b). */
+	setting: SettingView | null,
 };
 
 /**  What a prune did. */
@@ -2209,6 +2218,21 @@ export type Series = {
 /**  Emitted when a session starts, ends, or learns its characters. */
 export type SessionsChanged = null;
 
+export type SettingView = {
+	option: string,
+	/**  Ours, from the schema: never the agent's words. */
+	label: string,
+	help: string,
+	section: string,
+	/**  "on" / "off". */
+	from: string,
+	to: string,
+	/**  Lets the addon act for you: approved on its own, never with others. */
+	acts: boolean,
+	/**  Already the value (changed since): Approve changes nothing. */
+	same: boolean,
+};
+
 /**
  *  settings.json (spec §6). Every field has a default, so a missing key never
  *  fails a load. Keys this build doesn't know are kept on disk by
@@ -2452,6 +2476,18 @@ export type Totals = {
 	files: number,
 	/**  f64 so TypeScript can hold it safely. */
 	bytes: number | null,
+};
+
+/**  New settings the game has applied, waiting for "Keep or go back?". */
+export type Trial = {
+	profile: number,
+	changes: TrialChange[],
+};
+
+export type TrialChange = {
+	label: string,
+	from: string,
+	to: string,
 };
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";

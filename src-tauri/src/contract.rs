@@ -90,6 +90,17 @@ fn seeded() -> Db {
         STAMP,
     )
     .unwrap();
+    // P4b: an approved setting, so the Settings slot carries a profile.
+    crate::addon_settings::approve(
+        &db,
+        FLAVOR,
+        &crate::addon_settings::SettingBody {
+            option: "window.coach".into(),
+            value: serde_json::Value::Bool(true),
+        },
+        STAMP,
+    )
+    .unwrap();
     db
 }
 

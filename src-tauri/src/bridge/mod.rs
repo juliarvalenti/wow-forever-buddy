@@ -52,15 +52,19 @@ pub enum Slot {
     Lists,
     /// Items marked to sell or send (B3, INGAME §14).
     Cleanup,
+    /// The addon's settings as approved in the app: a numbered profile the
+    /// addon applies once (P4b).
+    Settings,
 }
 
-pub const SLOTS: [Slot; 6] = [
+pub const SLOTS: [Slot; 7] = [
     Slot::Tooltip1,
     Slot::Tooltip2,
     Slot::Plan,
     Slot::Briefing,
     Slot::Lists,
     Slot::Cleanup,
+    Slot::Settings,
 ];
 
 impl Slot {
@@ -72,6 +76,7 @@ impl Slot {
             Slot::Briefing => "Briefing",
             Slot::Lists => "Lists",
             Slot::Cleanup => "Cleanup",
+            Slot::Settings => "Settings",
         }
     }
 
@@ -424,6 +429,12 @@ pub(crate) fn build(
         body.hash.extend(crate::cleanup::slot_entries(db, flavor)?);
         slots.push((Slot::Cleanup, render(Slot::Cleanup, body)?));
     }
+    if has(Slot::Settings) {
+        let mut body = header(stamp);
+        body.hash
+            .extend(crate::addon_settings::slot_entries(db, flavor)?);
+        slots.push((Slot::Settings, render(Slot::Settings, body)?));
+    }
     Ok(tooltip::Built { slots, too_large })
 }
 
@@ -647,6 +658,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Briefing.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Lists.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Cleanup.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Settings.lua",
             ]
         );
         for slot in SLOTS {

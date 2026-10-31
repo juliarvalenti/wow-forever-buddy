@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.8"
+local VERSION = "0.9.9"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -112,7 +112,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -3790,6 +3790,49 @@ do
         end
     end
 
+    -- P4b: settings approved in the app arrive as a numbered profile in
+    -- the Settings slot ({ profile = n, values = { [id] = value } }). It's
+    -- applied once, at login, through each option's own set, as if you'd
+    -- ticked the boxes; after that your own toggles win until the next
+    -- profile. The number is kept account-wide, like the settings.
+    U.prefs = {}
+    function U.prefs.apply()
+        local p = slots.Settings
+        if type(p) ~= "table" or type(p.profile) ~= "number" or type(p.values) ~= "table" then
+            return
+        end
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        local done = ForeverBuddySettings.profileApplied
+        if type(done) == "number" and p.profile <= done then
+            return
+        end
+        ForeverBuddySettings.profileApplied = p.profile
+        -- In declaration order, so a parent is on before its children.
+        for _, o in ipairs(OPTIONS) do
+            local v = o.key and p.values[o.key]
+            if v ~= nil and type(v) == type(o.default) and v ~= (o.get() and true or false) then
+                pcall(o.set, v)
+            end
+        end
+        say(GOLD_PREFIX .. "new settings from the app are on. Keep them or go back in Forever Buddy.")
+        pcall(U.refresh)
+    end
+
+    -- What every option is now, and the last profile applied, for the
+    -- file (so the app shows the settings the game really has).
+    function U.prefs.saved()
+        local values = {}
+        for _, o in ipairs(OPTIONS) do
+            if o.key then
+                values[o.key] = o.get() and true or false
+            end
+        end
+        local done = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.profileApplied
+        return { profile = type(done) == "number" and done or nil, values = values }
+    end
+
     -- An option whose parent is off isn't shown at all (U1d).
     function OPTIONS.shows(o)
         local parent = o.parent and OPTIONS.byKey[o.parent]
@@ -4550,6 +4593,9 @@ handlers.PLAYER_LOGIN = function()
     if not pcall(U.login) then
         U.errors = U.errors + 1
     end
+    if not pcall(U.prefs.apply) then
+        U.errors = U.errors + 1
+    end
     session = {
         id = t,
         login = t,
@@ -5057,6 +5103,11 @@ handlers.PLAYER_LOGOUT = function()
         bridge = receipts and next(receipts) and receipts or nil,
         plan = progress,
         briefed = next(briefed) and briefedKept() or nil,
+        -- P4b: every setting's value now, and the last profile applied.
+        settings = (function()
+            local ok, s = pcall(U.prefs.saved)
+            return ok and s or nil
+        end)(),
     }
     local version, build = read(GetBuildInfo)
     db._meta = {

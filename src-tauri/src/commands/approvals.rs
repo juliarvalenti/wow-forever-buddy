@@ -55,3 +55,16 @@ pub fn approvals_decide(state: State<'_, AppState>, id: u32, decision: Decision)
     }
     Ok(())
 }
+
+/// P4b: "Keep the new settings or go back?", asked once after the game has
+/// applied them. Going back sends the old settings to the game.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn approvals_keep_settings(state: State<'_, AppState>, keep: bool) -> AppResult<()> {
+    let core = &state.core;
+    crate::addon_settings::decide(&core.db, &core.active_game()?.flavor, keep, now())?;
+    if !keep {
+        let _ = core.send_to_game();
+    }
+    Ok(())
+}

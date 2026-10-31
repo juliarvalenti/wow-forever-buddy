@@ -263,6 +263,16 @@ pub struct AddonFile {
     pub briefed: Vec<(i64, i64)>,
     /// Quest plan progress (`plan`, P1): the plan id and its steps done.
     pub plan: Option<PlanProgress>,
+    /// The addon's settings at logout (`settings`, P4b).
+    pub settings: Option<SettingsSeen>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingsSeen {
+    /// The last profile from the app the addon applied.
+    pub profile: Option<i64>,
+    /// Option id → value; only booleans, numbers and strings.
+    pub values: crate::addon_settings::Values,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -488,6 +498,27 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
             done,
         })
     });
+    let settings = tbl(db, "settings").map(|s| SettingsSeen {
+        profile: int(s, "profile"),
+        values: tbl(s, "values")
+            .map(|v| {
+                v.hash
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        let k = String::from_utf8(k.as_bytes()?.to_vec()).ok()?;
+                        let v = match v {
+                            LuaValue::Bool(b) => serde_json::Value::Bool(*b),
+                            LuaValue::Int(n) => (*n).into(),
+                            LuaValue::Num(n) => serde_json::Number::from_f64(*n)?.into(),
+                            LuaValue::Str(s) => String::from_utf8(s.to_vec()).ok()?.into(),
+                            _ => return None,
+                        };
+                        Some((k, v))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    });
     Ok(AddonFile {
         written: int(meta, "written"),
         addon: text(meta, "addon"),
@@ -498,6 +529,7 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         receipts,
         briefed,
         plan,
+        settings,
     })
 }
 

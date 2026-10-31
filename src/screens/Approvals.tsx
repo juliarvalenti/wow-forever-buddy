@@ -1,5 +1,26 @@
-import { AlertTriangle, Backpack, Check, FileText, Lock, Map as MapIcon, ShoppingBag, Target } from "lucide-react";
-import type { BagMarksView, Decision, ListView, LoginNote, NoteView, PlanView, Proposal, Step } from "@/lib/bindings";
+import {
+  AlertTriangle,
+  Backpack,
+  Check,
+  FileText,
+  Lock,
+  Map as MapIcon,
+  ShoppingBag,
+  SlidersHorizontal,
+  Target,
+} from "lucide-react";
+import type {
+  BagMarksView,
+  Decision,
+  ListView,
+  LoginNote,
+  NoteView,
+  PlanView,
+  Proposal,
+  SettingView,
+  Step,
+  Trial,
+} from "@/lib/bindings";
 import { MarkTag } from "@/screens/BagCleanup";
 import { Button, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
 import { useApprovals } from "@/hooks/useApprovals";
@@ -30,6 +51,7 @@ const KIND: Record<string, string> = {
   list: "List change",
   bag_marks: "Bag marks",
   goal: "Goal",
+  settings: "Addon setting",
 };
 
 function Who({ n }: { n: Pick<NoteView | PlanView | BagMarksView, "character" | "class"> }) {
@@ -57,6 +79,12 @@ function Title({ p }: { p: Proposal }) {
       </>
     ) : (
       <>{kind} for the account</>
+    );
+  if (p.setting)
+    return (
+      <>
+        {kind}: {p.setting.label}
+      </>
     );
   return <>{kind}</>;
 }
@@ -176,8 +204,62 @@ function BagPreview({ v }: { v: BagMarksView }) {
   );
 }
 
-/** Not part of Approve all: a note to pick for, or a list that's gone. */
-const needsYou = (p: Proposal) => (p.note?.replaces?.conflict ?? false) || (p.list?.gone ?? false);
+/** P4b: one addon setting, old value to new, with our own help line. */
+function SettingPreview({ v }: { v: SettingView }) {
+  return (
+    <div className="ap-cmp one">
+      <div className="ap-pv new">
+        <h3>{v.section}</h3>
+        <div className="ap-notetxt">
+          {v.label}: {v.from} → {v.to}
+        </div>
+        <small>{v.help}</small>
+      </div>
+    </div>
+  );
+}
+
+/** P4b: the game picked up new settings; asked once. */
+function TrialPanel({ t, keep }: { t: Trial; keep: (keep: boolean) => void }) {
+  return (
+    <Panel>
+      <PanelHeader title="New settings are in the game" />
+      <div className="ap-prop">
+        <div className="ap-top">
+          <span className="ap-kind" aria-hidden>
+            <SlidersHorizontal size={15} />
+          </span>
+          <div className="ap-t">
+            <b>Keep them, or go back to how it was?</b>
+            <small>The addon picked these up at your last login.</small>
+          </div>
+          <div className="ap-acts">
+            <Button variant="ghost" onClick={() => keep(false)}>
+              Go back
+            </Button>
+            <Button onClick={() => keep(true)}>Keep</Button>
+          </div>
+        </div>
+        <ul className="ap-steps">
+          {t.changes.map((c) => (
+            <li key={c.label}>
+              {c.label}: {c.from} → {c.to}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Panel>
+  );
+}
+
+/**
+ * Not part of Approve all: a note to pick for, a list that's gone, or a
+ * setting that lets the addon act (P4b), approved only on its own.
+ */
+const needsYou = (p: Proposal) =>
+  (p.note?.replaces?.conflict ?? false) ||
+  (p.list?.gone ?? false) ||
+  (p.kind === "settings" && (p.setting?.acts ?? true));
 
 function Mine({ now }: { now: LoginNote | null }) {
   if (!now) return <div className="ap-notetxt ap-gone">Removed since. Using the proposal adds it as a new note.</div>;
@@ -215,6 +297,8 @@ function Waiting({
             <Backpack size={15} />
           ) : p.goal ? (
             <Target size={15} />
+          ) : p.setting ? (
+            <SlidersHorizontal size={15} />
           ) : (
             <FileText size={15} />
           )}
@@ -263,6 +347,12 @@ function Waiting({
           You deleted this list after "{p.producer}" suggested this, so there's nothing to change.
         </div>
       )}
+      {p.setting?.acts && (
+        <div className="ap-conflict">
+          <AlertTriangle size={13} aria-hidden />
+          Turning this on lets Forever Buddy do something in the game for you, so it's approved on its own.
+        </div>
+      )}
       {conflict && (
         <div className="ap-conflict">
           <AlertTriangle size={13} aria-hidden />
@@ -293,6 +383,7 @@ function Waiting({
       {p.list && <ListPreview v={p.list} />}
       {p.bags && <BagPreview v={p.bags} />}
       {p.goal && <GoalPreview v={p.goal} />}
+      {p.setting && <SettingPreview v={p.setting} />}
     </div>
   );
 }
@@ -321,7 +412,7 @@ export function Approvals({
   onOpenSettings: () => void;
   onOpenList: (id: number) => void;
 }) {
-  const { approvals, error, decide } = useApprovals();
+  const { approvals, error, decide, keepSettings } = useApprovals();
   const { settings, error: settingsError, reload: reloadSettings } = useSettings();
   const on = settings?.agent_access ?? false;
   const waiting = approvals?.waiting ?? [];
@@ -335,6 +426,11 @@ export function Approvals({
         lede="What agents you've connected have suggested. Nothing changes until you approve it."
       />
       {error && <p className="d-letter-bad" style={{ color: "var(--bad)", margin: "0 0 12px" }}>{error}</p>}
+      {approvals?.trial && (
+        <div style={{ marginBottom: 16 }}>
+          <TrialPanel t={approvals.trial} keep={keepSettings} />
+        </div>
+      )}
       <section className="ap-split">
         <Panel>
           <PanelHeader title="Waiting for you">
