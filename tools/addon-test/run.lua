@@ -2935,8 +2935,13 @@ scenario("census", function()
 end)
 
 -- SIM5d: Blizzard's API docs, read from a made-up extract in their format:
--- the docs folder, and one UI addon beside it.
+-- the docs folder, and one UI addon beside it. The reader lists folders with
+-- ls and find, so it's for a Mac or Linux machine with the extract; Windows
+-- skips this.
 scenario("apidocs", function()
+    if package.config:sub(1, 1) == "\\" then
+        return
+    end
     local apidocs = require("apidocs")
     local root = os.tmpname()
     os.remove(root)
