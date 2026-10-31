@@ -187,6 +187,7 @@ end
 --   secret, throw, missing   "all" (all but the clock) or a set of API names
 --   unknown_events           events RegisterEvent refuses, as on Forever
 --   secret_args              a set of events whose arguments arrive secret
+--   globals                  { name = value } other addons' globals (R3a)
 function M.new(opts)
     local client = {
         now = M.EPOCH,
@@ -224,6 +225,7 @@ function M.new(opts)
     local char = opts.character
         or { name = "Thrandor", surname = "Vargur", realm = "Classic Beta PvP 2", guid = "Player-4613-0A1B2C3D" }
     local secrets = setmetatable({}, { __mode = "k" })
+    local unreadable = setmetatable({}, { __mode = "k" })
     local state -- the running addon's environment, frames and timers
 
     -- The character's game state, which the APIs report. Scenarios change it
@@ -296,7 +298,8 @@ function M.new(opts)
         if world.phase ~= "live" then
             return false
         end
-        return bag >= 0 and bag <= 5 or world.bank_open
+        -- -2 is the keyring, carried like the bags.
+        return bag >= -2 and bag ~= -1 and bag <= 5 or world.bank_open
     end
 
     -- An opaque value the addon may hold but must never save. Like the
@@ -324,6 +327,18 @@ function M.new(opts)
         local s = setmetatable({}, secretMeta)
         secrets[s] = true
         return s
+    end
+
+    -- A table the addon can't read all of (canaccesstable is false):
+    -- indexing it raises.
+    function client.unreadable()
+        local t = setmetatable({}, {
+            __index = function()
+                error("attempt to index a table with secret values", 2)
+            end,
+        })
+        unreadable[t] = true
+        return t
     end
 
     local api = {
@@ -429,7 +444,9 @@ function M.new(opts)
         end,
         ["C_Container.GetContainerItemInfo"] = function(bag, slot)
             local item = readable(bag) and world.bags[bag] and world.bags[bag].slots[slot]
-            if item then
+            if item and item.unreadable then
+                return client.unreadable() -- R3a: a table holding secrets
+            elseif item then
                 -- Soulbound when its tooltip says so (world.bound).
                 return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id),
                     isBound = world.bound[item.id] == "Soulbound" }
@@ -981,6 +998,11 @@ function M.new(opts)
         env.issecrettable = function()
             return false
         end
+        -- False for a table client.unreadable() made: one holding secrets,
+        -- which raises when indexed, as the client's do.
+        env.canaccesstable = function(t)
+            return unreadable[t] == nil
+        end
         -- Rule 5: the addon never prints. Its only chat is the login
         -- briefing and /fb's reply, straight to the chat frame (INGAME §9),
         -- recorded in client.chat.
@@ -988,12 +1010,21 @@ function M.new(opts)
             error("ForeverBuddy must not print")
         end
         env.SlashCmdList = {}
-        env.CreateFrame = function(kind, name, parent)
+        env.CreateFrame = function(kind, name, parent, template)
             local f = newWidget(parent, kind)
             f.name = name
             table.insert(state.frames, f)
             if name then
                 env[name] = f
+            end
+            -- The template children the addon reaches (R3a's skin): the
+            -- window's close button and a scroll frame's bar. They're the
+            -- template's, not the addon's layout, so they stay out of
+            -- `children` (and the layout snapshot).
+            if template == "ButtonFrameTemplate" then
+                f.CloseButton = newWidget(nil, "Button")
+            elseif template == "UIPanelScrollFrameTemplate" then
+                f.ScrollBar = newWidget(nil, "Slider")
             end
             return f
         end
@@ -1207,6 +1238,10 @@ function M.new(opts)
                     t[key] = phased(name, t[key])
                 end
             end
+        end
+        -- Other addons' globals, e.g. a fake EllesmereUI (R3a).
+        for name, v in pairs(opts.globals or {}) do
+            env[name] = v
         end
         return env
     end
@@ -1654,14 +1689,39 @@ function M.new(opts)
 
     -- Shows the item tooltip for `id`: the game's own line, then whatever
     -- the item post-calls add. Returns the lines as "left" or "left | right".
-    function client.hover(id)
+    -- `forbidden` = "tooltip" or "owner" makes that one forbidden (a
+    -- nameplate aura button's tooltip, say): then IsForbidden is the only
+    -- method it allows.
+    function client.hover(id, forbidden)
         local lines = { M.ITEMS[id] or ("Item " .. id) }
-        local tooltip = {
-            AddLine = function(_, text)
-                table.insert(lines, text)
+        -- Noted on client.errors (which fails the scenario) as well as
+        -- raised, since the addon's own pcall would swallow the raise.
+        local function guarded(fn)
+            return function(...)
+                if forbidden then
+                    table.insert(client.errors, "tooltip: wrote to a forbidden tooltip")
+                    error("forbidden tooltip", 2)
+                end
+                return fn(...)
+            end
+        end
+        local owner = {
+            IsForbidden = function()
+                return forbidden == "owner"
             end,
-            AddDoubleLine = function(_, left, right)
+        }
+        local tooltip = {
+            AddLine = guarded(function(_, text)
+                table.insert(lines, text)
+            end),
+            AddDoubleLine = guarded(function(_, left, right)
                 table.insert(lines, left .. " | " .. right)
+            end),
+            IsForbidden = function()
+                return forbidden == "tooltip"
+            end,
+            GetOwner = function()
+                return owner
             end,
         }
         -- The tooltip's data, as TooltipDataProcessor passes it: the id and

@@ -1,5 +1,5 @@
 -- ForeverBuddy: notes down each character at logout for WoW Forever Buddy
--- (docs/specs/v0.2-addon.md §2). Everything goes into ForeverBuddyDB, this
+-- (context/specs/v0.2-addon §2). Everything goes into ForeverBuddyDB, this
 -- character's SavedVariables, which the app reads after the game closes.
 --
 -- The rules this file keeps (spec §2, "Hard rules"):
@@ -16,7 +16,7 @@
 --   Blizzard function replaced, nothing protected, no automation.
 -- * Bounded: at most 10 sessions and 2,000 events per session in the file.
 --
--- The app → addon bridge (docs/specs/bridge-v0.4.md): the app writes data
+-- The app → addon bridge (context/specs/bridge-v0.4): the app writes data
 -- files into Data/, listed in the TOC before this file. Their values are
 -- data only and never run, passed to a macro, a secure attribute or a frame
 -- name; this file reads their header and saves a receipt so the app knows
@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.7"
+local VERSION = "0.9.8"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -49,11 +49,17 @@ local function pack(...)
     return { n = select("#", ...), ... }
 end
 
+-- A secret value, or a table we can't read all of: a secret table, or one
+-- holding secrets that indexing would raise on (canaccesstable, R3a).
 local function isSecret(v)
     if issecretvalue and issecretvalue(v) then
         return true
     end
-    return type(v) == "table" and issecrettable ~= nil and issecrettable(v) == true
+    if type(v) ~= "table" then
+        return false
+    end
+    return (issecrettable ~= nil and issecrettable(v) == true)
+        or (canaccesstable ~= nil and canaccesstable(v) == false)
 end
 
 -- "C_Item.GetItemInfo" -> that function, or nil if any part is missing.
@@ -295,8 +301,10 @@ local function carried()
     end
     local before = secretHits
     local counts = {}
-    for bag = 0, 5 do
-        local size = read("C_Container.GetContainerNumSlots", bag)
+    -- The keyring is bag -2 on Forever (addon bible 2.19): a key moved onto
+    -- it is still carried. -1 is the bank, which isn't.
+    for bag = -2, 5 do
+        local size = bag ~= -1 and read("C_Container.GetContainerNumSlots", bag)
         for slot = 1, type(size) == "number" and size or 0 do
             local info = read("C_Container.GetContainerItemInfo", bag, slot)
             if type(info) == "table" then
@@ -1551,6 +1559,15 @@ local function hookTooltips()
     end
     hooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        -- A forbidden tooltip, or one whose owner is (a nameplate's aura
+        -- button), allows nothing but IsForbidden (addon bible 3.19).
+        if tooltip.IsForbidden and tooltip:IsForbidden() then
+            return
+        end
+        local owner = tooltip.GetOwner and tooltip:GetOwner()
+        if owner and owner.IsForbidden and owner:IsForbidden() then
+            return
+        end
         -- U1: "Your alts on item tooltips" (C.opt is filled in further down).
         if C.opt("tooltips") and not pcall(addItemLines, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
@@ -2792,17 +2809,30 @@ do
     end
 
     -- Re-tag when a bag opens (the game builds its buttons then).
+    -- Opening bags fires several of these hooks at once (OpenAllBags opens
+    -- each bag): one re-tag on the next frame covers them all, through a
+    -- callback made once rather than a new closure and timer per hook
+    -- (addon bible 4.12).
+    function C.tagSoon()
+        C.tagPending = false
+        pcall(C.tagBags)
+    end
+
+    local function bagsOpened()
+        if not C.tagPending then
+            C.tagPending = true
+            read("C_Timer.After", 0, C.tagSoon)
+        end
+    end
+
     function C.hook()
-        if type(hooksecurefunc) ~= "function" then
+        if C.hooked or type(hooksecurefunc) ~= "function" then
             return
         end
+        C.hooked = true
         for _, name in ipairs({ "OpenAllBags", "ToggleAllBags", "OpenBag", "ToggleBag", "ToggleBackpack" }) do
             if type(rawget(_G, name)) == "function" then
-                pcall(hooksecurefunc, name, function()
-                    read("C_Timer.After", 0, function()
-                        pcall(C.tagBags)
-                    end)
-                end)
+                pcall(hooksecurefunc, name, bagsOpened)
             end
         end
     end
@@ -3918,6 +3948,54 @@ do
         panes[i] = p
     end
 
+    -- EllesmereUI's look (R3a, its SKINNING_API.md): with EllesmereUI
+    -- installed and its skinning on for us, it hands us `S` (U.skin) and
+    -- paints the window in the player's theme. Its calls are idempotent and
+    -- change art by alpha only. Without EllesmereUI none of this runs. (On U,
+    -- not in locals: this file is at Lua 5.1's 200-locals limit.)
+    function U.skinned(f, frame, ...)
+        if type(f) == "function" and frame and not pcall(f, frame, ...) then
+            U.errors = U.errors + 1
+        end
+    end
+
+    -- Shows tab `i` as the selected one in EllesmereUI's tab style: we
+    -- switch tabs ourselves, so it's told which.
+    function U.skinTabs(i)
+        if U.skin and win then
+            for k, tab in ipairs(win.Tabs) do
+                U.skinned(U.skin.SetTabSelection, tab, k == i)
+            end
+        end
+    end
+
+    function U.applySkin()
+        local S = U.skin
+        if not S or not win then
+            return
+        end
+        U.skinned(S.Shell, win)
+        U.skinned(S.CloseButton, win.CloseButton)
+        for _, tab in ipairs(win.Tabs) do
+            U.skinned(S.Tab, tab)
+        end
+        for _, p in ipairs(panes) do
+            U.skinned(S.ScrollBar, p.scroll.ScrollBar)
+            U.skinned(S.Checkbox, p.tracker)
+            for _, cb in ipairs(p.checks or {}) do
+                U.skinned(S.Checkbox, cb)
+            end
+        end
+        U.skinTabs(win.current)
+    end
+
+    if type(EllesmereUI) == "table" and type(EllesmereUI.RegisterSkin) == "function" then
+        pcall(EllesmereUI.RegisterSkin, "ForeverBuddy", function(S)
+            U.skin = S
+            U.applySkin()
+        end)
+    end
+
     local function build()
         win = CreateFrame("Frame", "ForeverBuddyWindow", UIParent, "ButtonFrameTemplate")
         win:SetSize(W, H)
@@ -3985,6 +4063,7 @@ do
         end
         win.panes = panes
         win:Hide()
+        U.applySkin()
     end
 
     -- Redraws the open tab and both copies of the settings. Nothing changes
@@ -4028,6 +4107,7 @@ do
         if type(PanelTemplates_SetTab) == "function" then
             pcall(PanelTemplates_SetTab, win, i)
         end
+        U.skinTabs(i)
         win:Show()
         U.refresh()
     end
@@ -4200,11 +4280,12 @@ do
     end
 
     local function arg1(v)
-        if v == nil then
-            return "nil"
-        end
+        -- Secret first: even a nil test may not be safe on one (addon bible 2.2).
         if isSecret(v) then
             return "secret"
+        end
+        if v == nil then
+            return "nil"
         end
         local t = type(v)
         if t == "number" or t == "boolean" then

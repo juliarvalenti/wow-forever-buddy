@@ -50,6 +50,16 @@ The fake is as strict as the client where a mistake would otherwise pass quietly
 
 The `strict_fake` scenario proves each of these holds.
 
+## From the addon bible (R3a)
+
+Scenarios for rules in the addon bible (room memory `procedures/addon-bible/*`; "2.18" is rule 2.18):
+
+- `forever_globals` (2.18): fails if `ForeverBuddy.lua` names a global Forever doesn't have (bare `GetItemInfo`, the old spec functions and others), so use the `C_` form. The list comes from EllesmereUI's CI guardrails.
+- `unreadable_table` (2.7): a bag slot Forever hands back as a table holding secrets. `client.unreadable()` makes one: `canaccesstable` says false, and indexing it raises.
+- `keyring` (2.19): bag -2 counts as carried.
+- `forbidden_tooltip` (3.19): `client.hover(id, "tooltip" | "owner")` shows a forbidden tooltip, and writing to it fails the run.
+- `eui_skin`: with EllesmereUI installed (`opts.globals` puts a fake one in), the window takes its look through `EllesmereUI.RegisterSkin`. `ButtonFrameTemplate` and `UIPanelScrollFrameTemplate` now give their `CloseButton` and `ScrollBar`.
+
 ## Chaos (H4)
 
 `chaos_1` … `chaos_200` are seeded random sessions. Each seed picks a setup, plays about 30 random steps, logs out, and checks what must always hold.

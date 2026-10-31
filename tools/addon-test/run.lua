@@ -2583,6 +2583,187 @@ if CHAOS_ONLY then
     end)
 end
 
+-- R3a: with EllesmereUI installed, the window takes its look through
+-- EllesmereUI.RegisterSkin (its SKINNING_API.md). EllesmereUI calls the skin
+-- at PLAYER_LOGIN, before our window exists, so the window is skinned when
+-- it's built, and every tab switch tells EllesmereUI which tab is selected.
+-- Without EllesmereUI (every other scenario) none of it runs.
+scenario("eui_skin", function()
+    local registered, calls = {}, {}
+    local eui = {
+        RegisterSkin = function(name, fn)
+            registered[name] = fn
+            return true
+        end,
+    }
+    -- Every primitive is a function that notes what it was given.
+    local S = setmetatable({ apiVersion = 3 }, {
+        __index = function(_, k)
+            return function(...)
+                calls[#calls + 1] = { k, ... }
+            end
+        end,
+    })
+    local c = client({ globals = { EllesmereUI = eui } })
+    c.login(nil)
+    eq(type(registered.ForeverBuddy), "function", "registers a skin under its folder name")
+    registered.ForeverBuddy(S)
+    eq(#calls, 0, "nothing to skin before the window is built")
+
+    c.slash("/fb list")
+    local win = c.global("ForeverBuddyWindow")
+    local by = {}
+    for _, call in ipairs(calls) do
+        by[call[1]] = (by[call[1]] or 0) + 1
+    end
+    eq(by.Shell, 1, "the window shell")
+    eq(calls[1][2], win, "on the window")
+    eq(by.CloseButton, 1, "its close button")
+    eq(by.Tab, 5, "each tab")
+    eq(by.ScrollBar, 5, "each pane's scroll bar")
+    eq(by.Checkbox, 1 + #win.panes[5].checks, "the plan tracker's box and every Settings box")
+
+    -- The selected tab, after the switch to Lists.
+    local function selected()
+        local out = {}
+        for _, call in ipairs(calls) do
+            if call[1] == "SetTabSelection" and call[3] then
+                for i, tab in ipairs(win.Tabs) do
+                    if tab == call[2] then
+                        out[#out + 1] = i
+                    end
+                end
+            end
+        end
+        return out[#out]
+    end
+    eq(selected(), 2, "Lists shows as selected")
+    c.slash("/fb cleanup")
+    eq(selected(), 4, "then Cleanup")
+
+    -- Registered after the window exists (EllesmereUI loaded late): skinned at once.
+    local late = client({ globals = { EllesmereUI = eui } })
+    late.login(nil)
+    late.slash("/fb")
+    calls = {}
+    registered.ForeverBuddy(S)
+    eq(#calls > 0 and calls[1][1], "Shell", "an open window is skinned when the skin arrives")
+end)
+
+-- R3a: a bag slot Forever hands back as a table holding secrets
+-- (canaccesstable is false, and indexing it raises). The bag read is
+-- unknown, counted in secret_hits, and nothing is logged as gained when it
+-- reads again.
+scenario("unreadable_table", function()
+    local c = client()
+    c.login(nil)
+    c.advance(5)
+    local before = c.world.bags[0].slots[1]
+    c.world.bags[0].slots[1] = { id = before.id, count = before.count, unreadable = true }
+    c.fire("BAG_UPDATE_DELAYED")
+    c.advance(5)
+    c.world.bags[0].slots[1] = before
+    local db = file(c.logout())
+    if db._meta.secret_hits < 1 then
+        fail("secret_hits: expected at least 1, got " .. show(db._meta.secret_hits))
+    end
+    for _, s in ipairs(db.sessions) do
+        for _, e in ipairs(s.events or {}) do
+            if e.kind == "gain" then
+                fail("an unreadable bag slot logged a gain of " .. show(e.item))
+            end
+        end
+    end
+end)
+
+-- R3a (addon bible 2.19): the keyring is bag -2 on Forever. A key moved onto
+-- it and back is carried all along, so coming back isn't a gain. (Before,
+-- only bags 0-5 counted: the key "vanished" and its return was logged.)
+scenario("keyring", function()
+    local KEY = 5396
+    local c = client()
+    c.world.bags[-2] = { size = 4, slots = {} }
+    c.world.bags[0].slots[5] = { id = KEY, count = 1 }
+    c.login(nil)
+    c.advance(5)
+    c.world.bags[0].slots[5] = nil
+    c.world.bags[-2].slots[1] = { id = KEY, count = 1 }
+    c.fire("BAG_UPDATE_DELAYED")
+    c.advance(5)
+    c.world.bags[-2].slots[1] = nil
+    c.world.bags[0].slots[5] = { id = KEY, count = 1 }
+    c.fire("BAG_UPDATE_DELAYED")
+    c.advance(5)
+    local db = file(c.logout())
+    for _, s in ipairs(db.sessions) do
+        for _, e in ipairs(s.events or {}) do
+            if e.kind == "gain" and e.item == KEY then
+                fail("a key back off the keyring was logged as a gain")
+            end
+        end
+    end
+end)
+
+-- R3a (addon bible 3.19): a forbidden tooltip, or one with a forbidden owner
+-- (a nameplate aura button), allows nothing but IsForbidden. Our item lines
+-- stay off it; the fake's tooltip raises if it's written to.
+scenario("forbidden_tooltip", function()
+    -- The `tooltip` scenario's slots: Runecloth on three alts.
+    local c = client({
+        slots = {
+            ["Data/Tooltip1.lua"] = tooltipSlot("Tooltip1", ALTS .. '\t["items"] = {},\n'),
+            ["Data/Tooltip2.lua"] = tooltipSlot("Tooltip2", ALTS
+                .. '\t["scanAt"] = ' .. (wow.EPOCH - 3 * DAY) .. ',\n'
+                .. '\t["items"] = {\n\t\t[14047] = { 11200, 1, 0, 340, 0, 0, 2, 5, 0, 0, 0, 3, 0, 0, 3, 0 },\n\t},\n'),
+        },
+    })
+    c.login(nil)
+    eq(#c.hover(14047) > 1, true, "an ordinary tooltip gets our lines")
+    eq(#c.hover(14047, "tooltip"), 1, "a forbidden tooltip gets none")
+    eq(#c.hover(14047, "owner"), 1, "nor one whose owner is forbidden")
+end)
+
+-- R3a, from EllesmereUI's guardrails: globals Forever doesn't have. Retail
+-- keeps these only as deprecation fallbacks, and Forever loads none of them,
+-- so a call returns nothing there (through read()) while it works on retail.
+-- Each has a C_ form; GetSpecializationInfoByID has none and must be guarded.
+local FOREVER_LACKS = [[
+GetSpecialization GetSpecializationInfo GetNumSpecializationsForClassID GetActiveSpecGroup
+GetSpecializationMasterySpells GetTalentInfo GetSpecializationInfoByID
+ActionBindsItem BindEnchant ConfirmBindOnUse ConfirmNoRefundOnUse ConfirmOnUse DoesItemContainSpec
+DropItemOnUnit EndBoundTradeable EndRefund EquipItemByName GetDetailedItemLevelInfo GetItemChildInfo
+GetItemClassInfo GetItemCooldown GetItemCount GetItemCreationContext GetItemFamily GetItemGem
+GetItemInfo GetItemInfoInstant GetItemInventorySlotInfo GetItemQualityColor GetItemSetInfo
+GetItemSpecInfo GetItemSpell GetItemSubClassInfo GetItemUniqueness GetItemIcon IsArtifactPowerItem
+IsConsumableItem IsCorruptedItem IsCosmeticItem IsCurrentItem IsDressableItem IsEquippableItem
+IsEquippedItem IsEquippedItemType IsHarmfulItem IsHelpfulItem IsItemInRange IsUsableItem ItemHasRange
+PickupItem ReplaceEnchant ReplaceTradeEnchant ReplaceTradeskillEnchant UseItemByName
+AcceptSockets ClickSocketButton CloseSocketInfo GetExistingSocketInfo GetExistingSocketLink
+GetNewSocketInfo GetNewSocketLink GetNumSockets GetSocketItemBoundTradeable GetSocketItemInfo
+GetSocketItemRefundable GetSocketTypes HasBoundGemProposed
+GetCoinIcon GetCoinText GetCoinTextureString GetZonePVPInfo IsSubZonePVPPOI SetPVP TogglePVP
+GetPetTalentTree PetAssistMode PickupTradeMoney PlayVocalErrorSoundID
+]]
+
+scenario("forever_globals", function()
+    local src = wow.readFile(ADDON_DIR .. "ForeverBuddy.lua")
+    src = src:gsub("%-%-%[%[.-%]%]", ""):gsub("%-%-[^\n]*", "")
+    local found = {}
+    for name in FOREVER_LACKS:gmatch("%S+") do
+        -- The bare name: "C_Item.GetItemInfo" or obj:GetItemCount() is fine,
+        -- GetItemInfo(...) and read("GetItemInfo", ...) are not.
+        for pos in src:gmatch("()%f[%w_]" .. name .. "%f[^%w_]") do
+            local before = src:sub(pos - 1, pos - 1)
+            if before ~= "." and before ~= ":" then
+                found[#found + 1] = name
+                break
+            end
+        end
+    end
+    table.sort(found)
+    eq(table.concat(found, ", "), "", "globals Forever doesn't have (use the C_ form)")
+end)
+
 -- SIM4: the fake is as strict as the client where a mistake would otherwise
 -- pass. An unknown widget method raises (and is noted even if the addon's
 -- pcall swallows it), a misspelled anchor raises, and a secret value can't
