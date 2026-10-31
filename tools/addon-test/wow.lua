@@ -1261,12 +1261,14 @@ function M.new(opts)
         state.env = environment()
         -- Every file in the TOC, in its order, as the client does: the bridge
         -- slots (opts.slots["Data/Tooltip1.lua"] = source, else the bundled
-        -- stub), then the addon.
+        -- stub), then the addon. Each gets the addon's name and the one
+        -- table the client shares between its files (client.ns()).
         local folder = opts.addon:match("^(.*[/\\])") or ""
+        state.ns = {}
         for line in readFile(folder .. "ForeverBuddy.toc"):gmatch("[^\r\n]+") do
             if not line:match("^#") then
                 local src = (opts.slots or {})[line] or readFile(folder .. line)
-                loadIn(src, "@" .. line, state.env)("ForeverBuddy", {})
+                loadIn(src, "@" .. line, state.env)("ForeverBuddy", state.ns)
             end
         end
         if text and o.readback ~= false then
@@ -1675,6 +1677,12 @@ function M.new(opts)
             end
         end
         return lines
+    end
+
+    -- The table the client shares between the addon's files (P4a: the
+    -- settings declarations are on it).
+    function client.ns()
+        return state.ns
     end
 
     -- U1d: Edit Mode opens (true) or closes (false), with the callbacks the

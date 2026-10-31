@@ -147,6 +147,25 @@ local function snapshot(name, text)
     out:close()
 end
 
+-- A file generated from the addon for the app (P4a's settings-schema.json):
+-- rewritten when it changed, and under --check, a difference fails.
+local function generated(path, text)
+    local f = io.open(path, "rb")
+    local current = f and f:read("*a")
+    if f then
+        f:close()
+    end
+    if current == text then
+        return
+    end
+    if CHECK then
+        fail(path .. " differs from what the addon declares now: run without --check and commit it")
+    end
+    local out = assert(io.open(path, "wb"))
+    out:write(text)
+    out:close()
+end
+
 -- Scenarios ------------------------------------------------------------------
 
 local scenarios = {}
@@ -765,7 +784,7 @@ scenario("toc", function()
     -- The bridge slots load first, so their globals exist when the addon runs.
     eq(table.concat(files, ", "),
         "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, Data/Cleanup.lua, "
-            .. "ForeverBuddy.lua", "files")
+            .. "Settings.lua, ForeverBuddy.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -2100,7 +2119,7 @@ scenario("window", function()
     eq(c.global("ForeverBuddySettings").briefing, nil, "nothing saved in combat")
     c.advance(1)
     local notified = c.global("Settings").notified
-    eq(notified[#notified], "FOREVERBUDDY_BRIEFING", "the Options box is told to go back")
+    eq(notified[#notified], "FOREVERBUDDY_WINDOW_BRIEFING", "the Options box is told to go back")
     c.world.combat = false
     c.click(w.panes[5].checks[2])
     eq(c.global("ForeverBuddySettings").lockouts, false, "lockouts off is saved")
@@ -2849,6 +2868,161 @@ scenario("bursts", function()
     end
     local db = file(c.logout())
     eq(#db.sessions[1].events, 2000, "the session reached the cap")
+end)
+
+-- P4a: the settings, as Settings.lua declares them. Each declaration is
+-- checked, and src-tauri/resources/settings-schema.json is generated from
+-- them for the app (stale fails --check, like the bridge fixtures).
+local SCHEMA_JSON = ROOT .. "/src-tauri/resources/settings-schema.json"
+local SCHEMA_FIELDS = { "id", "module", "section", "type", "default", "label", "help", "parent", "acts", "showHelp" }
+
+local function declared()
+    local c = client()
+    c.login(nil)
+    local s = c.ns().settings
+    file(c.logout())
+    return s
+end
+
+local function json(v, indent)
+    indent = indent or ""
+    if type(v) == "string" then
+        return '"' .. v:gsub('[%c"\\]', function(ch)
+            return ({ ['"'] = '\\"', ["\\"] = "\\\\", ["\n"] = "\\n", ["\t"] = "\\t" })[ch]
+                or string.format("\\u%04x", ch:byte())
+        end) .. '"'
+    elseif type(v) ~= "table" then
+        return tostring(v)
+    end
+    local inner = indent .. "  "
+    local parts = {}
+    if v[1] ~= nil then
+        for _, x in ipairs(v) do
+            parts[#parts + 1] = inner .. json(x, inner)
+        end
+        return "[\n" .. table.concat(parts, ",\n") .. "\n" .. indent .. "]"
+    end
+    for _, k in ipairs(v.__order) do
+        if v[k] ~= nil then
+            parts[#parts + 1] = inner .. json(k) .. ": " .. json(v[k], inner)
+        end
+    end
+    return "{\n" .. table.concat(parts, ",\n") .. "\n" .. indent .. "}"
+end
+
+scenario("settings_schema", function()
+    local s = declared()
+    eq(type(s.version), "number", "a schema version")
+    local ids, options = {}, {}
+    for i, o in ipairs(s.options) do
+        local what = "option " .. i .. " (" .. tostring(o.id) .. ")"
+        eq(type(o.id) == "string" and o.id:match("^%l%w*%.%a%w*$") ~= nil, true, what .. ": id is module.name")
+        eq(ids[o.id], nil, what .. ": unique")
+        eq(o.id:match("^(%l%w*)%."), o.module, what .. ": its id starts with its module")
+        eq(o.type, "bool", what .. ": a bool (the only type so far)")
+        eq(type(o.default), "boolean", what .. ": a default")
+        eq(type(o.label) == "string" and #o.label > 0, true, what .. ": a label")
+        eq(type(o.help) == "string" and #o.help > 10, true, what .. ": a help line")
+        eq(type(o.section) == "string", true, what .. ": a section")
+        eq(type(o.acts), "boolean", what .. ": says whether it acts")
+        eq(o.acts, false, what .. ": nothing acts yet (P4 §8)")
+        if o.parent then
+            eq(ids[o.parent] ~= nil, true, what .. ": its parent is declared before it")
+        end
+        for k in pairs(o) do
+            local known = false
+            for _, f in ipairs(SCHEMA_FIELDS) do
+                known = known or f == k
+            end
+            eq(known, true, what .. ": field " .. tostring(k) .. " is one the schema knows")
+        end
+        ids[o.id] = true
+        local row = { __order = SCHEMA_FIELDS }
+        for _, f in ipairs(SCHEMA_FIELDS) do
+            row[f] = o[f]
+        end
+        options[#options + 1] = row
+    end
+    generated(SCHEMA_JSON, json({ __order = { "version", "options" }, version = s.version, options = options }) .. "\n")
+end)
+
+-- P4a: every declared value is run. For each option, on and then off (the
+-- rest at their defaults): set from the Options page, a short session
+-- through it, the file it writes, and the value kept at the next login.
+-- Then every option off at once, and every option on.
+local function optionRows(c)
+    local rows = {}
+    for _, init in ipairs(c.global("Settings").categories[1].layout.inits) do
+        if init.kind == "checkbox" then
+            rows[#rows + 1] = init
+        end
+    end
+    return rows
+end
+
+local function playAWhile(c)
+    c.advance(10 * MINUTE)
+    c.loot(2589, 2)
+    c.combat(true)
+    c.loot(117, 1)
+    c.advance(30)
+    c.combat(false)
+    c.openMailbox()
+    c.closeMailbox()
+    c.gainXp(800)
+    c.startLogout()
+    c.advance(5)
+end
+
+scenario("settings_matrix", function()
+    local s = declared()
+    local profiles = {}
+    for _, o in ipairs(s.options) do
+        for _, value in ipairs({ true, false }) do
+            profiles[#profiles + 1] = { name = o.id .. "=" .. tostring(value), set = { [o.id] = value } }
+        end
+    end
+    local allOn, allOff = { name = "all on", set = {} }, { name = "all off", set = {} }
+    for _, o in ipairs(s.options) do
+        allOn.set[o.id], allOff.set[o.id] = true, false
+    end
+    profiles[#profiles + 1] = allOn
+    profiles[#profiles + 1] = allOff
+
+    for _, p in ipairs(profiles) do
+        local c = client()
+        c.login(nil)
+        c.advance(10)
+        local rows = optionRows(c)
+        eq(#rows, #s.options, p.name .. ": every option is on the Options page")
+        for i, o in ipairs(s.options) do
+            local want = p.set[o.id]
+            if want ~= nil then
+                rows[i].setting:SetValue(want)
+                eq(rows[i].setting:GetValue(), want, p.name .. ": " .. o.id .. " takes the value")
+            end
+        end
+        playAWhile(c)
+        local text = c.logout()
+        file(text)
+        -- Next login: the same values, except recording, which turns itself
+        -- off after the one session it recorded.
+        local again = client()
+        again.settings = c.settings
+        again.login(text)
+        local after = optionRows(again)
+        for i, o in ipairs(s.options) do
+            local want = p.set[o.id]
+            if want == nil then
+                want = o.default
+            end
+            if o.id == "window.record" then
+                want = false
+            end
+            eq(after[i].setting:GetValue(), want, p.name .. ": " .. o.id .. " is kept")
+        end
+        file(again.logout())
+    end
 end)
 
 -- U1d: the coach strip, the plan tracker and the logout card are placed in

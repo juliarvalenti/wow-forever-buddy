@@ -2,7 +2,7 @@
 ## Title: ForeverBuddy
 ## Notes: Notes down each character at logout for WoW Forever Buddy. No network; writes only its own SavedVariables.
 ## Author: WoW Forever Buddy
-## Version: 0.9.6
+## Version: 0.9.7
 ## SavedVariablesPerCharacter: ForeverBuddyDB
 ## SavedVariables: ForeverBuddySettings
 ## IconTexture: Interface\AddOns\ForeverBuddy\Media\Icon
@@ -16,4 +16,5 @@ Data/Plan.lua
 Data/Briefing.lua
 Data/Lists.lua
 Data/Cleanup.lua
+Settings.lua
 ForeverBuddy.lua
