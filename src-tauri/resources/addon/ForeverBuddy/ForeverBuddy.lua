@@ -3729,6 +3729,7 @@ do
                 default = d.default,
                 parent = d.parent,
                 sub = d.showHelp and d.help or nil,
+                decl = d,
                 get = act.get,
                 set = act.set,
             }
@@ -3812,7 +3813,7 @@ do
         -- In declaration order, so a parent is on before its children.
         for _, o in ipairs(OPTIONS) do
             local v = o.key and p.values[o.key]
-            if v ~= nil and type(v) == type(o.default) and v ~= (o.get() and true or false) then
+            if v ~= nil and U.prefs.fits(o.decl, v) and v ~= U.prefs.now(o) then
                 pcall(o.set, v)
             end
         end
@@ -3826,12 +3827,45 @@ do
         local values = {}
         for _, o in ipairs(OPTIONS) do
             if o.key then
-                values[o.key] = o.get() and true or false
+                values[o.key] = U.prefs.now(o)
             end
         end
         local done = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.profileApplied
         return { profile = type(done) == "number" and done or nil, values = values }
     end
+
+    -- An option's value now (an on/off option is always true or false).
+    function U.prefs.now(o)
+        local v = o.get()
+        if o.decl.type == "bool" then
+            return v and true or false
+        end
+        return v
+    end
+
+    -- Whether `v` is a value the declaration allows (security, P4b): its
+    -- type, and for a number its range, for a choice one of its values, for
+    -- text its length and no control characters. Any other type: no.
+    function U.prefs.fits(d, v)
+        if d.type == "bool" then
+            return type(v) == "boolean"
+        elseif d.type == "number" then
+            return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+                and (d.min == nil or v >= d.min) and (d.max == nil or v <= d.max)
+        elseif d.type == "enum" then
+            for _, x in ipairs(type(v) == "string" and d.values or {}) do
+                if x == v then
+                    return true
+                end
+            end
+            return false
+        elseif d.type == "string" then
+            return type(v) == "string" and #v <= (d.maxLength or 200) and not v:find("%c")
+        end
+        return false
+    end
+    -- For the harness, which checks every type against it.
+    select(2, ...).fits = U.prefs.fits
 
     -- An option whose parent is off isn't shown at all (U1d).
     function OPTIONS.shows(o)

@@ -17,6 +17,10 @@
 --   acts     whether turning it on lets the addon do something in the game
 --            for you (none do yet; P4 §8)
 --   showHelp (optional) the help line also shows under the label
+--
+-- Ready for the types after "bool" (a profile's values are checked against
+-- these, in the addon and in the app): "number" with min and max, "enum"
+-- with values = { ... }, "string" with maxLength (200 if unset).
 
 local _, ns = ...
 

@@ -3162,7 +3162,12 @@ end)
 -- checked, and src-tauri/resources/settings-schema.json is generated from
 -- them for the app (stale fails --check, like the bridge fixtures).
 local SCHEMA_JSON = ROOT .. "/src-tauri/resources/settings-schema.json"
-local SCHEMA_FIELDS = { "id", "module", "section", "type", "default", "label", "help", "parent", "acts", "showHelp" }
+local SCHEMA_FIELDS = {
+    "id", "module", "section", "type", "default", "label", "help", "parent", "acts", "showHelp",
+    -- For the types after bool (P4b-follow): a number's range, a choice's
+    -- values, text's length.
+    "min", "max", "step", "values", "maxLength",
+}
 
 local function declared()
     local c = client()
@@ -3324,6 +3329,30 @@ local function settingsSlot(profile, values, schema)
         "ForeverBuddyData_Settings = { schema = %d, stamp = 1790960000, profile = %d, values = { %s } }\n",
         schema or 1, profile, table.concat(parts, ", "))
 end
+
+-- P4b-follow (security): what the addon accepts from a profile, for every
+-- type a declaration can have, not only today's bools.
+scenario("settings_fits", function()
+    local c = client()
+    c.login(nil)
+    local fits = c.ns().fits
+    local num = { type = "number", min = 0, max = 1 }
+    local choice = { type = "enum", values = { "left", "right" } }
+    local text = { type = "string", maxLength = 5 }
+    for _, case in ipairs({
+        { { type = "bool" }, true, true }, { { type = "bool" }, "true", false }, { { type = "bool" }, 1, false },
+        { num, 0, true }, { num, 1, true }, { num, 0.5, true },
+        { num, -0.1, false }, { num, 1.5, false }, { num, "0.5", false },
+        { num, 0 / 0, false }, { { type = "number" }, math.huge, false },
+        { choice, "left", true }, { choice, "up", false }, { choice, 1, false },
+        { text, "hello", true }, { text, "hello!", false }, { text, "a\nb", false }, { text, true, false },
+        { { type = "string" }, string.rep("x", 200), true }, { { type = "string" }, string.rep("x", 201), false },
+        { { type = "color" }, "ff0000", false }, -- no other type is accepted
+    }) do
+        eq(fits(case[1], case[2]), case[3], case[1].type .. " " .. tostring(case[2]))
+    end
+    file(c.logout())
+end)
 
 -- P4b: a profile approved in the app is applied once, at login, through
 -- each option's own set. After that the player's own toggles win until a

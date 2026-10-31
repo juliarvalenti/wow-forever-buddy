@@ -14,11 +14,12 @@ import {
   Shield,
   SquareTerminal,
   Users,
+  X,
 } from "lucide-react";
 import { type CharacterCard, commands, type StartupFailure } from "@/lib/bindings";
-import { LiveDot, StatusDot } from "@/components/d";
+import { Button, Callout, LiveDot, StatusDot } from "@/components/d";
 import { useAhStatus } from "@/hooks/useAh";
-import { useApprovalsWaiting } from "@/hooks/useApprovals";
+import { approvalsChanged, useApprovalsWaiting, useSettingsTrial } from "@/hooks/useApprovals";
 import { useSnapshotCount } from "@/hooks/useBackups";
 import { useGameStatus } from "@/hooks/useGameStatus";
 import { useCharacters } from "@/hooks/useCharacters";
@@ -91,6 +92,19 @@ function Shell() {
   const snapshots = useSnapshotCount();
   const hasPrices = useAhStatus()?.has_prices ?? false;
   const approvalsWaiting = useApprovalsWaiting();
+  // P4b: "Keep or go back?" in the top strip, until opened or dismissed
+  // for that set of settings (Approvals itself has the full panel).
+  const trial = useSettingsTrial();
+  const [trialSeen, setTrialSeen] = useState<number | null>(null);
+  const keepSettings = (keep: boolean) => {
+    if (!trial) return;
+    setTrialSeen(trial.profile);
+    // If it fails, Approvals still has the question (and says why there).
+    commands
+      .approvalsKeepSettings(keep)
+      .catch(() => {})
+      .finally(approvalsChanged);
+  };
   // With the addon's data: who logged out last (RFC 3339 UTC sorts as time).
   const { overview } = useCharacters();
   const lastPlayed = overview?.characters.reduce<CharacterCard | null>(
@@ -268,6 +282,37 @@ function Shell() {
               onReview={() => setDeferred(false)}
               onRetry={recovery.refresh}
             />
+          </div>
+        )}
+        {trial && trialSeen !== trial.profile && current !== "approvals" && current !== "setup" && (
+          <div style={{ padding: "16px 24px 0" }}>
+            <Callout tone="stone">
+              <span>
+                <b>New settings are in the game.</b> Keep them, or go back to how it was?
+              </span>
+              <button
+                className="d-link"
+                onClick={() => {
+                  setTrialSeen(trial.profile);
+                  setScreen("approvals");
+                }}
+              >
+                See changes
+              </button>
+              <span className="d-grow" />
+              <Button variant="ghost" onClick={() => keepSettings(false)}>
+                Go back
+              </Button>
+              <Button onClick={() => keepSettings(true)}>Keep</Button>
+              <button
+                className="d-link"
+                title="Not now"
+                aria-label="Not now"
+                onClick={() => setTrialSeen(trial.profile)}
+              >
+                <X size={14} aria-hidden />
+              </button>
+            </Callout>
           </div>
         )}
         {current === "setup" && (
