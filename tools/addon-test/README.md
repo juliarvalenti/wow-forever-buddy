@@ -49,6 +49,23 @@ Our fakes, this harness and WOWAPI, say what the client defines. The census reco
 
 Once `results/census.lua` exists, the H2 fidelity check also fails the run if the addon calls anything the census doesn't list. The `census` scenario tests the lookups on a made-up census.
 
+## Blizzard's own API docs (SIM5d)
+
+Until there's a census, the client's own API reference stands in for most of it. Forever ships it as Lua (the `Blizzard_APIDocumentationGenerated` addon), and the CASC extract (CASC2) puts it, with the rest of Blizzard's UI code, in the app's cache. None of it is committed here.
+
+```sh
+luajit tools/addon-test/apidocs.lua                       # the report (--all for every name)
+luajit tools/addon-test/apidocs.lua stub C_Item.GetItemCount   # a wow.lua stub, shaped as documented
+```
+
+It reads every documented function (arguments, returns, `Secret*` flags), event and widget method. Old C functions such as `GetInboxItem` aren't documented, so a name Blizzard's own UI code (Lua or XML) calls or defines also counts as present. The report lists:
+- the APIs ForeverBuddy calls in neither, and the documented ones with secret flags;
+- handled events the docs don't have;
+- functions and widget methods our fake mocks that are in neither;
+- WOWAPI's docs (retail's) against Forever's, both ways.
+
+A name in neither may still exist (retail's docs leave out real functions too), so it's a question for the census, not a verdict. The docs come from `$WOW_APIDOCS`, or the newest build in the cache. Where they're found, the H2 fidelity check fails on a handled event they don't have and names the APIs in neither. CI has no cache, so there it skips. The `apidocs` scenario tests the reader on a made-up extract.
+
 ## A strict fake (SIM4)
 
 The fake is as strict as the client where a mistake would otherwise pass quietly:
