@@ -1,0 +1,11 @@
+# Popular addons for the smoke test (SIM5b), as GitHub owner/repo.
+# Each was checked to exist on 2026-10-31. Baganator and Auctionator have no
+# official GitHub source to fetch, so they wait for a real AddOns folder.
+EllesmereGaming/EllesmereUI
+Numynum/EnhanceQoL
+Tercioo/Details-Damage-Meter
+Jaliborc/Bagnon
+Jaliborc/BagBrother  # Bagnon's required dependency
+tullamods/OmniCC
+BigWigsMods/BigWigs
+# Questie/Questie    # about 400 MB to clone: opt in by removing the '#'
