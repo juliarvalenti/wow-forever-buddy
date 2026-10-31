@@ -23,6 +23,8 @@ fn main() -> ExitCode {
     let mut tactkeys: Option<PathBuf> = None;
     let mut filters: Vec<String> = Vec::new();
     let mut dry_run = false;
+    let mut verbose = false;
+    let mut dump_ids: Option<PathBuf> = None;
     let args = std::env::args().skip(1);
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
@@ -37,6 +39,8 @@ fn main() -> ExitCode {
             "--tactkeys" => tactkeys = Some(PathBuf::from(value())),
             "--filter" => filters.push(value()),
             "--dry-run" => dry_run = true,
+            "--verbose" => verbose = true,
+            "--dump-ids" => dump_ids = Some(PathBuf::from(value())),
             other => usage_then_exit(format!("unknown argument {other}")),
         }
     }
@@ -101,8 +105,30 @@ fn main() -> ExitCode {
         Some(keys) => storage.with_keys(keys),
         None => storage,
     };
+    // Before any extraction: the whole root, one ID per line, for diffing
+    // against the community listfile offline.
+    if let Some(path) = dump_ids {
+        let ids = match storage.file_ids() {
+            Ok(ids) => ids,
+            Err(e) => {
+                eprintln!("can't read the root's file IDs: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let text = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join("\n");
+        if let Err(e) = std::fs::write(&path, text) {
+            eprintln!("can't write the ID list at {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!(
+            "wrote {} file IDs to {}",
+            ids.len(),
+            path.display()
+        );
+        return ExitCode::SUCCESS;
+    }
     let out = out.unwrap_or_else(default_cache);
-    let summary = casc::run(&storage, &out, &entries, &filters, dry_run);
+    let summary = casc::run(&storage, &out, &entries, &filters, dry_run, verbose);
 
     println!("cache: {}", out.display());
     println!(

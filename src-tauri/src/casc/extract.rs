@@ -12,12 +12,11 @@ use std::path::{Path, PathBuf};
 
 use super::{blp, icons, Casc, CascError};
 
-/// The paths worth taking by default: the whole Interface code, the fonts,
-/// and the art the addon windows draw with. Case doesn't matter; see
-/// `selected`.
+/// The paths worth taking by default: the game's own UI code (the modern
+/// layout puts it in Interface/AddOns/Blizzard_*), the fonts, and the art
+/// the addon windows draw with. Case doesn't matter; see `selected`.
 pub const DEFAULT_FILTERS: &[&str] = &[
-    "interface/framexml",
-    "interface/sharedxml",
+    "interface/addons",
     "interface/fonts",
     "interface/buttons",
     "interface/common",
@@ -115,6 +114,7 @@ pub fn run(
     listfile: &[Entry],
     filters: &[String],
     dry_run: bool,
+    verbose: bool,
 ) -> Summary {
     let mut summary = Summary::default();
     let picked: Vec<&Entry> = listfile.iter().filter(|e| selected(&e.path, filters)).collect();
@@ -124,6 +124,9 @@ pub fn run(
     let dir = icons::build_dir(out, &casc.build);
     for entry in picked {
         let Some(rel) = safe_rel(&entry.path) else {
+            if verbose {
+                eprintln!("failed: {}: refused path", entry.path);
+            }
             summary.failed += 1;
             continue;
         };
@@ -142,9 +145,24 @@ pub fn run(
                 summary.extracted += 1;
                 summary.bytes += len;
             }
-            Err(Fail::NotLocal) => summary.not_local += 1,
-            Err(Fail::Missing) => summary.missing += 1,
-            Err(Fail::Broken) => summary.failed += 1,
+            Err(Fail::NotLocal) => {
+                if verbose {
+                    eprintln!("not downloaded yet: {}", entry.path);
+                }
+                summary.not_local += 1;
+            }
+            Err(Fail::Missing) => {
+                if verbose {
+                    eprintln!("not in this build: {}", entry.path);
+                }
+                summary.missing += 1;
+            }
+            Err(Fail::Broken(why)) => {
+                if verbose {
+                    eprintln!("failed: {}: {why}", entry.path);
+                }
+                summary.failed += 1;
+            }
         }
     }
     summary
@@ -162,22 +180,23 @@ fn target(dir: &Path, rel: &Path) -> PathBuf {
 enum Fail {
     NotLocal,
     Missing,
-    Broken,
+    Broken(String),
 }
 
 fn extract_one(casc: &Casc, ckey: Option<&super::Key>, path: &Path) -> Result<u64, Fail> {
     let ckey = ckey.ok_or(Fail::Missing)?;
     let data = read(casc, ckey)?;
     let bytes = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
-        blp::to_png(&blp::decode(&data).map_err(|_| Fail::Broken)?)
-            .map_err(|_| Fail::Broken)?
+        blp::decode(&data)
+            .map_err(|e| Fail::Broken(e.to_string()))
+            .and_then(|image| blp::to_png(&image).map_err(|e| Fail::Broken(e.to_string())))?
     } else {
         data
     };
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|_| Fail::Broken)?;
+        std::fs::create_dir_all(dir).map_err(|e| Fail::Broken(e.to_string()))?;
     }
-    crate::fsx::atomic::atomic_replace(path, &bytes).map_err(|_| Fail::Broken)?;
+    crate::fsx::atomic::atomic_replace(path, &bytes).map_err(|e| Fail::Broken(e.to_string()))?;
     Ok(bytes.len() as u64)
 }
 
@@ -185,8 +204,7 @@ fn read(casc: &Casc, ckey: &super::Key) -> Result<Vec<u8>, Fail> {
     casc.by_ckey(ckey).map_err(|e| match e {
         CascError::NotLocal => Fail::NotLocal,
         CascError::Missing(_) => Fail::Missing,
-        CascError::Encrypted => Fail::Broken,
-        CascError::Bad(_) | CascError::TooBig | CascError::Io(_) => Fail::Broken,
+        other => Fail::Broken(other.to_string()),
     })
 }
 
@@ -267,7 +285,7 @@ mod tests {
 
         // LOCKED's chunk is encrypted and the traversal path is refused;
         // both fail on their own.
-        let mut summary = run(&casc, out.path(), &listfile, &filters, false);
+        let mut summary = run(&casc, out.path(), &listfile, &filters, false, false);
         assert_eq!(
             (summary.extracted, summary.not_local, summary.missing, summary.failed),
             (1, 1, 1, 2),
@@ -279,7 +297,7 @@ mod tests {
         assert!(bytes.starts_with(b"\x89PNG"));
 
         // The same run again: the one file already in the cache.
-        let again = run(&casc, out.path(), &listfile, &filters, false);
+        let again = run(&casc, out.path(), &listfile, &filters, false, false);
         assert_eq!(again.skipped, 1);
 
         // What was streamed in since the storage was opened arrives on a
@@ -287,7 +305,7 @@ mod tests {
         assert_eq!(summary.not_local, 1);
         install.stream_in();
         let casc = Casc::open(&install.flavor).unwrap();
-        summary = run(&casc, out.path(), &listfile, &filters, false);
+        summary = run(&casc, out.path(), &listfile, &filters, false, false);
         assert_eq!(
             (summary.extracted, summary.skipped, summary.not_local),
             (1, 1, 0),
@@ -307,7 +325,7 @@ mod tests {
         let out = tempfile::tempdir().unwrap();
         let filters: Vec<String> = vec!["interface/buttons".into()];
         let listfile = [Entry { id: ICON, path: "interface/buttons/icon.blp".into() }];
-        let summary = run(&casc, out.path(), &listfile, &filters, true);
+        let summary = run(&casc, out.path(), &listfile, &filters, true, false);
         assert_eq!(summary, Summary { extracted: 1, ..Summary::default() });
         assert!(!icons::build_dir(out.path(), &casc.build).exists());
     }

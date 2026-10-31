@@ -165,6 +165,11 @@ impl Casc {
         self.root.ckeys(ids)
     }
 
+    /// Every FileDataID this build's root lists (enUS blocks), ascending.
+    pub fn file_ids(&self) -> CascResult<Vec<u32>> {
+        self.root.ids()
+    }
+
     pub fn by_ckey(&self, ckey: &Key) -> CascResult<Vec<u8>> {
         let ekey = self
             .encoding
@@ -208,11 +213,16 @@ impl Store {
 }
 
 /// `data.NNN` puts the encoding key (reversed) and size before each file; a
-/// mismatch means the index is stale (the game is patching).
+/// mismatch means the index is stale (the game is patching). Blocks the
+/// streaming downloader writes carry no verification header: an all-zero
+/// key is accepted, and a wrong offset still fails in the BLTE decode.
 fn check_archive_header(span: &[u8], ekey: &Key, size: u32) -> CascResult<()> {
     let mut b = bytes::Bytes::new(span);
     let mut stored: Key = b.array("archive header")?;
     stored.reverse();
+    if stored.iter().all(|&byte| byte == 0) {
+        return Ok(());
+    }
     let stored_size = b.u32_le("archive header")?;
     if stored[..9] != ekey[..9] || stored_size != size {
         return Err(CascError::Bad("archive header"));
