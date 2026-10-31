@@ -98,6 +98,7 @@ return {
     ["C_Timer.After"] = { from = "assumed" },
     ["Settings.NotifyUpdate"] = { from = "assumed" },
     RequestTimePlayed = { from = "assumed" },
+    ReloadUI = { from = "assumed" },
     RequestRaidInfo = { from = "assumed" },
     ["C_Map.SetUserWaypoint"] = { from = "assumed" },
     ["C_Map.ClearUserWaypoint"] = { from = "assumed" },
