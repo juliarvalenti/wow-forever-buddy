@@ -326,7 +326,7 @@ A new **Lists** screen in the sidebar under Overview, after Adventures (list ico
   - **Last scan:** "~1g 12s" from F5, or "50s vendor" when the item is sold by vendors. It's empty when there's neither (AH hidden or no scan).
   - **The list header meta** names who it's for ("for Sela", in class colour) and the price age.
   - The last row is "+ Add an item…", a search over items your characters have seen, plus free text.
-- **Agent proposals** (P2, `docs/specs/agent-mcp.md`):
+- **Agent proposals** (P2, `context/specs/agent-mcp` in the room's memory):
   - An agent can only *propose* a new list, an added or changed item, or a note.
   - **The producer is a claim, never an identity:** always quote the client's self-reported name, as in `from "Claude Desktop"`. Never write a bare "Claude".
   - **One queue, two places.** Every proposal lives in P2's **Approvals** panel (sidebar badge). Where the data lives, it also shows in place: an ember-tinted row with `proposed · from "Claude Desktop": "for the Mooncloth Robe at 300"` carrying its reason, and the list in the left column says "1 proposal".
@@ -356,7 +356,7 @@ A new **Lists** screen in the sidebar under Overview, after Adventures (list ico
 - **Replaced plans aren't listed here.** Approvals shows past proposals and their outcomes.
 
 ## 17. P2b: Approvals (`approvals.html`, `?state=empty|off`)
-One place for everything agents propose: quest plans, login notes and list changes. The rules come from `docs/specs/agent-mcp.md` §4.
+One place for everything agents propose: quest plans, login notes and list changes. The rules come from `context/specs/agent-mcp` §4.
 - **Sidebar:** "Approvals" under Overview, after Auction House (check icon). While anything is waiting, an ember pill shows the count. There's no pill at 0 or while agent access is off.
 - **Layout:** "Waiting for you" (newest first) on the left, with "Decided" and "Agent access" on the right.
 - **Each proposal** has:

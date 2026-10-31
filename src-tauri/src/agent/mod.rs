@@ -1,4 +1,4 @@
-//! The agent connection (P2, docs/specs/agent-mcp.md): an MCP server on
+//! The agent connection (P2, context/specs/agent-mcp): an MCP server on
 //! stdin/stdout that an agent client (Claude Desktop, Claude Code) starts as
 //! `wow-forever-buddy mcp`. `main` sends that argument here before Tauri, the
 //! single-instance plugin or anything else of the app starts, so this

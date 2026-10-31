@@ -1,4 +1,4 @@
-//! Step 4 of the spec (docs/specs/v0.2-addon.md §4): one decoded file into
+//! Step 4 of the spec (context/specs/v0.2-addon §4): one decoded file into
 //! the db, in one transaction, idempotent.
 //!
 //! The same data arrives more than once (live files, fallback scans, and

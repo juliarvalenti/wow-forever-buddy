@@ -11,13 +11,11 @@ on:
     branches: [main]
     paths-ignore:
       - "design/**"
-      - "docs/**"
       - "**/*.md"
   push:
     branches: [main]
     paths-ignore:
       - "design/**"
-      - "docs/**"
       - "**/*.md"
 
 concurrency:

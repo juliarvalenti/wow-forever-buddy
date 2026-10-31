@@ -1,4 +1,4 @@
-//! Reading one `ForeverBuddy.lua` (docs/specs/v0.2-addon.md §2 "The
+//! Reading one `ForeverBuddy.lua` (context/specs/v0.2-addon §2 "The
 //! SavedVariables contract", §4 "Validate, then apply" steps 1–3) into plain
 //! structs. Nothing here touches the db.
 //!

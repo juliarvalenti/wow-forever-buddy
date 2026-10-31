@@ -1,4 +1,4 @@
-//! SavedVariables: parsed as data, never executed. See docs/specs/core-fs.md §3.
+//! SavedVariables: parsed as data, never executed. See context/specs/core-fs §3.
 //!
 //! # Torn reads: the contract for consumers
 //!

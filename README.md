@@ -13,6 +13,8 @@ Built with [Tauri 2](https://tauri.app), React, Tailwind CSS 4,
 [shadcn/ui](https://ui.shadcn.com), and the Warcraft-styled components from
 [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT).
 
+Specs and the addon bible live in the wow-forever-buddy mycelium room (`context/specs/*`, `procedures/addon-bible/*`).
+
 ## Offline by design
 
 Everything the UI needs ships inside the app — no CDN, no Google Fonts:
