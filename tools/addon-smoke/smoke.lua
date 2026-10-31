@@ -37,6 +37,22 @@ f:close()
 local WoW = require("wowapi")
 local tocLib = require("wowapi.toc")
 
+io.stdout:setvbuf("line")
+
+-- A finding list as Lua source, for the child process's result file.
+local function dump(v)
+    if type(v) == "table" then
+        local parts = {}
+        for k, x in pairs(v) do
+            parts[#parts + 1] = "[" .. dump(k) .. "]=" .. dump(x)
+        end
+        return "{" .. table.concat(parts, ",") .. "}"
+    elseif type(v) == "string" then
+        return ("%q"):format(v)
+    end
+    return tostring(v)
+end
+
 -- Arguments.
 local args, opts = {}, {}
 local i = 1
@@ -45,6 +61,10 @@ while arg[i] do
     if a == "--only" or a == "--md" then
         opts[a:sub(3)] = arg[i + 1]
         i = i + 2
+    elseif a == "--one" then
+        -- Internal: run one addon in this process and write its findings.
+        opts.one, opts.out = arg[i + 1], arg[i + 2]
+        i = i + 3
     elseif a == "--install" then
         opts.install = true
         i = i + 1
@@ -143,17 +163,51 @@ local function run(name)
     return result
 end
 
+-- The child: one addon, findings written to a file.
+if opts.one then
+    local okRun, r = pcall(run, opts.one)
+    if not okRun then
+        r = { name = opts.one, loaded = false, reason = "crashed the emulator: " .. tostring(r),
+            errors = {}, blocked = {}, stubbed = {}, undefined = {} }
+    end
+    local w = assert(io.open(opts.out, "w"))
+    w:write("return " .. dump(r))
+    w:close()
+    os.exit(0)
+end
+
+-- The parent: each addon in its own process, so one that hangs or eats
+-- memory in the emulator is a row in the report, not the end of the run.
+-- 120 s and about 2 GB each, where the system has `timeout` and `ulimit -v`.
+local LIMIT_S = 120
+local lua = arg[-1] or "lua5.1"
+local hasTimeout = os.execute("command -v timeout >/dev/null 2>&1")
+hasTimeout = hasTimeout == 0 or hasTimeout == true
+local tmp = os.tmpname()
+
+local function runIsolated(name)
+    os.remove(tmp)
+    local cmd = ("ulimit -v 2000000 2>/dev/null; %s%s %q --one %q %q %q"):format(
+        hasTimeout and ("timeout " .. LIMIT_S .. " ") or "", lua, arg[0], name, tmp, addonsDir)
+    local status = os.execute(cmd)
+    local chunk = loadfile(tmp)
+    if chunk then
+        return chunk()
+    end
+    local timedOut = (status == 124 or status == 124 * 256)
+    return { name = name, loaded = false,
+        reason = timedOut and ("timed out after " .. LIMIT_S .. " s") or "the emulator died (out of memory?)",
+        errors = {}, blocked = {}, stubbed = {}, undefined = {} }
+end
+
 local results = {}
 for _, name in ipairs(names) do
     local t = tocLib.load(addonsDir .. "/" .. name)
     local lod = t and (t.loadOnDemand or (t.directives and t.directives.loadondemand == "1"))
     if t and not lod then
         io.write(("%-32s "):format(name))
-        local okRun, r = pcall(run, name)
-        if not okRun then
-            r = { name = name, loaded = false, reason = "crashed the emulator: " .. tostring(r),
-                errors = {}, blocked = {}, stubbed = {}, undefined = {} }
-        end
+        io.flush()
+        local r = runIsolated(name)
         results[#results + 1] = r
         print(r.loaded and ("%d errors, %d blocked, %d stubbed, %d unknown globals"):format(
             #r.errors, #r.blocked, #r.stubbed, #r.undefined) or ("not loaded: " .. r.reason))
