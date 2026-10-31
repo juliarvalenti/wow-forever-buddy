@@ -8,7 +8,7 @@
 //! Approvals preview shows and exactly what Approve applies, through the
 //! kind's normal app code: `notes::add` for a login note, `plans::set_plan`
 //! for a quest plan (`plan`), `lists::create_list` and `add_item` for a
-//! list change (`list`).
+//! list change (`list`), `addon_settings::approve` for one setting (P4b).
 
 pub mod bags;
 pub mod goal;
@@ -40,6 +40,9 @@ pub const QUEST_PLAN: &str = "quest_plan";
 pub const LIST: &str = "list";
 pub const BAG_MARKS: &str = "bag_marks";
 pub const GOAL: &str = "goal";
+/// P4b: changes to the addon's settings. One file can carry up to 50; each
+/// is stored as its own row, approved on its own.
+pub const SETTINGS: &str = "settings";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -102,6 +105,8 @@ pub struct Proposal {
     pub bags: Option<bags::BagMarksView>,
     /// "Goal for Kaelor" (G1).
     pub goal: Option<goal::GoalView>,
+    /// One addon setting: "Session coach: off → on" (P4b).
+    pub setting: Option<crate::addon_settings::SettingView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -135,6 +140,8 @@ pub struct Approvals {
     pub waiting: Vec<Proposal>,
     /// The last 30 days, newest first: approved, declined, not queued.
     pub decided: Vec<Proposal>,
+    /// P4b: settings the game has applied, waiting for "Keep or go back?".
+    pub trial: Option<crate::addon_settings::Trial>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, specta::Type)]
@@ -154,7 +161,7 @@ fn rfc3339(t: i64) -> String {
 }
 
 /// Text from an agent as stored: control characters out, trimmed.
-fn plain_line(s: &str) -> String {
+pub(crate) fn plain_line(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect::<String>()
@@ -304,7 +311,8 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
             ),
             Err(_) => ("unknown client".into(), "unknown".into(), now, None),
         };
-        let checked: Result<String, String> = (|| {
+        // Each row to store: its body and, for settings, its own reason.
+        let checked: Result<Vec<(String, Option<String>)>, String> = (|| {
             let f = file.as_ref().map_err(|e| format!("not read: {e}"))?;
             if !access {
                 return Err("agent access is off".into());
@@ -318,7 +326,26 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
             {
                 return Err(format!("the reason is longer than {MAX_REASON} characters"));
             }
-            match f.kind.as_str() {
+            if f.kind == SETTINGS {
+                let p: crate::addon_settings::SettingsProposal =
+                    serde_json::from_value(f.body.clone()).map_err(|_| {
+                        "the settings aren't in the form this version reads".to_string()
+                    })?;
+                let rows = crate::addon_settings::check(db, flavor, &p)?;
+                if waiting_count(db, flavor).map_err(|e| e.to_string())? + rows.len() as i64
+                    > MAX_PENDING
+                {
+                    return Err(format!("over {MAX_PENDING} suggestions would be waiting"));
+                }
+                return rows
+                    .into_iter()
+                    .map(|(b, why)| {
+                        let body = serde_json::to_string(&b).map_err(|e| e.to_string())?;
+                        Ok((body, why.or_else(|| reason.clone())))
+                    })
+                    .collect();
+            }
+            let body = match f.kind.as_str() {
                 LOGIN_NOTE => {
                     let p: NoteProposal = serde_json::from_value(f.body.clone())
                         .map_err(|_| "the note isn't in the form this version reads".to_string())?;
@@ -355,24 +382,48 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                 }
                 // In plain words, never the kind id (IMPLEMENTING §17).
                 _ => Err("This kind of suggestion can't be applied yet.".into()),
-            }
+            }?;
+            Ok(vec![(body, reason.clone())])
         })();
-        let row = Row {
-            file: &name,
-            kind: &kind,
-            producer: &producer,
-            reason: reason.as_deref(),
-            created_at,
-            body: checked.as_ref().ok().cloned(),
-            status: if checked.is_ok() {
-                "staged"
-            } else {
-                "rejected"
-            },
-            status_reason: checked.as_ref().err().map(String::as_str),
-        };
-        if insert(db, flavor, row, now)? {
-            stored += 1;
+        match &checked {
+            Ok(rows) => {
+                for (i, (body, why)) in rows.iter().enumerate() {
+                    // A file is stored once: its rows by name, then "#2"…
+                    let file = if i == 0 {
+                        name.clone()
+                    } else {
+                        format!("{name}#{}", i + 1)
+                    };
+                    let row = Row {
+                        file: &file,
+                        kind: &kind,
+                        producer: &producer,
+                        reason: why.as_deref(),
+                        created_at,
+                        body: Some(body.clone()),
+                        status: "staged",
+                        status_reason: None,
+                    };
+                    if insert(db, flavor, row, now)? {
+                        stored += 1;
+                    }
+                }
+            }
+            Err(why) => {
+                let row = Row {
+                    file: &name,
+                    kind: &kind,
+                    producer: &producer,
+                    reason: reason.as_deref(),
+                    created_at,
+                    body: None,
+                    status: "rejected",
+                    status_reason: Some(why),
+                };
+                if insert(db, flavor, row, now)? {
+                    stored += 1;
+                }
+            }
         }
         // Stored (or stored before): the file has done its job. If it can't
         // be removed now, the next pass finds it already stored and tries
@@ -495,6 +546,9 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         Some(b) => Some(goal::view(db, flavor, &b)?),
         None => None,
     };
+    // A setting this version no longer declares has no preview (and
+    // Approve refuses it).
+    let setting = body(&s, SETTINGS).and_then(|b| crate::addon_settings::view(db, flavor, &b).ok());
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
@@ -509,6 +563,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         list,
         bags,
         goal,
+        setting,
     })
 }
 
@@ -528,7 +583,12 @@ pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Approvals> {
     .into_iter()
     .map(|s| view(db, flavor, s, now))
     .collect::<AppResult<_>>()?;
-    Ok(Approvals { waiting, decided })
+    let trial = crate::addon_settings::trial(db, flavor)?;
+    Ok(Approvals {
+        waiting,
+        decided,
+        trial,
+    })
 }
 
 fn set_status(db: &Db, id: i64, status: &str, now: i64) -> AppResult<()> {
@@ -597,6 +657,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
         GOAL => {
             let b = body(&s, GOAL).ok_or_else(unreadable)?;
             goal::apply(db, flavor, &b, &s.producer, now)?;
+        }
+        SETTINGS => {
+            let b = body(&s, SETTINGS).ok_or_else(unreadable)?;
+            crate::addon_settings::approve(db, flavor, &b, now)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -875,6 +939,69 @@ mod tests {
             .map(|n| n.text)
             .collect();
         assert_eq!(texts, ["New"]);
+    }
+
+    /// P4b: one file of setting changes becomes one row per change, each
+    /// with its own reason, and Approve makes the profile the slot carries.
+    #[test]
+    fn settings_changes_are_rows_of_their_own() {
+        let (tmp, db) = setup();
+        drop_file(
+            tmp.path(),
+            SETTINGS,
+            json!({ "changes": [
+                { "option": "window.coach", "value": true, "reason": "you like numbers" },
+                { "option": "window.minimap", "value": false } ] }),
+        );
+        drop_file(
+            tmp.path(),
+            SETTINGS,
+            json!({ "changes": [{ "option": "window.coachCombat", "value": true }] }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        let mut rows: Vec<(String, String, Option<String>)> = a
+            .waiting
+            .iter()
+            .map(|p| {
+                let s = p.setting.as_ref().unwrap();
+                (
+                    s.label.clone(),
+                    format!("{} → {}", s.from, s.to),
+                    p.reason.clone(),
+                )
+            })
+            .collect();
+        rows.sort();
+        assert_eq!(
+            rows,
+            [
+                (
+                    "Minimap button".into(),
+                    "on → off".into(),
+                    Some("Thursday's raid".into())
+                ),
+                (
+                    "Session coach".into(),
+                    "off → on".into(),
+                    Some("you like numbers".into())
+                ),
+            ],
+            "each its own row; without a reason of its own, the file's"
+        );
+        assert_eq!(
+            reasons(&db),
+            ["window.coachCombat only works while window.coach is on: turn that on in the same proposal"]
+        );
+        let coach = a
+            .waiting
+            .iter()
+            .find(|p| p.setting.as_ref().unwrap().option == "window.coach")
+            .unwrap();
+        decide(&db, FLAVOR, coach.id, Decision::Approve, NOW).unwrap();
+        let slot = crate::addon_settings::slot_entries(&db, FLAVOR).unwrap();
+        assert_eq!(slot[0].0, crate::sv::LuaValue::str("profile"));
+        assert!(a.trial.is_none(), "nothing to keep before the game has it");
     }
 
     #[test]

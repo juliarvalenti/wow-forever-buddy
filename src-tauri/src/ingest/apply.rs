@@ -89,6 +89,10 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     if let Some(p) = &file.plan {
         crate::plans::record_progress(tx, id, p.id, &p.done, at)?;
     }
+    // P4b: the settings the game has (account-wide, so per flavor).
+    if let Some(s) = &file.settings {
+        crate::addon_settings::record_seen(tx, &target.flavor, s.profile, &s.values, at)?;
+    }
     // Notes the login briefing showed: once notes are archived.
     crate::notes::mark_shown(tx, id, &file.briefed)?;
     // G1: goals this file shows reached are done, as of when it was written.

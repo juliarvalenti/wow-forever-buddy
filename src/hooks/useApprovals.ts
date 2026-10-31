@@ -42,7 +42,18 @@ export function useApprovals() {
       changed();
     }
   }, []);
-  return { approvals, error, decide };
+  /** P4b: keep the settings the game applied, or go back. */
+  const keepSettings = useCallback(async (keep: boolean) => {
+    setError(null);
+    try {
+      await commands.approvalsKeepSettings(keep);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      changed();
+    }
+  }, []);
+  return { approvals, error, decide, keepSettings };
 }
 
 /** The sidebar's ember count: 0 while nothing waits or access is off. */

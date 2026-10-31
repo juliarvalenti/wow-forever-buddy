@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario session_cap). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.9.8",
+		["addon"] = "0.9.9",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
@@ -193,6 +193,19 @@ ForeverBuddyDB = {
 				["zone"] = "Elwynn Forest",
 			},
 		}, -- [10]
+	},
+	["settings"] = {
+		["values"] = {
+			["tooltips.alts"] = true,
+			["window.bagMarks"] = true,
+			["window.briefing"] = true,
+			["window.card"] = true,
+			["window.coach"] = false,
+			["window.coachCombat"] = false,
+			["window.lockouts"] = true,
+			["window.minimap"] = true,
+			["window.record"] = false,
+		},
 	},
 	["snapshot"] = {
 		["at"] = 1791957600,
