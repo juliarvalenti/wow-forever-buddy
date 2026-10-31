@@ -17,6 +17,7 @@ mod blte;
 mod bytes;
 mod config;
 mod encoding;
+mod extract;
 mod icons;
 mod idx;
 mod root;
@@ -28,7 +29,8 @@ use std::sync::OnceLock;
 
 use crate::fsx::read::{open_shared, safe_read};
 
-pub use config::BuildInfo;
+pub use config::{hex, BuildInfo};
+pub use extract::{parse_listfile, run, Entry, Summary, DEFAULT_FILTERS};
 pub use icons::{build_dir, cache_path, IconCache};
 
 /// A 16-byte content or encoding key.

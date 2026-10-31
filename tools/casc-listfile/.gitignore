@@ -1,0 +1,4 @@
+# The community listfile (wow-listfile's FileDataID -> path map) and the
+# Blizzard files extracted from the game's CASC storage are never
+# committed: fetch-listfile.sh and casc-extract fill them locally.
+files.csv
