@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Adventurer's journal · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* J1 proposal: the addon as your own adventurer's journal in game (Julia: "more bold"; reference: Social Diary's
+     open book). An open book with no window frame: leather cover, parchment pages, rubric day heads, index tabs.
+     Textures only in game (no Blizzard templates). About your own characters only. ?char=thrandor|sela */
+  @font-face { font-family: "Marcellus"; src: url("fonts/marcellus-latin-400-normal.woff2") format("woff2"); }
+  :root {
+    --ink: #3a2616; --ink-2: #6e5537; --ink-3: #9a8162; --rubric: #9e2318; --lapis: #2f4f86;
+    --paper: #eadcb8; --paper-2: #e0cda2; --leather: #3b2416; --leather-2: #24150c; --gilt: #c9a24f;
+    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .22  0 0 0 0 .1  0 0 0 .14 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    --stain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='700' height='700'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='.006' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .3  0 0 0 0 .12  0 0 0 .5 -.2'/></filter><rect width='100%' height='100%' filter='url(%23s)'/></svg>");
+    --hide: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='h'><feTurbulence type='turbulence' baseFrequency='.55' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .45 0'/></filter><rect width='100%' height='100%' filter='url(%23h)'/></svg>");
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0d0c; color: #d8cfc0; font: 13px/1.4 Georgia, serif; padding: 24px; }
+  h1 { font: 400 22px Georgia, serif; margin-bottom: 4px; }
+  .lede { font: 13px -apple-system, "Geist", sans-serif; color: #9a9182; margin-bottom: 14px; max-width: 900px; }
+  .lede a { color: #ffb15c; }
+  .world { position: relative; height: 760px; max-width: 1180px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 30% 20%, #3d4a3a 0%, #232a22 45%, #121512 100%); box-shadow: 0 0 0 1px #000; }
+
+  /* the book */
+  .book { position: absolute; left: 50%; top: 40px; width: 940px; height: 600px; transform: translateX(-50%); }
+  .cover { position: absolute; inset: 0; border-radius: 10px 14px 14px 10px;
+    background: var(--hide), radial-gradient(120% 120% at 30% 20%, #4a2e1c, var(--leather) 55%, var(--leather-2));
+    box-shadow: 0 18px 40px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,220,170,.12), inset 0 -3px 6px rgba(0,0,0,.6); }
+  .cover::after { content: ""; position: absolute; inset: 9px; border-radius: 7px; border: 1px solid rgba(201,162,79,.55); box-shadow: inset 0 0 0 3px rgba(0,0,0,.25), inset 0 0 0 4px rgba(201,162,79,.25); }
+  .corner { position: absolute; width: 34px; height: 34px; background: radial-gradient(circle at 35% 35%, #e3c47a, #8a6a2e 70%); box-shadow: 0 1px 2px rgba(0,0,0,.6); z-index: 3; }
+  .corner.tl { left: 4px; top: 4px; clip-path: polygon(0 0, 100% 0, 0 100%); }
+  .corner.bl { left: 4px; bottom: 4px; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+  .corner.tr { right: 4px; top: 4px; clip-path: polygon(0 0, 100% 0, 100% 100%); }
+  .corner.br { right: 4px; bottom: 4px; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+  .page { position: absolute; top: 18px; bottom: 18px; width: 446px; padding: 30px 34px 26px;
+    background: var(--stain), var(--grain), linear-gradient(180deg, var(--paper), var(--paper-2)); color: var(--ink); }
+  .page.l { left: 22px; border-radius: 4px 0 0 4px; box-shadow: inset -26px 0 30px -18px rgba(58,38,22,.55), -2px 0 0 #d8c69a, -4px 0 0 #cdb98c, -6px 0 0 #bfa979; }
+  .page.r { right: 22px; border-radius: 0 4px 4px 0; box-shadow: inset 26px 0 30px -18px rgba(58,38,22,.55), 2px 0 0 #d8c69a, 4px 0 0 #cdb98c, 6px 0 0 #bfa979; }
+  .gutter { position: absolute; left: 50%; top: 14px; bottom: 14px; width: 16px; transform: translateX(-50%);
+    background: linear-gradient(90deg, rgba(58,38,22,.45), rgba(20,10,4,.7) 50%, rgba(58,38,22,.45)); border-radius: 3px; z-index: 2; }
+  .ribbon { position: absolute; left: calc(50% + 12px); top: 6px; width: 14px; height: 640px; z-index: 4;
+    background: linear-gradient(90deg, #6e1410, #a3231c 45%, #7a1410); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 96%, 0 100%); box-shadow: 0 2px 4px rgba(0,0,0,.4); }
+
+  /* index tabs on the right edge: one per character */
+  .tabs { position: absolute; right: -34px; top: 60px; display: grid; gap: 6px; z-index: 1; }
+  .tabs a { display: block; width: 52px; padding: 7px 0 7px 18px; border-radius: 0 5px 5px 0; font: 12px "Marcellus", Georgia, serif; color: var(--ink);
+    background: var(--grain), linear-gradient(90deg, #d6c293, #e6d5ad); box-shadow: 2px 2px 4px rgba(0,0,0,.45), inset 4px 0 0 var(--c); writing-mode: vertical-rl; text-decoration: none; height: 86px; }
+  .tabs a.on { transform: translateX(6px); background: var(--grain), linear-gradient(90deg, #e6d5ad, #f0e2c0); }
+
+  /* page type */
+  .runhead { display: flex; justify-content: space-between; font: italic 11.5px Georgia, serif; color: var(--ink-3); margin-bottom: 14px; }
+  .title { font: 400 26px/1.1 "Marcellus", Georgia, serif; color: var(--ink); }
+  .title .cl { color: var(--cl); }
+  .sub { font: italic 13px Georgia, serif; color: var(--ink-2); margin-top: 2px; }
+  .rubric { display: flex; align-items: center; gap: 8px; margin: 16px 0 7px; font: 400 15px "Marcellus", Georgia, serif; color: var(--rubric); }
+  .rubric::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--lapis); flex: none; }
+  .rubric.r2::before { background: var(--rubric); }
+  .rubric::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(158,35,24,.6), transparent); }
+  p.prose { font: 14px/1.55 Georgia, serif; color: var(--ink); margin: 0 0 6px; text-indent: 0; }
+  p.prose .q3 { color: #1d4f9c; } p.prose .q4 { color: #6a2a8c; } p.prose .gold { color: #7a5a12; }
+  p.prose .when { color: var(--ink-3); font-style: italic; font-size: 12.5px; }
+  .checks { display: grid; gap: 4px; font: 14px/1.45 Georgia, serif; }
+  .checks div { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; }
+  .checks .box { width: 13px; height: 13px; margin-top: 4px; border: 1.3px solid var(--ink-2); border-radius: 2px; position: relative; }
+  .checks .done .box::after { content: ""; position: absolute; left: 2px; top: -4px; width: 6px; height: 11px; border: solid var(--rubric); border-width: 0 2px 2px 0; transform: rotate(40deg); }
+  .checks .done span:last-child { color: var(--ink-3); text-decoration: line-through; text-decoration-color: rgba(58,38,22,.45); }
+  .checks small { display: block; font-style: italic; color: var(--ink-3); font-size: 12px; }
+  .inkbar { position: relative; height: 7px; margin: 4px 0 2px; border-bottom: 1px solid rgba(58,38,22,.35); }
+  .inkbar i { position: absolute; left: 0; bottom: -1px; height: 5px; background: rgba(58,38,22,.7); border-radius: 2px 3px 1px 2px; }
+  /* the Buddy's note: written by an agent between sessions, approved in the app, in a looser hand */
+  .letter { margin: 12px 0 2px; padding: 9px 12px 8px; border-left: 2px solid rgba(158,35,24,.55); background: rgba(255,250,235,.35);
+    font: italic 14.5px/1.5 Georgia, serif; color: #4a2f1a; transform: rotate(-.4deg); }
+  .letter small { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3); font-style: italic; }
+  .foot { position: absolute; left: 34px; right: 34px; bottom: 18px; display: flex; justify-content: space-between; font: italic 11.5px Georgia, serif; color: var(--ink-3); }
+  .note { position: absolute; left: 24px; bottom: 16px; width: 330px; font: 12px -apple-system, "Geist", sans-serif; color: #9a9182; }
+</style>
+</head>
+<body>
+<h1>Adventurer's journal (proposal)</h1>
+<p class="lede">The addon as your own journal in game: an open book with no window frame, written in prose from what Forever Buddy already knows. About your own characters only. Opened from the minimap button or /fb. A direction for Julia to react to; the spec follows once it's picked.</p>
+
+<div class="world">
+  <div class="book">
+    <div class="cover"></div>
+    <span class="corner tl"></span><span class="corner bl"></span><span class="corner tr"></span><span class="corner br"></span>
+    <nav class="tabs">
+      <a class="on" style="--c:#f48cba">Thrandor</a>
+      <a style="--c:#ff7c0a">Velyra</a>
+      <a style="--c:#d8d8d8">Sela</a>
+      <a style="--c:#e6d84a">Kaelor</a>
+      <a style="--c:#c69b6d">Coinpurse</a>
+    </nav>
+
+    <!-- LEFT: today -->
+    <section class="page l">
+      <div class="runhead"><span>Today</span><span>Tuesday, 14 October</span></div>
+      <div class="title" style="--cl:#a8436f"><span class="cl">Thrandor</span></div>
+      <div class="sub">Level 60 paladin, last seen in Winterspring</div>
+
+      <div class="letter">Thrandor, Onyxia resets tomorrow and you're 360g from the mount. The yeti run in Winterspring covers both: furs to sell, and an easy hour.
+        <small>Note from "Claude Desktop", approved Monday 23:10</small></div>
+
+      <div class="rubric">Tonight's plan</div>
+      <div class="checks">
+        <div class="done"><span class="box"></span><span>Fly to Everlook</span></div>
+        <div><span class="box"></span><span>Take "Are We There, Yeti?"<small>in Everlook</small></span></div>
+        <div><span class="box"></span><span>Gather ten Thick Yeti Fur<small>Owl Wing Thicket</small></span></div>
+        <div><span class="box"></span><span>Hand it in back in Everlook</span></div>
+      </div>
+
+      <div class="rubric r2">Goals</div>
+      <p class="prose">Save 2,500 gold for the epic mount by the end of the month. 360 to go.</p>
+      <div class="inkbar"><i style="width:86%"></i></div>
+
+
+      <div class="foot"><span>i</span><span>As of your last logout</span></div>
+    </section>
+
+    <div class="gutter"></div>
+    <div class="ribbon"></div>
+
+    <!-- RIGHT: the road so far -->
+    <section class="page r">
+      <div class="runhead"><span>The road so far</span><span>ii</span></div>
+
+      <div class="rubric">Yesterday</div>
+      <p class="prose">Thrandor reached <b>level 60</b> in the Eastern Plaguelands, three hours and twelve minutes after setting out from Light's Hope. <span class="when">22:41</span></p>
+      <p class="prose">Gained <span class="q3">Truestrike Shoulders</span> in Stratholme. Thrandor's first. <span class="when">21:47</span></p>
+      <p class="prose">Came home <span class="gold">312 gold</span> richer, with nine quests handed in.</p>
+
+      <div class="rubric r2">Sunday</div>
+      <p class="prose">Velyra was saved to Molten Core for the week.</p>
+      <p class="prose">Sela learned to make the Mooncloth Robe, at Tailoring 285.</p>
+
+      <div class="rubric">Last week</div>
+      <p class="prose">Your characters earned 1,412 gold between them. Thrandor earned the most.</p>
+
+      <div class="foot"><span>Written up by "Claude Desktop" from your play, approved</span><span>Turn the page</span></div>
+    </section>
+  </div>
+  <div class="note">Index tabs switch character. The ribbon keeps your place. The logout card becomes a loose page tucked into the book, and the other sections (lists, errands, cleanup, settings) become pages further in.</div>
+</div>
+</body>
+</html>
