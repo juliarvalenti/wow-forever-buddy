@@ -139,6 +139,19 @@ function M.install(sim, env)
   rawset(env, "CallbackRegistryMixin", CallbackRegistryMixin)
   rawset(env, "CallbackRegistry", CallbackRegistryMixin)
 
+  ------------------------------------------------------------ error handling
+  -- WFB patch (HUD1): CreateSecureDelegate(fn) returns a function that
+  -- calls fn, and RemoveKStrings strips |K...|k encoded strings, as in the
+  -- client. Blizzard_ScriptErrors.lua builds its error handler on both;
+  -- without them the handler itself throws, so any addon reporting a soft
+  -- error through geterrorhandler() (LibSharedMedia does) dies mid-file.
+  rawset(env, "CreateSecureDelegate", function(fn)
+    return function(...) if fn then return fn(...) end end
+  end)
+  rawset(env, "RemoveKStrings", function(s)
+    return (tostring(s or ""):gsub("|K.-|k", ""))
+  end)
+
   ------------------------------------------------------------ colors
   -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
   -- (exalted), as SharedColorConstants.lua builds it from the client's
