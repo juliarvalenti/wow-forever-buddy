@@ -2054,6 +2054,8 @@ scenario("window", function()
         .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
         .. "Your alts on item tooltips ✓, Coordinates on the world map, Coordinates under the minimap, "
         .. "Fade the world map while you move, How much of the map shows while moving, "
+        .. "Quest levels in the quest log, Mark quests that are new in Forever, Quest progress on item tooltips, "
+        .. "See-through quest tracker, How much of the tracker shows, "
         .. "Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
@@ -2089,6 +2091,8 @@ scenario("window", function()
         .. "Hide the coach in combat, Session card at logout, Marks in your bags, [Tooltips], "
         .. "Your alts on item tooltips, [Map], Coordinates on the world map, Coordinates under the minimap, "
         .. "Fade the world map while you move, How much of the map shows while moving, "
+        .. "[Quests], Quest levels in the quest log, Mark quests that are new in Forever, "
+        .. "Quest progress on item tooltips, See-through quest tracker, How much of the tracker shows, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
@@ -2139,13 +2143,19 @@ scenario("window", function()
     c.click(b, "RightButton")
     eq(b.shown, false, "hidden")
     eq(c.chat[#c.chat], PREFIX .. "minimap button hidden. /fb minimap or the Settings tab brings it back.", "says how")
-    eq(w.panes[5].checks[12].checked, false, "the Settings tab agrees")
+    local minimapBox
+    for _, cb in ipairs(w.panes[5].checks) do
+        if cb.option.key == "window.minimap" then
+            minimapBox = cb
+        end
+    end
+    eq(minimapBox.checked, false, "the Settings tab agrees")
     c.slash("/fb minimap")
     eq(b.shown, true, "back")
     eq(c.chat[#c.chat], PREFIX .. "minimap button shown.", "says so")
-    c.click(w.panes[5].checks[12])
+    c.click(minimapBox)
     eq(b.shown, false, "the checkbox hides it too")
-    c.click(w.panes[5].checks[12])
+    c.click(minimapBox)
 
     -- Dragged, it follows the cursor round the edge, and the angle is kept.
     c.world.cursor = { 1000, 800 } -- straight above the minimap's centre
@@ -3495,7 +3505,7 @@ scenario("map", function()
     c.slash("/fb")
     local slider
     for _, cb in ipairs(c.global("ForeverBuddyWindow").panes[5].checks) do
-        if cb.slider then
+        if cb.slider and cb.option.key == "map.fadeAlpha" then
             slider = cb
         end
     end
@@ -3557,6 +3567,90 @@ scenario("map", function()
     -- (A clean session after, so the runner's no-caught-errors check holds.)
     broken.login(nil)
     file(broken.logout())
+end)
+
+-- P4e: the Quest module's display part. Nothing here acts on a quest.
+scenario("quest", function()
+    local c = client()
+    c.world.questlog = {
+        { header = true },
+        { questID = 176, title = "Wanted: Hogger", level = 11,
+          objectives = { { text = "Linen Cloth: 3/8", type = "item", numFulfilled = 3, numRequired = 8 } } },
+        { questID = 55012, title = "Skyborne Supplies", level = 14,
+          objectives = { { text = "Gnoll slain: 2/6", type = "monster", numFulfilled = 2, numRequired = 6 } } },
+    }
+    c.login(nil)
+    c.advance(5)
+    local function row(id)
+        for i, o in ipairs(declared().options) do
+            if o.id == id then
+                return optionRows(c)[i]
+            end
+        end
+    end
+    local log = c.global("QuestLogQuests_Update")
+    local function titles()
+        c.global("QuestLogQuests_Update")()
+        local out = {}
+        for _, b in ipairs(c.questTitles) do
+            out[#out + 1] = b.Text.text
+        end
+        return table.concat(out, " / ")
+    end
+    local function questLines(id)
+        local out = {}
+        for _, line in ipairs(c.hover(id)) do
+            if line:find("^Quest: ") then
+                out[#out + 1] = line
+            end
+        end
+        return table.concat(out, " / ")
+    end
+    local tracker = c.global("ObjectiveTrackerFrame")
+
+    -- Off (the default): the log as the client draws it, no tooltip lines,
+    -- no hook and no tracker frame.
+    eq(titles(), "Wanted: Hogger / Skyborne Supplies", "the log as the client has it")
+    eq(c.global("QuestLogQuests_Update"), log, "not hooked while off")
+    eq(questLines(2589), "", "no quest line on the tooltip")
+    eq(#tracker.children, 0, "no frame on the tracker")
+
+    -- Levels, and the tag on a quest that's new in Forever (55000 and up).
+    row("quest.levels").setting:SetValue(true)
+    eq(titles(), "[11] Wanted: Hogger / [14] Skyborne Supplies", "levels before the titles")
+    row("quest.newTag").setting:SetValue(true)
+    eq(titles(), "[11] Wanted: Hogger / [14] Skyborne Supplies |cff40c0ff(New)|r", "the new one tagged")
+    row("quest.levels").setting:SetValue(false)
+    eq(titles(), "Wanted: Hogger / Skyborne Supplies |cff40c0ff(New)|r", "the tag alone")
+    row("quest.newTag").setting:SetValue(false)
+    eq(titles(), "Wanted: Hogger / Skyborne Supplies", "both off: the client's titles again")
+
+    -- Tooltips: the quest that needs the item, and how far along.
+    row("quest.tooltips").setting:SetValue(true)
+    eq(questLines(2589), "Quest: Wanted: Hogger 3/8", "Linen Cloth is for Hogger")
+    eq(questLines(6948), "", "the Hearthstone is for no quest")
+    row("quest.tooltips").setting:SetValue(false)
+    eq(questLines(2589), "", "off: gone")
+
+    -- The tracker: see-through until the mouse is over it.
+    row("quest.trackerFade").setting:SetValue(true)
+    local fader = tracker.children[1]
+    c.update(fader, 0.3)
+    eq(tracker:GetAlpha(), 0.4, "see-through (the default, 40%)")
+    c.world.trackerMouse = true
+    c.update(fader, 0.3)
+    eq(tracker:GetAlpha(), 1, "whole under the mouse")
+    c.world.trackerMouse = false
+    row("quest.trackerAlpha").setting:SetValue(0.25)
+    c.update(fader, 0.3)
+    eq(tracker:GetAlpha(), 0.25, "at the chosen alpha")
+    row("quest.trackerFade").setting:SetValue(false)
+    eq(tracker:GetAlpha(), 1, "off: whole")
+    eq(c.update(fader, 0.3), false, "and its frame doesn't tick")
+
+    local db = file(c.logout())
+    eq(db.settings.values["quest.trackerAlpha"], 0.25, "the file has the number")
+    eq(c.settings.quest.trackerAlpha, 0.25, "kept account-wide")
 end)
 
 -- P4b-follow (security): what the addon accepts from a profile, for every
@@ -3786,7 +3880,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 13, "with every toggle")
+    eq(#options.frame.checks, 18, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)
