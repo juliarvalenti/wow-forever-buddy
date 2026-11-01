@@ -12,6 +12,9 @@ tools/wowapi/** linguist-vendored
 # The ForeverBuddy addon: the app bundles these bytes and the release zips
 # them, so a Windows build ships the same files as any other (not CRLF).
 src-tauri/resources/addon/** text eol=lf
+# Its art and fonts are bytes, never text: no line-ending rewrite at all.
+src-tauri/resources/addon/**/*.tga binary
+src-tauri/resources/addon/**/*.ttf binary
 
 # The harness's layout snapshots are compared byte-for-byte with what it
 # writes (LF), and H5 runs the harness on Windows too.

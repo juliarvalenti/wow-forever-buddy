@@ -2764,6 +2764,12 @@ local function listRow(f, i, height)
         row.right:SetPoint("TOPRIGHT", 0, 0)
         row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
+        -- In the window (W1b), its type: Geist, as the rest of the page.
+        if f.scroll then
+            for s, size in pairs({ [row.label] = 13, [row.right] = 12, [row.detail] = 11 }) do
+                s:SetFont(U.STYLE.fonts.body, size, "")
+            end
+        end
         if height > 32 then
             local fill = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             fill:SetSize(110, 20)
@@ -4192,7 +4198,7 @@ end
 do
     local ICON = "Interface\\AddOns\\ForeverBuddy\\Media\\Icon"
     local TABS = { "Plan", "Lists", "Errands", "Cleanup", "Settings" }
-    local W, H = 580, 452 -- W1: rail, header, content and footer
+    local W, H = 620, 468 -- W1b: rail, header, content and footer
     local BLUE = "|cff4fb8ff" -- the verbs in the minimap button's tooltip
     local win, button, optionChecks
     local panes = {}
@@ -4241,46 +4247,72 @@ do
         { "Plan", "Lists", "Cleanup", "Briefing", "Tooltip1", "Tooltip2" },
     }
 
-    -- Plan: §7's steps, the current one gold with an edge, done ones grey,
-    -- and the → that sets the game's own waypoint. Ticking stays on the
-    -- tracker.
+    -- Plan: §7's steps on the parchment, each with its number in a box:
+    -- the current one in wax, done ones ticked in green and faded, and
+    -- "Show on map" that sets the game's own waypoint. Ticking stays on
+    -- the tracker.
     local function planRow(p, i)
         local row = p.rows[i]
         if not row then
-            -- W1, the designer's own-plan: the current step on a soft accent
-            -- with a bar at its edge, the step's place under its text, and
-            -- Map on the right.
+            local col = U.STYLE.colors
             row = CreateFrame("Frame", nil, p)
-            row:SetSize(W - U.LAYOUT.RAIL - 20, 44)
-            row.glow = U.ui.fill(row, U.STYLE.accentSoft)
-            row.glow:SetAllPoints()
-            row.edge = U.ui.fill(row, U.STYLE.accent, "ARTWORK")
-            row.edge:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-            row.edge:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-            row.edge:SetWidth(2)
-            row.label = U.ui.text(row, 13, U.STYLE.text)
-            row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -7)
-            row.detail = U.ui.text(row, 11, U.STYLE.dim)
+            row:SetSize(U.LAYOUT.CONTENT - 31, 44)
+            U.ui.rule(row, -43, 0, 0, col.inkHair)
+            row.box = CreateFrame("Frame", nil, row)
+            row.box:SetSize(20, 20)
+            row.box:SetPoint("LEFT", row, "LEFT", 14, 0)
+            row.wax = U.ui.fill(row.box, col.accent)
+            row.wax:SetAllPoints()
+            row.ring = U.ui.border(row.box, col.inkRule)
+            row.tick = {}
+            for _, s in ipairs({ { 5, -45, -3, -1 }, { 10, 55, 2, 1 } }) do
+                local t = U.ui.diamond(row.box, col.ok, 1, "ARTWORK")
+                t:SetSize(s[1], 2)
+                pcall(t.SetRotation, t, math.rad(s[2]))
+                t:SetPoint("CENTER", row.box, "CENTER", s[3], s[4])
+                row.tick[#row.tick + 1] = t
+            end
+            row.num = U.ui.text(row.box, 12, col.ink, "CENTER", true)
+            row.num:SetPoint("CENTER", row.box, "CENTER", 0, 0)
+            row.label = U.ui.text(row, 13, col.ink)
+            row.label:SetPoint("TOPLEFT", row.box, "TOPRIGHT", 22, 3)
+            row.detail = U.ui.text(row, 11, col.ink3)
             row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -4)
-            row.go = U.ui.button(row, "Map", 46)
-            row.go:SetPoint("RIGHT", row, "RIGHT", -12, 0)
+            row.go = CreateFrame("Button", nil, row)
+            row.go:SetSize(96, 20)
+            row.go:SetPoint("RIGHT", row, "RIGHT", -16, 0)
+            row.go.label = U.ui.text(row.go, 11, col.accent, "RIGHT")
+            row.go.label:SetPoint("RIGHT", row.go, "RIGHT", 0, 0)
+            row.go.label:SetText("Show on map  >")
             p.rows[i] = row
         end
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", p, "TOPLEFT", 8, -12 - (i - 1) * 46)
+        row:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -60 - (i - 1) * 44)
         row:Show()
         return row
     end
 
     local function renderPlanTab(p)
+        local col = U.STYLE.colors
         for _, row in ipairs(p.rows) do
             row:Hide()
         end
         if not plan then
+            p.head:SetText("No plan yet")
+            p.count:SetText("")
+            p.track:Hide()
+            p.done:Hide()
             p.footer:SetText("No plan for " .. who() .. ". Make one in Forever Buddy, or ask Claude for one.")
-            p:SetHeight(64)
+            p:SetHeight(U.LAYOUT.VIEW - 4)
             return
         end
+        p.footer:SetText("")
+        local first = plan.steps[1]
+        p.head:SetText(first and type(first.zone) == "string" and plain(first.zone) or "Tonight")
+        p.count:SetText(doneCount() .. " of " .. #plan.steps .. " done")
+        p.track:Show()
+        p.done:SetShown(doneCount() > 0)
+        p.done:SetWidth(math.max((U.LAYOUT.CONTENT - 63) * doneCount() / math.max(#plan.steps, 1), 1))
         local current = currentStep()
         local here = read("C_Map.GetBestMapForUnit", "player")
         local n = math.min(#plan.steps, LIST_ROWS)
@@ -4288,16 +4320,20 @@ do
             local step = plan.steps[i]
             local row = planRow(p, i)
             local done = progress.done[i]
-            row.label:SetText(i .. ". " .. plain(step.text))
-            if done then
-                row.label:SetTextColor(U.ui.rgba(U.STYLE.faint))
-            elseif i == current then
-                row.label:SetTextColor(U.ui.rgba(U.STYLE.accent))
-            else
-                row.label:SetTextColor(U.ui.rgba(U.STYLE.text))
+            local cur = i == current and not done
+            row.label:SetText(plain(step.text))
+            row.label:SetTextColor(U.ui.rgba(done and col.ink3 or cur and col.accent or col.ink))
+            row.num:SetText(tostring(i))
+            row.num:SetTextColor(U.ui.rgba(cur and col.onAccent or col.ink))
+            row.num:SetShown(not done)
+            row.wax:SetShown(cur)
+            for _, s in ipairs(row.ring) do
+                s:SetShown(not cur)
+                s:SetColorTexture(U.ui.rgba(done and col.inkHair or col.inkRule))
             end
-            row.edge:SetShown(i == current)
-            row.glow:SetShown(i == current)
+            for _, t in ipairs(row.tick) do
+                t:SetShown(done and true or false)
+            end
             local where = {}
             if type(step.zone) == "string" then
                 where[#where + 1] = plain(step.zone)
@@ -4306,16 +4342,17 @@ do
                 where[#where + 1] = plain(step.giver)
             end
             row.detail:SetText(table.concat(where, " · "))
+            -- Only where it works: a recorded place on the map you're on.
             local canGo = hasPosition(step) and step.map == here and not done
             row.go:SetEnabled(canGo)
+            row.go:SetShown(canGo)
             row.go:SetScript("OnClick", function()
                 if canGo then
                     setWaypoint(i, step)
                 end
             end)
         end
-        p.footer:SetText(doneCount() .. " of " .. #plan.steps .. " done")
-        p:SetHeight(64 + n * 46)
+        p:SetHeight(math.max(76 + n * 44, U.LAYOUT.VIEW - 4))
     end
 
     local function renderErrandsTab(p)
@@ -4798,44 +4835,115 @@ do
         end
     end
 
-    -- W1: the window's own look (bible ch. 5, the designer's own-look
-    -- prototype): our frames only, chrome from colour textures, 1px light
-    -- borders, and every colour in one STYLE table. No Blizzard templates.
-    -- Builders return their frame (and height) with a Refresh where they
-    -- show a value. (On U, not locals: the main chunk is at Lua's 200-locals
-    -- limit.)
-    U.STYLE = {
-        font = "Fonts\\FRIZQT__.TTF",
-        bg = { 0.086, 0.074, 0.058, 0.97 },
-        bgTop = { 0.125, 0.105, 0.082, 0.97 },
-        rail = { 0.062, 0.053, 0.042, 1 },
-        line = { 1, 1, 1, 0.08 },
-        lineStrong = { 1, 1, 1, 0.14 },
-        hover = { 1, 1, 1, 0.04 },
-        text = { 0.93, 0.89, 0.81, 1 },
-        dim = { 0.93, 0.89, 0.81, 0.55 },
-        faint = { 0.93, 0.89, 0.81, 0.32 },
-        accent = { 0.80, 0.56, 0.31, 1 },
-        accentSoft = { 0.80, 0.56, 0.31, 0.16 },
-        onAccent = { 0.10, 0.07, 0.04, 1 },
-    }
-    U.LAYOUT = { W = W, H = H, RAIL = 148, HEAD = 56, FOOT = 46 }
+    -- W1b: the window wears the desktop app's look (the designer's own-look
+    -- prototype): stone, a stitched hide rail with the red ribbon where you
+    -- are, parchment for the plan, dark cards for options, bronze, and
+    -- Marcellus and Geist. Our frames only, no Blizzard templates. Every
+    -- colour, texture and font is in one STYLE table keyed like a theme
+    -- (themes §3: colors, art, fonts), so a theme can swap it later.
+    -- Builders return their frame with a Refresh where they show a value.
+    -- (On U, not locals: the main chunk is at Lua's 200-locals limit.)
     U.ui = {}
+
+    function U.ui.hex(h, a)
+        return { tonumber(h:sub(2, 3), 16) / 255, tonumber(h:sub(4, 5), 16) / 255,
+            tonumber(h:sub(6, 7), 16) / 255, a or 1 }
+    end
+
+    -- `c` at alpha `a`.
+    function U.ui.tint(c, a)
+        return { c[1], c[2], c[3], a }
+    end
+
+    U.STYLE = {
+        colors = {
+            accent = U.ui.hex("#8e1a16"), -- wax: where you are in the plan
+            onAccent = U.ui.hex("#f1e8da"),
+            ember = U.ui.hex("#ff7a2e"), -- a module that's on
+            border = U.ui.hex("#8a6a3e"), -- bronze: a switch that's on, a slider's fill
+            borderHi = U.ui.hex("#c9a26a"),
+            plate = { 0, 0, 0, 0.45 }, -- a switch that's off, a slider's track
+            text = U.ui.hex("#ddd5c7"),
+            textHi = U.ui.hex("#f1e8da"),
+            dim = U.ui.hex("#9a9183"),
+            faint = U.ui.hex("#6a6358"),
+            railText = U.ui.hex("#cdbfa9"),
+            railMute = U.ui.hex("#8f7d66"),
+            railDim = U.ui.hex("#7d6c58"),
+            ink = U.ui.hex("#3a2616"), -- on paper
+            ink2 = U.ui.hex("#6e5537"),
+            ink3 = U.ui.hex("#9a8162"),
+            inkRule = U.ui.hex("#3a2616", 0.55),
+            inkHair = U.ui.hex("#3a2616", 0.16),
+            margin = U.ui.hex("#aa281e", 0.35),
+            ok = U.ui.hex("#2f6b1e"),
+            line = { 1, 1, 1, 0.07 },
+        },
+        -- Each texture sits on a fill of its own average colour (`under`),
+        -- so the window still reads if the client hasn't found a file.
+        art = {
+            dir = "Interface\\AddOns\\ForeverBuddy\\Media\\",
+            window = "Stone",
+            rail = "Hide",
+            ribbon = "Ribbon",
+            page = "Paper",
+            card = "Card",
+            button = "Bronze",
+            under = {
+                window = U.ui.hex("#1e1d1a"),
+                rail = U.ui.hex("#2f2117"),
+                page = U.ui.hex("#d2c29a"),
+                card = U.ui.hex("#191815"),
+                button = U.ui.hex("#6c522f"),
+            },
+        },
+        fonts = {
+            head = "Interface\\AddOns\\ForeverBuddy\\Media\\Marcellus.ttf",
+            body = "Interface\\AddOns\\ForeverBuddy\\Media\\Geist.ttf",
+            game = "Fonts\\FRIZQT__.TTF",
+        },
+    }
+    -- X is where the content starts (past the inset rail), CONTENT its
+    -- width, VIEW the height between the header and the footer.
+    U.LAYOUT = { W = W, H = H, RAIL = 148, RAILH = H - 16, HEAD = 78, FOOT = 50, X = 176, CONTENT = W - 196 }
+    U.LAYOUT.VIEW = H - U.LAYOUT.HEAD - 6 - U.LAYOUT.FOOT - 8
 
     function U.ui.rgba(c, a)
         return c[1], c[2], c[3], a or c[4]
     end
 
-    function U.ui.fill(parent, c, layer)
-        local t = parent:CreateTexture(nil, layer or "BACKGROUND")
+    function U.ui.fill(parent, c, layer, sub)
+        local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
         t:SetColorTexture(U.ui.rgba(c))
         return t
     end
 
-    -- A 1px border from four strips.
-    function U.ui.border(f, c)
+    -- STYLE.art[key] filling `parent`, on its `under` colour (with texture
+    -- coordinates when given).
+    function U.ui.art(parent, key, layer, l, r, t, b)
+        local A = U.STYLE.art
+        U.ui.fill(parent, A.under[key], layer, -7):SetAllPoints()
+        local x = parent:CreateTexture(nil, layer or "BACKGROUND")
+        x:SetTexture(A.dir .. A[key])
+        if l then
+            x:SetTexCoord(l, r, t, b)
+        end
+        x:SetAllPoints()
+        return x
+    end
+
+    -- A drop shadow behind `f`, offset down and right.
+    function U.ui.shadow(f, c, l, t, r, b)
+        local s = U.ui.fill(f, c, "BACKGROUND", -8)
+        s:SetPoint("TOPLEFT", f, "TOPLEFT", l, t)
+        s:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", r, b)
+        return s
+    end
+
+    -- A 1px border from four strips, returned so they can be recoloured.
+    function U.ui.border(f, c, layer)
         local function strip()
-            return U.ui.fill(f, c or U.STYLE.line, "BORDER")
+            return U.ui.fill(f, c or U.STYLE.colors.line, layer or "BORDER")
         end
         local t, b, l, r = strip(), strip(), strip(), strip()
         t:SetPoint("TOPLEFT", 0, 0)
@@ -4850,101 +4958,130 @@ do
         r:SetPoint("TOPRIGHT", 0, 0)
         r:SetPoint("BOTTOMRIGHT", 0, 0)
         r:SetWidth(1)
+        return { t, b, l, r }
     end
 
-    function U.ui.text(parent, size, c, justify)
+    -- A 1px line across `parent` at `y`, from x1 to x2 (x2 from the right).
+    function U.ui.rule(parent, y, x1, x2, c)
+        local t = U.ui.fill(parent, c or U.STYLE.colors.line, "BORDER")
+        t:SetPoint("TOPLEFT", parent, "TOPLEFT", x1 or 0, y)
+        t:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x2 or 0, y)
+        t:SetHeight(1)
+        return t
+    end
+
+    -- Text in Geist, or Marcellus for a heading (`head`). The game's font
+    -- goes first, so the text still shows if ours isn't found.
+    function U.ui.text(parent, size, c, justify, head)
+        local F = U.STYLE.fonts
         local s = parent:CreateFontString(nil, "OVERLAY")
-        s:SetFont(U.STYLE.font, size, "")
-        s:SetTextColor(U.ui.rgba(c or U.STYLE.text))
+        s:SetFont(F.game, size, "")
+        s:SetFont(head and F.head or F.body, size, "")
+        s:SetTextColor(U.ui.rgba(c or U.STYLE.colors.text))
         s:SetJustifyH(justify or "LEFT")
+        s:SetShadowOffset(0, 0)
         return s
     end
 
-    -- A small bordered button; `filled` is the page's one main action.
+    -- A small square turned 45 degrees.
+    function U.ui.diamond(parent, c, size, layer)
+        local d = parent:CreateTexture(nil, layer or "ARTWORK")
+        d:SetTexture("Interface\\Buttons\\WHITE8X8")
+        d:SetVertexColor(U.ui.rgba(c))
+        d:SetSize(size, size)
+        pcall(d.SetRotation, d, math.rad(45))
+        return d
+    end
+
+    -- A button: `filled` is the page's one main action, in bronze; the
+    -- others are quiet, a hairline on stone.
     function U.ui.button(parent, label, w, filled)
+        local col = U.STYLE.colors
         local b = CreateFrame("Button", nil, parent)
-        b:SetSize(w, 22)
         if filled then
-            U.ui.fill(b, U.STYLE.accent):SetAllPoints()
+            b:SetSize(w, 28)
+            U.ui.art(b, "button")
+            b.label = U.ui.text(b, 12, col.textHi, "CENTER")
         else
-            U.ui.fill(b, U.STYLE.hover):SetAllPoints()
-            U.ui.border(b, U.STYLE.lineStrong)
+            b:SetSize(w, 26)
+            U.ui.fill(b, { 0, 0, 0, 0.25 }):SetAllPoints()
+            U.ui.border(b, U.ui.tint(col.borderHi, 0.28))
+            b.label = U.ui.text(b, 11, col.text, "CENTER")
         end
-        b.label = U.ui.text(b, 11, filled and U.STYLE.onAccent or U.STYLE.text, "CENTER")
         b.label:SetPoint("CENTER", b, "CENTER", 0, 0)
         b.label:SetText(label)
         return b
     end
 
     -- A switch: a CheckButton (so the client flips it on click) drawn as a
-    -- 26x14 track with a knob. `label` and `help` sit beside it.
+    -- 28x14 track with a knob, bronze when on. `label` and `help` sit
+    -- beside it.
     function U.ui.switch(parent, label, help)
+        local col = U.STYLE.colors
         local f = CreateFrame("CheckButton", nil, parent)
-        f:SetSize(26, 14)
-        f.track = U.ui.fill(f, U.STYLE.lineStrong, "ARTWORK")
+        f:SetSize(28, 14)
+        f.track = U.ui.fill(f, col.plate, "ARTWORK")
         f.track:SetAllPoints()
-        f.knob = U.ui.fill(f, U.STYLE.text, "OVERLAY")
+        f.knob = U.ui.fill(f, col.dim, "OVERLAY")
         f.knob:SetSize(10, 10)
         if label then
-            f.label = U.ui.text(f, 12, U.STYLE.text)
-            f.label:SetPoint("LEFT", f, "RIGHT", 10, 0)
+            f.label = U.ui.text(f, 12, col.textHi)
+            f.label:SetPoint("LEFT", f, "RIGHT", 12, 0)
             f.label:SetText(label)
         end
         if help then
-            f.sub = U.ui.text(f, 10, U.STYLE.dim)
-            f.sub:SetPoint("TOPLEFT", f.label, "BOTTOMLEFT", 0, -4)
-            f.sub:SetWidth(U.LAYOUT.W - U.LAYOUT.RAIL - 110)
+            f.sub = U.ui.text(f, 11, col.dim)
+            f.sub:SetPoint("TOPLEFT", f.label, "BOTTOMLEFT", 0, -5)
+            f.sub:SetWidth(U.LAYOUT.CONTENT - 104)
             f.sub:SetText(help)
         end
         function f.Refresh()
             local on = f:GetChecked() and true or false
-            f.track:SetColorTexture(U.ui.rgba(on and U.STYLE.accent or U.STYLE.lineStrong))
-            f.knob:SetColorTexture(U.ui.rgba(on and U.STYLE.onAccent or U.STYLE.text))
+            f.track:SetColorTexture(U.ui.rgba(on and col.border or col.plate))
+            f.knob:SetColorTexture(U.ui.rgba(on and col.textHi or col.dim))
             f.knob:ClearAllPoints()
-            f.knob:SetPoint("LEFT", f, "LEFT", on and 14 or 2, 0)
+            f.knob:SetPoint("LEFT", f, "LEFT", on and 16 or 2, 0)
         end
         return f
     end
 
-    -- A number option (P4c): a thin track with an accent fill and a thumb,
-    -- its label above and its value in a box beside it ("40%"). Dragging
-    -- sets it; nothing changes in combat (the slider goes back).
+    -- A number option (P4c): a dark track with a bronze fill and a bronze
+    -- diamond for the thumb (not Blizzard's knob), its label above and its
+    -- value in a box beside it ("40%"). Dragging sets it; nothing changes
+    -- in combat (the slider goes back).
     function U.ui.slider(parent, o)
-        local d = o.decl
+        local col, d = U.STYLE.colors, o.decl
+        local wide = U.LAYOUT.CONTENT - 130
         local s = CreateFrame("Slider", nil, parent)
         pcall(s.SetOrientation, s, "HORIZONTAL")
-        s:SetSize(U.LAYOUT.W - U.LAYOUT.RAIL - 150, 14)
+        s:SetSize(wide, 14)
         s:SetMinMaxValues(d.min, d.max)
         s:SetValueStep(d.step or 0.05)
         s:SetObeyStepOnDrag(true)
-        s.track = U.ui.fill(s, U.STYLE.lineStrong, "ARTWORK")
+        s.track = U.ui.fill(s, col.plate, "ARTWORK")
         s.track:SetPoint("LEFT", s, "LEFT", 0, 0)
         s.track:SetPoint("RIGHT", s, "RIGHT", 0, 0)
-        s.track:SetHeight(3)
-        s.fill = U.ui.fill(s, U.STYLE.accent, "OVERLAY")
+        s.track:SetHeight(4)
+        s.fill = U.ui.fill(s, col.border, "OVERLAY")
         s.fill:SetPoint("LEFT", s.track, "LEFT", 0, 0)
-        s.fill:SetHeight(3)
-        -- The thumb: a plain bronze diamond (our accent, turned), not
-        -- Blizzard's knob.
-        s.thumb = U.ui.fill(s, U.STYLE.accent, "OVERLAY")
-        s.thumb:SetSize(10, 10)
-        pcall(s.thumb.SetRotation, s.thumb, math.rad(45))
+        s.fill:SetHeight(4)
+        s.thumb = U.ui.diamond(s, col.borderHi, 10, "OVERLAY")
         s:SetThumbTexture(s.thumb)
         s.slider, s.option = true, o
-        s.label = U.ui.text(s, 11, U.STYLE.dim)
+        s.label = U.ui.text(s, 11, col.dim)
         s.label:SetPoint("BOTTOMLEFT", s, "TOPLEFT", 0, 6)
         s.label:SetText(o.label)
         local box = CreateFrame("Frame", nil, s)
-        box:SetSize(48, 22)
+        box:SetSize(50, 24)
         box:SetPoint("LEFT", s, "RIGHT", 12, 0)
-        U.ui.fill(box, U.STYLE.hover):SetAllPoints()
-        U.ui.border(box, U.STYLE.lineStrong)
-        s.value = U.ui.text(box, 11, U.STYLE.text, "CENTER")
+        U.ui.fill(box, { 0, 0, 0, 0.35 }):SetAllPoints()
+        U.ui.border(box, U.ui.tint(col.borderHi, 0.28))
+        s.value = U.ui.text(box, 12, col.textHi, "CENTER")
         s.value:SetPoint("CENTER", box, "CENTER", 0, 0)
         s:SetScript("OnValueChanged", function(self, v, byUser)
             v = math.floor(v * 100 + 0.5) / 100
             self.value:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
-            local width = (U.LAYOUT.W - U.LAYOUT.RAIL - 150) * (v - d.min) / (d.max - d.min)
+            local width = wide * (v - d.min) / (d.max - d.min)
             self.fill:SetWidth(math.max(width, 1))
             if byUser then
                 if not read("InCombatLockdown") and not pcall(o.set, v) then
@@ -4968,7 +5105,7 @@ do
             cb = U.ui.switch(parent, o.label, o.description)
             cb.option = o
             -- A help line long enough to wrap takes a second line.
-            cb.height = #(o.description or "") > 62 and 60 or 46
+            cb.height = #(o.description or "") > 64 and 62 or 46
             cb:SetScript("OnClick", function(b)
                 -- Nothing changes in combat: the switch goes back.
                 if not read("InCombatLockdown") and not pcall(o.set, b:GetChecked() and true or false) then
@@ -4982,17 +5119,52 @@ do
         return cb
     end
 
+    -- A dark card with a strip of hide for its header, like the desktop's
+    -- side panels: a group of options.
+    function U.ui.card(parent, title)
+        local col = U.STYLE.colors
+        local f = CreateFrame("Frame", nil, parent)
+        f:SetHeight(46)
+        U.ui.shadow(f, { 0, 0, 0, 0.5 }, 1, -2, 2, -3)
+        U.ui.art(f, "card")
+        local strip = f:CreateTexture(nil, "BORDER")
+        strip:SetTexture(U.STYLE.art.dir .. U.STYLE.art.rail)
+        strip:SetTexCoord(0.05, 0.5, 0.3, 0.36)
+        strip:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        strip:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+        strip:SetHeight(32)
+        U.ui.rule(f, -32, 0, 0, { 0, 0, 0, 0.5 })
+        U.ui.rule(f, -33, 0, 0, U.ui.tint(col.borderHi, 0.12))
+        U.ui.border(f, { 0, 0, 0, 0.55 }, "ARTWORK")
+        f.title = U.ui.text(f, 13, col.textHi)
+        f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -10)
+        f.title:SetText(title)
+        return f
+    end
+
     -- Shows each row's value, hides the ones whose parent is off, and lays
-    -- the rest out top to bottom so a hidden one leaves no gap. `root` is
-    -- the depth that isn't indented (a module page's options hang off its
-    -- switch, one level down).
+    -- the rest out top to bottom in their cards so a hidden one leaves no
+    -- gap; a card with nothing showing goes too. `root` is the depth that
+    -- isn't indented (a module page's options hang off its switch, one
+    -- level down).
     function U.ui.layout(page)
-        local y = -14
+        local y, card, cy, any = 0, nil, 0, false
+        local function finish()
+            if card then
+                card:SetShown(any)
+                if any then
+                    card:SetHeight(-cy + 8)
+                    y = y + cy - 8 - 14
+                end
+            end
+        end
         for _, item in ipairs(page.items) do
-            if item.head then
-                item.head:ClearAllPoints()
-                item.head:SetPoint("TOPLEFT", page, "TOPLEFT", 20, y - 6)
-                y = y - 30
+            if item.card then
+                finish()
+                card, cy, any = item.card, -46, false
+                card:ClearAllPoints()
+                card:SetPoint("TOPLEFT", page, "TOPLEFT", 0, y)
+                card:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, y)
             else
                 local cb, o = item.cb, item.cb.option
                 if cb.slider then
@@ -5004,24 +5176,27 @@ do
                 local shown = OPTIONS.shows(o)
                 cb:SetShown(shown)
                 if shown then
-                    local x = 20 + 36 * math.max(OPTIONS.depth(o) - (page.root or 0), 0)
+                    any = true
+                    local x = 14 + 36 * math.max(OPTIONS.depth(o) - (page.root or 0), 0)
                     cb:ClearAllPoints()
-                    cb:SetPoint("TOPLEFT", page, "TOPLEFT", x, y - (cb.slider and 22 or 2))
-                    y = y - cb.height
+                    cb:SetPoint("TOPLEFT", card, "TOPLEFT", x, cy - (cb.slider and 22 or 2))
+                    cy = cy - cb.height
                 end
             end
         end
-        page:SetHeight(-y + 10)
+        finish()
+        page:SetHeight(-y + 4)
     end
 
     -- A scrolling page in the content area, scrolled by the mouse wheel.
+    -- (3px narrower than the area, for the shadows of what's on it.)
     function U.ui.page(key)
         local L = U.LAYOUT
         local scroll = CreateFrame("ScrollFrame", nil, win)
-        scroll:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 2, -L.HEAD)
-        scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, L.FOOT + 1)
+        scroll:SetPoint("TOPLEFT", win, "TOPLEFT", L.X, -L.HEAD - 6)
+        scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -20, L.FOOT + 8)
         local p = CreateFrame("Frame", nil, scroll)
-        p:SetSize(L.W - L.RAIL - 4, 64)
+        p:SetSize(L.CONTENT - 3, 64)
         scroll:SetScrollChild(p)
         scroll:EnableMouseWheel(true)
         scroll:SetScript("OnMouseWheel", function(sf, delta)
@@ -5037,45 +5212,80 @@ do
 
     -- Tonight's pages: Plan, Lists, Errands and Cleanup, drawn by RENDER.
     local function pane(i)
+        local col = U.STYLE.colors
         local p = U.ui.page(i)
-        p.top = U.ui.text(p, 11, U.STYLE.dim)
-        p.top:SetPoint("TOPLEFT", 20, -12)
-        p.meta = U.ui.text(p, 10, U.STYLE.faint, "RIGHT")
-        p.meta:SetPoint("TOPRIGHT", -20, -12)
-        p.footer = U.ui.text(p, 10, U.STYLE.dim)
-        p.footer:SetPoint("BOTTOMLEFT", 20, 8)
-        p.footer:SetWidth(U.LAYOUT.W - U.LAYOUT.RAIL - 44)
+        p.top = U.ui.text(p, 11, col.dim)
+        p.top:SetPoint("TOPLEFT", 12, -6)
+        p.meta = U.ui.text(p, 10, col.faint, "RIGHT")
+        p.meta:SetPoint("TOPRIGHT", -12, -6)
+        p.footer = U.ui.text(p, 11, col.dim)
+        p.footer:SetPoint("BOTTOMLEFT", 12, 8)
+        p.footer:SetWidth(U.LAYOUT.CONTENT - 24)
         panes[i] = p
+        return p
+    end
+
+    -- The Plan page is a sheet of parchment with a red margin line: the
+    -- plan's place and how far along it is at the top, then its steps.
+    function U.ui.planPage()
+        local col = U.STYLE.colors
+        local p = pane(1)
+        U.ui.shadow(p, { 0, 0, 0, 0.55 }, 2, -3, 3, -4)
+        U.ui.art(p, "page")
+        U.ui.border(p, U.ui.tint(col.ink, 0.35))
+        local margin = U.ui.fill(p, col.margin, "BORDER")
+        margin:SetPoint("TOPLEFT", p, "TOPLEFT", 30, -1)
+        margin:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 30, 1)
+        margin:SetWidth(1)
+        p.head = U.ui.text(p, 16, col.ink, nil, true)
+        p.head:SetPoint("TOPLEFT", p, "TOPLEFT", 44, -14)
+        p.count = U.ui.text(p, 11, col.ink3, "RIGHT")
+        p.count:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -17)
+        U.ui.rule(p, -40, 30, -12, col.inkRule)
+        p.track = U.ui.fill(p, col.inkHair, "ARTWORK")
+        p.track:SetPoint("TOPLEFT", p, "TOPLEFT", 44, -50)
+        p.track:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -50)
+        p.track:SetHeight(3)
+        p.done = U.ui.fill(p, col.accent, "OVERLAY")
+        p.done:SetPoint("TOPLEFT", p.track, "TOPLEFT", 0, 0)
+        p.done:SetHeight(3)
+        -- With no plan, the line that says so, in ink.
+        p.footer:ClearAllPoints()
+        p.footer:SetPoint("TOPLEFT", p, "TOPLEFT", 44, -60)
+        p.footer:SetWidth(U.LAYOUT.CONTENT - 64)
+        p.footer:SetTextColor(U.ui.rgba(col.ink2))
+        return p
     end
 
     -- A module's page (built the first time it opens): its switch at the
-    -- top right, then its options, with sliders under their parent.
+    -- top right, then its options on a card, sliders under their parent.
     function U.ui.modulePage(id)
         local p = U.ui.page(id)
         p.root = 1
         p.checks = {}
+        local card = U.ui.card(p, "Options")
+        p.items[1] = { card = card }
         for _, o in ipairs(OPTIONS) do
             if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch then
-                p.items[#p.items + 1] = { cb = U.ui.optionRow(p, o, p.checks) }
+                p.items[#p.items + 1] = { cb = U.ui.optionRow(card, o, p.checks) }
             end
         end
         return p
     end
 
-    -- The Settings page: what isn't a module, under its section headings.
+    -- The Settings page: what isn't a module, a card for each section.
     function U.ui.settingsPage()
         local p = U.ui.page(5)
         p.checks = {}
-        local section
+        local section, card
         for _, o in ipairs(OPTIONS) do
             if o.key and not U.ui.inModule(o) then
                 if o.decl.section ~= section then
                     section = o.decl.section
-                    local h = U.ui.text(p, 10, U.STYLE.faint)
-                    h:SetText(section)
-                    p.items[#p.items + 1] = { head = h }
+                    card = U.ui.card(p, section)
+                    p.items[#p.items + 1] = { card = card }
                 end
-                p.items[#p.items + 1] = { cb = U.ui.optionRow(p, o, p.checks) }
+                p.items[#p.items + 1] = { cb = U.ui.optionRow(card, o, p.checks) }
             end
         end
         panes[5] = p
@@ -5103,21 +5313,21 @@ do
     -- to skin it, R3a. Nothing in it is a Blizzard template to repaint.)
 
     -- The rail: Tonight's pages with their counts, then the modules with a
-    -- dot for on or off, and Settings at the foot. Each is a Button; the
-    -- Tonight ones and Settings are win.Tabs[1..5], the modules win.mods[id].
+    -- diamond, ember when on, and Settings at the foot. Each is a Button;
+    -- the Tonight ones and Settings are win.Tabs[1..5], the modules
+    -- win.mods[id]. Where you are has the red ribbon, past the rail's edge.
     function U.ui.railButton(name, label, y, key)
         local L = U.LAYOUT
-        local b = CreateFrame("Button", name, win)
+        local b = CreateFrame("Button", name, win.rail)
         b:SetSize(L.RAIL, 28)
-        b:SetPoint("TOPLEFT", win, "TOPLEFT", 1, y)
-        b.here = U.ui.fill(b, U.STYLE.hover)
-        b.here:SetAllPoints()
-        b.bar = U.ui.fill(b, U.STYLE.accent, "ARTWORK")
-        b.bar:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
-        b.bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-        b.bar:SetWidth(2)
-        b.label = U.ui.text(b, 12, U.STYLE.dim)
-        b.label:SetPoint("LEFT", b, "LEFT", 16, 0)
+        b:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 0, y)
+        b.here = b:CreateTexture(nil, "ARTWORK")
+        b.here:SetTexture(U.STYLE.art.dir .. U.STYLE.art.ribbon)
+        b.here:SetTexCoord(0.3, 1, 0, 1)
+        b.here:SetPoint("TOPLEFT", b, "TOPLEFT", -4, 0)
+        b.here:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 8, 0)
+        b.label = U.ui.text(b, 12, U.STYLE.colors.railText)
+        b.label:SetPoint("LEFT", b, "LEFT", 18, 0)
         b.label:SetText(label)
         b.key = key
         b:SetScript("OnClick", function()
@@ -5144,56 +5354,61 @@ do
             win:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
         end
         win.title = "Forever Buddy"
-        local bg = U.ui.fill(win, { 1, 1, 1, 1 })
-        bg:SetAllPoints()
-        if type(CreateColor) == "function" then
-            pcall(bg.SetGradient, bg, "VERTICAL", CreateColor(U.ui.rgba(U.STYLE.bg)),
-                CreateColor(U.ui.rgba(U.STYLE.bgTop)))
-        end
-        U.ui.border(win, U.STYLE.lineStrong)
-        local rail = U.ui.fill(win, U.STYLE.rail)
-        rail:SetPoint("TOPLEFT", win, "TOPLEFT", 1, -1)
-        rail:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 1)
-        rail:SetWidth(L.RAIL)
-        local railLine = U.ui.fill(win, U.STYLE.line, "BORDER")
-        railLine:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 1, -1)
-        railLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 1, 1)
-        railLine:SetWidth(1)
-        local footLine = U.ui.fill(win, U.STYLE.line, "BORDER")
-        footLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 2, L.FOOT)
-        footLine:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, L.FOOT)
-        footLine:SetHeight(1)
+        local col = U.STYLE.colors
+        -- Stone, a dark edge with a faint bronze one inside it, and a shadow.
+        U.ui.shadow(win, { 0, 0, 0, 0.45 }, -3, 2, 4, -6)
+        U.ui.art(win, "window")
+        U.ui.border(win, { 0, 0, 0, 0.8 })
+        local inner = CreateFrame("Frame", nil, win)
+        inner:SetPoint("TOPLEFT", win, "TOPLEFT", 1, -1)
+        inner:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, 1)
+        U.ui.border(inner, U.ui.tint(col.borderHi, 0.14))
+
+        -- The rail: stitched hide, inset like the desktop's sidebar.
+        win.rail = CreateFrame("Frame", nil, win)
+        win.rail:SetSize(L.RAIL, L.RAILH)
+        win.rail:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -8)
+        U.ui.art(win.rail, "rail", nil, 0, L.RAIL / 256, 0, L.RAILH / 512)
+        U.ui.border(win.rail, { 0, 0, 0, 0.55 })
 
         -- Who: our shield, the name and this character.
-        local icon = win:CreateTexture(nil, "ARTWORK")
+        local icon = win.rail:CreateTexture(nil, "ARTWORK")
         icon:SetTexture(ICON)
-        icon:SetSize(26, 26)
-        icon:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -13)
-        local name = U.ui.text(win, 13, U.STYLE.text)
-        name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 8, -1)
+        icon:SetSize(28, 28)
+        icon:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 14, -16)
+        local name = U.ui.text(win.rail, 14, col.textHi, nil, true)
+        name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 7, -2)
         name:SetText("Forever Buddy")
-        win.who = U.ui.text(win, 10, U.STYLE.dim)
+        win.who = U.ui.text(win.rail, 10, col.railMute)
         win.who:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -3)
 
-        -- The page's title and its line (for Tonight's pages, how fresh).
-        win.heading = U.ui.text(win, 17, U.STYLE.text)
-        win.heading:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 22, -16)
-        win.fresh = U.ui.text(win, 10, U.STYLE.dim)
-        win.fresh:SetPoint("TOPLEFT", win.heading, "BOTTOMLEFT", 0, -4)
+        -- The page's title and its line (for Tonight's pages, how fresh),
+        -- over a groove.
+        win.heading = U.ui.text(win, 24, col.textHi, nil, true)
+        win.heading:SetPoint("TOPLEFT", win, "TOPLEFT", L.X, -20)
+        win.fresh = U.ui.text(win, 11, col.dim)
+        win.fresh:SetPoint("TOPLEFT", win.heading, "BOTTOMLEFT", 0, -6)
+        U.ui.rule(win, -L.HEAD + 8, L.X, -20, { 0, 0, 0, 0.45 })
+        U.ui.rule(win, -L.HEAD + 7, L.X, -20, col.line)
 
         -- Close (Esc too), and moved by the header; where it was left is kept.
         win.CloseButton = CreateFrame("Button", nil, win)
         win.CloseButton:SetSize(24, 24)
-        win.CloseButton:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -14)
-        local x = U.ui.text(win.CloseButton, 16, U.STYLE.dim, "CENTER")
-        x:SetPoint("CENTER", win.CloseButton, "CENTER", 0, 0)
-        x:SetText("×")
+        win.CloseButton:SetPoint("TOPRIGHT", win, "TOPRIGHT", -14, -18)
+        for _, deg in ipairs({ 45, -45 }) do
+            local x = win.CloseButton:CreateTexture(nil, "ARTWORK")
+            x:SetTexture("Interface\\Buttons\\WHITE8X8")
+            x:SetVertexColor(U.ui.rgba(col.dim))
+            x:SetSize(14, 1.5)
+            x:SetPoint("CENTER", win.CloseButton, "CENTER", 0, 0)
+            pcall(x.SetRotation, x, math.rad(deg))
+        end
         win.CloseButton:SetScript("OnClick", function()
             win:Hide()
         end)
         local grip = CreateFrame("Frame", nil, win)
         grip:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
-        grip:SetPoint("TOPRIGHT", win, "TOPRIGHT", -40, 0)
+        grip:SetPoint("TOPRIGHT", win, "TOPRIGHT", -100, 0)
         grip:SetHeight(L.HEAD - 8)
         grip:EnableMouse(true)
         grip:RegisterForDrag("LeftButton")
@@ -5213,18 +5428,18 @@ do
 
         -- The rail.
         win.Tabs, win.mods = {}, {}
-        local y = -L.HEAD - 4
+        local y = -58
         local function group(label)
-            local g = U.ui.text(win, 10, U.STYLE.faint)
-            g:SetPoint("TOPLEFT", win, "TOPLEFT", 16, y - 12)
+            local g = U.ui.text(win.rail, 10, col.railDim)
+            g:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 16, y - 12)
             g:SetText(label)
             y = y - 30
         end
         group("Tonight")
         for i = 1, 4 do
             local b = U.ui.railButton("ForeverBuddyWindowTab" .. i, TABS[i], y, i)
-            b.count = U.ui.text(b, 10, U.STYLE.faint, "RIGHT")
-            b.count:SetPoint("RIGHT", b, "RIGHT", -14, 0)
+            b.count = U.ui.text(b, 11, col.railMute, "RIGHT")
+            b.count:SetPoint("RIGHT", b, "RIGHT", -16, 0)
             win.Tabs[i] = b
             y = y - 28
         end
@@ -5232,22 +5447,24 @@ do
         for _, m in ipairs(U.mods.declared.modules or {}) do
             if U.mods.byId[m.id] then
                 local b = U.ui.railButton("ForeverBuddyWindowModule_" .. m.id, m.label, y, m.id)
-                b.dot = U.ui.fill(b, U.STYLE.accent, "ARTWORK")
-                b.dot:SetSize(6, 6)
-                b.dot:SetPoint("RIGHT", b, "RIGHT", -16, 0)
+                b.dot = U.ui.diamond(b, col.ember, 6, "OVERLAY")
+                b.dot:SetPoint("RIGHT", b, "RIGHT", -18, 0)
                 b.module = m
                 win.mods[m.id] = b
                 y = y - 28
             end
         end
+        U.ui.rule(win.rail, -(L.RAILH - 46), 10, -10, { 0, 0, 0, 0.35 })
+        U.ui.rule(win.rail, -(L.RAILH - 45), 10, -10, U.ui.tint(col.railText, 0.10))
         local settings = U.ui.railButton("ForeverBuddyWindowTab5", TABS[5], 0, 5)
         settings:ClearAllPoints()
-        settings:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 10)
+        settings:SetPoint("BOTTOMLEFT", win.rail, "BOTTOMLEFT", 0, 9)
         win.Tabs[5] = settings
 
         -- The footer: the plan tracker's switch on Plan, and Sync.
         win.tracker = U.ui.switch(win, "Show the plan tracker on screen")
-        win.tracker:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 22, 16)
+        win.tracker:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.X, 19)
+        win.tracker.label:SetTextColor(U.ui.rgba(col.text))
         win.tracker:SetScript("OnClick", function(b)
             if not read("InCombatLockdown") then
                 U.setTracker(b:GetChecked() and true or false)
@@ -5256,10 +5473,10 @@ do
         end)
         -- B4: Sync reloads, ReloadUI() first thing in the click. The typed
         -- way stays as the line in its place once the game has refused.
-        win.sync = U.ui.text(win, 10, U.STYLE.dim, "RIGHT")
-        win.sync:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -16, 18)
-        win.syncButton = U.ui.button(win, "Sync", 64, true)
-        win.syncButton:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -14, 12)
+        win.sync = U.ui.text(win, 11, col.dim, "RIGHT")
+        win.sync:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -20, 21)
+        win.syncButton = U.ui.button(win, "Sync", 84, true)
+        win.syncButton:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -20, 13)
         win.syncButton:SetScript("OnClick", function()
             read(ReloadUI)
             U.sync.asked()
@@ -5267,7 +5484,7 @@ do
 
         -- A module's page has its switch at the top right.
         win.modSwitch = U.ui.switch(win)
-        win.modSwitch:SetPoint("TOPRIGHT", win, "TOPRIGHT", -52, -22)
+        win.modSwitch:SetPoint("TOPRIGHT", win, "TOPRIGHT", -54, -24)
         win.modSwitch:SetScript("OnClick", function(b)
             local id = win.current
             if U.mods.byId[id] then
@@ -5278,7 +5495,8 @@ do
             end
         end)
 
-        for i = 1, 4 do
+        U.ui.planPage()
+        for i = 2, 4 do
             pane(i)
         end
         U.ui.settingsPage()
@@ -5299,20 +5517,22 @@ do
     end
 
     -- The rail as it is now: where you are, Tonight's counts, the modules'
-    -- dots.
+    -- diamonds.
     function U.ui.rail()
+        local col = U.STYLE.colors
         for _, b in pairs(win.Tabs) do
             local here = b.key == win.current
             b.here:SetShown(here)
-            b.bar:SetShown(here)
-            b.label:SetTextColor(U.ui.rgba(here and U.STYLE.text or U.STYLE.dim))
+            b.label:SetTextColor(U.ui.rgba(here and col.textHi or col.railText))
+            if b.count then
+                b.count:SetTextColor(U.ui.rgba(here and col.textHi or col.railMute))
+            end
         end
         for id, b in pairs(win.mods) do
             local here, on = id == win.current, U.mods.on(id)
             b.here:SetShown(here)
-            b.bar:SetShown(here)
-            b.label:SetTextColor(U.ui.rgba(here and U.STYLE.text or on and U.STYLE.dim or U.STYLE.faint))
-            b.dot:SetColorTexture(U.ui.rgba(on and U.STYLE.accent or U.STYLE.lineStrong))
+            b.label:SetTextColor(U.ui.rgba(here and col.textHi or on and col.railText or col.railDim))
+            b.dot:SetVertexColor(U.ui.rgba(on and col.ember or col.railDim))
         end
         local counts = {
             plan and math.max(#plan.steps - doneCount(), 0) or 0,
