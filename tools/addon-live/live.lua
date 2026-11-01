@@ -226,7 +226,9 @@ local function find(target)
     error("nothing to click called " .. target .. " (`buttons` lists them)", 0)
 end
 
--- The window's Settings tab, and the box for a setting by id or label.
+-- The switch for a setting by id or label, on the window's Settings page or
+-- (W1) a module's page, which is opened to find it. "<module>.enabled" is
+-- that page's own switch at the top right.
 local function settingBox(key)
     local sim = S.sim
     local w = sim:Get("ForeverBuddyWindow")
@@ -238,16 +240,25 @@ local function settingBox(key)
     if not (w and w.Tabs and w.Tabs[5]) then
         error("no Forever Buddy window", 0)
     end
-    sim:Click(w.Tabs[5])
-    sim:Advance(0.2)
-    local checks = w.panes and w.panes[5] and w.panes[5].checks or {}
+    local rail = { w.Tabs[5] }
+    for _, b in pairs(w.mods or {}) do
+        rail[#rail + 1] = b
+    end
     local names = {}
-    for _, cb in ipairs(checks) do
-        local o = cb.option or {}
-        if o.key == key or o.label == key then
-            return cb
+    for _, b in ipairs(rail) do
+        sim:Click(b)
+        sim:Advance(0.2)
+        if type(b.key) == "string" and (key == b.key .. ".enabled" or key == b.key) then
+            return w.modSwitch
         end
-        names[#names + 1] = tostring(o.key)
+        local page = w.pages and w.pages[b.key]
+        for _, cb in ipairs(page and page.checks or {}) do
+            local o = cb.option or {}
+            if o.key == key or o.label == key then
+                return cb
+            end
+            names[#names + 1] = tostring(o.key)
+        end
     end
     error("no setting " .. key .. " (there are: " .. table.concat(names, ", ") .. ")", 0)
 end
@@ -555,7 +566,7 @@ function COMMANDS.set(rest)
         S.sim:Click(cb)
         S.sim:Advance(0.2)
     end
-    return ("%s is %s"):format(cb.option.key, (cb:GetChecked() and true or false) and "on" or "off")
+    return ("%s is %s"):format(cb.option and cb.option.key or key, (cb:GetChecked() and true or false) and "on" or "off")
 end
 
 function COMMANDS.bags()

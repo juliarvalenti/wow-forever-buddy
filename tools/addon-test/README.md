@@ -139,6 +139,17 @@ Every call into the addon is counted in Lua VM instructions, with a debug hook. 
 
 Any scenario over budget fails. The run ends with the eight costliest handlers and the costliest frame, which also go on the CI job's summary page. The counts depend on the interpreter: Lua 5.1's run about 1.6 times LuaJIT's, and the budgets fit both. Under `--coverage` nothing is counted (coverage's hook is set), so CI runs the harness a second time without it.
 
+## The window and its modules (W1)
+
+The window is our own frames (no Blizzard templates), with a rail down the left. Scenarios reach its parts by name:
+
+- **Tonight:** `w.Tabs[1..4]` (Plan, Lists, Errands, Cleanup) and their pages `w.panes[1..4]`.
+- **Settings:** `w.Tabs[5]` opens the Settings page, `w.panes[5]`, with what isn't a module.
+- **Modules:** `w.mods[id]` is a module's rail button; clicking it opens `w.pages[id]`, built the first time.
+  - Each page lists its switches and sliders in `.checks`; `w.modSwitch` is the module's own on/off at the top right.
+  - The `setting(c, label)` helper in `run.lua` finds a switch by its label on any page.
+- **Contract:** the `modules` scenario checks it. Each module's switch turns all of it off at once, with no /reload, and back on as it was.
+
 ## Layout snapshots
 
 `window_layout` opens the Forever Buddy window on each tab with the test slots and writes its frame tree to `snapshots/window.txt`. Each line holds a widget's kind, name, anchors, size, text and whether it's hidden.

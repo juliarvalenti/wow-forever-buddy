@@ -892,8 +892,10 @@ scenario("plan", function()
     local tab = w.panes[1]
     eq(tab.scroll.shown, true, "on the Plan tab")
     eq(tab.rows[1].label.text, "1. Take Wanted: Hogger", "the steps")
-    eq(table.concat(tab.rows[1].label.color, ","), "1,0.82,0", "the current step is gold")
+    eq(table.concat(tab.rows[1].label.color, ","), "0.8,0.56,0.31,1", "the current step in the accent (W1)")
     eq(tab.rows[1].edge.shown, true, "with its edge")
+    eq(tab.rows[1].glow.shown, true, "on a soft accent")
+    eq(tab.rows[2].glow.shown, false, "the next one isn't")
     eq(tab.rows[2].label.text, "2. Find ||Hitem:1||h[Hogger]||h by the river", "escaped here too")
     eq(tab.rows[3].go.enabled, false, "no recorded position")
     eq(tab.footer.text, "0 of 4 done", "progress")
@@ -926,7 +928,7 @@ scenario("plan", function()
     -- The game says the quest was taken: step 1 ticks and its waypoint goes.
     c.accept(176, { name = "Marshal Dughan" })
     eq(table.concat(row(1).label.color, ","), "0.5,0.5,0.5", "done steps are grey")
-    eq(table.concat(tab.rows[1].label.color, ","), "0.5,0.5,0.5", "in the window too")
+    eq(table.concat(tab.rows[1].label.color, ","), "0.93,0.89,0.81,0.32", "in the window too, faint (W1)")
     eq(tab.footer.text, "1 of 4 done", "the window follows")
     eq(table.concat(row(2).label.color, ","), "1,0.82,0", "next step")
     eq(c.waypoints[2], "cleared", "the ticked step's waypoint is cleared")
@@ -973,14 +975,21 @@ scenario("plan", function()
     return text
 end)
 
--- U1: a checkbox on the window's Settings tab, by its label.
+-- U1: a switch in the window, by its label: on the Settings page, or (W1)
+-- on a module's page, which is opened to find it.
 local function setting(c, label)
     c.slash("/fb")
     local w = c.global("ForeverBuddyWindow")
-    c.click(w.Tabs[5])
-    for _, cb in ipairs(w.panes[5].checks) do
-        if cb.label.text == label then
-            return cb
+    local pages = { w.Tabs[5] }
+    for _, b in pairs(w.mods) do
+        pages[#pages + 1] = b
+    end
+    for _, b in ipairs(pages) do
+        c.click(b)
+        for _, cb in ipairs(w.pages[b.key].checks) do
+            if cb.label.text == label then
+                return cb
+            end
         end
     end
     error("no setting " .. label)
@@ -2242,36 +2251,55 @@ scenario("window", function()
     c.global("ForeverBuddy_OnAddonCompartmentEnter")(nil, b)
     eq(#c.global("GameTooltip").lines, 2, "name and freshness only")
 
-    -- Settings: every toggle, and the same ones in Esc › Options › AddOns.
+    -- W1: the rail. Tonight's pages, the modules in Settings.lua's order with
+    -- a dot each, and Settings at the foot; the Settings page holds what
+    -- isn't a module. And the same options in Esc › Options › AddOns.
     c.slash("/fb")
     c.click(w.Tabs[5])
+    local rail = {}
+    for i = 1, 4 do
+        rail[#rail + 1] = w.Tabs[i].label.text
+    end
+    for _, id in ipairs({ "bags", "map", "quest", "tooltips", "coach" }) do
+        rail[#rail + 1] = w.mods[id].label.text
+    end
+    eq(table.concat(rail, ", "), "Plan, Lists, Errands, Cleanup, Bags, Map, Quests, Tooltips, Coach", "the rail")
+    eq(w.heading.text, "Settings", "the Settings page")
     local labels = {}
     for _, cb in ipairs(w.panes[5].checks) do
         labels[#labels + 1] = cb.label.text .. (cb.checked and " ✓" or "")
     end
-    eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
-        .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
-        .. "Your alts on item tooltips ✓, Coordinates on the world map, Coordinates under the minimap, "
-        .. "Fade the world map while you move, How much of the map shows while moving, "
-        .. "Quest levels in the quest log, Mark quests that are new in Forever, Quest progress on item tooltips, "
-        .. "See-through quest tracker, How much of the tracker shows, "
-        .. "Junk in your bags, Item level on gear, "
-        .. "Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
-        .. "Minimap button ✓, Record my next session", "every toggle")
-    -- U1d: a dependent option isn't shown until its parent is on, and the
-    -- rows below move up rather than leave a gap.
-    local checks = w.panes[5].checks
-    eq(checks[4].shown, false, "combat hiding shows only with the coach")
-    local cardY = checks[5].points[1][5]
-    c.click(checks[3])
-    eq(checks[4].shown, true, "coach on: combat hiding appears")
-    eq(checks[4].points[1][4], 34, "indented under the coach")
-    eq(checks[5].points[1][5], cardY - 26, "and the card moves down to make room")
-    c.click(checks[3])
-    eq(checks[4].shown, false, "coach off: gone again")
-    eq(checks[5].points[1][5], cardY, "no gap left")
-    -- Every box has its one line on hover.
-    for _, cb in ipairs(checks) do
+    eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session card at logout ✓, "
+        .. "Marks in your bags ✓, Minimap button ✓, Record my next session", "what isn't a module")
+    -- A module's page: its name and line, its switch at the top right, and
+    -- its options. U1d: a dependent option isn't shown until its parent is
+    -- on, indented under it, and the rows below move up rather than leave a
+    -- gap.
+    c.click(w.mods.coach)
+    eq(w.heading.text .. " / " .. w.fresh.text, "Coach / This session's gold, experience and loot, on screen.",
+        "the Coach page")
+    eq(w.modSwitch.shown ~= false and w.modSwitch.checked, true, "its switch, on")
+    local checks = w.pages.coach.checks
+    eq(checks[1].label.text .. ", " .. checks[2].label.text, "Session coach, Hide the coach in combat", "its options")
+    eq(checks[2].shown, false, "combat hiding shows only with the coach")
+    c.click(checks[1])
+    eq(checks[2].shown, true, "coach on: combat hiding appears")
+    eq(checks[2].points[1][4] - checks[1].points[1][4], 36, "indented under the coach")
+    eq(c.global("ForeverBuddyCoachFrame").shown, true, "and the coach shows")
+    -- The module off: the coach goes at once (no /reload), its options
+    -- hide, and the rail's dot dims; back on, it's as it was.
+    c.click(w.modSwitch)
+    eq(c.global("ForeverBuddyCoachFrame").shown, false, "module off: the coach goes")
+    eq(checks[1].shown, false, "its options hide")
+    eq(table.concat(w.mods.coach.dot.layout.SetColorTexture, ","), "1,1,1,0.14", "the dot dims")
+    eq(c.global("ForeverBuddySettings").modules.coach, false, "saved per account")
+    c.click(w.modSwitch)
+    eq(c.global("ForeverBuddyCoachFrame").shown, true, "back on: the coach is back")
+    eq(checks[1].checked, true, "with its setting kept")
+    c.click(checks[1])
+    eq(checks[2].shown, false, "coach off: gone again")
+    -- Every switch has its one line on hover.
+    for _, cb in ipairs(w.panes[5].checks) do
         cb.scripts.OnEnter(cb)
         local tip = c.global("GameTooltip").lines
         eq(tip[1], cb.label.text, "the hover names " .. cb.label.text)
@@ -2288,14 +2316,16 @@ scenario("window", function()
     for _, init in ipairs(options.layout.inits) do
         rows[#rows + 1] = init.kind == "header" and ("[" .. init.text .. "]") or init.setting.name
     end
-    eq(table.concat(rows, ", "), "[In game], Login briefing, Lockouts at the entrance, Session coach, "
-        .. "Hide the coach in combat, Session card at logout, Marks in your bags, [Tooltips], "
-        .. "Your alts on item tooltips, [Map], Coordinates on the world map, Coordinates under the minimap, "
+    eq(table.concat(rows, ", "), "[In game], Login briefing, Lockouts at the entrance, "
+        .. "Session card at logout, Marks in your bags, "
+        .. "[Bags], Bags, Junk in your bags, Item level on gear, "
+        .. "[Map], Map, Coordinates on the world map, Coordinates under the minimap, "
         .. "Fade the world map while you move, How much of the map shows while moving, "
-        .. "[Quests], Quest levels in the quest log, Mark quests that are new in Forever, "
+        .. "[Quests], Quests, Quest levels in the quest log, Mark quests that are new in Forever, "
         .. "Quest progress on item tooltips, See-through quest tracker, How much of the tracker shows, "
-        .. "[Bags], Junk in your bags, Item level on gear, "
-        .. "[Merchant], Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
+        .. "[Tooltips], Tooltips, Your alts on item tooltips, "
+        .. "[Coach], Coach, Session coach, Hide the coach in combat, "
+        .. "[Merchant], Merchant, Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
@@ -2310,12 +2340,13 @@ scenario("window", function()
     eq(combatRow:IsShown(), false, "and isn't shown while it's off")
     coachRow.setting:SetValue(true)
     eq(combatRow:IsShown(), true, "shown once the coach is on")
-    eq(checks[3].checked, true, "and the window's tab agrees")
+    eq(checks[1].checked, true, "and the window's Coach page agrees")
     coachRow.setting:SetValue(false)
     eq(row("Login briefing").tooltip,
         "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
         "the hover line is the row's tooltip")
     eq(row("Login briefing").setting.default, true, "Defaults puts it back on")
+    c.click(w.Tabs[5])
     local brief = w.panes[5].checks[1]
     c.click(brief)
     eq(c.global("ForeverBuddySettings").briefing, false, "saved per account")
@@ -2800,71 +2831,23 @@ if CHAOS_ONLY then
     end)
 end
 
--- R3a: with EllesmereUI installed, the window takes its look through
--- EllesmereUI.RegisterSkin (its SKINNING_API.md). EllesmereUI calls the skin
--- at PLAYER_LOGIN, before our window exists, so the window is skinned when
--- it's built, and every tab switch tells EllesmereUI which tab is selected.
--- Without EllesmereUI (every other scenario) none of it runs.
+-- W1: the window has its own look now, so with EllesmereUI installed it no
+-- longer asks to be skinned (R3a's RegisterSkin), and it opens the same.
 scenario("eui_skin", function()
-    local registered, calls = {}, {}
+    local registered = {}
     local eui = {
         RegisterSkin = function(name, fn)
             registered[name] = fn
             return true
         end,
     }
-    -- Every primitive is a function that notes what it was given.
-    local S = setmetatable({ apiVersion = 3 }, {
-        __index = function(_, k)
-            return function(...)
-                calls[#calls + 1] = { k, ... }
-            end
-        end,
-    })
     local c = client({ globals = { EllesmereUI = eui } })
     c.login(nil)
-    eq(type(registered.ForeverBuddy), "function", "registers a skin under its folder name")
-    registered.ForeverBuddy(S)
-    eq(#calls, 0, "nothing to skin before the window is built")
-
+    eq(registered.ForeverBuddy, nil, "no skin registered")
     c.slash("/fb list")
     local win = c.global("ForeverBuddyWindow")
-    local by = {}
-    for _, call in ipairs(calls) do
-        by[call[1]] = (by[call[1]] or 0) + 1
-    end
-    eq(by.Shell, 1, "the window shell")
-    eq(calls[1][2], win, "on the window")
-    eq(by.CloseButton, 1, "its close button")
-    eq(by.Tab, 5, "each tab")
-    eq(by.ScrollBar, 5, "each pane's scroll bar")
-    eq(by.Checkbox, 1 + #win.panes[5].checks, "the plan tracker's box and every Settings box")
-
-    -- The selected tab, after the switch to Lists.
-    local function selected()
-        local out = {}
-        for _, call in ipairs(calls) do
-            if call[1] == "SetTabSelection" and call[3] then
-                for i, tab in ipairs(win.Tabs) do
-                    if tab == call[2] then
-                        out[#out + 1] = i
-                    end
-                end
-            end
-        end
-        return out[#out]
-    end
-    eq(selected(), 2, "Lists shows as selected")
-    c.slash("/fb cleanup")
-    eq(selected(), 4, "then Cleanup")
-
-    -- Registered after the window exists (EllesmereUI loaded late): skinned at once.
-    local late = client({ globals = { EllesmereUI = eui } })
-    late.login(nil)
-    late.slash("/fb")
-    calls = {}
-    registered.ForeverBuddy(S)
-    eq(#calls > 0 and calls[1][1], "Shell", "an open window is skinned when the skin arrives")
+    eq(win.shown and win.heading.text, "Lists", "the window opens in its own look")
+    file(c.logout())
 end)
 
 -- R3a: a bag slot Forever hands back as a table holding secrets
@@ -3384,6 +3367,8 @@ local SCHEMA_FIELDS = {
     -- For the types after bool (P4b-follow): a number's range, a choice's
     -- values, text's length.
     "min", "max", "step", "values", "maxLength",
+    -- W1: a module's own on/off.
+    "moduleSwitch",
 }
 
 local function declared()
@@ -3726,15 +3711,11 @@ scenario("map", function()
     c.world.moving = false
     c.move(false)
 
-    -- The window's slider: dragging sets it, but not in combat.
-    c.slash("/fb")
-    local slider
-    for _, cb in ipairs(c.global("ForeverBuddyWindow").panes[5].checks) do
-        if cb.slider and cb.option.key == "map.fadeAlpha" then
-            slider = cb
-        end
-    end
-    eq(slider.label.text, "How much of the map shows while moving", "the slider's label")
+    -- The window's slider, on the Map module's page (W1): dragging sets it,
+    -- but not in combat.
+    local slider = setting(c, "How much of the map shows while moving")
+    eq(slider.slider, true, "a slider")
+    eq(c.global("ForeverBuddyWindow").current, "map", "on the Map page")
     eq(slider.value.text, "30%", "its value, in percent")
     slider:SetValue(0.65, true)
     eq(row("map.fadeAlpha").setting:GetValue(), 0.65, "dragged to 65%")
@@ -3876,6 +3857,104 @@ scenario("quest", function()
     local db = file(c.logout())
     eq(db.settings.values["quest.trackerAlpha"], 0.25, "the file has the number")
     eq(c.settings.quest.trackerAlpha, 0.25, "kept account-wide")
+end)
+
+-- W1: the module contract. Each module's own switch turns all of it off at
+-- once, with no /reload, and on again as it was; its options are kept. Off,
+-- a module draws nothing, shows no frame and adds no tooltip line.
+scenario("modules", function()
+    local c = client()
+    c.world.questlog = {
+        { questID = 176, title = "Wanted: Hogger", level = 11,
+          objectives = { { text = "Linen Cloth: 3/8", type = "item", numFulfilled = 3, numRequired = 8 } } },
+    }
+    c.world.bags[0].slots[3] = { id = 4865, count = 2 }
+    c.login(nil)
+    c.advance(5)
+    local w
+    local function module(id, on)
+        c.slash("/fb")
+        w = c.global("ForeverBuddyWindow")
+        c.click(w.mods[id])
+        if (w.modSwitch.checked and true or false) ~= on then
+            c.click(w.modSwitch)
+        end
+        eq(w.modSwitch.checked and true or false, on, id .. (on and " on" or " off"))
+    end
+    local function altLines()
+        local n = 0
+        for _, line in ipairs(c.hover(2589)) do
+            if line:find("Quest: ", 1, true) or line:find("Velyra", 1, true) then
+                n = n + 1
+            end
+        end
+        return n
+    end
+
+    -- Every module on by default, so nobody's choices went dark on update.
+    c.slash("/fb")
+    w = c.global("ForeverBuddyWindow")
+    for id, b in pairs(w.mods) do
+        eq(table.concat(b.dot.layout.SetColorTexture, ","), "0.8,0.56,0.31,1", id .. " is on")
+    end
+
+    -- Map: the minimap's coordinates go and come back.
+    c.click(setting(c, "Coordinates under the minimap"))
+    local mini = c.global("ForeverBuddyMinimapCoords")
+    eq(mini.shown, true, "map: coordinates shown")
+    module("map", false)
+    eq(mini.shown, false, "map off: hidden")
+    eq(setting(c, "Coordinates under the minimap").checked, true, "its option kept")
+    module("map", true)
+    eq(mini.shown, true, "map on: back")
+
+    -- Quests: the log and the tooltip.
+    c.click(setting(c, "Quest levels in the quest log"))
+    c.click(setting(c, "Quest progress on item tooltips"))
+    c.global("QuestLogQuests_Update")()
+    eq(c.questTitles[1].Text.text, "[11] Wanted: Hogger", "quests: the level")
+    eq(altLines(), 1, "and the tooltip line")
+    module("quest", false)
+    c.global("QuestLogQuests_Update")()
+    eq(c.questTitles[1].Text.text, "Wanted: Hogger", "quests off: the client's title")
+    eq(altLines(), 0, "and no tooltip line")
+    module("quest", true)
+
+    -- Bags: the coin on junk.
+    c.openBags()
+    c.advance(1)
+    c.click(setting(c, "Junk in your bags"))
+    local bag = c.global("ContainerFrame1")
+    eq(extrasOf(bag.buttons[3]).junk, true, "bags: a coin on junk")
+    module("bags", false)
+    eq(extrasOf(bag.buttons[3]).junk, nil, "bags off: gone from the open bags")
+    module("bags", true)
+    eq(extrasOf(bag.buttons[3]).junk, true, "bags on: back")
+
+    -- Merchant (it acts): off, a vendor sells nothing even with selling
+    -- turned on; back on, it sells.
+    c.click(setting(c, "Sell grey items"))
+    module("merchant", false)
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, 0, "merchant off: nothing sold")
+    c.closeMerchant()
+    module("merchant", true)
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold > 0, true, "merchant on: the grey pelts sell")
+    c.closeMerchant()
+
+    -- From the app: a profile can turn a module off like any setting.
+    local db = file(c.logout())
+    eq(db.settings.values["map.enabled"], true, "the file has each module's switch")
+    local slot = client({ slots = { ["Data/Settings.lua"] = settingsSlot(9, { ["map.enabled"] = false }) } })
+    slot.settings = c.settings
+    slot.login(nil)
+    eq(slot.global("ForeverBuddyMinimapCoords") == nil or not slot.global("ForeverBuddyMinimapCoords").shown,
+        true, "an approved 'Map off' leaves the coordinates hidden")
+    eq(slot.global("ForeverBuddySettings").modules.map, false, "and turned it off")
+    file(slot.logout())
 end)
 
 -- P4b-follow (security): what the addon accepts from a profile, for every
@@ -4105,7 +4184,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 24, "with every toggle")
+    eq(#options.frame.checks, 30, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

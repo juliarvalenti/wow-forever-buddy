@@ -979,6 +979,8 @@ function M.new(opts)
         "SetColorTexture", "SetFrameLevel", "SetFrameStrata", "SetHighlightTexture",
         "SetJustifyH", "SetMovable", "SetToplevel", "StartMoving", "StopMovingOrSizing",
         "SetOwner", "SetPortraitToAsset", "SetTitle", "SetBlendMode", "SetVertexColor",
+        -- W1: the window's own look.
+        "SetFont", "SetGradient", "SetThumbTexture", "SetOrientation", "EnableMouseWheel", "SetRotation",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -998,6 +1000,16 @@ function M.new(opts)
     end
     function Frame:SetScrollChild(child)
         self.scrollChild = child
+    end
+    -- W1: a page scrolled by the mouse wheel.
+    function Frame:SetVerticalScroll(v)
+        self.vscroll = v
+    end
+    function Frame:GetVerticalScroll()
+        return rawget(self, "vscroll") or 0
+    end
+    function Frame:GetVerticalScrollRange()
+        return 0
     end
     -- U1d: what the recorded layout calls set, read back.
     function Frame:GetFrameLevel()
@@ -1065,8 +1077,9 @@ function M.new(opts)
     function Frame:GetText()
         return rawget(self, "text")
     end
-    function Frame:SetTextColor(r, g, b)
-        self.color = { r, g, b }
+    -- (The alpha, when given: W1's faint text is the same colour, fainter.)
+    function Frame:SetTextColor(r, g, b, a)
+        self.color = { r, g, b, a }
     end
     function Frame:Show()
         self.shown = true
