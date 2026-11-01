@@ -30,3 +30,13 @@ WOWAPI_OFFLINE=1 luajit tools/addon-shots/scene.lua /tmp/pictures
 ```
 
 CI can't do this (no game on the runners, and the files aren't ours to ship), so CI's pictures keep the downloaded art.
+
+**The whole screen (HUD1).** `hud.lua` draws a full 1920x1080 screen with any addons on top. Given the extract's `interface/addons` folder, the screen is Blizzard's own UI: every Blizzard addon the client loads at login, in its order, with Edit Mode placing the HUD from its default layout. Without it, WOWAPI's stand-ins (what CI has).
+
+```sh
+EXTRACT="$HOME/Library/Application Support/com.juliarvalenti.wowforeverbuddy/cache/casc-extract/wowf/<build key>"
+WOWAPI_ART="$EXTRACT" WOWAPI_OFFLINE=1 luajit tools/addon-shots/hud.lua /tmp/hud.svg \
+    --blizzard "$EXTRACT/interface/addons" --addon src-tauri/resources/addon/ForeverBuddy
+```
+
+It prints the Lua errors, most frequent first: the HUD is a work in progress (HUD1), and each error is a WOWAPI gap to close.
