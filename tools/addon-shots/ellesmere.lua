@@ -32,6 +32,16 @@ local function step(s)
     print("-- " .. s .. " (" .. math.floor(collectgarbage("count") / 1024) .. " MB)")
 end
 
+-- A watchdog: past 1.5 GB, print where the code is (the runaway) and stop,
+-- rather than leave the runner to die with nothing to show.
+debug.sethook(function()
+    if collectgarbage("count") > 1536 * 1024 then
+        debug.sethook()
+        print("-- memory runaway, here:\n" .. debug.traceback("", 2))
+        os.exit(3)
+    end
+end, "", 100000)
+
 local here = (arg[0]:match("^(.*)[/\\]") or ".")
 local wowapiDir = here .. "/../wowapi"
 package.path = wowapiDir .. "/?.lua;" .. wowapiDir .. "/?/init.lua;" .. package.path

@@ -72,7 +72,7 @@ jobs:
               { echo "# Set: $1"; cat "$OUT/$1/report.md"; } >> "$GITHUB_STEP_SUMMARY"
             fi
           }
-          draw skin EllesmereUI,EllesmereUIBlizzardSkin,ForeverBuddy
+          draw skin EllesmereUI,EllesmereUIBlizzardSkin,ForeverBuddy 2>&1 | tail -60
           draw core EllesmereUI,ForeverBuddy
           draw unitframes EllesmereUI,EllesmereUIUnitFrames
           draw actionbars EllesmereUI,EllesmereUIActionBars
