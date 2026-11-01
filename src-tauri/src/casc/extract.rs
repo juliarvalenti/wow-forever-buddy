@@ -22,6 +22,8 @@ pub const DEFAULT_FILTERS: &[&str] = &[
     "interface/fonts",
     "interface/dialogframe",
     "interface/framegeneral",
+    // Blizzard's own doubled folder: the inset frame's corners live here.
+    "interface/interface/framegeneral",
     "interface/buttons",
     "interface/common",
     "interface/tooltips",
