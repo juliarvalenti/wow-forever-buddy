@@ -317,6 +317,21 @@ One window gathers what's slash-only today. Everything in it is display-only, th
 - **Combat:** the window can open and close. Nothing in it changes, and Sync is disabled, as in §4.
 - **Never:** buttons that buy, sell, send, craft or mark; editing lists, plans or goals in game (that's the app's job); or opening by itself.
 
+## 17b. U1c proposal: the dashboard window (`ingame-dash.html`)
+Julia asked for "a more dashboardy feel". This is the proposed replacement for §17's layout; the sections' rows stay as in §17. It still uses only Blizzard pieces (`ButtonFrameTemplate`, `InsetFrameTemplate` cards, `StatusBar` fills, real item icons, `GameFont` colours), so skins restyle it.
+- **Size and frame:** about 640 × 400. The title reads "Forever Buddy · Thrandor, level 58" (the name in class colour).
+- **Side nav** instead of bottom tabs, like the Collections journal: Overview, Plan, Goals, Lists, Errands, Cleanup, then a divider and Settings. Each has a small icon and a count badge (Plan "1/4", Goals "2", Lists "3", Errands "2", Cleanup "7"). A section with nothing shows no badge. The selected row gets a gold left edge and a soft gold wash.
+- **Overview** (the default) is a two-column grid of cards. Each card has a gold title, grey meta on the right, and a click that opens its section:
+  - **Tonight's plan:** "1 of 4 done", a gold bar, and "Next: Accept "Are We There, Yeti?" · Everlook →".
+  - **Goals:** up to two goals, each a line and a bar (XP purple for level, gold for gold).
+  - **This session:** a big green "+312g" with "184g an hour", then XP an hour and "level 59 in ~41 min", then "47 items gained · ~96g at last scan". Only while the coach data exists.
+  - **Lists:** up to 6 item icons with the count still needed on each, names below, and "1 sold here" in gold at a vendor or the AH.
+  - **Errands:** item icons with counts, "2 to send to Sela", and "Fill recipient works at the mailbox".
+  - **Lockouts:** other characters' saves this week, soonest reset first, names in class colour.
+  - **Cards with nothing to say are left out**, and the grid closes up. With nothing at all: one centred line, "All quiet. Make a plan or a list in Forever Buddy."
+- **Footer:** the §4 freshness line and the §5 sync line, as before.
+- **Unchanged from §17:** the minimap button, the compartment entry, /fb, Esc, the Settings section and its Esc › Options copy, and display-only.
+
 ## Sources
 - forever-addon-kit (ReloadUI protected, secure snippets fixed in 70009, Edit Mode present): https://github.com/Thunderz96/forever-addon-kit
 - Forever runs Mainline UI architecture, modern HUD with a Classic look option, Classic UI reskin addons: https://wowforevergame.wiki/classic-plus/wow-forever-ui-guide/ , https://wowforevergame.wiki/classic-plus/wow-forever-addons-guide/
