@@ -689,6 +689,18 @@ function M.install(sim, env)
       c = c.parent
     end
   end
+  -- WFB patch (HUD1): GetFrameMetatable() and friends, as the client has
+  -- them: a widget type's metatable, its __index that flat method table.
+  -- Blizzard's SecureTemplates.lua starts with
+  -- CopyTable(GetFrameMetatable().__index); without this the whole file
+  -- fails and no secure action button gets SecureActionButtonMixin.
+  for _, t in ipairs({ "Frame", "Button", "EditBox", "FontString", "Texture" }) do
+    local cls = classes[t]
+    if cls then
+      local mt = { __index = cls.methods }
+      rawset(env, "Get" .. t .. "Metatable", function() return mt end)
+    end
+  end
   sim.frameTypes = {}
   for name, cls in pairs(classes) do
     if isa(cls, "Frame") then sim.frameTypes[name:lower()] = name end

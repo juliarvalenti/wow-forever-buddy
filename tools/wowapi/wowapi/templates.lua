@@ -462,8 +462,13 @@ function M.apply(sim, obj, templates, create, ctx)
     local fo = not t and obj.SetFontObject and sim:Get(name)
     if fo and sim.widgetState[fo] and sim.widgetState[fo].type == "Font" then
       obj:SetFontObject(fo)
-    elseif not t then
+    elseif not t and own then
       error('CreateFrame(): Couldn\'t find inherited node "' .. name .. '"', 4)
+    elseif not t then
+      -- WFB patch (HUD1): in XML the client logs an unknown inherited node
+      -- and builds the frame without it (Forever's PetFrame.xml inherits a
+      -- template only retail loads); only Lua's CreateFrame throws.
+      sim:_error(tostring(ctx.file) .. ': Couldn\'t find inherited node "' .. name .. '"')
     elseif t.builtin then t.builtin(sim, obj, create)
     elseif t.xml then sim.xml.applyTemplate(sim, obj, t, ctx) end
   end

@@ -26,7 +26,9 @@ Each patch is marked `-- WFB patch (G1)` or `-- WFB patch (HUD1)` in the code. T
 
 HUD1, so Blizzard's own UI addons (from the extract) load as the client loads them:
 
-- `toc.lua`: a `[AllowLoadGameType ...]` / `[ExcludeLoadGameType ...]` tag matches the family (Mainline) as well as the game type (camelot), as in the client. Without this, Forever skips Blizzard's 472 mainline-tagged files and dependencies its camelot files build on.
+- `toc.lua`: a `[AllowLoadGameType ...]` tag names game types only: `mainline` is retail's, not Forever's family. (HUD1a briefly matched the family too, which loaded retail's `ActionButtonOverrides.lua` over Forever's; Blizzard_ActionBar lists the two as alternatives.)
+- `templates.lua`: in XML, an unknown inherited node is logged and the frame built without it, as in the client (Forever's `PetFrame.xml` inherits a template only retail loads); Lua's `CreateFrame` still throws.
+- `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.
 - `toc.lua`: every `## Dep:` / `## Dependencies:` / `## OptionalDeps:` line counts, each with its own game-type tag. Without this, only the last line is kept, and Blizzard's TOCs list one dependency per line.
 - `toc.lua`: file lines tagged `[AllowLoad Glue]` aren't loaded in game, and any other tag (`[LoadIntoEnvironment secure]`) is dropped from the file name after `[Family]`/`[Game]` are filled in. Without this, those files are reported missing.
 - `sim.lua`: addon names match case-insensitively, as in the client. Without this, a dependency named `Blizzard_ActionBar` loads the folder `blizzard_actionbar` a second time.
