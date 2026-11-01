@@ -151,6 +151,12 @@ function M.install(sim, env)
   rawset(env, "RemoveKStrings", function(s)
     return (tostring(s or ""):gsub("|K.-|k", ""))
   end)
+  -- WFB patch (HUD1): whether the region names characters uniquely (false
+  -- for US realms). UnitFrame_Update asks first thing; without it every
+  -- unit frame stops there: no name, no portrait, "Dead" left showing.
+  if rawget(env, "RegionalUniqueNamesEnabled") == nil then
+    rawset(env, "RegionalUniqueNamesEnabled", function() return false end)
+  end
 
   ------------------------------------------------------------ colors
   -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
