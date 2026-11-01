@@ -58,29 +58,38 @@ jobs:
           done
           ls "$WT/AddOns"
 
-      # SIM6's modules only (the whole suite in one process ran the runner out
-      # of memory), with a memory and time cap so a runaway shows as an error.
+      # SIM6's modules, a set per process (the whole suite in one process ran
+      # the runner out of memory), each with a memory and time cap so a
+      # runaway shows as an error, and its own pictures.
       - name: Draw
         run: |
-          mkdir -p "$OUT"
-          ulimit -v 3000000
-          timeout 300 lua5.1 tools/addon-shots/ellesmere.lua "$WT/AddOns" "$OUT" \
-            --only EllesmereUI,EllesmereUIUnitFrames,EllesmereUIActionBars,EllesmereUIBlizzardSkin,ForeverBuddy \
-            || echo "ellesmere.lua stopped: exit $?"
-          [ -f "$OUT/report.md" ] && cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
-          ls "$OUT"
+          draw() {
+            mkdir -p "$OUT/$1"
+            ( ulimit -v 3000000
+              timeout 300 lua5.1 tools/addon-shots/ellesmere.lua "$WT/AddOns" "$OUT/$1" --only "$2" \
+                || echo "ellesmere.lua stopped: exit $?" )
+            if [ -f "$OUT/$1/report.md" ]; then
+              { echo "# Set: $1"; cat "$OUT/$1/report.md"; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          draw skin EllesmereUI,EllesmereUIBlizzardSkin,ForeverBuddy
+          draw core EllesmereUI,ForeverBuddy
+          draw unitframes EllesmereUI,EllesmereUIUnitFrames
+          draw actionbars EllesmereUI,EllesmereUIActionBars
+          ls -R "$OUT"
 
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
-          cd "$OUT"
-          for svg in *.svg; do
+          for svg in "$OUT"/*/*.svg; do
+            [ -f "$svg" ] || continue
+            set=$(basename "$(dirname "$svg")")
             w=$(grep -o -m1 'width="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
             h=$(grep -o -m1 'height="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
             google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
               --force-device-scale-factor=2 --window-size="$w,$h" \
-              --screenshot="$OUT/${svg%.svg}.png" "file://$OUT/$svg" 2>/dev/null
+              --screenshot="$OUT/$set-$(basename "${svg%.svg}").png" "file://$svg" 2>/dev/null
           done
-          ls -la *.png
+          ls -la "$OUT"/*.png || true
 
       # Only our pictures and the report: never the addon code or the art cache.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -88,6 +97,6 @@ jobs:
           name: ellesmere-pictures
           path: |
             ${{ runner.temp }}/ellesmere-pictures/*.png
-            ${{ runner.temp }}/ellesmere-pictures/report.md
+            ${{ runner.temp }}/ellesmere-pictures/*/report.md
           if-no-files-found: error
           retention-days: 14
