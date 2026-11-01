@@ -294,8 +294,10 @@ function M.builtins(env)
       TopEdge = { "_UI-Frame-InnerTopTile" }, BottomEdge = { "_UI-Frame-InnerBotTile" },
       LeftEdge = { "!UI-Frame-InnerLeftTile" }, RightEdge = { "!UI-Frame-InnerRightTile" } },
   }
-  local CORNERS = { TopLeftCorner = "TOPLEFT", TopRightCorner = "TOPRIGHT",
-    BottomLeftCorner = "BOTTOMLEFT", BottomRightCorner = "BOTTOMRIGHT" }
+  -- A list, not a map: corners are created in a fixed order, so the same
+  -- scene renders to the same SVG every time.
+  local CORNERS = { { "TopLeftCorner", "TOPLEFT" }, { "TopRightCorner", "TOPRIGHT" },
+    { "BottomLeftCorner", "BOTTOMLEFT" }, { "BottomRightCorner", "BOTTOMRIGHT" } }
   local EDGES = {
     { "TopEdge", "TOPLEFT", "TOPRIGHT", "TopLeftCorner", "TopRightCorner" },
     { "BottomEdge", "BOTTOMLEFT", "BOTTOMRIGHT", "BottomLeftCorner", "BottomRightCorner" },
@@ -314,7 +316,8 @@ function M.builtins(env)
       if info and info.path and info.path:lower():match("2x$") then t:SetSize(info.width / 2, info.height / 2) end
       return t
     end
-    for key, point in pairs(CORNERS) do
+    for _, c in ipairs(CORNERS) do
+      local key, point = c[1], c[2]
       piece(key):SetPoint(point, ns, point, L[key][2] or 0, L[key][3] or 0)
     end
     for _, e in ipairs(EDGES) do
