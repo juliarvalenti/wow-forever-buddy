@@ -139,6 +139,52 @@ function M.install(sim, env)
   rawset(env, "CallbackRegistryMixin", CallbackRegistryMixin)
   rawset(env, "CallbackRegistry", CallbackRegistryMixin)
 
+  ------------------------------------------------------------ error handling
+  -- WFB patch (HUD1): CreateSecureDelegate(fn) returns a function that
+  -- calls fn, and RemoveKStrings strips |K...|k encoded strings, as in the
+  -- client. Blizzard_ScriptErrors.lua builds its error handler on both;
+  -- without them the handler itself throws, so any addon reporting a soft
+  -- error through geterrorhandler() (LibSharedMedia does) dies mid-file.
+  rawset(env, "CreateSecureDelegate", function(fn)
+    return function(...) if fn then return fn(...) end end
+  end)
+  rawset(env, "RemoveKStrings", function(s)
+    return (tostring(s or ""):gsub("|K.-|k", ""))
+  end)
+
+  ------------------------------------------------------------ colors
+  -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
+  -- (exalted), as SharedColorConstants.lua builds it from the client's
+  -- faction colors. Addons iterate it (EllesmereUI's unit frames do, and
+  -- every unit-frames file after that one depends on it).
+  if rawget(env, "FACTION_BAR_COLORS") == nil then
+    local function color(r, g, b)
+      local c = env.CreateColor and env.CreateColor(r, g, b, 1) or {}
+      c.r, c.g, c.b = r, g, b
+      return c
+    end
+    local red, orange, yellow, green = color(0.8, 0.3, 0.22), color(0.75, 0.27, 0), color(0.9, 0.7, 0), color(0, 0.6, 0.1)
+    rawset(env, "FACTION_BAR_COLORS", { red, red, orange, yellow, green, green, green, green })
+  end
+  -- PowerBarColor for the stand-in FrameXML, by power token and by power
+  -- type, as Blizzard_UnitFrame's PowerBarColorUtil.lua builds it.
+  if rawget(env, "PowerBarColor") == nil then
+    local pbc = {}
+    for _, p in ipairs({ { "MANA", 0, 0, 0, 1 }, { "RAGE", 1, 1, 0, 0 }, { "FOCUS", 2, 1, 0.5, 0.25 },
+      { "ENERGY", 3, 1, 1, 0 }, { "CHI", 4, 0.71, 1, 0.92 }, { "RUNES", 5, 0.5, 0.5, 0.5 },
+      { "RUNIC_POWER", 6, 0, 0.82, 1 }, { "SOUL_SHARDS", 7, 0.5, 0.32, 0.55 }, { "LUNAR_POWER", 8, 0.3, 0.52, 0.9 },
+      { "HOLY_POWER", 9, 0.95, 0.9, 0.6 }, { "MAELSTROM", 11, 0, 0.5, 1 }, { "INSANITY", 13, 0.4, 0, 0.8 },
+      { "FURY", 17, 0.788, 0.259, 0.992 }, { "PAIN", 18, 1, 156 / 255, 0 } }) do
+      local c = { r = p[3], g = p[4], b = p[5] }
+      pbc[p[1]], pbc[p[2]] = c, c
+    end
+    pbc.COMBO_POINTS = { r = 1, g = 0.96, b = 0.41 }
+    pbc.ARCANE_CHARGES = { r = 0.1, g = 0.1, b = 0.98 }
+    pbc.AMMOSLOT = { r = 0.8, g = 0.6, b = 0 }
+    pbc.FUEL = { r = 0, g = 0.55, b = 0.5 }
+    rawset(env, "PowerBarColor", pbc)
+  end
+
   ------------------------------------------------------------ panel tabs
   -- WFB patch (G1): PanelTemplates' tab helpers. A PanelTabButtonTemplate
   -- tab has no width of its own; the client sizes it to its label plus the
@@ -449,13 +495,20 @@ function M.install(sim, env)
     HideTooltip = function() end,
   })
   rawset(env, "MenuResponse", { Open = 1, Refresh = 2, Close = 3, CloseAll = 4 })
+  -- WFB patch (HUD1): one manager, with the methods addons hook as well
+  -- (EllesmereUI hooksecurefunc's OpenMenu). Blizzard_Menu replaces Menu in
+  -- the real UI.
+  local menuManager = { HandleESC = function() sim.openMenu = nil end }
+  for _, m in ipairs({ "OpenMenu", "OpenContextMenu", "CloseMenus", "CloseMenu", "GetOpenMenu" }) do
+    menuManager[m] = function() end
+  end
   rawset(env, "Menu", {
     ModifyMenu = function(tag, fn)
       sim.menuModifiers[tag] = sim.menuModifiers[tag] or {}
       table.insert(sim.menuModifiers[tag], fn)
     end,
     GetOpenMenu = function() return sim.openMenu end,
-    GetManager = function() return { HandleESC = function() sim.openMenu = nil end } end,
+    GetManager = function() return menuManager end,
   })
 
   -- DropdownButton (WowStyle1DropdownTemplate & friends)

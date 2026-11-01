@@ -163,7 +163,28 @@ local VERB = { "Get", "Set", "Is", "Has", "Show", "Hide", "Update", "On", "Regis
   "Handle", "Check", "Find", "Select", "Lock", "Unlock", "Begin", "End", "Start", "Cancel", "Load", "Save",
   "Create", "Destroy", "Attach", "Detach", "Process", "Request", "Notify", "Trigger", "Fire", "Invoke", "Run",
   "Generate", "Build", "Calculate", "Sort", "Filter", "Merge", "Queue", "Assign", "Release", "Resize", "Anchor" }
+-- WFB patch (HUD1): Blizzard names child regions with a noun last
+-- (CloseButton, EndCaps, TitleText), so a key ending in one is a child, not
+-- a method, unless it starts with a prefix only methods use (GetButton,
+-- SetText). Without this, frame.EndCaps is a function and :Hide() on it fails.
+local CHILD_NOUN = {}
+for _, n in ipairs({ "Button", "Buttons", "Frame", "Frames", "Bar", "Bars", "Text", "Texture", "Textures", "Icon",
+  "Border", "Background", "Bg", "Cap", "Caps", "Container", "Highlight", "Glow", "Label", "Title", "Header",
+  "Overlay", "Mask", "Portrait", "Arrow", "Tab", "Tabs", "List", "Box", "Inset", "Slider", "ScrollBar", "Line",
+  "Edge", "Corner", "Divider", "Shadow", "Flash", "Spark", "Fill", "Art", "Pool", "Region", "Anim", "Model",
+  "Dropdown", "DropDown", "Search" }) do
+  CHILD_NOUN[n] = true
+end
+local METHOD_ONLY = { "Get", "Set", "Is", "Has", "Can", "Should", "Update", "Refresh", "Register", "Unregister",
+  "Add", "Remove", "Create", "Init", "Reset", "Enable", "Disable", "Clear", "On" }
 local function looksLikeMethod(k)
+  local last = k:match("(%u[%l%d]*)$")
+  if last and CHILD_NOUN[last] and last ~= k then
+    for _, v in ipairs(METHOD_ONLY) do
+      if k:sub(1, #v) == v and k:sub(#v + 1, #v + 1):match("[%u%d_]") then return true end
+    end
+    return false
+  end
   for _, v in ipairs(VERB) do
     if k:sub(1, #v) == v and (#k == #v or k:sub(#v + 1, #v + 1):match("[%u%d_]")) then return true end
   end

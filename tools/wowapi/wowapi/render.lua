@@ -37,6 +37,26 @@ local function newCtx(sim, opts)
 end
 
 function Ctx:add(s) self.out[#self.out + 1] = s end
+
+-- WFB patch (HUD1): the font family for a font file, embedding each file
+-- once (an addon's own fonts as well as the game's), falling back to the
+-- default family when the file isn't available.
+function Ctx:familyFor(path)
+  if not (self.store and path and self.fontsOn) then return self.fontFamily end
+  local key = tostring(path):lower()
+  self.families = self.families or {}
+  if self.families[key] == nil then
+    local font = self.store:font(path)
+    if font and font.data then
+      local name = "wf" .. (#self.defs + 1)
+      self.defs[#self.defs + 1] = '<style>@font-face{font-family:' .. name .. ';src:url(' .. self.store:dataURI(font) .. ')}</style>'
+      self.families[key] = name .. ", " .. (self.fontFamily or "serif")
+    else
+      self.families[key] = false
+    end
+  end
+  return self.families[key] or self.fontFamily
+end
 function Ctx:id(prefix) self.seq = self.seq + 1; return prefix .. self.seq end
 
 local cwd
@@ -152,19 +172,36 @@ local function colorRuns(text, default)
   return runs
 end
 
-local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline)
+-- shadow: nil draws the old approximation (a light dark stroke) for text
+-- whose font says nothing about shadows; false draws none; { dx, dy, rgb,
+-- alpha } draws an offset copy underneath, as the client does (WFB patch
+-- HUD1: designers set SetShadowOffset(0, 0) for ink on parchment).
+local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline, family, shadow)
   local lines = {}
   for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
-  local family = ctx.fontFamily or "Friz Quadrata TT, Georgia, serif"
+  family = family or ctx.fontFamily or "Friz Quadrata TT, Georgia, serif"
   for i, line in ipairs(lines) do
+    local ly = y + (i - 1) * size * 1.15
     local parts = {}
     for _, run in ipairs(colorRuns(line, color)) do
       parts[#parts + 1] = string.format('<tspan fill="%s">%s</tspan>', run[2], esc(run[1]))
     end
-    ctx:add(string.format(
-      '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s" paint-order="stroke">%s</text>',
-      num(x), num(y + (i - 1) * size * 1.15), num(size), anchor, opacity, esc(family),
-      outline and size / 6 or size / 10, outline and "1" or "0.6", table.concat(parts)))
+    if outline or shadow == nil then
+      ctx:add(string.format(
+        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s" paint-order="stroke">%s</text>',
+        num(x), num(ly), num(size), anchor, opacity, esc(family),
+        outline and size / 6 or size / 10, outline and "1" or "0.6", table.concat(parts)))
+    else
+      if shadow then
+        ctx:add(string.format(
+          '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" fill="%s">%s</text>',
+          num(x + shadow[1]), num(ly - shadow[2]), num(size), anchor, opacity * shadow[4], esc(family), shadow[3],
+          esc((line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))))
+      end
+      ctx:add(string.format(
+        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s">%s</text>',
+        num(x), num(ly), num(size), anchor, opacity, esc(family), table.concat(parts)))
+    end
   end
 end
 
@@ -198,8 +235,13 @@ local function drawTexture(ctx, obj, s, x, y, w, h, alpha, clipFrac)
     end
   end
   if s.texture == "color" then
-    ctx:add(string.format('<rect x="%s" y="%s" width="%s" height="%s" fill="%s" opacity="%.3f"/>',
-      num(x), num(y), num(w * (clipFrac or 1)), num(h), rgb(c[1], c[2], c[3]), a))
+    -- WFB patch (HUD1): a colour texture turns with SetRotation too, about
+    -- its centre, as a file texture does.
+    local props = s.props or {}
+    local r = s.animRotation and math.rad(s.animRotation) or (props.Rotation and props.Rotation[1])
+    local rot = (r and r ~= 0) and string.format(' transform="rotate(%s %s %s)"', num(-math.deg(r)), num(x + w / 2), num(y + h / 2)) or ""
+    ctx:add(string.format('<rect x="%s" y="%s" width="%s" height="%s" fill="%s" opacity="%.3f"%s/>',
+      num(x), num(y), num(w * (clipFrac or 1)), num(h), rgb(c[1], c[2], c[3]), a, rot))
     return
   end
   if not s.texture and not s.atlas then return end
@@ -255,7 +297,7 @@ local function region(ctx, obj)
     drawTexture(ctx, obj, s, x, y, w, h, alpha)
   elseif s.type == "FontString" then
     if not s.text or s.text == "" then return end
-    local _, size, flags = layout.fontOf(sim, obj)
+    local fontFile, size, flags = layout.fontOf(sim, obj)
     local tc = s.textColor
     if not tc then
       local fo = s.fontObject
@@ -275,8 +317,21 @@ local function region(ctx, obj)
     if jv == "TOP" then ty = y + size * 0.85
     elseif jv == "BOTTOM" then ty = y + h - (lines - 1) * size * 1.15 - size * 0.2
     else ty = y + h / 2 - (lines - 1) * size * 0.575 + size * 0.35 end
+    -- the shadow the FontString or its font object says it has, if any
+    local so, sc = s.shadowOffset, s.shadowColor
+    if not so then
+      local fo = s.fontObject
+      if type(fo) == "string" then fo = sim:Get(fo) end
+      local fos = fo and st[fo]
+      so, sc = fos and fos.shadowOffset, fos and fos.shadowColor
+    end
+    local shadow
+    if so then
+      sc = sc or { 0, 0, 0, 1 }
+      shadow = (so[1] ~= 0 or so[2] ~= 0) and { so[1], so[2], rgb(sc[1], sc[2], sc[3]), sc[4] or 1 } or false
+    end
     textSvg(ctx, tx, ty, text, size, rgb(tc[1], tc[2], tc[3]), anchor, alpha * (tc[4] or 1),
-      flags and tostring(flags):find("OUTLINE"))
+      flags and tostring(flags):find("OUTLINE"), ctx:familyFor(fontFile), shadow)
   end
 end
 
@@ -558,6 +613,8 @@ function M.svg(sim, opts)
       ctx.fontFamily = "WoWFriz, Friz Quadrata TT, Georgia, serif"
       ctx.defs[#ctx.defs + 1] = '<style>@font-face{font-family:WoWFriz;src:url(' .. ctx.store:dataURI(font) .. ')}</style>'
     end
+    ctx.fontsOn = true
+    ctx.families = { ["fonts\\frizqt__.ttf"] = ctx.fontFamily or false }
   end
 
   -- background: a real game backdrop if requested, else a dusk gradient

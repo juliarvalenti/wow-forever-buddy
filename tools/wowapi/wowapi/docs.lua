@@ -60,6 +60,9 @@ local LOOSE = { SetPoint = true, SetAllPoints = true, SetParent = true, SetText 
   SetDisabledTexture = true, SetCheckedTexture = true, SetStatusBarTexture = true, SetThumbTexture = true,
   SetFont = true, SetFontObject = true, SetNormalFontObject = true, SetHighlightFontObject = true,
   SetDisabledFontObject = true, SetScript = true, HookScript = true, SetAttribute = true,
+  -- WFB patch (HUD1): the docs say cstring, but like SetAttribute the client
+  -- takes any value (EllesmereUI stores booleans this way).
+  SetAttributeNoHandler = true,
   SetStartPoint = true, SetEndPoint = true }
 
 -- Returns nil or an error message.

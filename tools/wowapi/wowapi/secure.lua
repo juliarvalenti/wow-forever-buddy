@@ -321,6 +321,15 @@ local function restrictedEnv(sim, frame)
     IsControlKeyDown = function() return sim.modifiers.ctrl or false end, IsAltKeyDown = function() return sim.modifiers.alt or false end,
     print = function(...) sim.env.print(...) end,
   }
+  -- WFB patch (HUD1): the client's restricted environment also has the
+  -- table, string and math libraries (its own copies, so a snippet can't
+  -- change the caller's). EllesmereUI's action bar controller indexes table.
+  e.table = { insert = table.insert, remove = table.remove, concat = table.concat, sort = table.sort,
+    maxn = table.maxn, wipe = sim.env.wipe, new = function(...) return { ... } end }
+  e.string = {}
+  for k, v in pairs(string) do e.string[k] = v end
+  e.math = {}
+  for k, v in pairs(math) do e.math[k] = v end
   e.owner = M.handle(sim, frame)
   e.self = e.owner
   e.control = {

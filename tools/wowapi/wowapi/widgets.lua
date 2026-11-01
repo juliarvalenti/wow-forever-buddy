@@ -585,6 +585,24 @@ function M.install(sim, env)
     local c = s.textColor or (s.fontObject and state[s.fontObject] and state[s.fontObject].textColor) or { 1, 1, 1, 1 }
     return c[1], c[2], c[3], c[4] or 1
   end
+  -- WFB patch (HUD1): a FontString's own shadow, over its font object's.
+  function FS:SetShadowColor(r, g, b, a) S(self).shadowColor = { r, g, b, a or 1 } end
+  function FS:SetShadowOffset(x, y) S(self).shadowOffset = { x or 0, y or 0 } end
+  function FS:GetShadowOffset()
+    local s = S(self)
+    local o = s.shadowOffset
+    local fo = s.fontObject
+    if type(fo) == "string" then fo = sim:Get(fo) end
+    o = o or (fo and state[fo] and state[fo].shadowOffset) or { 0, 0 }
+    return o[1], o[2]
+  end
+  function FS:GetShadowColor()
+    local s = S(self)
+    local fo = s.fontObject
+    if type(fo) == "string" then fo = sim:Get(fo) end
+    local c = s.shadowColor or (fo and state[fo] and state[fo].shadowColor) or { 0, 0, 0, 1 }
+    return c[1], c[2], c[3], c[4]
+  end
   function FS:SetJustifyH(v) S(self).justifyH = v end
   function FS:GetJustifyH() return S(self).justifyH or "CENTER" end
   function FS:SetJustifyV(v) S(self).justifyV = v end
@@ -661,7 +679,10 @@ function M.install(sim, env)
   function Font:GetName() return S(self).name end
   function Font:GetObjectType() return "Font" end
   function Font:IsObjectType(t) return t == "Font" end
-  function Font:SetFont(f, sz, fl) S(self).font = { f, sz, fl or "" } end
+  -- WFB patch (HUD1): returns success, as the client's does (and as the
+  -- FontString and EditBox versions here do); LibSharedMedia tests it to
+  -- validate a font, and called every addon font invalid.
+  function Font:SetFont(f, sz, fl) S(self).font = { f, sz, fl or "" }; return true end
   function Font:GetFont() return unpack(S(self).font or { "Fonts\\FRIZQT__.TTF", 12, "" }) end
   function Font:SetFontObject(o) if o and state[o] then S(self).font = state[o].font end end
   function Font:CopyFontObject(o) self:SetFontObject(o) end
@@ -669,8 +690,18 @@ function M.install(sim, env)
   function Font:GetTextColor() return unpack(S(self).textColor or { 1, 0.82, 0, 1 }) end
   function Font:SetJustifyH() end
   function Font:SetJustifyV() end
-  function Font:SetShadowColor() end
-  function Font:SetShadowOffset() end
+  -- WFB patch (HUD1): a font's shadow is kept, so the renderer draws it (or,
+  -- for an explicit 0, 0 offset, none).
+  function Font:SetShadowColor(r, g, b, a) S(self).shadowColor = { r, g, b, a or 1 } end
+  function Font:GetShadowColor()
+    local c = S(self).shadowColor or { 0, 0, 0, 1 }
+    return c[1], c[2], c[3], c[4]
+  end
+  function Font:SetShadowOffset(x, y) S(self).shadowOffset = { x or 0, y or 0 } end
+  function Font:GetShadowOffset()
+    local o = S(self).shadowOffset or { 0, 0 }
+    return o[1], o[2]
+  end
   function Font:SetSpacing() end
 
   sim.widgetClasses = classes
@@ -687,6 +718,18 @@ function M.install(sim, env)
         if rawget(cls.methods, k) == nil then rawset(cls.methods, k, v) end
       end
       c = c.parent
+    end
+  end
+  -- WFB patch (HUD1): GetFrameMetatable() and friends, as the client has
+  -- them: a widget type's metatable, its __index that flat method table.
+  -- Blizzard's SecureTemplates.lua starts with
+  -- CopyTable(GetFrameMetatable().__index); without this the whole file
+  -- fails and no secure action button gets SecureActionButtonMixin.
+  for _, t in ipairs({ "Frame", "Button", "EditBox", "FontString", "Texture" }) do
+    local cls = classes[t]
+    if cls then
+      local mt = { __index = cls.methods }
+      rawset(env, "Get" .. t .. "Metatable", function() return mt end)
     end
   end
   sim.frameTypes = {}

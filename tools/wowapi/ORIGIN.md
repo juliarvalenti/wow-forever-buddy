@@ -27,12 +27,27 @@ Each patch is marked `-- WFB patch (G1)` or `-- WFB patch (HUD1)` in the code. T
 
 HUD1, so Blizzard's own UI addons (from the extract) load as the client loads them:
 
-- `toc.lua`: a `[AllowLoadGameType ...]` / `[ExcludeLoadGameType ...]` tag matches the family (Mainline) as well as the game type (camelot), as in the client. Without this, Forever skips Blizzard's 472 mainline-tagged files and dependencies its camelot files build on.
-- `toc.lua`: every `## Dep:` / `## Dependencies:` / `## OptionalDeps:` line counts, each with its own game-type tag. Without this, only the last line is kept, and Blizzard's TOCs list one dependency per line.
+- `toc.lua`: a `[AllowLoadGameType ...]` tag names game types only: `mainline` is retail's, not Forever's family. (HUD1a briefly matched the family too, which loaded retail's `ActionButtonOverrides.lua` over Forever's; Blizzard_ActionBar lists the two as alternatives.)
+- `templates.lua`: in XML, an unknown inherited node is logged and the frame built without it, as in the client (Forever's `PetFrame.xml` inherits a template only retail loads); Lua's `CreateFrame` still throws.
+- `resources.lua`: on a placeholder frame, a key whose last word is a child noun (`EndCaps`, `CloseButton`, `TitleText`) is a placeholder child, not a stub method, unless it starts with a method-only prefix (`GetButton`, `SetText`). Without this, `frame.EndCaps:Hide()` fails (EllesmereUI's action bars and window skin).
+- `secure.lua`: restricted snippets have the `table` (with `table.new()`), `string` and `math` libraries (copies), as in the client's restricted environment.
+- `framexml.lua`: `CreateSecureDelegate(fn)` returns a function calling `fn`, and `RemoveKStrings` strips `|K...|k` strings. Without these, the error handler `Blizzard_ScriptErrors.lua` installs throws, so an addon reporting a soft error through `geterrorhandler()` (LibSharedMedia does) dies mid-file.
+- `framexml.lua`: `FACTION_BAR_COLORS` and `PowerBarColor` (by power token and type) for the stand-in FrameXML; Blizzard's own files define them in the real UI.
+- `assets.lua`, `render.lua`: an addon's own fonts (`Interface\AddOns\X\...ttf`/`.otf`) are found in its folder and each FontString draws in its own font, every font file embedded once (the game's Friz Quadrata keeps its `WoWFriz` family). Without this, all text draws in Friz.
+- `widgets.lua`: `Font:SetFont` returns success, as the client's does. Without this, LibSharedMedia calls every addon font invalid.
+- `widgets.lua`, `xml.lua`, `render.lua`: text shadows. `SetShadowOffset`/`SetShadowColor` on a Font or FontString (and `<Shadow>` in a `<Font>`) are kept; the renderer draws a set shadow as an offset copy and an explicit `0, 0` as clean text. Text whose font says nothing about shadows keeps the old light stroke. Without this, every string had a stroke, smearing dark ink on light panels.
+- `render.lua`: a colour texture (`SetColorTexture`) turns with `SetRotation`, like a file texture.
+- `assets.lua`: a miss for an addon's file rescans its folder (at most once a second) and isn't memoized, so art or fonts added while a session runs show up on the next render.
+- `docs.lua`: `SetAttributeNoHandler` takes any value, like `SetAttribute`.
+- `framexml.lua`: `Menu.GetManager()` returns one manager, with `OpenMenu` and the other methods addons hook (`hooksecurefunc`).
+- `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.
+- `toc.lua`: every `## Dep:`, `## Dependencies:`, `## RequiredDep(s):` and `## OptionalDep(s):` line counts, each with its own game-type tag. Without this, only the last line is kept (Blizzard lists one dependency per line), and `RequiredDep`, which `Blizzard_WorldMap` uses for the load-on-demand `Blizzard_MapCanvas`, was missed: the map then opened at login with its full-screen black backdrop.
 - `toc.lua`: file lines tagged `[AllowLoad Glue]` aren't loaded in game, and any other tag (`[LoadIntoEnvironment secure]`) is dropped from the file name after `[Family]`/`[Game]` are filled in. Without this, those files are reported missing.
 - `sim.lua`: addon names match case-insensitively, as in the client. Without this, a dependency named `Blizzard_ActionBar` loads the folder `blizzard_actionbar` a second time.
 - `templates.lua`: a FontString template may inherit a font object (`TooltipTextLeftTemplate inherits="GameTooltipText"`). Without this, it's "Couldn't find inherited node".
 - `docs.lua`: with `apiDocsDir` (a local `Blizzard_APIDocumentationGenerated`), enums and values the bundled data predates are added from the client's own docs. Without this, Forever's UI indexes enums like `EditModePresetLayouts.Gamepad` that the retail data doesn't have.
+- `xml.lua`: a `type="global"` KeyValue or Attribute may be a dotted path (`Enum.EditModeSystem.UnitFrame`). Without this, every Edit Mode system frame has a nil `system`, none registers, and the unit frames are never placed.
+- `assets.lua`: an atlas's size is in UI units: the smallest of its 1x size and its 2x size halved (some art ships a "1x" file at 2x density; the minimap ring is 438 px in both, 215 units in Blizzard's XML). Without this, 2x-authored HUD art draws at twice its size. The window frame's nine-slice relies on this instead of halving its own pieces.
 
 ## Updating
 

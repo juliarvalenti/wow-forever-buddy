@@ -156,9 +156,20 @@ function M.atlasInfo(name)
   if type(name) ~= "string" then return nil end
   local variants = M.atlases()[name:lower()]
   if not variants then return nil end
-  local best = variants[1]
-  for _, v in ipairs(variants) do if v.width < best.width then best = v end end
-  return best, variants
+  -- WFB patch (HUD1): the data gives each variant's size in its texture's
+  -- pixels; the client's size is in UI units, which a 2x texture draws at
+  -- half. Some art ships its "1x" file at 2x density too (the minimap ring
+  -- is 438 px in both, 215 units in Blizzard's own XML), so the smallest
+  -- of (1x size, 2x size / 2) is the size, as in the client.
+  local best, bw, bh
+  for _, v in ipairs(variants) do
+    local k = (v.path and v.path:lower():match("2x$")) and 2 or 1
+    if not bw or v.width / k < bw then best, bw, bh = v, v.width / k, v.height / k end
+  end
+  local info = {}
+  for key, val in pairs(best) do info[key] = val end
+  info.width, info.height = bw, bh
+  return info, variants
 end
 
 ------------------------------------------------------------------ store
@@ -302,8 +313,13 @@ function Store:addonFile(norm)
   local dir = self.addonDirs[addon]
   if not dir then return nil end
   self._addonIndex = self._addonIndex or {}
+  self._addonScanned = self._addonScanned or {}
   local idx = self._addonIndex[addon]
+  -- WFB patch (HUD1): a miss rescans the folder (at most once a second), so
+  -- art added while a session runs (addon-live) shows up.
+  if idx and not idx[rest] and os.time() - (self._addonScanned[addon] or 0) >= 1 then idx = nil end
   if not idx then
+    self._addonScanned[addon] = os.time()
     idx = {}
     local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.tga' -o -iname '*.blp' -o -iname '*.png' -o -iname '*.jpg' \\) 2>/dev/null")
     if p then
@@ -383,7 +399,8 @@ function Store:fileFor(norm)
       end
     end
   end
-  self.memo[norm] = found or false
+  -- an addon's file may appear later (see addonFile), so its miss isn't kept
+  if found or not norm:match("^addons/") then self.memo[norm] = found or false end
   if not found then self:log("not available: " .. norm) end
   return found
 end
@@ -400,7 +417,7 @@ function Store:image(tex)
     local w, h, mime = M.imageSize(data)
     if w then img = { file = file, width = w, height = h, mime = mime, data = data, path = norm } end
   end
-  self.memo[key] = img
+  if img or not tostring(norm):match("^addons/") then self.memo[key] = img end
   return img or nil
 end
 
@@ -411,7 +428,7 @@ function Store:font(path)
   if self.memo[key] ~= nil then return self.memo[key] or nil end
   local result = false
   local li = self:localIndex()
-  local file = li and li[norm]
+  local file = li and li[norm] or self:addonFont(norm)
   local cached = self.cacheDir .. SEP .. "files" .. SEP .. norm:gsub("/", SEP) .. ".ttf"
   if not file and exists(cached) then file = cached end
   if not file and not self.offline and have("curl") then
@@ -419,9 +436,38 @@ function Store:font(path)
     mkdirp((cached:gsub("[/\\][^/\\]*$", "")))
     if id and download(WAGO_CASC:format(id), cached) then file = cached end
   end
-  if file then result = { file = file, data = readAll(file), mime = "font/ttf" } end
-  self.memo[key] = result
+  if file then
+    result = { file = file, data = readAll(file), mime = file:lower():match("%.otf$") and "font/otf" or "font/ttf" }
+  end
+  if result or not norm:match("^addons/") then self.memo[key] = result end
   return result or nil
+end
+
+-- WFB patch (HUD1): a font file inside a loaded addon's folder
+-- (Interface\AddOns\EllesmereUI\media\fonts\X.ttf), matched case-insensitively
+-- like the client; see Sim:_registerAddonArt for the folders.
+function Store:addonFont(norm)
+  local addon, rest = norm:match("^addons/([^/]+)/(.+)$")
+  local dir = addon and self.addonDirs and self.addonDirs[addon]
+  if not dir then return nil end
+  self._addonFonts = self._addonFonts or {}
+  self._addonFontsScanned = self._addonFontsScanned or {}
+  local idx = self._addonFonts[addon]
+  if idx and not idx[rest] and os.time() - (self._addonFontsScanned[addon] or 0) >= 1 then idx = nil end
+  if not idx then
+    self._addonFontsScanned[addon] = os.time()
+    idx = {}
+    local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.ttf' -o -iname '*.otf' \\) 2>/dev/null")
+    if p then
+      for line in p:lines() do
+        local rel = line:gsub("^%./", "")
+        idx[rel:lower():gsub("\\", "/"):gsub("%.[%a%d]+$", "")] = dir .. SEP .. rel
+      end
+      p:close()
+    end
+    self._addonFonts[addon] = idx
+  end
+  return idx[rest]
 end
 
 -- Resolve an atlas to { image, left, right, top, bottom, width, height }.
