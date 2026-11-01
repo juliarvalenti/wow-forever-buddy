@@ -2856,7 +2856,12 @@ local function renderLists(docked, target)
                     row.right:SetTextColor(0.5, 0.5, 0.5)
                 else
                     row.label:SetTextColor(1, 1, 1)
-                    row.right:SetTextColor(1, 0.82, 0)
+                    -- In the window, ember (W1b) rather than the old gold.
+                    if f.scroll then
+                        row.right:SetTextColor(U.ui.rgba(U.STYLE.colors.ember))
+                    else
+                        row.right:SetTextColor(1, 0.82, 0)
+                    end
                 end
             end
         end
@@ -4391,7 +4396,7 @@ do
             row.right:SetText(r.right)
             row.detail:SetText(r.detail)
             row.label:SetTextColor(1, 1, 1)
-            row.right:SetTextColor(1, 0.82, 0)
+            row.right:SetTextColor(U.ui.rgba(U.STYLE.colors.ember))
         end
         p.footer:SetText("Mark items in the Forever Buddy app.")
         p:SetHeight(48 + n * 32)
@@ -5375,7 +5380,7 @@ do
         local icon = win.rail:CreateTexture(nil, "ARTWORK")
         icon:SetTexture(ICON)
         icon:SetSize(28, 28)
-        icon:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 14, -16)
+        icon:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 10, -16)
         local name = U.ui.text(win.rail, 14, col.textHi, nil, true)
         name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 7, -2)
         name:SetText("Forever Buddy")
