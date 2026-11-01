@@ -186,7 +186,9 @@ function Store:localIndex()
   self._local = false
   if not self.artDir then return false end
   local idx = {}
-  local p = io.popen("cd " .. q(self.artDir) .. " && find . -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.tga' \\) 2>/dev/null")
+  -- WFB patch (G1): fonts too, so an extracted Fonts/ folder serves
+  -- Store:font (FRIZQT__.TTF) offline, like the textures beside it.
+  local p = io.popen("cd " .. q(self.artDir) .. " && find . -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.tga' -o -iname '*.ttf' \\) 2>/dev/null")
   if p then
     for line in p:lines() do
       local rel = line:gsub("^%./", "")

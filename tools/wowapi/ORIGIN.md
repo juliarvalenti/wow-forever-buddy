@@ -18,6 +18,7 @@ Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the co
 - `framexml.lua`: `PanelTemplates_TabResize`, `_SetNumTabs` and `_SetTab`. A `PanelTabButtonTemplate` tab is sized to its label plus the template's ends, as in the client. Without this, the tabs are 0 wide and pile up.
 - `templates.lua`: `PortraitFrameTemplate`'s portrait is placed over the top-left corner (62×62 at -5, 7), as in the client. Without this, the window has no portrait.
 - `render.lua`: a frame inside a ScrollFrame is clipped to it. Without this, a pane taller than its window (Settings) draws past the window's edge.
+- `assets.lua`: the local art folder (`WOWAPI_ART`) indexes `.ttf` files as well as images, so the fonts `casc-extract` pulls from the game serve `Store:font` offline. Without this, pictures drawn from the extract fall back to a browser serif.
 
 ## Updating
 

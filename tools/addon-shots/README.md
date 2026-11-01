@@ -22,4 +22,13 @@ luajit tools/addon-shots/scene.lua /tmp/pictures --no-art
 
 This writes SVGs only. `--no-art` draws placeholders instead of downloading the game's art. The script never starts a browser or opens a window.
 
+**With Forever's own art (local only).** If the game is installed, `casc-extract` (`src-tauri/src/bin/casc-extract.rs`) pulls its UI art and fonts into a cache under app data, keyed by build. Point WOWAPI at that cache and keep it offline, so every texture and the Friz Quadrata font come from Forever's files instead of the retail mirrors:
+
+```sh
+WOWAPI_ART="$HOME/Library/Application Support/com.juliarvalenti.wowforeverbuddy/cache/casc-extract/wowf/<build key>" \
+WOWAPI_OFFLINE=1 luajit tools/addon-shots/scene.lua /tmp/pictures
+```
+
+CI can't do this (no game on the runners, and the files aren't ours to ship), so CI's pictures keep the downloaded art.
+
 **Known gap:** tabs show as labels, without their tab art.
