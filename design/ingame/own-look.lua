@@ -29,7 +29,33 @@ local STYLE = {
     bronzeHi = hex("#c9a26a"), bronze = hex("#8a6a3e"), bronzeLo = hex("#4e3a20"),
     okInk = hex("#2f6b1e"), ok = hex("#9fc27a"),
     line = { 1, 1, 1, 0.07 }, black = { 0, 0, 0, 0.6 },
+    onWax = hex("#f1e8da"), who = "Thrandor, level 12",
 }
+
+-- A theme pack swaps the textures (Media\Proto\<Theme>\, make.py <dir>
+-- <theme>) and the colours below; fonts and layout stay.
+local THEMES = {
+    warlock = {
+        dir = "Warlock\\",
+        sigil = true,
+        hideText = hex("#d3c4dc"), hideMute = hex("#8e7a99"), hideDim = hex("#6f5d79"),
+        ink = hex("#e6dcef"), ink2 = hex("#c3b3cf"), ink3 = hex("#8f7f9b"),
+        inkRule = hex("#b9f27a", 0.30), inkHair = hex("#e6dcef", 0.10), margin = hex("#8fd14f", 0.35),
+        wax = hex("#8fd14f"), ember = hex("#7ee04a"),
+        bronzeHi = hex("#a6e36a"), bronze = hex("#3f6e2a"), bronzeLo = hex("#1d3812"),
+        okInk = hex("#8fd14f"), ok = hex("#8fd14f"),
+        onWax = hex("#10200a"), who = "Morvaine, level 24",
+    },
+}
+local theme = THEMES[FBProtoTheme or ""]
+if theme then
+    for k, v in pairs(theme) do STYLE[k] = v end
+end
+local ART = MEDIA .. (theme and theme.dir or "")
+
+local function tint(c, a)
+    return { c[1], c[2], c[3], a }
+end
 
 local P = {}
 FBProto = P
@@ -46,7 +72,7 @@ end
 
 function P.art(parent, name, layer, l, r, t, b)
     local x = parent:CreateTexture(nil, layer or "BACKGROUND")
-    x:SetTexture(MEDIA .. name)
+    x:SetTexture(ART .. name)
     if l then x:SetTexCoord(l, r, t, b) end
     return x
 end
@@ -106,7 +132,7 @@ function P.ghost(parent, label, w)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(w, 26)
     P.fill(b, { 0, 0, 0, 0.25 }):SetAllPoints()
-    P.border(b, hex("#c9a26a", 0.28))
+    P.border(b, tint(STYLE.bronzeHi, 0.28))
     local s = P.text(b, STYLE.body, 11, STYLE.chalk, "CENTER")
     s:SetPoint("CENTER", 0, 0)
     s:SetText(label)
@@ -175,7 +201,7 @@ function P.step(parent, n, title, where, state)
             tick:SetRotation(math.rad(s[2]))
         end
     else
-        local num = P.text(box, STYLE.head, 12, state == "current" and STYLE.chalkHi or STYLE.ink, "CENTER")
+        local num = P.text(box, STYLE.head, 12, state == "current" and STYLE.onWax or STYLE.ink, "CENTER")
         num:SetPoint("CENTER", 0, 0)
         num:SetText(tostring(n))
     end
@@ -203,7 +229,7 @@ function P.card(parent, title, h)
     local strip = P.art(f, "Hide", "BORDER", 0.05, 0.5, 0.3, 0.36)
     strip:SetPoint("TOPLEFT") strip:SetPoint("TOPRIGHT") strip:SetHeight(32)
     P.hrule(f, -32, 0, 0, hex("#000000", 0.5))
-    P.hrule(f, -33, 0, 0, hex("#c9a26a", 0.12))
+    P.hrule(f, -33, 0, 0, tint(STYLE.bronzeHi, 0.12))
     P.border(f, hex("#000000", 0.55), "ARTWORK")
     local t = P.text(f, STYLE.body, 13, STYLE.chalkHi)
     t:SetPoint("TOPLEFT", 14, -10)
@@ -248,7 +274,7 @@ function P.slider(parent, label, value, shown)
     box:SetSize(50, 24)
     box:SetPoint("TOPRIGHT", 0, -17)
     P.fill(box, hex("#000000", 0.35)):SetAllPoints()
-    P.border(box, hex("#c9a26a", 0.28))
+    P.border(box, tint(STYLE.bronzeHi, 0.28))
     local n = P.text(box, STYLE.body, 12, STYLE.chalkHi, "CENTER")
     n:SetPoint("CENTER")
     function f.Refresh()
@@ -285,7 +311,7 @@ function P.build(page)
     P.border(win, hex("#000000", 0.8))
     local inner = CreateFrame("Frame", nil, win)
     inner:SetPoint("TOPLEFT", 1, -1) inner:SetPoint("BOTTOMRIGHT", -1, 1)
-    P.border(inner, hex("#c9a26a", 0.14))
+    P.border(inner, tint(STYLE.bronzeHi, 0.14))
 
     -- the rail: stitched hide, inset like the desktop sidebar
     local rail = CreateFrame("Frame", nil, win)
@@ -293,6 +319,12 @@ function P.build(page)
     rail:SetPoint("TOPLEFT", 8, -8)
     P.art(rail, "Hide", "BACKGROUND", 0, RAIL / 256, 0, L.RAILH / 512):SetAllPoints()
     P.border(rail, hex("#000000", 0.55))
+    if theme and theme.sigil then
+        local sg = P.art(rail, "Sigil", "BORDER")
+        sg:SetVertexColor(rgba(STYLE.ember, 0.07))
+        sg:SetSize(132, 132)
+        sg:SetPoint("BOTTOM", 0, 58)
+    end
 
     local icon = rail:CreateTexture(nil, "ARTWORK")
     icon:SetTexture("Interface\\AddOns\\ForeverBuddy\\Media\\Icon")
@@ -303,7 +335,7 @@ function P.build(page)
     name:SetText("Forever Buddy")
     local who = P.text(rail, STYLE.body, 10, STYLE.hideMute)
     who:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -3)
-    who:SetText("Thrandor, level 12")
+    who:SetText(STYLE.who)
 
     local y = -58
     for _, it in ipairs(P.RAIL) do
@@ -340,7 +372,7 @@ function P.build(page)
         end
     end
     P.hrule(rail, -(L.RAILH - 46), 10, -10, hex("#000000", 0.35))
-    P.hrule(rail, -(L.RAILH - 45), 10, -10, hex("#d6b886", 0.10))
+    P.hrule(rail, -(L.RAILH - 45), 10, -10, tint(STYLE.hideText, 0.10))
     local set = P.text(rail, STYLE.body, 12, STYLE.hideText)
     set:SetPoint("BOTTOMLEFT", 18, 17)
     set:SetText("Settings")
@@ -380,6 +412,12 @@ function P.pages.plan.draw(win, cx, L)
     local pg = P.page(win, 30)
     pg:SetPoint("TOPLEFT", cx, -HEAD - 6)
     pg:SetPoint("BOTTOMRIGHT", -20, FOOT + 8)
+    if theme and theme.sigil then
+        local sg = P.art(pg, "Sigil", "BORDER")
+        sg:SetVertexColor(rgba(STYLE.wax, 0.13))
+        sg:SetSize(210, 210)
+        sg:SetPoint("BOTTOMRIGHT", -14, 12)
+    end
 
     local head = P.text(pg, STYLE.head, 16, STYLE.ink)
     head:SetPoint("TOPLEFT", 44, -14)
