@@ -41,6 +41,17 @@ pub fn current(settings: &SettingsStore) -> AppResult<Option<Install>> {
         return Ok(None);
     };
     let mut install = scan(&choice.root)?;
+    // BUG-FLAVOR: Forever's beta folder is gone and its own `_forever_` is
+    // there (the launch moved it): Forever is now that folder. Saved as if
+    // picked, so its links are recorded the usual way.
+    if choice.flavor == layout::FOREVER_BETA_FOLDER
+        && install.flavor(&choice.flavor).is_none()
+        && install
+            .flavor(layout::FOREVER_FOLDER)
+            .is_some_and(|f| f.is_forever)
+    {
+        return set(settings, &choice.root, Some(layout::FOREVER_FOLDER)).map(Some);
+    }
     let Some(flavor) = install.flavor(&choice.flavor) else {
         return Err(AppError::InvalidInstall(format!(
             "{} no longer has a {} folder",
@@ -229,6 +240,93 @@ mod tests {
             current(&settings),
             Err(AppError::InvalidInstall(_))
         ));
+    }
+
+    /// BUG-FLAVOR: the fixture install as after Forever's launch, with its own
+    /// `_forever_` folder (product `wowf`, as on Julia's Mac) beside the beta.
+    fn add_forever(root: &std::path::Path) {
+        let forever = root.join("_forever_");
+        std::fs::create_dir_all(forever.join("WTF/Account/ACCOUNT1")).unwrap();
+        std::fs::write(forever.join("Wow.exe"), b"").unwrap();
+        let info = root.join(".build.info");
+        let mut text = std::fs::read_to_string(&info).unwrap();
+        text.push_str("us|1|7feb61f3c994bcb168526b8db521514a|c74a0a5afa69d7b60e07f7dae9fc7969|||tpr/wow|us.cdn.blizzard.com|http://us.cdn.blizzard.com/?maxhosts=4|Windows x86_64 US? acct-USA? geoip-US? enUS speech?:Windows x86_64 US? acct-USA? geoip-US? enUS text?|||1.60.1.70707||wowf\n");
+        std::fs::write(&info, text).unwrap();
+    }
+
+    #[test]
+    fn the_forever_folder_is_forever_and_chosen_over_the_beta() {
+        let (_s, settings) = store();
+        let (_w, root) = fixture_copy();
+        add_forever(&root);
+        let install = set(&settings, &root, None).unwrap();
+        assert_eq!(
+            install.active.as_deref(),
+            Some("_forever_"),
+            "Forever's own folder"
+        );
+        let f = install.flavor("_forever_").unwrap();
+        assert!(f.is_forever);
+        assert_eq!(
+            (f.label.as_str(), f.product.as_deref(), f.version.as_deref()),
+            ("WoW: Forever", Some("wowf"), Some("1.60.1.70707"))
+        );
+        assert_eq!(
+            f.exe.as_ref().and_then(|e| e.file_name()),
+            Some("Wow.exe".as_ref())
+        );
+        // The beta is still found, and can still be picked.
+        assert!(install
+            .flavor("_classic_beta_")
+            .is_some_and(|b| b.is_forever));
+        let beta = set(&settings, &root, Some("_classic_beta_")).unwrap();
+        assert_eq!(beta.active.as_deref(), Some("_classic_beta_"));
+    }
+
+    #[test]
+    fn a_saved_beta_moves_to_forever_once_the_beta_folder_is_gone() {
+        let (_s, settings) = store();
+        let (_w, root) = fixture_copy();
+        set(&settings, &root, None).unwrap();
+        assert_eq!(settings.get().install.unwrap().flavor, "_classic_beta_");
+
+        // Launch: Forever's folder arrives, the beta's is still there, and
+        // the saved choice stays put (the player picks).
+        add_forever(&root);
+        let still = current(&settings).unwrap().unwrap();
+        assert_eq!(still.active.as_deref(), Some("_classic_beta_"));
+
+        // The beta folder goes: Forever is `_forever_` now, saved as such.
+        std::fs::remove_dir_all(root.join("_classic_beta_")).unwrap();
+        let moved = current(&settings).unwrap().unwrap();
+        assert_eq!(moved.active.as_deref(), Some("_forever_"));
+        assert_eq!(settings.get().install.unwrap().flavor, "_forever_");
+    }
+
+    /// BUG-FLAVOR, against a real install (read only; nothing is written):
+    /// `WFB_REAL_INSTALL="/Applications/World of Warcraft" cargo test
+    /// real_forever_install -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn real_forever_install() {
+        let Ok(path) = std::env::var("WFB_REAL_INSTALL") else {
+            return;
+        };
+        let install = scan(std::path::Path::new(&path)).unwrap();
+        for f in &install.flavors {
+            println!(
+                "{} {:?} {:?} {:?} forever={} exe={:?} accounts={:?}",
+                f.id, f.label, f.product, f.version, f.is_forever, f.exe, f.accounts
+            );
+        }
+        let id = choose_flavor(&install, None).unwrap();
+        assert_eq!(id, "_forever_", "Forever's own folder is the one chosen");
+        let f = install.flavor(&id).unwrap();
+        assert!(f.is_forever && f.product.as_deref() == Some("wowf"));
+        // CASC (icons, CASC2) reads the same build through `.flavor.info`.
+        let build = crate::casc::build_of(&f.dir).unwrap();
+        println!("casc: {} {}", build.product, build.version);
+        assert_eq!(build.product, "wowf");
     }
 
     #[test]

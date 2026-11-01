@@ -191,7 +191,7 @@ export function FindGame({
           )}
           <div className="d-hints">
             <div><span className="d-mono">World of Warcraft\</span>the main folder</div>
-            <div><span className="d-mono">_classic_beta_\</span>the Forever folder</div>
+            <div><span className="d-mono">_forever_\</span>the Forever folder</div>
             <div><span className="d-mono">WTF\</span>even just this works</div>
           </div>
           <div className="d-letter-acts">
@@ -347,7 +347,7 @@ export function GameFolder({ install: inst }: { install: ReturnType<typeof useIn
               {looked.length > 4 && ` and ${looked.length - 4} more`}.
             </p>
             <p className="d-muted">
-              Any of these works: the World of Warcraft folder, the _classic_beta_ folder, or even
+              Any of these works: the World of Warcraft folder, the _forever_ folder, or even
               just its WTF folder.
             </p>
           </PanelBody>
