@@ -1,0 +1,19 @@
+# A walk through the window, for `live.lua script` (and CI): every tab with
+# the app's slots, a setting turned on, a reload, then the empty profile.
+login filled
+slash /fb plan
+screenshot filled-plan
+click Lists
+screenshot filled-list
+click Errands
+screenshot filled-errands
+click Cleanup
+screenshot filled-cleanup
+set window.coach on
+screenshot filled-settings
+reload
+state ForeverBuddySettings
+login empty
+slash /fb
+screenshot empty-plan
+errors
