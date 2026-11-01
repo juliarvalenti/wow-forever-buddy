@@ -32,6 +32,8 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 - `sim.lua`: addon names match case-insensitively, as in the client. Without this, a dependency named `Blizzard_ActionBar` loads the folder `blizzard_actionbar` a second time.
 - `templates.lua`: a FontString template may inherit a font object (`TooltipTextLeftTemplate inherits="GameTooltipText"`). Without this, it's "Couldn't find inherited node".
 - `docs.lua`: with `apiDocsDir` (a local `Blizzard_APIDocumentationGenerated`), enums and values the bundled data predates are added from the client's own docs. Without this, Forever's UI indexes enums like `EditModePresetLayouts.Gamepad` that the retail data doesn't have.
+- `xml.lua`: a `type="global"` KeyValue or Attribute may be a dotted path (`Enum.EditModeSystem.UnitFrame`). Without this, every Edit Mode system frame has a nil `system`, none registers, and the unit frames are never placed.
+- `assets.lua`: an atlas's size is in UI units: the smallest of its 1x size and its 2x size halved (some art ships a "1x" file at 2x density; the minimap ring is 438 px in both, 215 units in Blizzard's XML). Without this, 2x-authored HUD art draws at twice its size. The window frame's nine-slice relies on this instead of halving its own pieces.
 
 ## Updating
 

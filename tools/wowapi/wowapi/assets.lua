@@ -156,9 +156,20 @@ function M.atlasInfo(name)
   if type(name) ~= "string" then return nil end
   local variants = M.atlases()[name:lower()]
   if not variants then return nil end
-  local best = variants[1]
-  for _, v in ipairs(variants) do if v.width < best.width then best = v end end
-  return best, variants
+  -- WFB patch (HUD1): the data gives each variant's size in its texture's
+  -- pixels; the client's size is in UI units, which a 2x texture draws at
+  -- half. Some art ships its "1x" file at 2x density too (the minimap ring
+  -- is 438 px in both, 215 units in Blizzard's own XML), so the smallest
+  -- of (1x size, 2x size / 2) is the size, as in the client.
+  local best, bw, bh
+  for _, v in ipairs(variants) do
+    local k = (v.path and v.path:lower():match("2x$")) and 2 or 1
+    if not bw or v.width / k < bw then best, bw, bh = v, v.width / k, v.height / k end
+  end
+  local info = {}
+  for key, val in pairs(best) do info[key] = val end
+  info.width, info.height = bw, bh
+  return info, variants
 end
 
 ------------------------------------------------------------------ store

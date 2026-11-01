@@ -277,8 +277,8 @@ function M.builtins(env)
   B.BasicFrameTemplateWithInset = function(sim, obj, create) panel(sim, obj, create, "TitleText", true) end
   -- WFB patch (G1): Blizzard's frame art. The NineSliceLayouts.lua layouts,
   -- placed as NineSlice.lua places them: corners at their offsets, edges
-  -- stretched between the corners. Atlases on a 2x texture draw at half
-  -- their pixel size, as in the client.
+  -- stretched between the corners, at their atlas sizes (in UI units; see
+  -- assets.atlasInfo for 2x art).
   local LAYOUTS = {
     PortraitFrameTemplate = { layer = "OVERLAY",
       TopLeftCorner = { "UI-Frame-PortraitMetal-CornerTopLeft", -13, 16 },
@@ -312,8 +312,6 @@ function M.builtins(env)
       local atlas = L[key][1]
       local t = child(sim, create, "Texture", ns, key, key, L.layer)
       t:SetAtlas(atlas, true)
-      local info = require("wowapi.assets").atlasInfo(atlas)
-      if info and info.path and info.path:lower():match("2x$") then t:SetSize(info.width / 2, info.height / 2) end
       return t
     end
     for _, c in ipairs(CORNERS) do
