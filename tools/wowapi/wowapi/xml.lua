@@ -641,6 +641,12 @@ function M.runOnLoads(sim, ctx)
   for _, obj in ipairs(list) do
     sim:_runScript(obj, "OnLoad")
   end
+  -- WFB patch (HUD2): a frame that loads visible is then shown, as in the
+  -- client (OnShow after OnLoad). The personal resource display sets itself
+  -- up in OnShow, and Edit Mode then hides it.
+  for _, obj in ipairs(list) do
+    if obj.IsVisible and obj:IsVisible() then sim:_runScript(obj, "OnShow") end
+  end
 end
 
 -- Build a frame element (top level or inside <Frames>).

@@ -60,6 +60,16 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 - `xml.lua`: a `type="global"` KeyValue or Attribute may be a dotted path (`Enum.EditModeSystem.UnitFrame`). Without this, every Edit Mode system frame has a nil `system`, none registers, and the unit frames are never placed.
 - `assets.lua`: an atlas's size is in UI units: the smallest of its 1x size and its 2x size halved (some art ships a "1x" file at 2x density; the minimap ring is 438 px in both, 215 units in Blizzard's XML). Without this, 2x-authored HUD art draws at twice its size. The window frame's nine-slice relies on this instead of halving its own pieces.
 
+HUD2, for the logged-in scene (`hud.lua --class rogue`):
+
+- `toc.lua`: a game type tag names the family too: `[AllowLoadGameType mainline]` takes in Forever's camelot. Blizzard's TOCs say so (`Mainline\ChatConfigFrameOverrides.lua [AllowLoadGameType mainline] [ExcludeLoadGameType camelot]`, and the same for the rogue combo bar), and Forever's target frame needs `Shared\TargetFrameAuraShared.lua`, tagged mainline. This replaces HUD1's game-type-only rule; [Game] and [Family] override files define different functions, so both load. 194 addons load at login instead of 170.
+- `docs.lua`: events Blizzard's own UI registers (found in the folder beside `apiDocsDir`) are known, documented or not. Without this, the micro menu's `OnLoad` stops on `TRIAL_STATUS_UPDATE`, its Edit Mode setup never runs, and the action bar runs right to left.
+- `widgets.lua`: the client's `AuraContainer` widget (the target frame's buffs), keeping its unit and settings and showing no auras. Without it, the target frame's `OnLoad` stops, so it has no name.
+- `widgets.lua`: `Texture:GetDrawLayer()` also returns the sublevel; `SetTexture` replaces an atlas; `StatusBar:SetStatusBarTexture(name)` reuses the bar's texture instead of making a new one each call.
+- `render.lua`: a status bar's texture draws only as its fill, not again as a full-size region (both bars looked full); a texture set to an atlas name draws the atlas (the unit frames' bars); file ID 0 draws nothing.
+- `xml.lua`: a frame that loads visible gets `OnShow` after `OnLoad`, as in the client. The personal resource display sets itself up there, and Edit Mode then hides it.
+- `assets.lua`: `data/atlases-forever.txt` (`fetch-forever-atlases.sh`: Forever's UiTextureAtlas tables at its build, from wago.tools) replaces retail's atlases of the same name, keeping the c60 variants where an atlas has them. Forever's own UI names its c60 art directly (`INV_SideTab_Bank_c60`). Without it, Forever-only atlases (`ui-hud-minimap-header-button`) draw as placeholders. Local art runs only: CI renders `--no-art` and doesn't fetch it.
+
 ## Updating
 
 To move to a new commit:

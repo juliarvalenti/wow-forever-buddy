@@ -131,8 +131,11 @@ local atlases
 function M.atlases()
   if atlases then return atlases end
   atlases = {}
-  local f = io.open(moduleDir .. "data" .. SEP .. "atlases.txt", "r")
-  if f then
+  -- WFB patch (HUD2): WoW Forever's own atlases (fetch-forever-atlases.sh),
+  -- when present, replace retail's of the same name.
+  local function load(file, into)
+    local f = io.open(moduleDir .. "data" .. SEP .. file, "r")
+    if not f then return end
     for line in f:lines() do
       if line:sub(1, 1) ~= "#" then
         local p = {}
@@ -142,12 +145,16 @@ function M.atlases()
           width = tonumber(p[4]), height = tonumber(p[5]), left = tonumber(p[6]), right = tonumber(p[7]),
           top = tonumber(p[8]), bottom = tonumber(p[9]), tilesH = p[10] == "1", tilesV = p[11] == "1" }
         local key = name:lower()
-        atlases[key] = atlases[key] or {}
-        table.insert(atlases[key], e)
+        into[key] = into[key] or {}
+        table.insert(into[key], e)
       end
     end
     f:close()
   end
+  load("atlases.txt", atlases)
+  local forever = {}
+  load("atlases-forever.txt", forever)
+  for key, variants in pairs(forever) do atlases[key] = variants end
   return atlases
 end
 

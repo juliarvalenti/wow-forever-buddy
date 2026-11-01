@@ -84,12 +84,14 @@ M.FAMILY = "Mainline"
 M.GAME = "Camelot"
 
 -- Evaluate [AllowLoadGameType a, b] / [ExcludeLoadGameType a, b] on a line.
--- A tag names game types only: "mainline" is retail's, not Forever's family
--- (Blizzard_ActionBar lists [Game]\ActionButtonOverrides.lua for camelot and
--- [Family]\ActionButtonOverrides.lua for mainline as alternatives).
+-- WFB patch (HUD2): a tag names a game type or the family: "mainline" takes
+-- in Forever's camelot (Blizzard_ChatFrame lists a Mainline file as
+-- [AllowLoadGameType mainline] [ExcludeLoadGameType camelot], and Forever's
+-- target frame needs Shared\TargetFrameAuraShared.lua, tagged mainline).
 function M.gameTypeAllowed(line, gameType)
   gameType = (gameType or M.GAME_TYPE):lower()
-  local function names(g) return g:lower() == gameType end
+  local family = M.FAMILY:lower()
+  local function names(g) g = g:lower(); return g == gameType or g == family end
   local ok = true
   for list in line:gmatch("%[AllowLoadGameType%s+([^%]]+)%]") do
     local found = false

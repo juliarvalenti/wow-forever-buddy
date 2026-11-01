@@ -169,6 +169,19 @@ sim:Mock("C_EditMode.GetAccountSettings", function()
     return settings
 end)
 
+-- Nothing timed at login (breath, fatigue): the client answers "UNKNOWN"
+-- for each mirror timer. And the personal resource display is off, as on a
+-- fresh install.
+sim:Mock("GetMirrorTimerInfo", function()
+    return "UNKNOWN", 0, 0, 0, false, ""
+end)
+sim:Mock("GetMirrorTimerProgress", function()
+    return 0
+end)
+sim:Mock("C_GameRules.IsPersonalResourceDisplayEnabled", function()
+    return false
+end)
+
 if class then
     fixtures.mock(sim, class)
 end

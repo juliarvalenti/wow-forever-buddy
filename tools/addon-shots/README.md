@@ -40,3 +40,10 @@ WOWAPI_ART="$EXTRACT" WOWAPI_OFFLINE=1 luajit tools/addon-shots/hud.lua /tmp/hud
 ```
 
 It prints the Lua errors, most frequent first: the HUD is a work in progress (HUD1), and each error is a WOWAPI gap to close.
+
+**A class's character (HUD2).** `--class rogue` logs in as a fixture character from `fixtures.lua` (a level 20 rogue with its spells on the bar, energy, and combo points on a Defias target) instead of the generic warrior. `--level <n>` changes the level. Rogue is the first class. Forever's own atlases and named colours come from wago.tools, once:
+
+```sh
+tools/wowapi/fetch-globalcolors.sh
+tools/wowapi/fetch-forever-atlases.sh
+```

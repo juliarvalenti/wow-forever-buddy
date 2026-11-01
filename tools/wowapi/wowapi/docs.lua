@@ -280,6 +280,19 @@ function M.install(sim, env)
   if sim.opts.apiDocsDir then
     local enums, events, functions = M.docsFrom(sim.opts.apiDocsDir)
     for name in pairs(events) do known[name] = true end
+    -- Events Blizzard's own UI (the folder the docs sit in) registers exist
+    -- in that client even when undocumented (TRIAL_STATUS_UPDATE): the
+    -- micro menu's OnLoad stops on one otherwise.
+    local addonsDir = sim.opts.apiDocsDir:match("^(.*)[/\\][^/\\]+[/\\]?$")
+    local p = addonsDir and io.popen("grep -rhoE 'Register(Unit)?Event\\(\"[A-Z0-9_]+\"' '"
+      .. addonsDir:gsub("'", "'\\''") .. "' 2>/dev/null")
+    if p then
+      for line in p:lines() do
+        local ev = line:match('"([A-Z0-9_]+)"')
+        if ev then known[ev] = true end
+      end
+      p:close()
+    end
     local function default(t)
       if t == "bool" then return false end
       if t == "cstring" or t == "string" then return "" end

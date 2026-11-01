@@ -439,14 +439,23 @@ function M.install(sim, env)
     return W
   end
   local SB = valueWidget("StatusBar")
+  -- WFB patch (HUD2): a file or atlas name goes on the bar's one texture, as
+  -- in the client (each call made a new one). The bar texture is marked so
+  -- the renderer draws it only as the bar's fill.
   function SB:SetStatusBarTexture(t)
     local s = S(self)
-    s.barTexture = type(t) == "table" and t or M.create(sim, "Texture", nil, self)
-    if type(t) ~= "table" then s.barTexture:SetTexture(t) end
+    if type(t) == "table" then
+      s.barTexture = t
+    else
+      s.barTexture = s.barTexture or M.create(sim, "Texture", nil, self)
+      s.barTexture:SetTexture(t)
+    end
+    S(s.barTexture).barOf = self
   end
   function SB:GetStatusBarTexture()
     local s = S(self)
     if not s.barTexture then s.barTexture = M.create(sim, "Texture", nil, self) end
+    S(s.barTexture).barOf = self
     return s.barTexture
   end
   function SB:SetStatusBarColor(r, g, b, a) S(self).color = { r, g, b, a or 1 } end
@@ -502,6 +511,19 @@ function M.install(sim, env)
   classes.Cooldown.methods.GetCooldownTimes = function(self)
     local c = S(self).cooldown or { 0, 0 }
     return c[1] * 1000, c[2] * 1000
+  end
+  -- WFB patch (HUD1): the client's native AuraContainer (the target frame's
+  -- buffs and debuffs). It keeps its unit and settings and shows no auras.
+  local AC = define("AuraContainer", "Frame")
+  function AC:SetUnit(unit) S(self).unit = unit end
+  function AC:GetUnit() return S(self).unit end
+  function AC:GetNumVisibleFlowLayoutLines() return 0 end
+  function AC:IsFlowLayoutMirroredVertically() return S(self).mirrored or false end
+  function AC:SetFlowLayoutMirroredVertically(v) S(self).mirrored = v and true or false end
+  for _, m in ipairs({ "SetAuraContainerAnchorsChangedCallback", "SetConstrainedFlowLayoutLineSize",
+    "SetFlowLayoutMaximumLineSize", "SetMaxBuffs", "SetMaxDebuffs", "SetNumConstrainedFlowLayoutLines",
+    "SetPlayerIsTarget", "SetShowAuraCount", "SetTargetIsFriendly", "UpdateAllAuras" }) do
+    AC[m] = function() end
   end
   define("Model", "Frame")
   define("PlayerModel", "Model")
@@ -640,7 +662,8 @@ function M.install(sim, env)
   ---------------------------------------------------------------- Texture
   define("TextureBase", "Region")
   local T = define("Texture", "TextureBase")
-  function T:SetTexture(t) S(self).texture = t; return true end
+  -- WFB patch (HUD2): a new texture replaces an atlas, as in the client.
+  function T:SetTexture(t) S(self).texture = t; S(self).atlas = nil; return true end
   function T:GetTexture() return S(self).texture end
   function T:GetTextureFileID() return type(S(self).texture) == "number" and S(self).texture or nil end
   function T:SetColorTexture(r, g, b, a) S(self).texture = "color"; S(self).color = { r, g, b, a or 1 } end
@@ -674,7 +697,8 @@ function M.install(sim, env)
   function T:SetGradientAlpha(orientation, r1, g1, b1, a1, r2, g2, b2, a2)
     S(self).gradient = { orientation = tostring(orientation):upper(), { r1, g1, b1, a1 }, { r2, g2, b2, a2 } }
   end
-  function T:GetDrawLayer() return S(self).layer or "ARTWORK" end
+  -- WFB patch (HUD1): the sublevel too, as the client returns it.
+  function T:GetDrawLayer() return S(self).layer or "ARTWORK", S(self).sublevel or 0 end
 
   ---------------------------------------------------------------- Font
   local Font = define("Font", "Object")

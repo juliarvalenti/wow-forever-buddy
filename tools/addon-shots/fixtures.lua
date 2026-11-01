@@ -84,6 +84,11 @@ function M.mock(sim, class)
                 return "spell", actions[slot][1], "spell"
             end
         end,
+        -- Forever keeps combo points on the target (Camelot ComboFrame).
+        GetComboPoints = function(unit, target)
+            local cp = c.player.powers and c.player.powers[4]
+            return (cp and unit == "player" and target == "target" and c.target) and cp[1] or 0
+        end,
         GetActionCount = function() return 0 end,
         GetActionCooldown = function() return 0, 0, 1, 1 end,
         IsUsableAction = function(slot) return has(slot), false end,

@@ -245,13 +245,23 @@ local function drawTexture(ctx, obj, s, x, y, w, h, alpha, clipFrac)
     return
   end
   if not s.texture and not s.atlas then return end
+  -- WFB patch (HUD2): file ID 0 (or "0") is no texture, as in the client.
+  if not s.atlas and (s.texture == 0 or s.texture == "0" or s.texture == "") then return end
   local props = s.props or {}
   local extra = { blend = s.blend, desaturate = s.desaturated or (props.Desaturation and (props.Desaturation[1] or 0) > 0.5),
     rotation = s.animRotation and math.rad(s.animRotation) or (props.Rotation and props.Rotation[1]) }
   if ctx.store then
     local img, tc
-    if s.atlas then
-      local at = ctx.store:atlas(s.atlas)
+    -- WFB patch (HUD2): a texture set to an atlas name (the unit frames'
+    -- SetStatusBarTexture("UI-HUD-UnitFrame-...-Bar-Health")) draws that
+    -- atlas, as in the client.
+    local atlasName = s.atlas
+    if not atlasName and type(s.texture) == "string" and not s.texture:find("[/\\]") then
+      local at = ctx.store:atlas(s.texture)
+      if at and at.image then atlasName = s.texture end
+    end
+    if atlasName then
+      local at = ctx.store:atlas(atlasName)
       if at and at.image then img, tc = at.image, { at.left, at.right, at.top, at.bottom } end
     else
       img = ctx:art(s.texture)
@@ -287,6 +297,8 @@ local function region(ctx, obj)
   local sim = ctx.sim
   local st = sim.widgetState
   local s = st[obj]
+  -- WFB patch (HUD2): a status bar's texture is drawn by its bar, as the fill.
+  if s.barOf then return end
   local l, b, w, h = layout.rect(sim, obj)
   if not l then return end
   local x, y = l, H - b - h
