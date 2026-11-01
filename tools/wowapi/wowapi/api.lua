@@ -632,8 +632,23 @@ function M.install(sim, env)
     UnitEffectiveLevel = function(u) local x = U(u); return x and x.level or 0 end,
     UnitHealth = function(u) local x = U(u); return x and x.health or 0 end,
     UnitHealthMax = function(u) local x = U(u); return x and x.healthMax or 0 end,
-    UnitPower = function(u, t) local x = U(u); return x and x.power or 0 end,
-    UnitPowerMax = function(u, t) local x = U(u); return x and x.powerMax or 0 end,
+    -- WFB patch (HUD1): a unit can have secondary powers (x.powers[type] =
+    -- { cur, max }), such as a rogue's combo points next to its energy; an
+    -- explicit type that isn't the unit's main power and isn't modelled is 0.
+    UnitPower = function(u, t)
+      local x = U(u)
+      if not x then return 0 end
+      if t and x.powers and x.powers[t] then return x.powers[t][1] end
+      if t and x.powerType and t ~= x.powerType and t >= 0 then return 0 end
+      return x.power or 0
+    end,
+    UnitPowerMax = function(u, t)
+      local x = U(u)
+      if not x then return 0 end
+      if t and x.powers and x.powers[t] then return x.powers[t][2] end
+      if t and x.powerType and t ~= x.powerType and t >= 0 then return 0 end
+      return x.powerMax or 0
+    end,
     UnitPowerType = function(u) local x = U(u); if x then return x.powerType, POWER_TOKENS[x.powerType] end end,
     UnitIsDead = function(u) local x = U(u); return x and (x.dead or (x.health or 1) <= 0) or false end,
     UnitIsGhost = function(u) local x = U(u); return x and x.ghost or false end,

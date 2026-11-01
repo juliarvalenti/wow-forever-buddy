@@ -139,6 +139,14 @@ local secrets = require("wowapi.secrets")
 -- tables to APIDocumentation:AddDocumentationTable; run in a sandbox where
 -- any other name resolves (and sums) to something harmless.
 function M.enumsFrom(dir)
+  return (M.docsFrom(dir))
+end
+
+-- Enums, plus events (a set) and functions ({ "C_X.Name" = return types })
+-- from a Blizzard_APIDocumentationGenerated folder. Cached per folder.
+local docsCache = {}
+function M.docsFrom(dir)
+  if docsCache[dir] then return unpack(docsCache[dir]) end
   local tables = {}
   local anything = setmetatable({}, { __index = function(t) return t end,
     __add = function() return 0 end, __sub = function() return 0 end, __unm = function() return 0 end })
@@ -167,7 +175,23 @@ function M.enumsFrom(dir)
       end
     end
   end
-  return enums
+  local events, functions = {}, {}
+  for _, sys in ipairs(tables) do
+    for _, e in ipairs(sys.Events or {}) do
+      if type(e.LiteralName) == "string" then events[e.LiteralName] = true end
+    end
+    if sys.Type == "System" then
+      for _, fn in ipairs(sys.Functions or {}) do
+        if type(fn.Name) == "string" then
+          local returns = {}
+          for _, r in ipairs(fn.Returns or {}) do returns[#returns + 1] = r.Type end
+          functions[(type(sys.Namespace) == "string" and sys.Namespace .. "." or "") .. fn.Name] = returns
+        end
+      end
+    end
+  end
+  docsCache[dir] = { enums, events, functions }
+  return enums, events, functions
 end
 
 function M.install(sim, env)
@@ -247,6 +271,46 @@ function M.install(sim, env)
   for name in pairs(d.events) do known[name] = true end
   for _, extra in ipairs(sim.opts.extraEvents or {}) do known[extra] = true end
   sim.knownEvents = known
+
+  -- WFB patch (HUD1): with apiDocsDir, the client's own docs also add the
+  -- events and functions the bundled data predates (Forever's
+  -- INPUT_DEVICE_INTERFACE_TRANSITION, C_InputInterfaceStyle). A function
+  -- missing from the environment answers each documented return with an
+  -- empty default: 0 for numbers and enums, false, "" for strings.
+  if sim.opts.apiDocsDir then
+    local enums, events, functions = M.docsFrom(sim.opts.apiDocsDir)
+    for name in pairs(events) do known[name] = true end
+    local function default(t)
+      if t == "bool" then return false end
+      if t == "cstring" or t == "string" then return "" end
+      if t == "number" or t == "luaIndex" or t == "fileID" or t == "time_t" or t == "WOWGUID" then return 0 end
+      local vals = enum[t] or enums[t]
+      if vals then
+        local lo
+        for _, v in pairs(vals) do if not lo or v < lo then lo = v end end
+        return lo or 0
+      end
+      return nil
+    end
+    for name, returns in pairs(functions) do
+      local ns, fname = name:match("^(.-)%.([^.]+)$")
+      local holder = env
+      if ns then
+        holder = rawget(env, ns)
+        if holder == nil then holder = {}; rawset(env, ns, holder) end
+      end
+      fname = fname or name
+      if type(holder) == "table" and rawget(holder, fname) == nil and not (not ns and rawget(env, name)) then
+        local vals = {}
+        for i, t in ipairs(returns) do vals[i] = default(t) end
+        local n = #returns
+        rawset(holder, fname, function()
+          sim.stubbedCalls[name] = (sim.stubbedCalls[name] or 0) + 1
+          return unpack(vals, 1, n)
+        end)
+      end
+    end
+  end
 end
 
 ------------------------------------------------------------------ install: widgets

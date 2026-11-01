@@ -3,7 +3,7 @@
 -- such as EllesmereUI for SIM6).
 --
 --   luajit tools/addon-shots/hud.lua <out.svg> [--blizzard <interface/addons dir>] [--addon <dir>]...
---       [--background <texture>] [--ui-scale <pixels per unit>]
+--       [--background <texture>] [--ui-scale <pixels per unit>] [--class <class> [--level <n>]]
 --
 -- With --blizzard (the CASC extract's interface/addons, local only), the
 -- screen is Blizzard's own UI: every Blizzard addon the client loads at
@@ -13,16 +13,22 @@
 --
 -- It looks like logging in: Thrandor, a level 12 warrior in Elwynn, at
 -- 85% health with Hogger targeted, the UI at the client's 1080p scale
--- (768 units tall). There's no 3D world; --background draws a texture in
--- its place (a loading screen from the extract, say).
+-- (768 units tall). --class picks a character from fixtures.lua instead
+-- (rogue: spells on the bar, energy, combo points, a target). There's no
+-- 3D world; --background draws a texture in its place.
 --
 -- Prints a summary of the Lua errors, most frequent first. This script only
 -- writes files; it never starts a browser or opens a window.
 
 local out, blizzard, extra, background, uiScale = nil, nil, {}, nil, 1080 / 768
+local class, level
 local i = 1
 while arg[i] do
-    if arg[i] == "--blizzard" then
+    if arg[i] == "--class" then
+        class, i = arg[i + 1]:lower(), i + 2
+    elseif arg[i] == "--level" then
+        level, i = tonumber(arg[i + 1]), i + 2
+    elseif arg[i] == "--blizzard" then
         blizzard, i = arg[i + 1], i + 2
     elseif arg[i] == "--addon" then
         extra[#extra + 1], i = arg[i + 1], i + 2
@@ -42,6 +48,16 @@ package.path = wowapiDir .. "/?.lua;" .. wowapiDir .. "/?/init.lua;" .. package.
 local WoW = require("wowapi")
 local toc = require("wowapi.toc")
 local render = require("wowapi.render")
+package.path = here .. "/?.lua;" .. package.path
+local fixtures = require("fixtures")
+local fixturePlayer = class and fixtures.player(class, level)
+if class and not fixturePlayer then
+    local known = {}
+    for k in pairs(fixtures.CLASSES) do
+        known[#known + 1] = k
+    end
+    error("no fixture for class " .. class .. " (have: " .. table.concat(known, ", ") .. ")", 0)
+end
 
 local function quote(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
@@ -114,8 +130,8 @@ end
 
 local art = os.getenv("WOWAPI_ART") ~= nil
 local sim = WoW.new({
-    player = { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000, zone = "Elwynn Forest",
-        health = 425, healthMax = 500 },
+    player = fixturePlayer or { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000,
+        zone = "Elwynn Forest", health = 425, healthMax = 500 },
     art = art,
     offline = os.getenv("WOWAPI_OFFLINE") == "1" or not art,
     quiet = true,
@@ -153,6 +169,10 @@ sim:Mock("C_EditMode.GetAccountSettings", function()
     return settings
 end)
 
+if class then
+    fixtures.mock(sim, class)
+end
+
 local loaded = 0
 for _, dir in ipairs(blizzard and loginOrder(blizzard) or {}) do
     if sim:LoadAddon(dir) then
@@ -167,8 +187,12 @@ for _, dir in ipairs(extra) do
 end
 
 sim:Login()
-sim:SetTarget({ name = "Hogger", level = 11, classification = "elite", creatureType = "Humanoid",
-    reaction = 2, health = 520, healthMax = 666, class = "WARRIOR", guid = "Creature-0-0-0-0-448-0" })
+if class then
+    fixtures.apply(sim, class)
+else
+    sim:SetTarget({ name = "Hogger", level = 11, classification = "elite", creatureType = "Humanoid",
+        reaction = 2, health = 520, healthMax = 666, class = "WARRIOR", guid = "Creature-0-0-0-0-448-0" })
+end
 -- The client announces the layouts at login; Blizzard's Edit Mode places
 -- the HUD then. An error in it is the UI's, recorded like any other.
 local em = blizzard and sim:Get("EditModeManagerFrame")

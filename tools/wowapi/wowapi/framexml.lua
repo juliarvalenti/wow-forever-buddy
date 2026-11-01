@@ -159,6 +159,33 @@ function M.install(sim, env)
   end
 
   ------------------------------------------------------------ colors
+  -- WFB patch (HUD1): C_UIColor.GetColors() returns the game's named
+  -- colours (data/globalcolor.csv, from fetch-globalcolors.sh), as the
+  -- client does from GlobalColor.db2. Blizzard's Color.lua makes the
+  -- globals from them (NORMAL_FONT_COLOR, ACTIONBAR_HOTKEY_FONT_COLOR...);
+  -- without it they're nil and the action buttons fail on their hotkeys.
+  -- GetCurrentEnvironment() is the global environment addon code runs in;
+  -- Color.lua writes the colour globals into it.
+  rawset(env, "GetCurrentEnvironment", function() return env end)
+  do
+    local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
+    local f = io.open(here .. "/data/globalcolor.csv", "r")
+    if f then
+      local colors = {}
+      f:read("*l")
+      for line in f:lines() do
+        local name, argb = line:match("^%d+,([%w_]+),(%-?%d+)")
+        if name then
+          local v = tonumber(argb) % 4294967296
+          local a, r = math.floor(v / 16777216) % 256, math.floor(v / 65536) % 256
+          local g, b = math.floor(v / 256) % 256, v % 256
+          colors[#colors + 1] = { baseTag = name, color = { r = r / 255, g = g / 255, b = b / 255, a = a / 255 } }
+        end
+      end
+      f:close()
+      sim:Mock("C_UIColor.GetColors", function() return colors end)
+    end
+  end
   -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
   -- (exalted), as SharedColorConstants.lua builds it from the client's
   -- faction colors. Addons iterate it (EllesmereUI's unit frames do, and

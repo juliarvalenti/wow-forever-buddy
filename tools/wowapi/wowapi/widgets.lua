@@ -307,7 +307,9 @@ function M.install(sim, env)
   function F:SetFrameLevel(v) S(self).level = v end
   function F:GetFrameLevel() return S(self).level end
   function F:SetID(id) S(self).id = id end
-  function F:GetID() return S(self).id end
+  -- WFB patch (HUD1): 0 until set, as in the client (SecureTemplates'
+  -- CalculateAction compares it with 0).
+  function F:GetID() return S(self).id or 0 end
   function F:EnableMouse(v) S(self).mouse = v and true or false end
   function F:IsMouseEnabled() return S(self).mouse end
   function F:EnableMouseWheel(v) S(self).mouseWheel = v and true or false end
