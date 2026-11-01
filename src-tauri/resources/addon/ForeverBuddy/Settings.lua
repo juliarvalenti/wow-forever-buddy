@@ -180,21 +180,37 @@ ns.settings = {
         },
     },
     presets = {
-        -- The designer's three (P4c). Only the Map module has its row so far.
+        -- The designer's three (P4c), a row for every option except "Record
+        -- my next session", which no preset touches.
         {
             id = "quiet",
             label = "Quiet",
-            values = { ["map.coords"] = false, ["map.minimap"] = false, ["map.fade"] = false },
+            values = {
+                ["window.briefing"] = true, ["tooltips.alts"] = true,
+                ["window.lockouts"] = false, ["window.coach"] = false, ["window.coachCombat"] = false,
+                ["window.card"] = false, ["window.bagMarks"] = false, ["window.minimap"] = false,
+                ["map.coords"] = false, ["map.minimap"] = false, ["map.fade"] = false,
+            },
         },
         {
             id = "helpful",
             label = "Helpful",
-            values = { ["map.coords"] = true, ["map.minimap"] = false, ["map.fade"] = false },
+            values = {
+                ["window.briefing"] = true, ["tooltips.alts"] = true,
+                ["window.lockouts"] = true, ["window.coach"] = false, ["window.coachCombat"] = false,
+                ["window.card"] = true, ["window.bagMarks"] = true, ["window.minimap"] = true,
+                ["map.coords"] = true, ["map.minimap"] = false, ["map.fade"] = false,
+            },
         },
         {
             id = "everything",
             label = "Everything",
-            values = { ["map.coords"] = true, ["map.minimap"] = true, ["map.fade"] = true, ["map.fadeAlpha"] = 0.5 },
+            values = {
+                ["window.briefing"] = true, ["tooltips.alts"] = true,
+                ["window.lockouts"] = true, ["window.coach"] = true, ["window.coachCombat"] = true,
+                ["window.card"] = true, ["window.bagMarks"] = true, ["window.minimap"] = true,
+                ["map.coords"] = true, ["map.minimap"] = true, ["map.fade"] = true, ["map.fadeAlpha"] = 0.5,
+            },
         },
     },
 }

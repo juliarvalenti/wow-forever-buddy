@@ -157,7 +157,15 @@
       "values": {
         "map.coords": false,
         "map.fade": false,
-        "map.minimap": false
+        "map.minimap": false,
+        "tooltips.alts": true,
+        "window.bagMarks": false,
+        "window.briefing": true,
+        "window.card": false,
+        "window.coach": false,
+        "window.coachCombat": false,
+        "window.lockouts": false,
+        "window.minimap": false
       }
     },
     {
@@ -166,7 +174,15 @@
       "values": {
         "map.coords": true,
         "map.fade": false,
-        "map.minimap": false
+        "map.minimap": false,
+        "tooltips.alts": true,
+        "window.bagMarks": true,
+        "window.briefing": true,
+        "window.card": true,
+        "window.coach": false,
+        "window.coachCombat": false,
+        "window.lockouts": true,
+        "window.minimap": true
       }
     },
     {
@@ -176,7 +192,15 @@
         "map.coords": true,
         "map.fade": true,
         "map.fadeAlpha": 0.5,
-        "map.minimap": true
+        "map.minimap": true,
+        "tooltips.alts": true,
+        "window.bagMarks": true,
+        "window.briefing": true,
+        "window.card": true,
+        "window.coach": true,
+        "window.coachCombat": true,
+        "window.lockouts": true,
+        "window.minimap": true
       }
     }
   ]
