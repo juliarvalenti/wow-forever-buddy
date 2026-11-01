@@ -19,7 +19,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     Texture BOTTOMLEFT>parent:BOTTOMLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) ?x1
     Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMLEFT>parent:BOTTOMLEFT(0,0) 1x?
     Texture TOPRIGHT>parent:TOPRIGHT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) 1x?
-    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(14,-16) 28x28
+    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-16) 28x28
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
@@ -272,7 +272,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     Texture BOTTOMLEFT>parent:BOTTOMLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) ?x1
     Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMLEFT>parent:BOTTOMLEFT(0,0) 1x?
     Texture TOPRIGHT>parent:TOPRIGHT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) 1x?
-    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(14,-16) 28x28
+    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-16) 28x28
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
@@ -541,7 +541,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     Texture BOTTOMLEFT>parent:BOTTOMLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) ?x1
     Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMLEFT>parent:BOTTOMLEFT(0,0) 1x?
     Texture TOPRIGHT>parent:TOPRIGHT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) 1x?
-    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(14,-16) 28x28
+    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-16) 28x28
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
@@ -825,7 +825,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     Texture BOTTOMLEFT>parent:BOTTOMLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) ?x1
     Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMLEFT>parent:BOTTOMLEFT(0,0) 1x?
     Texture TOPRIGHT>parent:TOPRIGHT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0) 1x?
-    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(14,-16) 28x28
+    Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-16) 28x28
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
