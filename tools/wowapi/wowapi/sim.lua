@@ -318,6 +318,17 @@ function Sim:Now() return self.time end
 
 function Sim:AddAddonPath(dir) table.insert(self.addonPaths, dir) end
 
+-- WFB patch (HUD1): addon names match case-insensitively, as in the client,
+-- so a dependency named Blizzard_ActionBar finds the folder
+-- blizzard_actionbar already loaded instead of loading it a second time.
+function Sim:_addon(name)
+  if self.addons[name] then return self.addons[name] end
+  local lower = tostring(name):lower()
+  for k, a in pairs(self.addons) do
+    if k:lower() == lower then return a end
+  end
+end
+
 function Sim:_resolveAddon(spec, hintDir)
   if toc.findToc(spec) then return spec end
   local dirs = {}
@@ -439,7 +450,7 @@ function Sim:LoadAddon(spec, _hintDir)
   toc.LOCALE = self.locale
   local t, err = toc.load(dir)
   if not t then return false, err end
-  local existing = self.addons[t.name]
+  local existing = self:_addon(t.name)
   if existing then return existing.loaded, existing.ns end
   if not t.gameTypeOk then
     self:_warn(string.format("%s: not loaded, its .toc excludes the '%s' game type", t.name, toc.GAME_TYPE))
@@ -451,7 +462,7 @@ function Sim:LoadAddon(spec, _hintDir)
 
   local parent = toc.dirname(dir)
   for _, dep in ipairs(t.deps) do
-    local ok = self.addons[dep] and self.addons[dep].loaded or self:LoadAddon(dep, parent)
+    local ok = self:_addon(dep) and self:_addon(dep).loaded or self:LoadAddon(dep, parent)
     if not ok then
       addon.loading = false
       addon.reason = "DEP_MISSING"
@@ -460,7 +471,7 @@ function Sim:LoadAddon(spec, _hintDir)
     end
   end
   for _, dep in ipairs(t.optionalDeps) do
-    if not self.addons[dep] and self:_resolveAddon(dep, parent) then self:LoadAddon(dep, parent) end
+    if not self:_addon(dep) and self:_resolveAddon(dep, parent) then self:LoadAddon(dep, parent) end
   end
 
   local iface = tonumber(t.interface[1] or "")
