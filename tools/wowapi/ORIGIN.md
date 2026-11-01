@@ -24,6 +24,7 @@ Each patch is marked `-- WFB patch (G1)` or `-- WFB patch (HUD1)` in the code. T
 - `templates.lua`: `UIPanelScrollFrameTemplate`'s scroll bar has `UIPanelScrollBarTemplate`'s 16 width, `UI-ScrollBar-Knob` thumb (18×24, cropped) and `UIPanelScrollBarButton`'s arrow crop, and an arrow is disabled at its end of the range, as `ScrollFrame_OnScrollRangeChanged` does. Without this, the bar is 0 wide and draws nothing.
 - `assets.lua`: the local art folder (`WOWAPI_ART`) indexes `.ttf` files as well as images, so the fonts `casc-extract` pulls from the game serve `Store:font` offline. Without this, pictures drawn from the extract fall back to a browser serif.
 - `secrets.lua` (marked P4d): `canaccesstable` and `canaccessallvalues`, false only when something in them is secret. Upstream leaves them to the documented-function fakes, which answer with a random bool, so an addon that checks a table before reading it skipped plain tables about half the time.
+- `resources.lua` (marked SIM6): a Blizzard placeholder frame's unknown child keys make placeholder children, but not one of the same name as its parent's key (`frame.NineSlice.NineSlice`) or more than four deep; those are nil, as in the client. Without this, code that walks children by key (EllesmereUI's `FadeRegions` follows `.NineSlice`) creates frames until memory runs out.
 
 HUD1, so Blizzard's own UI addons (from the extract) load as the client loads them:
 
