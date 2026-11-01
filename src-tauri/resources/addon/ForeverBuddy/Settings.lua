@@ -180,15 +180,21 @@ ns.settings = {
         },
     },
     presets = {
+        -- The designer's three (P4c). Only the Map module has its row so far.
         {
-            id = "minimal",
-            label = "Minimal",
-            values = { ["map.coords"] = false, ["map.minimap"] = false, ["map.fade"] = true, ["map.fadeAlpha"] = 0.4 },
+            id = "quiet",
+            label = "Quiet",
+            values = { ["map.coords"] = false, ["map.minimap"] = false, ["map.fade"] = false },
         },
         {
-            id = "questing",
-            label = "Questing",
-            values = { ["map.coords"] = true, ["map.minimap"] = true, ["map.fade"] = true, ["map.fadeAlpha"] = 0.6 },
+            id = "helpful",
+            label = "Helpful",
+            values = { ["map.coords"] = true, ["map.minimap"] = false, ["map.fade"] = false },
+        },
+        {
+            id = "everything",
+            label = "Everything",
+            values = { ["map.coords"] = true, ["map.minimap"] = true, ["map.fade"] = true, ["map.fadeAlpha"] = 0.5 },
         },
     },
 }

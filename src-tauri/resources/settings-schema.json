@@ -152,22 +152,30 @@
   ],
   "presets": [
     {
-      "id": "minimal",
-      "label": "Minimal",
+      "id": "quiet",
+      "label": "Quiet",
       "values": {
         "map.coords": false,
-        "map.fade": true,
-        "map.fadeAlpha": 0.4,
+        "map.fade": false,
         "map.minimap": false
       }
     },
     {
-      "id": "questing",
-      "label": "Questing",
+      "id": "helpful",
+      "label": "Helpful",
+      "values": {
+        "map.coords": true,
+        "map.fade": false,
+        "map.minimap": false
+      }
+    },
+    {
+      "id": "everything",
+      "label": "Everything",
       "values": {
         "map.coords": true,
         "map.fade": true,
-        "map.fadeAlpha": 0.6,
+        "map.fadeAlpha": 0.5,
         "map.minimap": true
       }
     }
