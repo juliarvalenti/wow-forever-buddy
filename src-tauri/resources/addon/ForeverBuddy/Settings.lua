@@ -27,7 +27,8 @@
 -- fires on ({ min, max } for a number, else the value itself) and the line
 -- the app shows beside a proposal that would make it fire.
 --
--- presets: named starting points; each module adds its row of values.
+-- presets: named starting points; each module adds its row of values,
+-- except options that act, which are only ever turned on one at a time.
 
 local _, ns = ...
 
@@ -229,6 +230,50 @@ ns.settings = {
             help = "The item level on each piece of gear in your bags and bank, in its quality colour.",
             acts = false,
         },
+        -- M1: the Merchant module, the first that acts (P4 §8.1). Each option
+        -- does something only when you open a vendor yourself; all are off
+        -- until turned on, one at a time (never by a preset).
+        {
+            id = "merchant.repair",
+            module = "merchant",
+            section = "Merchant",
+            type = "bool",
+            default = false,
+            label = "Repair at vendors",
+            help = "When you open a vendor who repairs, pays for your repairs.",
+            acts = true,
+        },
+        {
+            id = "merchant.repairGuild",
+            module = "merchant",
+            section = "Merchant",
+            type = "bool",
+            default = false,
+            label = "Guild bank pays first",
+            help = "Uses guild funds when your rank allows it, and your own gold when it doesn't.",
+            parent = "merchant.repair",
+            acts = true,
+        },
+        {
+            id = "merchant.sellJunk",
+            module = "merchant",
+            section = "Merchant",
+            type = "bool",
+            default = false,
+            label = "Sell grey items",
+            help = "When you open a vendor, sells up to 12 grey items. The vendor's buyback keeps them.",
+            acts = true,
+        },
+        {
+            id = "merchant.sellMarked",
+            module = "merchant",
+            section = "Merchant",
+            type = "bool",
+            default = false,
+            label = "Sell items you marked",
+            help = "Also sells items you marked to sell in Forever Buddy, within the same 12.",
+            acts = true,
+        },
         {
             id = "window.minimap",
             module = "window",
@@ -266,6 +311,11 @@ ns.settings = {
             id = "bags.nothingToSell",
             when = { ["bags.junk"] = false, ["window.bagMarks"] = false },
             say = "Nothing in your bags will show what's only worth selling.",
+        },
+        {
+            id = "merchant.sellsUnseen",
+            when = { ["merchant.sellMarked"] = true, ["window.bagMarks"] = false },
+            say = "Marked items will sell without a mark in your bags to show which ones.",
         },
     },
     presets = {

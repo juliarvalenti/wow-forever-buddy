@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.10.1"
+local VERSION = "0.11.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -2900,6 +2900,122 @@ local function atMerchant()
     end
 end
 
+-- M1, the Merchant module: the first that acts (P4 §8.1, security's rules on
+-- #201). Each option is off until turned on, and does its part only here,
+-- inside MERCHANT_SHOW, on a vendor the player opened: never from a timer,
+-- never in combat. It repairs (guild funds first, if allowed) and sells up
+-- to 12 grey or marked items, which the vendor's buyback keeps. It never
+-- buys, mails or trades, and leaves anything whose binding or quest use it
+-- can't read.
+do
+    local SELL_CAP = 12
+
+    local function on(key)
+        return type(ForeverBuddySettings) == "table" and ForeverBuddySettings[key] == true
+    end
+
+    -- The Settings tab's get and set for one of its options.
+    function C.merchantOption(key)
+        return {
+            get = function()
+                return on(key)
+            end,
+            set = function(v)
+                if type(ForeverBuddySettings) ~= "table" then
+                    ForeverBuddySettings = {}
+                end
+                ForeverBuddySettings[key] = v and true or nil
+            end,
+        }
+    end
+
+    local function repair()
+        if not on("merchantRepair") or read("CanMerchantRepair") ~= true then
+            return
+        end
+        local cost, needed = read("GetRepairAllCost")
+        if type(cost) ~= "number" or isSecret(cost) or cost <= 0 or not needed then
+            return
+        end
+        local guild = false
+        if on("merchantRepairGuild") and read("CanGuildBankRepair") == true then
+            local left = read("GetGuildBankWithdrawMoney")
+            guild = type(left) == "number" and not isSecret(left) and (left == -1 or left >= cost)
+        end
+        if not guild then
+            local money = read("GetMoney")
+            if type(money) ~= "number" or isSecret(money) or money < cost then
+                say(GOLD_PREFIX .. "not enough gold to repair (" .. coins(cost) .. ").")
+                return
+            end
+        end
+        read("RepairAllItems", guild or nil)
+        say(GOLD_PREFIX .. "repaired for " .. coins(cost) .. (guild and " from the guild bank." or "."))
+    end
+
+    -- One bag slot's item, if it's one to sell: grey (or marked to sell),
+    -- worth something, not locked, its binding known and no quest's.
+    local function sellable(bag, slot, marks)
+        local info = read("C_Container.GetContainerItemInfo", bag, slot)
+        if type(info) ~= "table" or isSecret(info) then
+            return nil
+        end
+        local id, quality, count = info.itemID, info.quality, info.stackCount
+        if type(id) ~= "number" or isSecret(id) or isSecret(quality) or info.isLocked == true
+            or info.hasNoValue == true or type(info.isBound) ~= "boolean" then
+            return nil
+        end
+        local grey = quality == 0 and on("merchantSellJunk")
+        local marked = marks[id] and marks[id].sell and on("merchantSellMarked")
+        if not (grey or marked) then
+            return nil
+        end
+        local quest = read("C_Container.GetContainerItemQuestInfo", bag, slot)
+        if type(quest) ~= "table" or isSecret(quest) or quest.isQuestItem ~= false or quest.questID then
+            return nil
+        end
+        local price = select(11, read("C_Item.GetItemInfo", id))
+        if type(price) ~= "number" or isSecret(price) or price <= 0 then
+            return nil
+        end
+        return price * (type(count) == "number" and count or 1)
+    end
+
+    local function sell()
+        if not (on("merchantSellJunk") or on("merchantSellMarked")) then
+            return
+        end
+        local marks = C.mine()
+        local sold, worth = 0, 0
+        for bag = 0, 4 do
+            local size = read("C_Container.GetContainerNumSlots", bag)
+            for slot = 1, type(size) == "number" and size or 0 do
+                if sold >= SELL_CAP then
+                    break
+                end
+                local value = sellable(bag, slot, marks)
+                if value then
+                    read("C_Container.UseContainerItem", bag, slot)
+                    sold, worth = sold + 1, worth + value
+                end
+            end
+        end
+        if sold > 0 then
+            say(GOLD_PREFIX .. ("sold %d item%s for %s. The vendor's buyback has them if you change your mind.")
+                :format(sold, sold == 1 and "" or "s", coins(worth)))
+        end
+    end
+
+    -- At a vendor the player just opened (MERCHANT_SHOW).
+    function C.merchantActs()
+        if read("InCombatLockdown") then
+            return
+        end
+        repair()
+        sell()
+    end
+end
+
 -- The AH's browse results: which listed items show there.
 local function auctionBrowse()
     here = {}
@@ -4213,6 +4329,11 @@ do
         -- P4d: the Bags module redraws the open bags and bank on a change.
         ["bags.junk"] = C.bagOption("bagJunk"),
         ["bags.itemLevel"] = C.bagOption("bagLevel"),
+        -- M1: the Merchant module (acts; at a vendor you opened).
+        ["merchant.repair"] = C.merchantOption("merchantRepair"),
+        ["merchant.repairGuild"] = C.merchantOption("merchantRepairGuild"),
+        ["merchant.sellJunk"] = C.merchantOption("merchantSellJunk"),
+        ["merchant.sellMarked"] = C.merchantOption("merchantSellMarked"),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
@@ -5365,6 +5486,8 @@ handlers.MERCHANT_SHOW = function()
     repairCost = repairCostNow()
     guarded(atMerchant)
     guarded(C.atVendor)
+    -- M1: what the Merchant module's options say to do here (nothing when off).
+    guarded(C.merchantActs)
 end
 
 handlers.UPDATE_INVENTORY_DURABILITY = function()

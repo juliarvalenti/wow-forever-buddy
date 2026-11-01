@@ -1813,6 +1813,133 @@ scenario("bags", function()
     file(c.logout())
 end)
 
+-- M1: the Merchant module, the first that acts. Off by default; at a vendor
+-- the player opened it repairs (guild bank first when allowed, else own gold)
+-- and sells up to 12 grey items, and marked ones when that's on. It leaves
+-- quest items, unreadable items and ones whose binding it can't read; does
+-- nothing in combat; and never uses an item with no vendor open.
+scenario("merchant", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local c = client({ slots = { ["Data/Cleanup.lua"] = CLEANUP } })
+    local bags = c.world.bags
+    bags[1] = { size = 16, slots = {} }
+    -- Fifteen grey stacks (one a quest's, one of unknown binding, one
+    -- unreadable), the marked linen, and gear.
+    for slot = 1, 15 do
+        bags[1].slots[slot] = { id = 4865, count = 1 }
+    end
+    bags[1].slots[1].bindUnknown = true
+    bags[1].slots[2].unreadable = true
+    c.world.quest_items[4865] = nil
+    bags[0].slots[3] = { id = 10001, count = 1 }
+    c.world.repair = 2500
+    c.login(nil)
+    c.advance(5)
+    local function lastSay()
+        return c.chat[#c.chat]
+    end
+
+    -- Off: a vendor, junk and damage, and nothing happens.
+    local chatBefore = #c.chat
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, 0, "off: nothing sold")
+    eq(c.world.repaired, nil, "off: nothing repaired")
+    eq(#c.chat, chatBefore, "off: nothing said")
+    c.closeMerchant()
+
+    -- Repair, own gold.
+    c.click(setting(c, "Repair at vendors"))
+    local money = c.world.money
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(c.world.repaired and c.world.repaired.guild, false, "repaired from own gold")
+    eq(c.world.money, money - 2500, "paid")
+    eq(lastSay():find("repaired for", 1, true) ~= nil, true, "and says so: " .. tostring(lastSay()))
+    c.closeMerchant()
+
+    -- Guild first, when the rank allows and the funds cover it.
+    c.click(setting(c, "Guild bank pays first"))
+    c.world.repair, c.world.repaired = 900, nil
+    c.world.guild_repair, c.world.guild_funds = true, 5000
+    money = c.world.money
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(c.world.repaired and c.world.repaired.guild, true, "the guild bank paid")
+    eq(c.world.money, money, "not our gold")
+    eq(lastSay():find("from the guild bank", 1, true) ~= nil, true, "and says so")
+    c.closeMerchant()
+    -- Not enough in the guild's allowance: own gold instead.
+    c.world.repair, c.world.repaired, c.world.guild_funds = 900, nil, 100
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(c.world.repaired and c.world.repaired.guild, false, "own gold when the guild can't cover it")
+    c.closeMerchant()
+    -- Not enough gold at all: nothing, and a line saying why.
+    c.world.repair, c.world.repaired, c.world.guild_repair = 9e9, nil, false
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(c.world.repaired, nil, "can't afford it: no repair")
+    eq(lastSay():find("not enough gold to repair", 1, true) ~= nil, true, "says why")
+    c.closeMerchant()
+    c.world.repair = 0
+
+    -- Sell grey: at most 12, never the unreadable or unknown-binding ones,
+    -- nor the quest's.
+    c.click(setting(c, "Sell grey items"))
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, 12, "twelve sold, the cap")
+    local soldSlots = {}
+    for _, s in ipairs(c.world.sold) do
+        eq(s.id, 4865, "only grey items")
+        soldSlots[s.bag .. ":" .. s.slot] = true
+    end
+    eq(soldSlots["1:1"], nil, "not the one whose binding is unknown")
+    eq(soldSlots["1:2"], nil, "not the unreadable one")
+    eq(bags[0].slots[2] ~= nil and bags[0].slots[3] ~= nil, true, "the linen and the cap stay")
+    eq(lastSay():find("sold 12 items for", 1, true) ~= nil, true, "says what it sold: " .. tostring(lastSay()))
+    c.closeMerchant()
+    -- Closed: bag changes sell nothing.
+    local sold = #c.world.sold
+    c.loot(4865, 2)
+    c.advance(2)
+    eq(#c.world.sold, sold, "nothing sells with the vendor closed")
+
+    -- A quest's grey item stays.
+    c.world.quest_items[4865] = 176
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, sold, "a quest's items stay")
+    c.closeMerchant()
+    c.world.quest_items[4865] = nil
+
+    -- Marked items, only with their own option on.
+    c.click(setting(c, "Sell grey items"))
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, sold, "marked linen stays while that option is off")
+    c.closeMerchant()
+    c.click(setting(c, "Sell items you marked"))
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(c.world.sold[#c.world.sold].id, 2589, "the marked linen sold")
+    c.closeMerchant()
+
+    -- In combat, nothing.
+    c.click(setting(c, "Sell grey items"))
+    sold = #c.world.sold
+    c.world.combat = true
+    c.openMerchant({ 117 })
+    c.advance(2)
+    eq(#c.world.sold, sold, "nothing in combat")
+    c.world.combat = false
+    c.closeMerchant()
+
+    eq(#c.world.misused, 0, "nothing used with no vendor open")
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2129,6 +2256,7 @@ scenario("window", function()
         .. "Quest levels in the quest log, Mark quests that are new in Forever, Quest progress on item tooltips, "
         .. "See-through quest tracker, How much of the tracker shows, "
         .. "Junk in your bags, Item level on gear, "
+        .. "Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
         .. "Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
@@ -2167,6 +2295,7 @@ scenario("window", function()
         .. "[Quests], Quest levels in the quest log, Mark quests that are new in Forever, "
         .. "Quest progress on item tooltips, See-through quest tracker, How much of the tracker shows, "
         .. "[Bags], Junk in your bags, Item level on gear, "
+        .. "[Merchant], Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
@@ -3322,7 +3451,10 @@ scenario("settings_schema", function()
         eq(type(o.help) == "string" and #o.help > 10, true, what .. ": a help line")
         eq(type(o.section) == "string", true, what .. ": a section")
         eq(type(o.acts), "boolean", what .. ": says whether it acts")
-        eq(o.acts, false, what .. ": nothing acts yet (P4 §8)")
+        -- M1: an option that acts is off for a new player (P4 §8.1).
+        if o.acts then
+            eq(o.default, false, what .. ": acts, so it's off by default")
+        end
         if o.parent then
             eq(ids[o.parent] ~= nil, true, what .. ": its parent is declared before it")
         end
@@ -3383,11 +3515,15 @@ scenario("settings_schema", function()
             eq(byId[id] ~= nil and fits(byId[id], v), true, what .. ": " .. id .. " = " .. tostring(v))
         end
         -- Every option has its row, except recording, which no preset
-        -- touches (designer, P4c); a number only goes with its parent on.
+        -- touches (designer, P4c), and options that act, which are only
+        -- turned on one at a time, never by a bundle (M1, security on #201);
+        -- a number only goes with its parent on.
         for _, o in ipairs(s.options) do
             local has = p.values[o.id] ~= nil
             if o.id == "window.record" then
                 eq(has, false, what .. ": leaves recording alone")
+            elseif o.acts then
+                eq(has, false, what .. ": leaves " .. o.id .. " alone (it acts)")
             elseif o.type == "bool" then
                 eq(has, true, what .. ": has " .. o.id)
             end
@@ -3428,6 +3564,16 @@ local function playAWhile(c)
     c.openBank()
     c.advance(1)
     c.closeBank()
+    -- M1: a vendor, with junk to sell and gear to repair, where the Merchant
+    -- module acts; nothing is ever used with no vendor open.
+    c.loot(4865, 3)
+    c.world.repair = 120
+    c.openMerchant({ 117 })
+    c.advance(2)
+    c.closeMerchant()
+    c.loot(4865, 1)
+    c.advance(2)
+    eq(#c.world.misused, 0, "nothing used outside a vendor")
     c.gainXp(800)
     c.startLogout()
     c.advance(5)
@@ -3959,7 +4105,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 20, "with every toggle")
+    eq(#options.frame.checks, 24, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

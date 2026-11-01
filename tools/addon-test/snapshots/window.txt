@@ -99,13 +99,22 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Junk in your bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-482) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.26:RIGHT(2,0) "Item level on gear"
-      FontString TOPLEFT>parent:TOPLEFT(14,-508) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-508) "Merchant"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-530) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-556) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-578) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.30.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Repair at vendors"
+      CheckButton 24x24 hidden
+        FontString LEFT>ForeverBuddyWindow.14.1.29:RIGHT(2,0) "Guild bank pays first"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-556) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Sell grey items"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-582) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.31:RIGHT(2,0) "Sell items you marked"
+      FontString TOPLEFT>parent:TOPLEFT(14,-608) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-630) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.33:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-656) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-678) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.35:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.35.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb list
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -224,13 +233,22 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Junk in your bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-482) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.26:RIGHT(2,0) "Item level on gear"
-      FontString TOPLEFT>parent:TOPLEFT(14,-508) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-508) "Merchant"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-530) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-556) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-578) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.30.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Repair at vendors"
+      CheckButton 24x24 hidden
+        FontString LEFT>ForeverBuddyWindow.14.1.29:RIGHT(2,0) "Guild bank pays first"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-556) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Sell grey items"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-582) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.31:RIGHT(2,0) "Sell items you marked"
+      FontString TOPLEFT>parent:TOPLEFT(14,-608) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-630) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.33:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-656) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-678) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.35:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.35.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb errands
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -364,13 +382,22 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Junk in your bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-482) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.26:RIGHT(2,0) "Item level on gear"
-      FontString TOPLEFT>parent:TOPLEFT(14,-508) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-508) "Merchant"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-530) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-556) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-578) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.30.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Repair at vendors"
+      CheckButton 24x24 hidden
+        FontString LEFT>ForeverBuddyWindow.14.1.29:RIGHT(2,0) "Guild bank pays first"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-556) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Sell grey items"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-582) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.31:RIGHT(2,0) "Sell items you marked"
+      FontString TOPLEFT>parent:TOPLEFT(14,-608) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-630) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.33:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-656) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-678) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.35:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.35.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb cleanup
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -512,10 +539,19 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
         FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Junk in your bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-482) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.26:RIGHT(2,0) "Item level on gear"
-      FontString TOPLEFT>parent:TOPLEFT(14,-508) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-508) "Merchant"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-530) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-556) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-578) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.30.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.28:RIGHT(2,0) "Repair at vendors"
+      CheckButton 24x24 hidden
+        FontString LEFT>ForeverBuddyWindow.14.1.29:RIGHT(2,0) "Guild bank pays first"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-556) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.30:RIGHT(2,0) "Sell grey items"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-582) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.31:RIGHT(2,0) "Sell items you marked"
+      FontString TOPLEFT>parent:TOPLEFT(14,-608) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-630) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.33:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-656) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-678) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.35:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.35.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
