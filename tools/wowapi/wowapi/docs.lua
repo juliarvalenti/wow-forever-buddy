@@ -131,6 +131,42 @@ end
 local unpack = unpack or table.unpack
 local secrets = require("wowapi.secrets")
 
+-- WFB patch (HUD1): every Enumeration table in a Blizzard_APIDocumentation-
+-- Generated folder, as { name = { Field = value } }. Each file hands its
+-- tables to APIDocumentation:AddDocumentationTable; run in a sandbox where
+-- any other name resolves (and sums) to something harmless.
+function M.enumsFrom(dir)
+  local tables = {}
+  local anything = setmetatable({}, { __index = function(t) return t end,
+    __add = function() return 0 end, __sub = function() return 0 end, __unm = function() return 0 end })
+  local env = setmetatable({ APIDocumentation = { AddDocumentationTable = function(_, t) tables[#tables + 1] = t end } },
+    { __index = function() return anything end })
+  local p = io.popen("ls '" .. tostring(dir):gsub("'", "'\\''") .. "' 2>/dev/null")
+  if not p then return {} end
+  for name in p:lines() do
+    if name:lower():match("%.lua$") then
+      local f = io.open(dir .. "/" .. name, "rb")
+      local chunk = f and loadstring(f:read("*a"), "=" .. name)
+      if f then f:close() end
+      if chunk then setfenv(chunk, env); pcall(chunk) end
+    end
+  end
+  p:close()
+  local enums = {}
+  for _, sys in ipairs(tables) do
+    for _, t in ipairs(sys.Tables or {}) do
+      if t.Type == "Enumeration" and t.Name then
+        local vals = enums[t.Name] or {}
+        for _, f in ipairs(t.Fields or {}) do
+          if f.Name and type(f.EnumValue) == "number" then vals[f.Name] = f.EnumValue end
+        end
+        enums[t.Name] = vals
+      end
+    end
+  end
+  return enums
+end
+
 function M.install(sim, env)
   local d = M.data()
   sim.apiDocs = d
@@ -143,6 +179,15 @@ function M.install(sim, env)
   for name, vals in pairs(d.enums) do
     local t = enum[name] or {}
     for k, v in pairs(vals) do t[k] = v end
+    enum[name] = t
+  end
+  -- WFB patch (HUD1): the client's own API docs (Blizzard_APIDocumentation-
+  -- Generated, from a local CASC extract) fill in enums and values the
+  -- bundled data predates, so Blizzard's UI for that build finds them.
+  local extra = sim.opts.apiDocsDir and M.enumsFrom(sim.opts.apiDocsDir)
+  for name, vals in pairs(extra or {}) do
+    local t = enum[name] or {}
+    for k, v in pairs(vals) do if t[k] == nil then t[k] = v end end
     enum[name] = t
   end
   rawset(env, "Enum", enum)

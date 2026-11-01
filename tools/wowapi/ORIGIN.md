@@ -12,7 +12,7 @@ It's a test tool. It's never bundled into the app or the addon zip: the app bund
 
 ## Local patches
 
-Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the commit above are in this folder's git history.
+Each patch is marked `-- WFB patch (G1)` or `-- WFB patch (HUD1)` in the code. Their diffs against the commit above are in this folder's git history.
 
 - `layout.lua`: a ScrollFrame's scroll child is placed at the frame's top left, moved up by the vertical scroll, as in the client. Without this, the window's panes draw empty.
 - `framexml.lua`: `PanelTemplates_TabResize`, `_SetNumTabs` and `_SetTab`. A `PanelTabButtonTemplate` tab is sized to its label plus the template's ends, as in the client. Without this, the tabs are 0 wide and pile up. `_SetTab` also selects and deselects (`_UpdateTabs`, `_SelectTab`, `_DeselectTab`) as `SharedUIPanelTemplates.lua` does: the selected tab shows its active art, a white label set lower, and is disabled.
@@ -24,6 +24,15 @@ Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the co
 - `templates.lua`: `UIPanelScrollFrameTemplate`'s scroll bar has `UIPanelScrollBarTemplate`'s 16 width, `UI-ScrollBar-Knob` thumb (18×24, cropped) and `UIPanelScrollBarButton`'s arrow crop, and an arrow is disabled at its end of the range, as `ScrollFrame_OnScrollRangeChanged` does. Without this, the bar is 0 wide and draws nothing.
 - `assets.lua`: the local art folder (`WOWAPI_ART`) indexes `.ttf` files as well as images, so the fonts `casc-extract` pulls from the game serve `Store:font` offline. Without this, pictures drawn from the extract fall back to a browser serif.
 - `secrets.lua` (marked P4d): `canaccesstable` and `canaccessallvalues`, false only when something in them is secret. Upstream leaves them to the documented-function fakes, which answer with a random bool, so an addon that checks a table before reading it skipped plain tables about half the time.
+
+HUD1, so Blizzard's own UI addons (from the extract) load as the client loads them:
+
+- `toc.lua`: a `[AllowLoadGameType ...]` / `[ExcludeLoadGameType ...]` tag matches the family (Mainline) as well as the game type (camelot), as in the client. Without this, Forever skips Blizzard's 472 mainline-tagged files and dependencies its camelot files build on.
+- `toc.lua`: every `## Dep:` / `## Dependencies:` / `## OptionalDeps:` line counts, each with its own game-type tag. Without this, only the last line is kept, and Blizzard's TOCs list one dependency per line.
+- `toc.lua`: file lines tagged `[AllowLoad Glue]` aren't loaded in game, and any other tag (`[LoadIntoEnvironment secure]`) is dropped from the file name after `[Family]`/`[Game]` are filled in. Without this, those files are reported missing.
+- `sim.lua`: addon names match case-insensitively, as in the client. Without this, a dependency named `Blizzard_ActionBar` loads the folder `blizzard_actionbar` a second time.
+- `templates.lua`: a FontString template may inherit a font object (`TooltipTextLeftTemplate inherits="GameTooltipText"`). Without this, it's "Couldn't find inherited node".
+- `docs.lua`: with `apiDocsDir` (a local `Blizzard_APIDocumentationGenerated`), enums and values the bundled data predates are added from the client's own docs. Without this, Forever's UI indexes enums like `EditModePresetLayouts.Gamepad` that the retail data doesn't have.
 
 ## Updating
 

@@ -84,35 +84,59 @@ M.FAMILY = "Mainline"
 M.GAME = "Camelot"
 
 -- Evaluate [AllowLoadGameType a, b] / [ExcludeLoadGameType a, b] on a line.
+-- WFB patch (HUD1): a tag names a game type or a family, and the client
+-- matches either: Forever (camelot, family Mainline) loads Blizzard's own
+-- [AllowLoadGameType mainline] files and dependencies, which its camelot
+-- files build on (Blizzard_UnitFrame's PetFrame.xml needs PetHappiness.xml).
 function M.gameTypeAllowed(line, gameType)
   gameType = (gameType or M.GAME_TYPE):lower()
+  local family = M.FAMILY:lower()
+  local function names(g) g = g:lower(); return g == gameType or g == family end
   local ok = true
   for list in line:gmatch("%[AllowLoadGameType%s+([^%]]+)%]") do
     local found = false
-    for g in list:gmatch("[^,%s]+") do if g:lower() == gameType then found = true end end
+    for g in list:gmatch("[^,%s]+") do if names(g) then found = true end end
     if not found then ok = false end
   end
   for list in line:gmatch("%[ExcludeLoadGameType%s+([^%]]+)%]") do
-    for g in list:gmatch("[^,%s]+") do if g:lower() == gameType then ok = false end end
+    for g in list:gmatch("[^,%s]+") do if names(g) then ok = false end end
   end
   return ok
 end
 
+-- WFB patch (HUD1): Blizzard's TOCs list one dependency per "## Dep:" line,
+-- each with its own game-type tag, so these keys collect every line whose
+-- tag allows this client instead of keeping the last.
+local LIST_KEYS = { dep = "deps", deps = "deps", dependencies = "deps", requireddeps = "deps",
+  dependancies = "deps", optionaldeps = "optionaldeps" }
+
 function M.parse(text, name)
   local toc = { name = name, metadata = {}, files = {} }
+  local lists = { deps = {}, optionaldeps = {} }
   text = text:gsub("^\239\187\191", "")
   for line in (text .. "\n"):gmatch("([^\r\n]*)\r?\n") do
     local key, val = line:match("^##%s*([^:]-)%s*:%s*(.-)%s*$")
     if key then
-      toc.metadata[key] = val
-      toc.metadata[key:lower()] = val
+      local list = LIST_KEYS[key:lower()]
+      if list then
+        if M.gameTypeAllowed(val) then
+          for _, d in ipairs(splitList((val:gsub("%[[^%]]*%]", "")))) do table.insert(lists[list], d) end
+        end
+      else
+        toc.metadata[key] = val
+        toc.metadata[key:lower()] = val
+      end
     elseif not line:match("^%s*#") then
       local file = trim(line)
-      local allowed = M.gameTypeAllowed(file)
-      file = trim(file:gsub("%[%a+LoadGameType[^%]]*%]", ""):gsub("%[AllowLoad[^%]]*%]", ""))
+      -- WFB patch (HUD1): [AllowLoad Glue] files are for the login screens,
+      -- not the game; and once the path tokens ([Family], [Game]) are
+      -- filled in, any other tag ([LoadIntoEnvironment secure]) is not part
+      -- of the file name.
+      local allowed = M.gameTypeAllowed(file) and not file:match("%[AllowLoad%s+[Gg]lue%]")
+      file = file:gsub("%[Family%]", M.FAMILY):gsub("%[Game%]", M.GAME):gsub("%[TextLocale%]", M.LOCALE or "enUS")
+      file = trim(file:gsub("%[[^%]]*%]", ""))
       if file ~= "" and allowed then
-        file = file:gsub("%[Family%]", M.FAMILY):gsub("%[Game%]", M.GAME):gsub("%[TextLocale%]", M.LOCALE or "enUS")
-          :gsub("\\", "/")
+        file = file:gsub("\\", "/")
         toc.files[#toc.files + 1] = file
       end
     end
@@ -120,9 +144,8 @@ function M.parse(text, name)
   local md = toc.metadata
   toc.title = md.title or name
   toc.interface = splitList(md.interface)
-  toc.deps = splitList(md.dependencies or md.requireddeps or md.deps
-    or md.dependancies)
-  toc.optionalDeps = splitList(md.optionaldeps)
+  toc.deps = lists.deps
+  toc.optionalDeps = lists.optionaldeps
   toc.savedVariables = splitList(md.savedvariables)
   toc.savedVariablesPerCharacter = splitList(md.savedvariablespercharacter)
   toc.loadOnDemand = md.loadondemand == "1"

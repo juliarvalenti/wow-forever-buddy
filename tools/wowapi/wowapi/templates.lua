@@ -456,10 +456,14 @@ function M.apply(sim, obj, templates, create, ctx)
   if own then ctx = sim.xml.newCtx(sim, "CreateFrame") end
   for _, name in ipairs(M.split(templates)) do
     local t = sim.templates[name]
-    if not t then
+    -- WFB patch (HUD1): a FontString template may inherit a font object
+    -- (TooltipTextLeftTemplate inherits="GameTooltipText"), as in the client.
+    local fo = not t and obj.SetFontObject and sim:Get(name)
+    if fo and sim.widgetState[fo] and sim.widgetState[fo].type == "Font" then
+      obj:SetFontObject(fo)
+    elseif not t then
       error('CreateFrame(): Couldn\'t find inherited node "' .. name .. '"', 4)
-    end
-    if t.builtin then t.builtin(sim, obj, create)
+    elseif t.builtin then t.builtin(sim, obj, create)
     elseif t.xml then sim.xml.applyTemplate(sim, obj, t, ctx) end
   end
   if own then
