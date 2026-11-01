@@ -169,6 +169,11 @@ function M.quality(id)
     return M.GEAR[id] and 3 or M.RECIPES[id] and 2 or M.JUNK[id] and 0 or 1
 end
 
+-- What a vendor pays for one (GetItemInfo's 11th return, below).
+function M.sellPrice(id)
+    return M.GEAR[id] and 5000 or M.RECIPES[id] and 1250 or M.JUNK[id] and 9 or 13
+end
+
 -- The global `name` set by a SavedVariables file's text.
 function M.parse(text, name)
     local env = {}
@@ -297,6 +302,15 @@ function M.new(opts)
         complete = {}, -- quest id -> objectives done (C_QuestLog.IsComplete)
         merchant = {}, -- item ids the open vendor sells, in its order (B2)
         merchant_page = 1,
+        -- M1: the vendor window and what happened at it.
+        merchant_open = false,
+        merchant_repairs = true, -- this vendor repairs (CanMerchantRepair)
+        guild_repair = false, -- the guild lets this rank repair from its bank
+        guild_funds = 0, -- what's left to withdraw today (-1: no limit)
+        quest_items = {}, -- id -> quest id: items a quest uses
+        sold = {}, -- { id, count, bag, slot } per item sold, in order
+        repaired = nil, -- { cost, guild } once RepairAllItems ran
+        misused = {}, -- items "used" with no vendor open: a test fails on any
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
     }
@@ -429,6 +443,65 @@ function M.new(opts)
         GetRepairAllCost = function()
             return world.repair, world.repair > 0
         end,
+        -- M1: the merchant module's world. Selling and repairing change the
+        -- bags and the money at once; the events come a moment later, as the
+        -- server's reply does.
+        CanMerchantRepair = function()
+            return world.merchant_open and world.merchant_repairs
+        end,
+        CanGuildBankRepair = function()
+            return world.guild_repair
+        end,
+        GetGuildBankWithdrawMoney = function()
+            return world.guild_funds
+        end,
+        RepairAllItems = function(guild)
+            local cost = world.repair
+            if not world.merchant_open or cost <= 0 then
+                return
+            end
+            if guild then
+                if world.guild_funds ~= -1 then
+                    world.guild_funds = world.guild_funds - cost
+                end
+            else
+                world.money = world.money - cost
+            end
+            world.repair = 0
+            world.repaired = { cost = cost, guild = guild and true or false }
+            later(function()
+                client.fire("UPDATE_INVENTORY_DURABILITY")
+                client.fire("PLAYER_MONEY")
+            end)
+        end,
+        ["C_Container.UseContainerItem"] = function(bag, slot)
+            local b = world.bags[bag]
+            local item = b and b.slots[slot]
+            if not item then
+                return
+            end
+            if not world.merchant_open then
+                table.insert(world.misused, { id = item.id, bag = bag, slot = slot })
+                return
+            end
+            local price = M.sellPrice(item.id)
+            b.slots[slot] = nil
+            world.money = world.money + price * item.count
+            table.insert(world.sold, { id = item.id, count = item.count, bag = bag, slot = slot })
+            later(function()
+                client.fire("BAG_UPDATE", bag)
+                client.fire("BAG_UPDATE_DELAYED")
+                client.fire("PLAYER_MONEY")
+            end)
+        end,
+        ["C_Container.GetContainerItemQuestInfo"] = function(bag, slot)
+            local item = readable(bag) and world.bags[bag] and world.bags[bag].slots[slot]
+            if not item then
+                return { isQuestItem = false, isActive = false }
+            end
+            local quest = world.quest_items[item.id]
+            return { isQuestItem = quest ~= nil, questID = quest, isActive = quest ~= nil }
+        end,
         ["C_Container.GetContainerNumSlots"] = function(bag)
             local b = readable(bag) and world.bags[bag]
             return b and b.size or 0
@@ -460,9 +533,14 @@ function M.new(opts)
             if item and item.unreadable then
                 return client.unreadable() -- R3a: a table holding secrets
             elseif item then
-                -- Soulbound when its tooltip says so (world.bound).
+                -- Soulbound when its tooltip says so (world.bound); no
+                -- answer at all for an item whose binding isn't known (M1).
+                local bound = world.bound[item.id] == "Soulbound"
+                if item.bindUnknown then
+                    bound = nil
+                end
                 return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id),
-                    quality = M.quality(item.id), isBound = world.bound[item.id] == "Soulbound" }
+                    quality = M.quality(item.id), isBound = bound }
             end
         end,
         ["C_Bank.FetchPurchasedBankTabIDs"] = function()
@@ -1710,6 +1788,7 @@ function M.new(opts)
     -- `items`: the ids the vendor sells (B2's highlights), none if not given.
     function client.openMerchant(items)
         world.merchant = items or {}
+        world.merchant_open = true
         client.fire("MERCHANT_SHOW")
     end
 
@@ -1784,6 +1863,7 @@ function M.new(opts)
     end
 
     function client.closeMerchant()
+        world.merchant_open = false
         -- The client fires it twice.
         client.fire("MERCHANT_CLOSED")
         client.fire("MERCHANT_CLOSED")

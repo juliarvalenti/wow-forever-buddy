@@ -191,6 +191,47 @@
       "acts": false
     },
     {
+      "id": "merchant.repair",
+      "module": "merchant",
+      "section": "Merchant",
+      "type": "bool",
+      "default": false,
+      "label": "Repair at vendors",
+      "help": "When you open a vendor who repairs, pays for your repairs.",
+      "acts": true
+    },
+    {
+      "id": "merchant.repairGuild",
+      "module": "merchant",
+      "section": "Merchant",
+      "type": "bool",
+      "default": false,
+      "label": "Guild bank pays first",
+      "help": "Uses guild funds when your rank allows it, and your own gold when it doesn't.",
+      "parent": "merchant.repair",
+      "acts": true
+    },
+    {
+      "id": "merchant.sellJunk",
+      "module": "merchant",
+      "section": "Merchant",
+      "type": "bool",
+      "default": false,
+      "label": "Sell grey items",
+      "help": "When you open a vendor, sells up to 12 grey items. The vendor's buyback keeps them.",
+      "acts": true
+    },
+    {
+      "id": "merchant.sellMarked",
+      "module": "merchant",
+      "section": "Merchant",
+      "type": "bool",
+      "default": false,
+      "label": "Sell items you marked",
+      "help": "Also sells items you marked to sell in Forever Buddy, within the same 12.",
+      "acts": true
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",
@@ -240,6 +281,14 @@
         "window.bagMarks": false
       },
       "say": "Nothing in your bags will show what's only worth selling."
+    },
+    {
+      "id": "merchant.sellsUnseen",
+      "when": {
+        "merchant.sellMarked": true,
+        "window.bagMarks": false
+      },
+      "say": "Marked items will sell without a mark in your bags to show which ones."
     }
   ],
   "presets": [

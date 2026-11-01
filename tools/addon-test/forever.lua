@@ -69,6 +69,14 @@ return {
     GetSavedInstanceInfo = row(NONE, { from = "report", seen = "AUDIT-F" }),
     ["C_Bank.FetchPurchasedBankTabIDs"] = row(NONE, { from = "assumed" }),
     GetRepairAllCost = row(NOT_UP, { from = "assumed" }),
+    -- M1: the Merchant module's, called only inside MERCHANT_SHOW, so only
+    -- ever live; outside it they answer as if no vendor were open.
+    CanMerchantRepair = row(NONE, { from = "assumed" }),
+    CanGuildBankRepair = row(NONE, { from = "assumed" }),
+    GetGuildBankWithdrawMoney = row(NOT_UP, { from = "assumed" }),
+    RepairAllItems = row(NONE, { from = "assumed" }),
+    ["C_Container.UseContainerItem"] = row(NONE, { from = "assumed" }),
+    ["C_Container.GetContainerItemQuestInfo"] = row(NONE, { from = "assumed" }),
 
     -- Who and where: the same in every phase as far as anyone has seen. The
     -- addon re-reads identity on the first live look anyway (S.startEarly).
