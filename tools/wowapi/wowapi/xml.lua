@@ -379,6 +379,20 @@ local function buildRegion(ctx, node, parent, layer, sublevel, existing)
   if anims then M.buildAnimations(ctx, obj, anims) end
   local scripts = kid(node, "Scripts")
   if scripts then setScripts(ctx, obj, scripts) end
+  -- WFB patch (HUD1): a region's mixin, as for frames (Blizzard's
+  -- TextStatusBarSparkTemplate is a Texture with TextStatusBarSparkMixin).
+  -- Applied after the XML attributes: the client sets those natively, so a
+  -- mixin's SetText (AutoScalingFontStringMixin) doesn't run for them.
+  if a.mixin then
+    for _, m in ipairs(require("wowapi.templates").split(a.mixin)) do
+      local mt = sim:Get(m)
+      if type(mt) == "table" then
+        for k, v in pairs(mt) do obj[k] = v end
+      else
+        sim:_error(string.format("%s:%d: mixin '%s' is not defined (load the Lua file that defines it first)", ctx.file, node.line or 0, m))
+      end
+    end
+  end
   return obj
 end
 
@@ -579,7 +593,8 @@ function M.applyTemplate(sim, obj, tmpl, ctx)
   local node = tmpl.node
   if REGION_TAGS[node.tag] then
     buildRegion(ctx, { tag = node.tag, attrs = { hidden = node.attrs.hidden, alpha = node.attrs.alpha, file = node.attrs.file,
-      atlas = node.attrs.atlas, text = node.attrs.text, justifyH = node.attrs.justifyH, justifyV = node.attrs.justifyV },
+      atlas = node.attrs.atlas, text = node.attrs.text, justifyH = node.attrs.justifyH, justifyV = node.attrs.justifyV,
+      mixin = node.attrs.mixin, useAtlasSize = node.attrs.useAtlasSize, alphaMode = node.attrs.alphaMode },
       children = node.children, line = node.line }, obj:GetParent(), nil, nil, obj)
   else
     local fileCtx = ctx
