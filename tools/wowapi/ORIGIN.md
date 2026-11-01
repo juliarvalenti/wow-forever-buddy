@@ -19,7 +19,9 @@ Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the co
 - `templates.lua`: `PanelTabButtonTemplate` carries its art as `SharedUIPanelTemplates.xml` defines it (the `uiframe-tab-*` and `uiframe-activetab-*` atlases, 32 tall). Without this, the tabs draw as bare labels.
 - `templates.lua`: `PortraitFrameTemplate`'s portrait is placed over the top-left corner (62×62 at -5, 7), as in the client. Without this, the window has no portrait.
 - `templates.lua`: `PortraitFrameTemplate`, `ButtonFrameTemplate` and `InsetFrameTemplate` are built as `SharedUIPanelTemplates.xml` builds them: the metal nine-slice and the inset's inner nine-slice from `NineSliceLayouts.lua` (anchored as `NineSlice.lua` does, 2x atlases at half size), the rock and marble backgrounds tiled, the top streaks, a gold title and the close button at TOPRIGHT 0, 3. Without this, the window draws as a grey dialog box.
-- `render.lua`: a frame inside a ScrollFrame is clipped to it. Without this, a pane taller than its window (Settings) draws past the window's edge.
+- `render.lua`: a frame inside a ScrollFrame's scroll child is clipped to the ScrollFrame. Without this, a pane taller than its window (Settings) draws past the window's edge. The ScrollFrame's other children, such as its ScrollBar outside the right edge, aren't clipped.
+- `render.lua`: a vertical slider with its own thumb texture (a scroll bar) draws only that thumb, at its size, moving down the bar with the value. Without this, it draws as a horizontal settings slider.
+- `templates.lua`: `UIPanelScrollFrameTemplate`'s scroll bar has `UIPanelScrollBarTemplate`'s 16 width, `UI-ScrollBar-Knob` thumb (18×24, cropped) and `UIPanelScrollBarButton`'s arrow crop, and an arrow is disabled at its end of the range, as `ScrollFrame_OnScrollRangeChanged` does. Without this, the bar is 0 wide and draws nothing.
 - `assets.lua`: the local art folder (`WOWAPI_ART`) indexes `.ttf` files as well as images, so the fonts `casc-extract` pulls from the game serve `Store:font` offline. Without this, pictures drawn from the extract fall back to a browser serif.
 
 ## Updating
