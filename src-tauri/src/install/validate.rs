@@ -7,7 +7,7 @@ use crate::fsx::read::safe_read;
 use crate::fsx::relpath::GameRoot;
 use crate::install::layout::{
     label_from_folder, lookup, parse_build_info, product_matches_folder, BuildRow, Flavor, Install,
-    KNOWN_FLAVORS,
+    FOREVER_FOLDER, KNOWN_FLAVORS,
 };
 use crate::install::wtf::older_groups;
 
@@ -194,7 +194,7 @@ pub fn scan(root: &Path) -> AppResult<Install> {
 
     if flavors.is_empty() {
         return Err(AppError::InvalidInstall(format!(
-            "no WoW game folder (like _classic_beta_ or _retail_) with a game or a WTF folder in {}",
+            "no WoW game folder (like _forever_ or _retail_) with a game or a WTF folder in {}",
             root.display()
         )));
     }
@@ -205,8 +205,9 @@ pub fn scan(root: &Path) -> AppResult<Install> {
     })
 }
 
-/// Picks the active flavor: the requested one, else Forever, else the only
-/// flavor with a WTF folder, else the only flavor.
+/// Picks the active flavor: the requested one, else Forever (its own
+/// `_forever_` folder over the beta's, BUG-FLAVOR), else the only flavor
+/// with a WTF folder, else the only flavor.
 pub fn choose_flavor(install: &Install, requested: Option<&str>) -> AppResult<String> {
     if let Some(id) = requested {
         return install.flavor(id).map(|f| f.id.clone()).ok_or_else(|| {
@@ -217,10 +218,17 @@ pub fn choose_flavor(install: &Install, requested: Option<&str>) -> AppResult<St
         });
     }
     let pick = |fs: Vec<&Flavor>| (fs.len() == 1).then(|| fs[0].id.clone());
-    pick(install.flavors.iter().filter(|f| f.is_forever).collect())
-        .or_else(|| pick(install.flavors.iter().filter(|f| f.has_wtf).collect()))
-        .or_else(|| pick(install.flavors.iter().collect()))
-        .ok_or_else(|| AppError::InvalidInstall("several game versions found; choose one".into()))
+    pick(
+        install
+            .flavors
+            .iter()
+            .filter(|f| f.is_forever && f.id == FOREVER_FOLDER)
+            .collect(),
+    )
+    .or_else(|| pick(install.flavors.iter().filter(|f| f.is_forever).collect()))
+    .or_else(|| pick(install.flavors.iter().filter(|f| f.has_wtf).collect()))
+    .or_else(|| pick(install.flavors.iter().collect()))
+    .ok_or_else(|| AppError::InvalidInstall("several game versions found; choose one".into()))
 }
 
 #[cfg(test)]
@@ -335,21 +343,21 @@ mod tests {
     #[test]
     fn unknown_flavor_folders_use_naming_convention() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(tmp.path().join("_forever_/WTF")).unwrap();
-        std::fs::write(tmp.path().join("_forever_/WowForever.exe"), b"").unwrap();
+        std::fs::create_dir_all(tmp.path().join("_newgame_/WTF")).unwrap();
+        std::fs::write(tmp.path().join("_newgame_/WowNewgame.exe"), b"").unwrap();
         std::fs::write(
             tmp.path().join(".build.info"),
-            "Product!STRING:0|Version!STRING:0\nwow_forever|2.0.0.1\n",
+            "Product!STRING:0|Version!STRING:0\nwow_newgame|2.0.0.1\n",
         )
         .unwrap();
         let install = scan(tmp.path()).unwrap();
         let f = &install.flavors[0];
-        assert_eq!(f.label, "Forever");
-        assert_eq!(f.product.as_deref(), Some("wow_forever"));
+        assert_eq!(f.label, "Newgame");
+        assert_eq!(f.product.as_deref(), Some("wow_newgame"));
         assert_eq!(f.version.as_deref(), Some("2.0.0.1"));
         assert_eq!(
             f.exe.as_ref().unwrap().file_name().unwrap(),
-            "WowForever.exe"
+            "WowNewgame.exe"
         );
     }
 

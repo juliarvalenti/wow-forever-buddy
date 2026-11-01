@@ -686,14 +686,15 @@ export function installMockIpc(): void {
     save(2, "Onyxia's Lair", true, 60 * 24 * 4 + 60 * 6),
   ];
 
+  // BUG-FLAVOR: Forever's own folder, as players have it from launch.
   const flavor = {
-    id: "_classic_beta_",
-    label: "WoW: Forever (Beta)",
-    product: "wow_classic_beta",
-    version: "1.60.1.70009",
+    id: "_forever_",
+    label: "WoW: Forever",
+    product: "wowf",
+    version: "1.60.1.70707",
     is_forever: true,
-    dir: "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_",
-    exe: "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\WowB.exe",
+    dir: "C:\\Program Files (x86)\\World of Warcraft\\_forever_",
+    exe: "C:\\Program Files (x86)\\World of Warcraft\\_forever_\\Wow.exe",
     has_wtf: true,
     accounts: ["ACCOUNT1"],
     characters: 7,
@@ -702,7 +703,7 @@ export function installMockIpc(): void {
   const install = {
     root: "C:\\Program Files (x86)\\World of Warcraft",
     flavors: [flavor],
-    active: "_classic_beta_",
+    active: "_forever_",
   };
 
   // Typed against the bindings, so a new field on the Rust side fails tsc
@@ -721,7 +722,7 @@ export function installMockIpc(): void {
     label: null,
     pinned: false,
     scope: "full",
-    flavor: "_classic_beta_",
+    flavor: "_forever_",
     game_running: false,
     file_count: 1912,
     char_count: 7,
@@ -818,7 +819,7 @@ export function installMockIpc(): void {
     pre_restore_snapshot: "S2",
     selection: { items: [{ kind: "Everything" }] },
     mode: "overlay",
-    flavor: "_classic_beta_",
+    flavor: "_forever_",
     started_at: iso(60 * 3 + 10),
     summary: "macros and 2 addon settings",
   };
@@ -852,7 +853,7 @@ export function installMockIpc(): void {
     adventures: number[] = [],
   ): PlaySession => ({
     id,
-    flavor: "_classic_beta_",
+    flavor: "_forever_",
     started_at: iso(startMins),
     ended_at: endMins == null ? null : iso(endMins),
     characters,
@@ -893,7 +894,7 @@ export function installMockIpc(): void {
     install:
       s === "nogame"
         ? null
-        : { root: "C:\\Program Files (x86)\\World of Warcraft", flavor: "_classic_beta_", links: [] },
+        : { root: "C:\\Program Files (x86)\\World of Warcraft", flavor: "_forever_", links: [] },
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
@@ -1087,7 +1088,7 @@ export function installMockIpc(): void {
     game_status: () => ({ running, pids: running ? [4242] : [], since: running ? iso(102) : null, unknown: false }),
     install_get: () => {
       if (s === "dashboard-missing")
-        throw { kind: "InvalidInstall", detail: "D:\\World of Warcraft\\_classic_beta_ has no WTF folder" };
+        throw { kind: "InvalidInstall", detail: "D:\\World of Warcraft\\_forever_ has no WTF folder" };
       return s === "nogame" || s === "detect-failed" ? null : install;
     },
     install_detect: () => {
@@ -1220,7 +1221,7 @@ export function installMockIpc(): void {
       ];
       const none = s === "macros-empty";
       return {
-        flavor: "_classic_beta_",
+        flavor: "_forever_",
         accounts: [
           {
             account: "ACCOUNT1",
@@ -1258,7 +1259,7 @@ export function installMockIpc(): void {
     // F4: addons-readonly.html's ten addons and five characters.
     addons_list: (): AddonsList => {
       const folders = ["Thrandor", "Velyra-Duskmane", "Brannic", "Fizzwick", "Sela"];
-      const dir = "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\Interface\\AddOns";
+      const dir = "C:\\Program Files (x86)\\World of Warcraft\\_forever_\\Interface\\AddOns";
       const a = (
         name: string,
         title: string,
@@ -1282,7 +1283,7 @@ export function installMockIpc(): void {
         enabled: enabled.map((on, i) => addonToggles.get(`${name}/${folders[i]}`) ?? Boolean(on)),
       });
       return {
-        flavor: "_classic_beta_",
+        flavor: "_forever_",
         game: "WoW: Forever (Beta)",
         folder: dir,
         interface: 16001,

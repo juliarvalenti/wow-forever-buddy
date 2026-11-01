@@ -55,6 +55,10 @@ pub struct Flavor {
     pub links: Vec<LinkedFolder>,
 }
 
+/// Forever's own folder since launch, and the beta's before it (BUG-FLAVOR).
+pub const FOREVER_FOLDER: &str = "_forever_";
+pub const FOREVER_BETA_FOLDER: &str = "_classic_beta_";
+
 /// What we know about a flavor folder. Data, not code, so a new Forever
 /// folder, product or exe at launch is a one-line change.
 pub struct KnownFlavor {
@@ -72,7 +76,19 @@ pub struct KnownFlavor {
 /// Checked in order; the first entry whose folder, product and version
 /// prefix all match wins.
 pub const KNOWN_FLAVORS: &[KnownFlavor] = &[
-    // Forever is in beta until launch on 2026-11-04, under the generic
+    // BUG-FLAVOR: Forever's own folder and product since the beta ended
+    // (`_forever_`, Battle.net product `wowf`, build 1.60.1.70707 on Julia's
+    // Mac). Its Windows client is `Wow.exe` (the product's install config);
+    // `WowF.exe` too, in case a build names it after the product.
+    KnownFlavor {
+        folder: FOREVER_FOLDER,
+        product: "wowf",
+        version_prefix: None,
+        label: "WoW: Forever",
+        exes: &["Wow.exe", "Wow-arm64.exe", "WowF.exe", "WowF-arm64.exe"],
+        is_forever: true,
+    },
+    // Forever's beta, until launch on 2026-11-04, under the generic
     // classic-beta folder and product. Interface 16001, build 1.60.x.
     KnownFlavor {
         folder: "_classic_beta_",
@@ -318,7 +334,13 @@ mod tests {
 
         // No .build.info: don't claim it's Forever.
         assert!(!lookup("_classic_beta_", None, None).unwrap().is_forever);
-        assert!(lookup("_forever_", None, None).is_none());
+        assert!(lookup("_newgame_", None, None).is_none());
+
+        // BUG-FLAVOR: Forever's own folder since launch, any version.
+        let forever = lookup("_forever_", Some("wowf"), Some("1.60.1.70707")).unwrap();
+        assert!(forever.is_forever);
+        assert_eq!(forever.label, "WoW: Forever");
+        assert!(lookup("_forever_", None, None).unwrap().is_forever);
     }
 
     #[test]
@@ -327,14 +349,16 @@ mod tests {
         assert!(product_matches_folder("wow_classic_beta", "_classic_beta_"));
         assert!(!product_matches_folder("wow_classic", "_classic_era_"));
         assert!(!product_matches_folder("wow", "_classic_"));
+        assert!(product_matches_folder("wowf", "_forever_"));
+        assert!(!product_matches_folder("wow_classic_beta", "_forever_"));
         // Unknown folder: naming convention.
-        assert!(product_matches_folder("wow_forever", "_forever_"));
-        assert!(!product_matches_folder("wow_other", "_forever_"));
+        assert!(product_matches_folder("wow_newgame", "_newgame_"));
+        assert!(!product_matches_folder("wow_other", "_newgame_"));
     }
 
     #[test]
     fn labels_and_exe_names() {
-        assert_eq!(label_from_folder("_forever_"), "Forever");
+        assert_eq!(label_from_folder("_newgame_"), "Newgame");
         assert_eq!(label_from_folder("_classic_era_ptr_"), "Classic Era Ptr");
         let names = known_exe_names();
         assert!(names.contains(&"WowB.exe") && names.contains(&"WowB-arm64.exe"));
