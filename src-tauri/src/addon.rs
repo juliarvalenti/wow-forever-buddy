@@ -28,7 +28,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// app replaces with generated data. `Media/` holds our own art (U1).
 /// `Settings.lua` declares the addon's settings (P4a); `Data/Settings.lua`
 /// is the slot that carries a profile approved in the app (P4b).
-const FILES: [(&str, &[u8]); 11] = [
+const FILES: [(&str, &[u8]); 21] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -40,6 +40,47 @@ const FILES: [(&str, &[u8]); 11] = [
     (
         "Media/Icon.tga",
         include_bytes!("../resources/addon/ForeverBuddy/Media/Icon.tga"),
+    ),
+    // The window's look (W1b): textures, and two OFL fonts with their licences.
+    (
+        "Media/Stone.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Stone.tga"),
+    ),
+    (
+        "Media/Hide.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Hide.tga"),
+    ),
+    (
+        "Media/Ribbon.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Ribbon.tga"),
+    ),
+    (
+        "Media/Paper.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Paper.tga"),
+    ),
+    (
+        "Media/Card.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Card.tga"),
+    ),
+    (
+        "Media/Bronze.tga",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Bronze.tga"),
+    ),
+    (
+        "Media/Marcellus.ttf",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Marcellus.ttf"),
+    ),
+    (
+        "Media/Marcellus-OFL.txt",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Marcellus-OFL.txt"),
+    ),
+    (
+        "Media/Geist.ttf",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Geist.ttf"),
+    ),
+    (
+        "Media/Geist-OFL.txt",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Geist-OFL.txt"),
     ),
     (
         "Data/Tooltip1.lua",

@@ -981,6 +981,8 @@ function M.new(opts)
         "SetOwner", "SetPortraitToAsset", "SetTitle", "SetBlendMode", "SetVertexColor",
         -- W1: the window's own look.
         "SetFont", "SetGradient", "SetThumbTexture", "SetOrientation", "EnableMouseWheel", "SetRotation",
+        -- W1b: its art.
+        "SetTexCoord", "SetShadowOffset",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }

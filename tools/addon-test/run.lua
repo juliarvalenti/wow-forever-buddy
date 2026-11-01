@@ -46,6 +46,13 @@ local function eq(got, want, what)
     end
 end
 
+-- W1b: a colour the window set ({ r, g, b[, a] }) as "#rrggbb", as STYLE
+-- and the design write it.
+local function hex(c)
+    return c and string.format("#%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5),
+        math.floor(c[3] * 255 + 0.5))
+end
+
 local function entries(t)
     local n = 0
     for _ in pairs(t or {}) do
@@ -891,14 +898,15 @@ scenario("plan", function()
     eq(w.shown, true, "/fb plan opens the window")
     local tab = w.panes[1]
     eq(tab.scroll.shown, true, "on the Plan tab")
-    eq(tab.rows[1].label.text, "1. Take Wanted: Hogger", "the steps")
-    eq(table.concat(tab.rows[1].label.color, ","), "0.8,0.56,0.31,1", "the current step in the accent (W1)")
-    eq(tab.rows[1].edge.shown, true, "with its edge")
-    eq(tab.rows[1].glow.shown, true, "on a soft accent")
-    eq(tab.rows[2].glow.shown, false, "the next one isn't")
-    eq(tab.rows[2].label.text, "2. Find ||Hitem:1||h[Hogger]||h by the river", "escaped here too")
+    eq(tab.rows[1].num.text .. ". " .. tab.rows[1].label.text, "1. Take Wanted: Hogger", "the steps")
+    eq(hex(tab.rows[1].label.color), "#8e1a16", "the current step in wax (W1b)")
+    eq(tab.rows[1].wax.shown, true, "its number on wax")
+    eq(tab.rows[2].wax.shown, false, "the next one's isn't")
+    eq(tab.rows[2].label.text, "Find ||Hitem:1||h[Hogger]||h by the river", "escaped here too")
     eq(tab.rows[3].go.enabled, false, "no recorded position")
-    eq(tab.footer.text, "0 of 4 done", "progress")
+    eq(tab.rows[3].go.shown, false, "so no Show on map")
+    eq(tab.head.text, "Elwynn Forest", "the plan's place on the page")
+    eq(tab.count.text, "0 of 4 done", "progress")
     eq(w.fresh.text:match("^From Forever Buddy · %d%d:%d%d") ~= nil, true, "the freshness line")
     eq(w.syncButton.shown ~= false and w.sync.text, "", "a Sync button, no typed line (B4)")
     eq(tab.tracker.checked, false, "the tracker is off")
@@ -928,8 +936,9 @@ scenario("plan", function()
     -- The game says the quest was taken: step 1 ticks and its waypoint goes.
     c.accept(176, { name = "Marshal Dughan" })
     eq(table.concat(row(1).label.color, ","), "0.5,0.5,0.5", "done steps are grey")
-    eq(table.concat(tab.rows[1].label.color, ","), "0.93,0.89,0.81,0.32", "in the window too, faint (W1)")
-    eq(tab.footer.text, "1 of 4 done", "the window follows")
+    eq(hex(tab.rows[1].label.color), "#9a8162", "in the window too, faded (W1b)")
+    eq(tab.rows[1].tick[1].shown and tab.rows[1].num.shown, false, "ticked, its number gone")
+    eq(tab.count.text, "1 of 4 done", "the window follows")
     eq(table.concat(row(2).label.color, ","), "1,0.82,0", "next step")
     eq(c.waypoints[2], "cleared", "the ticked step's waypoint is cleared")
     -- Only a step with no quest id is ticked by hand, and can be unticked.
@@ -2291,7 +2300,7 @@ scenario("window", function()
     c.click(w.modSwitch)
     eq(c.global("ForeverBuddyCoachFrame").shown, false, "module off: the coach goes")
     eq(checks[1].shown, false, "its options hide")
-    eq(table.concat(w.mods.coach.dot.layout.SetColorTexture, ","), "1,1,1,0.14", "the dot dims")
+    eq(hex(w.mods.coach.dot.layout.SetVertexColor), "#7d6c58", "the diamond dims")
     eq(c.global("ForeverBuddySettings").modules.coach, false, "saved per account")
     c.click(w.modSwitch)
     eq(c.global("ForeverBuddyCoachFrame").shown, true, "back on: the coach is back")
@@ -3257,7 +3266,7 @@ scenario("contract", function()
     -- Plan: the window's Plan tab has the steps.
     c.slash("/fb plan")
     local w = c.global("ForeverBuddyWindow")
-    eq(w.panes[1].rows[1].label.text, "1. Take Wanted: Hogger", "the Plan slot's first step")
+    eq(w.panes[1].rows[1].label.text, "Take Wanted: Hogger", "the Plan slot's first step")
 
     -- Lists: the list and its item.
     c.slash("/fb list")
@@ -3895,7 +3904,7 @@ scenario("modules", function()
     c.slash("/fb")
     w = c.global("ForeverBuddyWindow")
     for id, b in pairs(w.mods) do
-        eq(table.concat(b.dot.layout.SetColorTexture, ","), "0.8,0.56,0.31,1", id .. " is on")
+        eq(hex(b.dot.layout.SetVertexColor), "#ff7a2e", id .. " is on")
     end
 
     -- Map: the minimap's coordinates go and come back.
