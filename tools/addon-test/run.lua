@@ -3298,6 +3298,16 @@ scenario("settings_schema", function()
         for id, v in pairs(p.values) do
             eq(byId[id] ~= nil and fits(byId[id], v), true, what .. ": " .. id .. " = " .. tostring(v))
         end
+        -- Every option has its row, except recording, which no preset
+        -- touches (designer, P4c); a number only goes with its parent on.
+        for _, o in ipairs(s.options) do
+            local has = p.values[o.id] ~= nil
+            if o.id == "window.record" then
+                eq(has, false, what .. ": leaves recording alone")
+            elseif o.type == "bool" then
+                eq(has, true, what .. ": has " .. o.id)
+            end
+        end
         presets[#presets + 1] = { __order = { "id", "label", "values" }, id = p.id, label = p.label, values = ordered(p.values) }
     end
     generated(SCHEMA_JSON, json({
@@ -3521,6 +3531,32 @@ scenario("map", function()
     bad.login(nil)
     eq(bad.global("ForeverBuddySettings").map.fadeAlpha, 0.25, "95% is out of range: left alone")
     file(bad.logout())
+
+    -- A tick that fails is noted in the file once and stops, rather than
+    -- failing five times a second.
+    local broken = client()
+    broken.settings = bad.settings
+    broken.login(nil)
+    row = function(id)
+        for i, o in ipairs(declared().options) do
+            if o.id == id then
+                return optionRows(broken)[i]
+            end
+        end
+    end
+    row("map.minimap").setting:SetValue(true)
+    local m = broken.global("ForeverBuddyMinimapCoords")
+    m.children[1].SetText = function()
+        error("the text broke")
+    end
+    broken.update(m, 0.3)
+    eq(m.scripts.OnUpdate, nil, "the tick stops")
+    db = wow.parse(broken.logout(), "ForeverBuddyDB")
+    eq(tostring(db._meta.errors.map):find("the text broke", 1, true) ~= nil, true, "noted under map")
+    eq(db._meta.window_errors, 1, "counted once")
+    -- (A clean session after, so the runner's no-caught-errors check holds.)
+    broken.login(nil)
+    file(broken.logout())
 end)
 
 -- P4b-follow (security): what the addon accepts from a profile, for every

@@ -599,13 +599,22 @@ function U.map.player(map)
 end
 
 -- Runs fn five times a second while `f` is shown.
+-- If fn ever fails, the error goes in the file (_meta.errors under "map",
+-- and window_errors) once, and the frame stops ticking rather than failing
+-- five times a second; its text stays as it was.
 function U.map.ticking(f, fn)
     local since = 1
     f:SetScript("OnUpdate", function(_, elapsed)
         since = since + (type(elapsed) == "number" and elapsed or 0)
         if since >= 0.2 then
             since = 0
-            fn()
+            local ok, err = pcall(fn)
+            if not ok then
+                errors = errors or {}
+                errors.map = errors.map or string.sub(tostring(err), 1, 200)
+                U.errors = U.errors + 1
+                f:SetScript("OnUpdate", nil)
+            end
         end
     end)
 end
