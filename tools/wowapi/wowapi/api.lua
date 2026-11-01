@@ -166,6 +166,35 @@ function M.install(sim, env)
   end
   local function strsplittable(delims, s, pieces) return { strsplit(delims, s, pieces) } end
   S.trim, S.split, S.join, S.splittable = strtrim, strsplit, strjoin, strsplittable
+  -- WFB patch (SIM6): positional arguments ("%2$s %1$d"), which WoW's
+  -- string.format takes (localized strings reorder with them) and plain Lua
+  -- 5.1 doesn't. A format string without one goes straight through.
+  if not S._wfbPositional then
+    local rawformat = S.format
+    S._wfbPositional = true
+    S.format = function(fmt, ...)
+      if type(fmt) ~= "string" or not fmt:find("%%%d+%$") then return rawformat(fmt, ...) end
+      local args, picked, i, plain = { ... }, {}, 1, {}
+      while i <= #fmt do
+        local c = fmt:sub(i, i)
+        if c ~= "%" then
+          plain[#plain + 1] = c
+          i = i + 1
+        elseif fmt:sub(i + 1, i + 1) == "%" then
+          plain[#plain + 1] = "%%"
+          i = i + 2
+        else
+          local n, rest = fmt:match("^%%(%d+)%$()", i)
+          local spec, after = fmt:match("^([-+ #0]*%d*%.?%d*[%a])()", rest or (i + 1))
+          if not spec then error("invalid format string: " .. fmt, 2) end
+          picked[#picked + 1] = n and args[tonumber(n)] or args[#picked + 1]
+          plain[#plain + 1] = "%" .. spec
+          i = after
+        end
+      end
+      return rawformat(table.concat(plain), unpack(picked, 1, #picked))
+    end
+  end
   rawset(env, "string", S)
   local G = {
     strlen = S.len, strsub = S.sub, strupper = S.upper, strlower = S.lower, strfind = S.find,
