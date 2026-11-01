@@ -25,6 +25,7 @@ dist-ssr
 *.sw?
 
 .shotkit/
+.addon-live/
 
 # The fake WoW install is test data, including its Logs/ and *.log files.
 !src-tauri/tests/fixtures/**

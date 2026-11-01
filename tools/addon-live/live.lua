@@ -1,0 +1,690 @@
+-- addon-live (LIVE1): ForeverBuddy running in WOWAPI, the WoW: Forever client
+-- emulator, as one long-lived session you drive from the shell, a command at
+-- a time, and look at in PNGs. Shotkit, for the in-game window.
+--
+--   luajit tools/addon-live/live.lua start [--art]   boot the session (in the background)
+--   luajit tools/addon-live/live.lua <command ...>   send it one command, print the answer
+--   luajit tools/addon-live/live.lua stop
+--   luajit tools/addon-live/live.lua script <file>   run a file of commands in this process
+--                                                    (no server; what CI uses)
+--
+-- Commands (`help` lists them): login, slash, click, set, buttons, advance,
+-- reload, combat, state, chat, errors, lua, screenshot, upload. Every answer
+-- ends with the chat lines and Lua errors the command caused.
+--
+-- The session lives in .addon-live/ at the repo root (gitignored, or
+-- --dir): the command pipe, the server's log, shots/<name>.svg and .png.
+-- PNGs come from macOS's QuickLook (qlmanage), else rsvg-convert, else a
+-- headless Chrome; all run without a window. Nothing here opens a window,
+-- and nothing touches a real WoW install.
+
+local here = (arg[0]:match("^(.*)[/\\]") or ".")
+if here:sub(1, 1) ~= "/" then
+    here = io.popen("pwd"):read("*l") .. "/" .. here
+end
+local ROOT = here:gsub("/tools/addon%-live$", "")
+local WOWAPI = ROOT .. "/tools/wowapi"
+local ADDON = ROOT .. "/src-tauri/resources/addon/ForeverBuddy"
+-- The slots the app's send_to_game writes (src-tauri/src/contract.rs, H5),
+-- for Thrandor Vargur: the "filled" profile.
+local BRIDGE = ROOT .. "/src-tauri/tests/fixtures/bridge"
+local BRIDGE_STAMP = 1790960000
+local SLOTS = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
+
+-- `s` as one POSIX shell word.
+local function sq(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+local function sh(cmd)
+    local r = os.execute(cmd)
+    return r == 0 or r == true
+end
+
+local function readAll(path)
+    local f = io.open(path, "rb")
+    if not f then
+        return nil
+    end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+local function writeAll(path, text)
+    local f = assert(io.open(path, "wb"))
+    f:write(text)
+    f:close()
+end
+
+local function has(cmd)
+    return sh("command -v " .. cmd .. " >/dev/null 2>&1")
+end
+
+-- Arguments: the command, and the options anywhere among them.
+local opts = { dir = ROOT .. "/.addon-live" }
+local words = {}
+do
+    local i = 1
+    while arg[i] do
+        local a = arg[i]
+        if a == "--dir" then
+            opts.dir = arg[i + 1]
+            i = i + 2
+        elseif a == "--art" then
+            opts.art = true
+            i = i + 1
+        else
+            words[#words + 1] = a
+            i = i + 1
+        end
+    end
+end
+local DIR = opts.dir
+local PIPE = DIR .. "/commands"
+local PIDFILE = DIR .. "/server.pid"
+
+-- The session ---------------------------------------------------------------------
+
+local S = {} -- sim, profile, chatSeen, errorsSeen
+
+local function loadWowapi()
+    if not readAll(WOWAPI .. "/wowapi/data/apidocs.lua") then
+        error("WOWAPI's data is missing: run tools/wowapi/fetch-data.sh first", 0)
+    end
+    package.path = WOWAPI .. "/?.lua;" .. WOWAPI .. "/?/init.lua;" .. package.path
+    S.WoW = require("wowapi")
+    S.layout = require("wowapi.layout")
+    S.render = require("wowapi.render")
+    S.serialize = require("wowapi.serialize")
+end
+
+-- A copy of the addon, with the app's slots for "filled" or as shipped for
+-- "empty", so a login always starts from what's on disk now.
+local PROFILES = { filled = BRIDGE, empty = false }
+
+local function addonCopy(profile)
+    local dir = DIR .. "/addon/ForeverBuddy"
+    assert(sh("rm -rf " .. sq(dir) .. " && mkdir -p " .. sq(dir) .. " && cp -R " .. sq(ADDON) .. "/. " .. sq(dir)))
+    local from = PROFILES[profile]
+    if from then
+        for _, slot in ipairs(SLOTS) do
+            assert(sh("cp " .. sq(from .. "/" .. slot .. ".lua") .. " " .. sq(dir .. "/Data/" .. slot .. ".lua")))
+        end
+    end
+    return dir
+end
+
+-- Thrandor Vargur (Forever characters have a surname), level 12 in Elwynn,
+-- an hour after the app wrote the slots. As tools/addon-shots/scene.lua.
+local function login(profile)
+    profile = profile or "filled"
+    if PROFILES[profile] == nil then
+        error("no profile " .. profile .. " (filled, empty)", 0)
+    end
+    local sim = S.WoW.new({
+        player = { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000, zone = "Elwynn Forest" },
+        now = BRIDGE_STAMP + 3600,
+        art = opts.art,
+        offline = not opts.art,
+        quiet = true,
+    })
+    sim:Mock("UnitName", function(unit)
+        if unit == "player" then
+            return "Thrandor", "Vargur"
+        end
+    end)
+    -- An empty quest log: WOWAPI makes one up otherwise, differently from
+    -- run to run, and the same session should give the same pictures.
+    sim:Mock("C_QuestLog.GetNumQuestLogEntries", 0, 0)
+    sim:AddItem(2589, { name = "Linen Cloth", quality = 1 })
+    sim:AddItem(6948, { name = "Hearthstone", quality = 1 })
+    sim:AddItem(14047, { name = "Runecloth", quality = 1 })
+    sim:AddItem(117, { name = "Tough Jerky", quality = 1 })
+    sim.bags[0][1] = { itemID = 2589, stackCount = 4 }
+    sim.bags[0][2] = { itemID = 6948, stackCount = 1 }
+    local ok, why = sim:LoadAddon(addonCopy(profile))
+    if not ok then
+        error("the addon didn't load: " .. tostring(why), 0)
+    end
+    sim:Login()
+    sim:Advance(6)
+    S.sim, S.profile = sim, profile
+    S.chatSeen, S.errorsSeen = 0, 0
+    return ("logged in as Thrandor Vargur, profile %s"):format(profile)
+end
+
+local function need()
+    if not S.sim then
+        login("filled")
+    end
+    return S.sim
+end
+
+-- Frames you can click: shown, taking the mouse, with their name or text.
+local function textOf(obj)
+    local t
+    if type(obj.GetText) == "function" then
+        t = obj:GetText()
+    end
+    if (not t or t == "") and type(obj.label) == "table" and type(obj.label.GetText) == "function" then
+        t = obj.label:GetText()
+    end
+    return t
+end
+
+local function clickable()
+    local sim = S.sim
+    local out = {}
+    for obj, s in pairs(sim.widgetState) do
+        if s.isFrame and s.mouse and sim._isVisible(obj) then
+            local x, y, w, h = S.layout.rect(sim, obj)
+            if x then
+                out[#out + 1] = {
+                    obj = obj,
+                    name = type(obj.GetName) == "function" and obj:GetName() or nil,
+                    text = textOf(obj),
+                    x = math.floor(x + w / 2), y = math.floor(y + h / 2),
+                }
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.y ~= b.y then
+            return a.y > b.y
+        end
+        return a.x < b.x
+    end)
+    return out
+end
+
+-- A frame by global name, a path from one ("ForeverBuddyWindow.Tabs.5"), or
+-- the text on it ("Lists").
+local function find(target)
+    local sim = S.sim
+    if target:match("^[%a_][%w_]*[%.%w_]*$") then
+        local v = sim:Get(target:match("^[^%.]+"))
+        for part in target:gmatch("%.([^%.]+)") do
+            v = type(v) == "table" and (v[tonumber(part) or part]) or nil
+        end
+        if type(v) == "table" and sim.widgetState[v] and sim.widgetState[v].isFrame then
+            return v
+        end
+    end
+    for _, c in ipairs(clickable()) do
+        if c.text and c.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") == target then
+            return c.obj
+        end
+    end
+    error("nothing to click called " .. target .. " (`buttons` lists them)", 0)
+end
+
+-- The window's Settings tab, and the box for a setting by id or label.
+local function settingBox(key)
+    local sim = S.sim
+    local w = sim:Get("ForeverBuddyWindow")
+    -- (The window is built the first time it opens.)
+    if not (w and w:IsShown()) then
+        sim:Slash("/fb")
+        w = sim:Get("ForeverBuddyWindow")
+    end
+    if not (w and w.Tabs and w.Tabs[5]) then
+        error("no Forever Buddy window", 0)
+    end
+    sim:Click(w.Tabs[5])
+    sim:Advance(0.2)
+    local checks = w.panes and w.panes[5] and w.panes[5].checks or {}
+    local names = {}
+    for _, cb in ipairs(checks) do
+        local o = cb.option or {}
+        if o.key == key or o.label == key then
+            return cb
+        end
+        names[#names + 1] = tostring(o.key)
+    end
+    error("no setting " .. key .. " (there are: " .. table.concat(names, ", ") .. ")", 0)
+end
+
+-- The SVG of the screen, cropped to the window and its tabs when it's open.
+local function bounds(sim)
+    local l, b, r, t
+    local function add(frame)
+        if frame and sim._isVisible(frame) then
+            local x, y, w, h = S.layout.rect(sim, frame)
+            if x then
+                l, b = math.min(l or x, x), math.min(b or y, y)
+                r, t = math.max(r or x + w, x + w), math.max(t or y + h, y + h)
+            end
+        end
+    end
+    local w = sim:Get("ForeverBuddyWindow")
+    add(w)
+    for _, tab in ipairs(w and w.Tabs or {}) do
+        add(tab)
+    end
+    if not l then
+        return nil
+    end
+    local M = 12
+    return math.floor(l - M), math.floor(b - M), math.ceil(r - l + 2 * M), math.ceil(t - b + 2 * M)
+end
+
+local function svgOf(sim, full)
+    if opts.art then
+        sim:_registerAddonArt()
+    end
+    local svg = S.render.svg(sim, { art = opts.art, embed = true })
+    local l, b, w, h
+    if not full then
+        l, b, w, h = bounds(sim)
+    end
+    if not l then
+        l, b, w, h = 0, 0, S.layout.SCREEN_W, S.layout.SCREEN_H
+    end
+    local y = S.layout.SCREEN_H - (b + h)
+    local n
+    svg, n = svg:gsub('viewBox="0 0 %d+ %d+" width="%d+" height="%d+"',
+        ('viewBox="%d %d %d %d" width="%d" height="%d"'):format(l, y, w, h, w, h), 1)
+    assert(n == 1, "WOWAPI's SVG header changed")
+    return svg, l, y, w, h
+end
+
+-- An SVG to a PNG at 2x, without a window. QuickLook's thumbnails are
+-- square and filled, so the picture goes in the middle of a square canvas
+-- and sips crops the middle back out.
+local function png(svgPath, pngPath, svg, vx, vy, w, h)
+    local W, H = 2 * w, 2 * h
+    if has("qlmanage") and has("sips") then
+        local side = math.max(w, h)
+        local square = svg:gsub('viewBox="[^"]*" width="%d+" height="%d+"',
+            ('viewBox="%g %g %d %d" width="%d" height="%d"'):format(vx - (side - w) / 2, vy - (side - h) / 2,
+                side, side, 2 * side, 2 * side), 1)
+        local tmp = DIR .. "/.ql"
+        sh("rm -rf " .. sq(tmp) .. " && mkdir -p " .. sq(tmp))
+        writeAll(tmp .. "/shot.svg", square)
+        sh("qlmanage -t -s " .. 2 * side .. " -o " .. sq(tmp) .. " " .. sq(tmp .. "/shot.svg") .. " >/dev/null 2>&1")
+        local made = tmp .. "/shot.svg.png"
+        if readAll(made) then
+            local cropped = sh("sips -c " .. H .. " " .. W .. " " .. sq(made) .. " --out " .. sq(pngPath) .. " >/dev/null 2>&1")
+            sh("rm -rf " .. sq(tmp))
+            if cropped then
+                return true
+            end
+        end
+        sh("rm -rf " .. sq(tmp))
+    end
+    if has("rsvg-convert") then
+        return sh("rsvg-convert -z 2 -o " .. sq(pngPath) .. " " .. sq(svgPath))
+    end
+    for _, browser in ipairs({ "chromium", "chromium-browser", "google-chrome", "google-chrome-stable" }) do
+        if has(browser) then
+            local abs = svgPath:sub(1, 1) == "/" and svgPath or (io.popen("pwd"):read("*l") .. "/" .. svgPath)
+            local out = pngPath:sub(1, 1) == "/" and pngPath or (io.popen("pwd"):read("*l") .. "/" .. pngPath)
+            return sh(("%s --headless=new --disable-gpu --no-sandbox --hide-scrollbars --force-device-scale-factor=2 --window-size=%d,%d --screenshot=%s %s >/dev/null 2>&1")
+                :format(browser, w, h, sq(out), sq("file://" .. abs)))
+        end
+    end
+    return false
+end
+
+local function screenshot(name, full)
+    if not name or not name:match("^[%w_%-]+$") then
+        error("screenshot <name> [full]: a name of letters, digits, - and _", 0)
+    end
+    local sim = need()
+    sh("mkdir -p " .. sq(DIR .. "/shots"))
+    local svg, vx, vy, w, h = svgOf(sim, full)
+    local svgPath, pngPath = DIR .. "/shots/" .. name .. ".svg", DIR .. "/shots/" .. name .. ".png"
+    writeAll(svgPath, svg)
+    os.remove(pngPath)
+    if png(svgPath, pngPath, svg, vx, vy, w, h) and readAll(pngPath) then
+        return pngPath .. (" (%dx%d)"):format(2 * w, 2 * h)
+    end
+    return svgPath .. " (no PNG: needs qlmanage, rsvg-convert or a headless Chrome)"
+end
+
+local function dump(v, limit)
+    local ok, text = pcall(S.serialize.serialize, v)
+    if not ok then
+        text = tostring(v)
+    end
+    if limit and #text > limit then
+        return text:sub(1, limit) .. ("\n... (%d more characters)"):format(#text - limit)
+    end
+    return text
+end
+
+-- What a command caused: new chat lines and new Lua errors.
+local function news()
+    local sim = S.sim
+    if not sim then
+        return ""
+    end
+    local out = {}
+    for i = S.chatSeen + 1, #sim.chat do
+        out[#out + 1] = "chat: " .. tostring(sim.chat[i].text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    end
+    for i = S.errorsSeen + 1, #sim.errors do
+        local e = sim.errors[i]
+        out[#out + 1] = "LUA ERROR: " .. tostring(type(e) == "table" and (e.message or e.msg) or e)
+    end
+    S.chatSeen, S.errorsSeen = #sim.chat, #sim.errors
+    return table.concat(out, "\n")
+end
+
+local HELP = [[
+login [filled|empty]     a fresh session: the app's slots for Thrandor, or none (as shipped)
+slash /fb plan           a slash command, as typed in chat
+click <frame>            by global name, a path (ForeverBuddyWindow.Tabs.5), or the text on it
+set <setting> on|off     a Settings-tab box, by id (window.coach) or label
+buttons                  what's clickable on screen: name, text, centre
+advance <seconds>        let time pass (timers, OnUpdate)
+reload                   /reload (SavedVariables kept)
+combat on|off            enter or leave combat
+state [path]             SavedVariables: ForeverBuddyDB, ForeverBuddySettings, or a path into them
+chat [n]                 the last n chat lines (10)
+errors                   every Lua error this session
+lua <code>               run Lua in the game (like /run); prints what it returns
+screenshot <name> [full] .addon-live/shots/<name>.png, of the window (full: the whole screen)
+upload <name> ...        those shots to the mycelium room (mycelium file upload); prints the links]]
+
+local COMMANDS = {}
+
+function COMMANDS.help()
+    return HELP
+end
+
+function COMMANDS.login(rest)
+    return login(rest ~= "" and rest or nil)
+end
+
+function COMMANDS.slash(rest)
+    if not rest:match("^/") then
+        rest = "/" .. rest
+    end
+    need():Slash(rest)
+    S.sim:Advance(0.2)
+    return "ok"
+end
+
+function COMMANDS.click(rest)
+    need()
+    local f = find(rest)
+    S.sim:Click(f)
+    S.sim:Advance(0.2)
+    return "clicked " .. (f.GetName and f:GetName() or textOf(f) or rest)
+end
+
+function COMMANDS.set(rest)
+    need()
+    local key, value = rest:match("^(.-)%s+(%S+)$")
+    local on = ({ on = true, off = false, ["true"] = true, ["false"] = false })[value or ""]
+    if not key or on == nil then
+        error("set <setting> on|off", 0)
+    end
+    local cb = settingBox(key)
+    if (cb:GetChecked() and true or false) ~= on then
+        S.sim:Click(cb)
+        S.sim:Advance(0.2)
+    end
+    return ("%s is %s"):format(cb.option.key, (cb:GetChecked() and true or false) and "on" or "off")
+end
+
+function COMMANDS.buttons()
+    need()
+    local lines = {}
+    for _, c in ipairs(clickable()) do
+        local text = c.text and c.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("\n", " ")
+        lines[#lines + 1] = ("%-34s %-32s at %d,%d"):format(c.name or "-", text and ('"' .. text .. '"') or "", c.x, c.y)
+    end
+    return table.concat(lines, "\n")
+end
+
+function COMMANDS.advance(rest)
+    local s = tonumber(rest)
+    if not s or s < 0 or s > 86400 then
+        error("advance <seconds>", 0)
+    end
+    need():Advance(s)
+    return ("%g s later"):format(s)
+end
+
+function COMMANDS.reload()
+    need():Reload()
+    S.sim:Advance(6)
+    return "reloaded"
+end
+
+function COMMANDS.combat(rest)
+    if rest == "on" then
+        need():EnterCombat()
+    elseif rest == "off" then
+        need():LeaveCombat()
+    else
+        error("combat on|off", 0)
+    end
+    S.sim:Advance(0.2)
+    return "combat " .. rest
+end
+
+function COMMANDS.state(rest)
+    local sim = need()
+    local path = rest ~= "" and rest or nil
+    if path then
+        if not path:match("^[%a_][%w_]*[%.%w_]*$") then
+            error("state <Global.path>", 0)
+        end
+        local v = sim:Get(path:match("^[^%.]+"))
+        for part in path:gmatch("%.([^%.]+)") do
+            v = type(v) == "table" and v[tonumber(part) or part] or nil
+        end
+        return dump(v, 6000)
+    end
+    local out = {}
+    for _, name in ipairs({ "ForeverBuddyDB", "ForeverBuddySettings" }) do
+        out[#out + 1] = name .. " = " .. dump(sim:Get(name), 3000)
+    end
+    return table.concat(out, "\n")
+end
+
+function COMMANDS.chat(rest)
+    local sim = need()
+    local n = tonumber(rest) or 10
+    local out = {}
+    for i = math.max(1, #sim.chat - n + 1), #sim.chat do
+        out[#out + 1] = (tostring(sim.chat[i].text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+    end
+    S.chatSeen = #sim.chat
+    return #out > 0 and table.concat(out, "\n") or "(no chat)"
+end
+
+function COMMANDS.errors()
+    local sim = need()
+    local out = {}
+    for _, e in ipairs(sim.errors) do
+        out[#out + 1] = tostring(type(e) == "table" and (e.message or e.msg) or e)
+    end
+    return #out > 0 and table.concat(out, "\n") or "no Lua errors"
+end
+
+function COMMANDS.lua(rest)
+    local results = { need():Exec(rest) }
+    if not results[1] then
+        return "error: " .. tostring(results[2])
+    end
+    local out = {}
+    for i = 2, #results do
+        out[#out + 1] = dump(results[i], 3000)
+    end
+    return #out > 0 and table.concat(out, "\n") or "ok"
+end
+
+function COMMANDS.screenshot(rest)
+    local name, full = rest:match("^(%S+)%s*(%S*)$")
+    return screenshot(name, full == "full")
+end
+
+function COMMANDS.upload(rest)
+    local files = {}
+    for name in rest:gmatch("%S+") do
+        local p = DIR .. "/shots/" .. name .. ".png"
+        if not name:match("^[%w_%-]+$") or not readAll(p) then
+            error("no shot " .. name .. " (take it with screenshot first)", 0)
+        end
+        files[#files + 1] = sq(p)
+    end
+    if #files == 0 then
+        error("upload <name> ...", 0)
+    end
+    local p = io.popen("mycelium file upload " .. table.concat(files, " ") .. " 2>&1")
+    local out = p:read("*a")
+    p:close()
+    return out
+end
+
+-- One command line in, its answer out (never throws).
+local function run(line)
+    local cmd, rest = line:match("^%s*(%S+)%s*(.-)%s*$")
+    if not cmd or cmd:match("^#") then
+        return nil
+    end
+    local fn = COMMANDS[cmd]
+    if not fn then
+        return "unknown command " .. cmd .. " (help lists them)", false
+    end
+    local ok, out = pcall(fn, rest)
+    local extra = news()
+    out = ok and tostring(out) or ("error: " .. tostring(out))
+    return out .. (extra ~= "" and ("\n" .. extra) or ""), ok
+end
+
+-- The server: commands arrive on a named pipe, one per line as
+-- "<reply file>\t<command>"; each answer is written to its reply file.
+local function serve()
+    loadWowapi()
+    io.stdout:setvbuf("line")
+    print(login("filled"))
+    while true do
+        local f = io.open(PIPE, "r")
+        if not f then
+            break
+        end
+        for line in f:lines() do
+            local reply, command = line:match("^([^\t]+)\t(.*)$")
+            if reply then
+                if command == "stop" then
+                    writeAll(reply .. ".tmp", "stopped\n")
+                    os.rename(reply .. ".tmp", reply)
+                    os.remove(PIPE)
+                    os.remove(PIDFILE)
+                    return
+                end
+                local out = run(command) or ""
+                print("> " .. command)
+                writeAll(reply .. ".tmp", out .. "\n")
+                os.rename(reply .. ".tmp", reply)
+            end
+        end
+        f:close()
+    end
+end
+
+local function serverPid()
+    local pid = tonumber(readAll(PIDFILE) or "")
+    if pid and sh("kill -0 " .. pid .. " 2>/dev/null") then
+        return pid
+    end
+    return nil
+end
+
+-- The client: one command to the server, its answer printed.
+local function send(command)
+    if not serverPid() then
+        io.stderr:write("no session running: luajit tools/addon-live/live.lua start\n")
+        os.exit(2)
+    end
+    local tmp = os.tmpname()
+    os.remove(tmp)
+    local reply = DIR .. "/reply." .. tmp:match("[^/\\]+$")
+    local f = assert(io.open(PIPE, "a"))
+    f:write(reply .. "\t" .. command:gsub("[\r\n]", " ") .. "\n")
+    f:close()
+    for _ = 1, 1200 do -- up to 2 minutes
+        local out = readAll(reply)
+        if out then
+            os.remove(reply)
+            io.write(out)
+            return out:match("^error:") == nil
+        end
+        if not serverPid() then
+            break
+        end
+        sh("sleep 0.1")
+    end
+    io.stderr:write("the session didn't answer; see " .. DIR .. "/server.log\n")
+    os.exit(2)
+end
+
+-- (No math.randomseed: WOWAPI's fakes draw from math.random, and the same
+-- session every time is the point.)
+local verb = words[1]
+if verb == "serve" then
+    serve()
+elseif verb == "start" then
+    if serverPid() then
+        print("already running (pid " .. serverPid() .. "); stop it first to start fresh")
+        os.exit(0)
+    end
+    assert(sh("mkdir -p " .. sq(DIR)))
+    os.remove(PIPE)
+    assert(sh("mkfifo " .. sq(PIPE)), "mkfifo failed")
+    local lua = arg[-1] or "luajit"
+    sh(("nohup %s %s serve --dir %s%s > %s 2>&1 < /dev/null & echo $! > %s"):format(
+        sq(lua), sq(arg[0]), sq(DIR), opts.art and " --art" or "", sq(DIR .. "/server.log"), sq(PIDFILE)))
+    -- Wait for the login line.
+    for _ = 1, 300 do
+        local log = readAll(DIR .. "/server.log") or ""
+        if log:match("logged in") then
+            io.write(log)
+            os.exit(0)
+        end
+        if not serverPid() then
+            io.write(log)
+            os.exit(1)
+        end
+        sh("sleep 0.1")
+    end
+    print("started, but no login yet; see " .. DIR .. "/server.log")
+elseif verb == "stop" then
+    if serverPid() then
+        send("stop")
+    else
+        print("not running")
+    end
+elseif verb == "script" then
+    local file = words[2]
+    local text = file and readAll(file)
+    if not text then
+        io.stderr:write("script <file of commands>\n")
+        os.exit(2)
+    end
+    loadWowapi()
+    local failed = 0
+    for line in text:gmatch("[^\n]+") do
+        local out, ok = run(line)
+        if out then
+            print("> " .. line)
+            print(out)
+            if not ok or out:match("LUA ERROR") then
+                failed = failed + 1
+            end
+        end
+    end
+    os.exit(failed == 0 and 0 or 1)
+elseif verb then
+    local ok = send(table.concat(words, " ", 1))
+    os.exit(ok and 0 or 1)
+else
+    io.stderr:write("live.lua start | stop | script <file> | <command> (help)\n")
+    os.exit(2)
+end

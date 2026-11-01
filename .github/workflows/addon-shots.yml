@@ -11,6 +11,7 @@ on:
       - src-tauri/resources/addon/**
       - src-tauri/tests/fixtures/bridge/**
       - tools/addon-shots/**
+      - tools/addon-live/**
       - tools/wowapi/**
       - .github/workflows/addon-shots.yml
   workflow_dispatch:
@@ -48,6 +49,11 @@ jobs:
 
       - name: Draw the window
         run: lua5.1 tools/addon-shots/scene.lua "$OUT"
+
+      # LIVE1: every addon-live command, once, through tools/addon-live/tour.txt.
+      # Fails on an unknown command or a Lua error.
+      - name: addon-live tour
+        run: lua5.1 tools/addon-live/live.lua script tools/addon-live/tour.txt --dir "$RUNNER_TEMP/addon-live"
 
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
