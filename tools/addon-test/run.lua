@@ -1940,6 +1940,112 @@ scenario("merchant", function()
     file(c.logout())
 end)
 
+-- M3: the Quest helper (acts). Off by default. On a quest window opened with
+-- an NPC it accepts and hands in; never a party member's share, an area
+-- trigger or the game's auto-accept; never picks between rewards or pays
+-- gold; leaves repeatables unless that's on; and does nothing with Shift
+-- held or in combat. NPC chat and the older quest list pick quests too.
+scenario("quest_helper", function()
+    local PREFIX = "|cffffd100Forever Buddy:|r "
+    local c = client()
+    c.login(nil)
+    c.advance(5)
+    local acts = c.world.quest_actions
+    local function did()
+        return table.concat(acts, ",")
+    end
+    local function reset()
+        for i = #acts, 1, -1 do
+            acts[i] = nil
+        end
+    end
+
+    -- Off: windows open and close, nothing happens.
+    c.questWindow("detail", { questID = 176 })
+    c.questWindow("complete", { questID = 176, choices = 0 })
+    c.gossip({ available = { { questID = 176, repeatable = false, frequency = 0 } } })
+    eq(did(), "", "off: nothing")
+
+    -- Accept.
+    c.click(setting(c, "Accept quests"))
+    c.questWindow("detail", { questID = 176 })
+    eq(did(), "accept:176", "accepts a quest opened with an NPC")
+    reset()
+    c.questWindow("detail", { questID = 176 }, { name = "Sela", player = true })
+    eq(did(), "", "not a party member's share")
+    c.questWindow("detail", { questID = 176, areaTrigger = true })
+    c.questWindow("detail", { questID = 176, autoAccept = true })
+    eq(did(), "", "not an area trigger or the game's own auto-accept")
+    c.world.shift = true
+    c.questWindow("detail", { questID = 176 })
+    c.world.shift = false
+    eq(did(), "", "Shift held: the player reads it")
+    c.world.combat = true
+    c.questWindow("detail", { questID = 176 })
+    c.world.combat = false
+    eq(did(), "", "not in combat")
+    c.world.repeatable[783] = true
+    c.questWindow("detail", { questID = 783 })
+    eq(did(), "", "a repeatable stays the player's")
+    c.questWindow("detail", { questID = 0 })
+    eq(did(), "", "nor one it can't tell")
+
+    -- Hand in: progress, then the reward page.
+    c.click(setting(c, "Hand in quests"))
+    c.questWindow("progress", { questID = 176 })
+    eq(did(), "complete:176", "hands the items over")
+    reset()
+    c.questWindow("progress", { questID = 176, completable = false })
+    eq(did(), "", "not before it's done")
+    c.questWindow("complete", { questID = 176, choices = 0 })
+    c.questWindow("complete", { questID = 177, choices = 1 })
+    eq(did(), "reward:176:0,reward:177:1", "no choice, or one: it finishes")
+    reset()
+    c.questWindow("complete", { questID = 176, choices = 3 })
+    eq(did(), "", "never picks between rewards")
+    eq(c.chat[#c.chat], PREFIX .. "pick your reward.", "and says so")
+    c.questWindow("complete", { questID = 176, choices = 0, money = 500 })
+    eq(did(), "", "never pays gold to finish")
+
+    -- Repeatables, once that's on.
+    c.click(setting(c, "Daily and repeatable quests too"))
+    c.questWindow("detail", { questID = 783 })
+    eq(did(), "accept:783", "repeatables too, when asked")
+    reset()
+    c.click(setting(c, "Daily and repeatable quests too"))
+
+    -- NPC chat: a finished quest to hand in first, else a new one; never a
+    -- trivial or repeatable one.
+    c.gossip({
+        available = { { questID = 177, repeatable = false, frequency = 0 } },
+        active = {
+            { questID = 176, isComplete = false, repeatable = false, frequency = 0 },
+            { questID = 178, isComplete = true, repeatable = false, frequency = 0 },
+        },
+    })
+    eq(did(), "gossip-active:178", "the finished one first")
+    reset()
+    c.gossip({ available = {
+        { questID = 179, isTrivial = true, repeatable = false, frequency = 0 },
+        { questID = 180, repeatable = false, frequency = 1 },
+        { questID = 181, repeatable = false, frequency = 0 },
+    } })
+    eq(did(), "gossip-available:181", "skipping grey and daily ones")
+    reset()
+    c.world.shift = true
+    c.gossip({ available = { { questID = 181, repeatable = false, frequency = 0 } } })
+    c.world.shift = false
+    eq(did(), "", "Shift held: chat is the player's")
+
+    -- The older quest list.
+    c.greeting({ available = { { questID = 182, frequency = 0 } }, active = { { questID = 176, complete = true } } })
+    eq(did(), "greeting-active:176", "the older list: the finished one first")
+    reset()
+    c.greeting({ available = { { questID = 183, trivial = true }, { questID = 184, frequency = 0 } } })
+    eq(did(), "greeting-available:184", "then a new one, not a grey one")
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2257,6 +2363,7 @@ scenario("window", function()
         .. "See-through quest tracker, How much of the tracker shows, "
         .. "Junk in your bags, Item level on gear, "
         .. "Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
+        .. "Accept quests, Hand in quests, Daily and repeatable quests too, "
         .. "Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
@@ -2296,6 +2403,7 @@ scenario("window", function()
         .. "Quest progress on item tooltips, See-through quest tracker, How much of the tracker shows, "
         .. "[Bags], Junk in your bags, Item level on gear, "
         .. "[Merchant], Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
+        .. "[Quest helper], Accept quests, Hand in quests, Daily and repeatable quests too, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
@@ -3574,6 +3682,16 @@ local function playAWhile(c)
     c.loot(4865, 1)
     c.advance(2)
     eq(#c.world.misused, 0, "nothing used outside a vendor")
+    -- M3: quest windows and an NPC's chat, where the Quest helper acts; it
+    -- never chooses between rewards, whatever the profile.
+    c.gossip({ available = { { questID = 176, repeatable = false, frequency = 0 } } })
+    c.questWindow("detail", { questID = 176 })
+    c.questWindow("progress", { questID = 176 })
+    c.questWindow("complete", { questID = 176, choices = 2 })
+    c.questWindow("complete", { questID = 783, choices = 1 })
+    for _, a in ipairs(c.world.quest_actions) do
+        eq(a:find("^reward:176") == nil, true, "never picks between rewards")
+    end
     c.gainXp(800)
     c.startLogout()
     c.advance(5)
@@ -4105,7 +4223,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 24, "with every toggle")
+    eq(#options.frame.checks, 27, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

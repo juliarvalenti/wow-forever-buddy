@@ -240,7 +240,8 @@ ns.settings = {
             type = "bool",
             default = false,
             label = "Repair at vendors",
-            help = "When you open a vendor who repairs, pays for your repairs.",
+            help = "Pays for your repairs when you open a vendor who can repair.",
+            showHelp = true,
             acts = true,
         },
         {
@@ -252,6 +253,7 @@ ns.settings = {
             label = "Guild bank pays first",
             help = "Uses guild funds when your rank allows it, and your own gold when it doesn't.",
             parent = "merchant.repair",
+            showHelp = true,
             acts = true,
         },
         {
@@ -262,6 +264,7 @@ ns.settings = {
             default = false,
             label = "Sell grey items",
             help = "When you open a vendor, sells up to 12 grey items. The vendor's buyback keeps them.",
+            showHelp = true,
             acts = true,
         },
         {
@@ -272,6 +275,42 @@ ns.settings = {
             default = false,
             label = "Sell items you marked",
             help = "Also sells items you marked to sell in Forever Buddy, within the same 12.",
+            showHelp = true,
+            acts = true,
+        },
+        -- M3: the Quest helper, acting on quest windows you open with an NPC.
+        -- Off until turned on, one at a time (never by a preset).
+        {
+            id = "questhelp.accept",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Accept quests",
+            help = "Accepts a quest when you open it with an NPC. Hold Shift as you open it to read it first.",
+            showHelp = true,
+            acts = true,
+        },
+        {
+            id = "questhelp.turnIn",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Hand in quests",
+            help = "Hands in a finished quest when you open it. With a reward to choose, or gold to pay, it waits for you.",
+            showHelp = true,
+            acts = true,
+        },
+        {
+            id = "questhelp.repeatable",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Daily and repeatable quests too",
+            help = "Without this, the helper leaves those for you to accept and hand in.",
+            showHelp = true,
             acts = true,
         },
         {
