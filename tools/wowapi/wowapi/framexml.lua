@@ -150,7 +150,49 @@ function M.install(sim, env)
     tab:SetWidth(width)
   end)
   rawset(env, "PanelTemplates_SetNumTabs", function(frame, n) frame.numTabs = n end)
-  rawset(env, "PanelTemplates_SetTab", function(frame, id) frame.selectedTab = id end)
+  -- Select and deselect as SharedUIPanelTemplates.lua does: the selected
+  -- tab shows its *Active art, drops its label and is disabled.
+  local function tabAt(frame, i)
+    return (frame.Tabs and frame.Tabs[i]) or (frame.GetName and frame:GetName()
+      and rawget(env, frame:GetName() .. "Tab" .. i))
+  end
+  local function setArt(tab, active)
+    for _, k in ipairs({ "Left", "Middle", "Right" }) do
+      local idle, on = tab[k], tab[k .. "Active"]
+      if idle and on then
+        if active then idle:Hide(); on:Show() else idle:Show(); on:Hide() end
+      end
+    end
+  end
+  rawset(env, "PanelTemplates_SelectTab", function(tab)
+    setArt(tab, true)
+    tab:Disable()
+    if tab.Text then
+      tab.Text:SetFontObject("GameFontHighlightSmall")
+      tab.Text:SetPoint("CENTER", tab, "CENTER", tab.selectedTextX or 0, tab.selectedTextY or -3)
+    end
+  end)
+  rawset(env, "PanelTemplates_DeselectTab", function(tab)
+    setArt(tab, false)
+    tab:Enable()
+    if tab.Text then
+      tab.Text:SetFontObject("GameFontNormalSmall")
+      tab.Text:SetPoint("CENTER", tab, "CENTER", tab.deselectedTextX or 0, tab.deselectedTextY or 2)
+    end
+  end)
+  rawset(env, "PanelTemplates_UpdateTabs", function(frame)
+    if not frame.selectedTab then return end
+    for i = 1, frame.numTabs or 0 do
+      local tab = tabAt(frame, i)
+      if tab then
+        if i == frame.selectedTab then env.PanelTemplates_SelectTab(tab) else env.PanelTemplates_DeselectTab(tab) end
+      end
+    end
+  end)
+  rawset(env, "PanelTemplates_SetTab", function(frame, id)
+    frame.selectedTab = id
+    env.PanelTemplates_UpdateTabs(frame)
+  end)
 
   ------------------------------------------------------------ time & text formatting
   local function plural(n, word) return n .. " " .. word .. (n == 1 and "" or "s") end

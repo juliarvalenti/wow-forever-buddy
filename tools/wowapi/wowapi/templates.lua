@@ -46,6 +46,36 @@ function M.builtins(env)
     "UIPanelDynamicResizeButtonTemplate", "TabButtonTemplate", "PanelTabButtonTemplate", "UIPanelSquareButton" }) do
     B[n] = buttonText
   end
+  -- WFB patch (G1): PanelTabButtonTemplate's art, as SharedUIPanelTemplates.xml
+  -- defines it: Left/Middle/Right for a tab, *Active for the selected one
+  -- (PanelTemplates_SetTab shows one set or the other). Without this the
+  -- tabs draw as bare labels.
+  B.PanelTabButtonTemplate = function(sim, obj, create)
+    buttonText(sim, obj, create)
+    sim.widgetState[obj].chrome = nil
+    sim.widgetState[obj].height = 32
+    obj.Text:SetFontObject("GameFontNormalSmall")
+    obj.Text:ClearAllPoints()
+    obj.Text:SetPoint("CENTER", 0, 2)
+    local function tex(key, atlas)
+      local t = child(sim, create, "Texture", obj, key, key, "BACKGROUND")
+      t:SetAtlas(atlas, true)
+      return t
+    end
+    tex("LeftActive", "uiframe-activetab-left"):SetPoint("TOPLEFT", -1, 0)
+    tex("RightActive", "uiframe-activetab-right"):SetPoint("TOPRIGHT", 8, 0)
+    tex("MiddleActive", "_uiframe-activetab-center")
+    obj.MiddleActive:SetPoint("TOPLEFT", obj.LeftActive, "TOPRIGHT")
+    obj.MiddleActive:SetPoint("TOPRIGHT", obj.RightActive, "TOPLEFT")
+    tex("Left", "uiframe-tab-left"):SetPoint("TOPLEFT", -3, 0)
+    tex("Right", "uiframe-tab-right"):SetPoint("TOPRIGHT", 7, 0)
+    tex("Middle", "_uiframe-tab-center")
+    obj.Middle:SetPoint("TOPLEFT", obj.Left, "TOPRIGHT")
+    obj.Middle:SetPoint("TOPRIGHT", obj.Right, "TOPLEFT")
+    obj.LeftActive:Hide()
+    obj.MiddleActive:Hide()
+    obj.RightActive:Hide()
+  end
   for _, n in ipairs({ "UIPanelCloseButton", "UIPanelCloseButtonNoScripts", "UIPanelHideButtonNoScripts" }) do
     B[n] = function(sim, obj)
       sim.widgetState[obj].width, sim.widgetState[obj].height = 24, 24
