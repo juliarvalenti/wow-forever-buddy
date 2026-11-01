@@ -313,8 +313,13 @@ function Store:addonFile(norm)
   local dir = self.addonDirs[addon]
   if not dir then return nil end
   self._addonIndex = self._addonIndex or {}
+  self._addonScanned = self._addonScanned or {}
   local idx = self._addonIndex[addon]
+  -- WFB patch (HUD1): a miss rescans the folder (at most once a second), so
+  -- art added while a session runs (addon-live) shows up.
+  if idx and not idx[rest] and os.time() - (self._addonScanned[addon] or 0) >= 1 then idx = nil end
   if not idx then
+    self._addonScanned[addon] = os.time()
     idx = {}
     local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.tga' -o -iname '*.blp' -o -iname '*.png' -o -iname '*.jpg' \\) 2>/dev/null")
     if p then
@@ -394,7 +399,8 @@ function Store:fileFor(norm)
       end
     end
   end
-  self.memo[norm] = found or false
+  -- an addon's file may appear later (see addonFile), so its miss isn't kept
+  if found or not norm:match("^addons/") then self.memo[norm] = found or false end
   if not found then self:log("not available: " .. norm) end
   return found
 end
@@ -411,7 +417,7 @@ function Store:image(tex)
     local w, h, mime = M.imageSize(data)
     if w then img = { file = file, width = w, height = h, mime = mime, data = data, path = norm } end
   end
-  self.memo[key] = img
+  if img or not tostring(norm):match("^addons/") then self.memo[key] = img end
   return img or nil
 end
 
@@ -433,7 +439,7 @@ function Store:font(path)
   if file then
     result = { file = file, data = readAll(file), mime = file:lower():match("%.otf$") and "font/otf" or "font/ttf" }
   end
-  self.memo[key] = result
+  if result or not norm:match("^addons/") then self.memo[key] = result end
   return result or nil
 end
 
@@ -445,8 +451,11 @@ function Store:addonFont(norm)
   local dir = addon and self.addonDirs and self.addonDirs[addon]
   if not dir then return nil end
   self._addonFonts = self._addonFonts or {}
+  self._addonFontsScanned = self._addonFontsScanned or {}
   local idx = self._addonFonts[addon]
+  if idx and not idx[rest] and os.time() - (self._addonFontsScanned[addon] or 0) >= 1 then idx = nil end
   if not idx then
+    self._addonFontsScanned[addon] = os.time()
     idx = {}
     local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.ttf' -o -iname '*.otf' \\) 2>/dev/null")
     if p then

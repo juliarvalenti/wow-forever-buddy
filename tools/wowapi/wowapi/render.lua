@@ -172,19 +172,36 @@ local function colorRuns(text, default)
   return runs
 end
 
-local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline, family)
+-- shadow: nil draws the old approximation (a light dark stroke) for text
+-- whose font says nothing about shadows; false draws none; { dx, dy, rgb,
+-- alpha } draws an offset copy underneath, as the client does (WFB patch
+-- HUD1: designers set SetShadowOffset(0, 0) for ink on parchment).
+local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline, family, shadow)
   local lines = {}
   for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
   family = family or ctx.fontFamily or "Friz Quadrata TT, Georgia, serif"
   for i, line in ipairs(lines) do
+    local ly = y + (i - 1) * size * 1.15
     local parts = {}
     for _, run in ipairs(colorRuns(line, color)) do
       parts[#parts + 1] = string.format('<tspan fill="%s">%s</tspan>', run[2], esc(run[1]))
     end
-    ctx:add(string.format(
-      '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s" paint-order="stroke">%s</text>',
-      num(x), num(y + (i - 1) * size * 1.15), num(size), anchor, opacity, esc(family),
-      outline and size / 6 or size / 10, outline and "1" or "0.6", table.concat(parts)))
+    if outline or shadow == nil then
+      ctx:add(string.format(
+        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s" paint-order="stroke">%s</text>',
+        num(x), num(ly), num(size), anchor, opacity, esc(family),
+        outline and size / 6 or size / 10, outline and "1" or "0.6", table.concat(parts)))
+    else
+      if shadow then
+        ctx:add(string.format(
+          '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" fill="%s">%s</text>',
+          num(x + shadow[1]), num(ly - shadow[2]), num(size), anchor, opacity * shadow[4], esc(family), shadow[3],
+          esc((line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))))
+      end
+      ctx:add(string.format(
+        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s">%s</text>',
+        num(x), num(ly), num(size), anchor, opacity, esc(family), table.concat(parts)))
+    end
   end
 end
 
@@ -218,8 +235,13 @@ local function drawTexture(ctx, obj, s, x, y, w, h, alpha, clipFrac)
     end
   end
   if s.texture == "color" then
-    ctx:add(string.format('<rect x="%s" y="%s" width="%s" height="%s" fill="%s" opacity="%.3f"/>',
-      num(x), num(y), num(w * (clipFrac or 1)), num(h), rgb(c[1], c[2], c[3]), a))
+    -- WFB patch (HUD1): a colour texture turns with SetRotation too, about
+    -- its centre, as a file texture does.
+    local props = s.props or {}
+    local r = s.animRotation and math.rad(s.animRotation) or (props.Rotation and props.Rotation[1])
+    local rot = (r and r ~= 0) and string.format(' transform="rotate(%s %s %s)"', num(-math.deg(r)), num(x + w / 2), num(y + h / 2)) or ""
+    ctx:add(string.format('<rect x="%s" y="%s" width="%s" height="%s" fill="%s" opacity="%.3f"%s/>',
+      num(x), num(y), num(w * (clipFrac or 1)), num(h), rgb(c[1], c[2], c[3]), a, rot))
     return
   end
   if not s.texture and not s.atlas then return end
@@ -295,8 +317,21 @@ local function region(ctx, obj)
     if jv == "TOP" then ty = y + size * 0.85
     elseif jv == "BOTTOM" then ty = y + h - (lines - 1) * size * 1.15 - size * 0.2
     else ty = y + h / 2 - (lines - 1) * size * 0.575 + size * 0.35 end
+    -- the shadow the FontString or its font object says it has, if any
+    local so, sc = s.shadowOffset, s.shadowColor
+    if not so then
+      local fo = s.fontObject
+      if type(fo) == "string" then fo = sim:Get(fo) end
+      local fos = fo and st[fo]
+      so, sc = fos and fos.shadowOffset, fos and fos.shadowColor
+    end
+    local shadow
+    if so then
+      sc = sc or { 0, 0, 0, 1 }
+      shadow = (so[1] ~= 0 or so[2] ~= 0) and { so[1], so[2], rgb(sc[1], sc[2], sc[3]), sc[4] or 1 } or false
+    end
     textSvg(ctx, tx, ty, text, size, rgb(tc[1], tc[2], tc[3]), anchor, alpha * (tc[4] or 1),
-      flags and tostring(flags):find("OUTLINE"), ctx:familyFor(fontFile))
+      flags and tostring(flags):find("OUTLINE"), ctx:familyFor(fontFile), shadow)
   end
 end
 

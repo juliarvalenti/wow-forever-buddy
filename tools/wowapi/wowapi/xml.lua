@@ -660,6 +660,18 @@ local function buildFont(ctx, node)
   s.font = { a.font or (s.font and s.font[1]) or "Fonts\\FRIZQT__.TTF", height or (s.font and s.font[2]) or 12, a.outline or (s.font and s.font[3]) or "" }
   local c = kid(node, "Color")
   if c then s.textColor = { colorOf(c) } end
+  -- WFB patch (HUD1): <Shadow><Offset><AbsDimension x y/></Offset><Color/></Shadow>
+  local sh = kid(node, "Shadow")
+  if sh then
+    local off = kid(sh, "Offset")
+    local d = off and (kid(off, "AbsDimension") or off)
+    s.shadowOffset = { tonumber(d and d.attrs.x) or 0, tonumber(d and d.attrs.y) or 0 }
+    local shc = kid(sh, "Color")
+    s.shadowColor = shc and { colorOf(shc) } or { 0, 0, 0, 1 }
+  elseif a.inherits then
+    local bs = sim:Get(a.inherits) and sim.widgetState[sim:Get(a.inherits)]
+    if bs then s.shadowOffset, s.shadowColor = bs.shadowOffset, bs.shadowColor end
+  end
   if a.justifyH then s.justifyH = a.justifyH end
 end
 

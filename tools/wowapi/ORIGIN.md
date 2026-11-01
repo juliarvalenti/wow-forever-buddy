@@ -34,6 +34,9 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 - `framexml.lua`: `FACTION_BAR_COLORS` and `PowerBarColor` (by power token and type) for the stand-in FrameXML; Blizzard's own files define them in the real UI.
 - `assets.lua`, `render.lua`: an addon's own fonts (`Interface\AddOns\X\...ttf`/`.otf`) are found in its folder and each FontString draws in its own font, every font file embedded once (the game's Friz Quadrata keeps its `WoWFriz` family). Without this, all text draws in Friz.
 - `widgets.lua`: `Font:SetFont` returns success, as the client's does. Without this, LibSharedMedia calls every addon font invalid.
+- `widgets.lua`, `xml.lua`, `render.lua`: text shadows. `SetShadowOffset`/`SetShadowColor` on a Font or FontString (and `<Shadow>` in a `<Font>`) are kept; the renderer draws a set shadow as an offset copy and an explicit `0, 0` as clean text. Text whose font says nothing about shadows keeps the old light stroke. Without this, every string had a stroke, smearing dark ink on light panels.
+- `render.lua`: a colour texture (`SetColorTexture`) turns with `SetRotation`, like a file texture.
+- `assets.lua`: a miss for an addon's file rescans its folder (at most once a second) and isn't memoized, so art or fonts added while a session runs show up on the next render.
 - `docs.lua`: `SetAttributeNoHandler` takes any value, like `SetAttribute`.
 - `framexml.lua`: `Menu.GetManager()` returns one manager, with `OpenMenu` and the other methods addons hook (`hooksecurefunc`).
 - `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.

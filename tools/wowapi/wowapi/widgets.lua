@@ -585,6 +585,24 @@ function M.install(sim, env)
     local c = s.textColor or (s.fontObject and state[s.fontObject] and state[s.fontObject].textColor) or { 1, 1, 1, 1 }
     return c[1], c[2], c[3], c[4] or 1
   end
+  -- WFB patch (HUD1): a FontString's own shadow, over its font object's.
+  function FS:SetShadowColor(r, g, b, a) S(self).shadowColor = { r, g, b, a or 1 } end
+  function FS:SetShadowOffset(x, y) S(self).shadowOffset = { x or 0, y or 0 } end
+  function FS:GetShadowOffset()
+    local s = S(self)
+    local o = s.shadowOffset
+    local fo = s.fontObject
+    if type(fo) == "string" then fo = sim:Get(fo) end
+    o = o or (fo and state[fo] and state[fo].shadowOffset) or { 0, 0 }
+    return o[1], o[2]
+  end
+  function FS:GetShadowColor()
+    local s = S(self)
+    local fo = s.fontObject
+    if type(fo) == "string" then fo = sim:Get(fo) end
+    local c = s.shadowColor or (fo and state[fo] and state[fo].shadowColor) or { 0, 0, 0, 1 }
+    return c[1], c[2], c[3], c[4]
+  end
   function FS:SetJustifyH(v) S(self).justifyH = v end
   function FS:GetJustifyH() return S(self).justifyH or "CENTER" end
   function FS:SetJustifyV(v) S(self).justifyV = v end
@@ -672,8 +690,18 @@ function M.install(sim, env)
   function Font:GetTextColor() return unpack(S(self).textColor or { 1, 0.82, 0, 1 }) end
   function Font:SetJustifyH() end
   function Font:SetJustifyV() end
-  function Font:SetShadowColor() end
-  function Font:SetShadowOffset() end
+  -- WFB patch (HUD1): a font's shadow is kept, so the renderer draws it (or,
+  -- for an explicit 0, 0 offset, none).
+  function Font:SetShadowColor(r, g, b, a) S(self).shadowColor = { r, g, b, a or 1 } end
+  function Font:GetShadowColor()
+    local c = S(self).shadowColor or { 0, 0, 0, 1 }
+    return c[1], c[2], c[3], c[4]
+  end
+  function Font:SetShadowOffset(x, y) S(self).shadowOffset = { x or 0, y or 0 } end
+  function Font:GetShadowOffset()
+    local o = S(self).shadowOffset or { 0, 0 }
+    return o[1], o[2]
+  end
   function Font:SetSpacing() end
 
   sim.widgetClasses = classes
