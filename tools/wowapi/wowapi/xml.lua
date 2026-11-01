@@ -302,15 +302,29 @@ local function applyAttributes(ctx, obj, node)
   end
 end
 
+-- WFB patch (HUD1): parentKey and parentArray may come from an inherited
+-- template (EditModeSystemSelectionBaseTemplate sets parentKey="Selection"
+-- for every system's selection frame), first one found, as in the client.
+local function inheritedAttr(node, key, depth)
+  if node.attrs[key] then return node.attrs[key] end
+  if (depth or 0) > 8 or not node.attrs.inherits then return nil end
+  for _, t in ipairs(require("wowapi.templates").split(node.attrs.inherits)) do
+    local tmpl = M._sim and M._sim.templates[t]
+    local v = tmpl and tmpl.node and inheritedAttr(tmpl.node, key, (depth or 0) + 1)
+    if v then return v end
+  end
+end
+
 local function attachKey(obj, parent, node)
   if not parent then return end
-  if node.attrs.parentKey then
-    parent[node.attrs.parentKey] = obj
+  local parentKey = inheritedAttr(node, "parentKey")
+  if parentKey then
+    parent[parentKey] = obj
     local s = M._sim.widgetState[obj]
-    if s then s.parentKey = node.attrs.parentKey end
+    if s then s.parentKey = parentKey end
   end
-  if node.attrs.parentArray then
-    local k = node.attrs.parentArray
+  local k = inheritedAttr(node, "parentArray")
+  if k then
     parent[k] = parent[k] or {}
     table.insert(parent[k], obj)
   end
