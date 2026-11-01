@@ -551,7 +551,10 @@ local function frameBody(ctx, obj)
     local la, lc = LAYER_INDEX[sa.layer or "ARTWORK"] or 3, LAYER_INDEX[sc.layer or "ARTWORK"] or 3
     if la ~= lc then return la < lc end
     if (sa.sublevel or 0) ~= (sc.sublevel or 0) then return (sa.sublevel or 0) < (sc.sublevel or 0) end
-    return (sa.seq or 0) < (sc.seq or 0)
+    -- WFB patch (HUD1): in one layer and sublevel the client draws the
+    -- region created first on top (an action button's icon over the slot
+    -- art declared after it).
+    return (sa.seq or 0) > (sc.seq or 0)
   end)
   for _, r in ipairs(regions) do region(ctx, r) end
 

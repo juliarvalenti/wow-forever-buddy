@@ -129,8 +129,16 @@ end
 local function resolveName(name, parent, sim)
   if not name then return nil end
   if name:find("%$[Pp]arent") then
-    local pname = parent and sim.widgetState[parent] and sim.widgetState[parent].name or ""
-    name = name:gsub("%$[Pp]arent", pname)
+    -- WFB patch (HUD1): an unnamed parent stands for its nearest named
+    -- ancestor, as in the client. Without this, the gamepad bar's
+    -- "$parentActionButton1" under an unnamed frame became a second global
+    -- ActionButton1, replacing the main action bar's.
+    local p, pname = parent, nil
+    while p and sim.widgetState[p] and not pname do
+      pname = sim.widgetState[p].name
+      p = sim.widgetState[p].parent
+    end
+    name = name:gsub("%$[Pp]arent", pname or "")
   end
   return name
 end
@@ -246,7 +254,8 @@ local function applyAnchors(ctx)
   local sim = ctx.sim
   for _, entry in ipairs(ctx.anchors) do
     if entry.all then
-      entry.obj:SetAllPoints()
+      local st = sim.widgetState[entry.obj]
+      if not (entry.default and st and #st.points > 0) then entry.obj:SetAllPoints() end
     else
       local a = entry.node.attrs
       local rel = resolveRelative(ctx, entry)
@@ -388,6 +397,13 @@ local function buildRegion(ctx, node, parent, layer, sublevel, existing)
   if w then s.width = w end
   if h then s.height = h end
   queueAnchors(ctx, obj, node, parent)
+  -- WFB patch (HUD1): a Texture or FontString with no anchors and no size,
+  -- here or in its templates, fills its parent, as in the client
+  -- (ActionButtonTemplate's icon is a bare <Texture parentKey="icon"/>).
+  if not existing and parent and not kid(node, "Anchors") and not kid(node, "Size")
+    and not bool(node.attrs.setAllPoints) and not node.attrs.inherits and #s.points == 0 then
+    table.insert(ctx.anchors, { obj = obj, all = true, parent = parent, default = true })
+  end
   applyKeyValues(ctx, obj, node)
   local anims = kid(node, "Animations")
   if anims then M.buildAnimations(ctx, obj, anims) end
