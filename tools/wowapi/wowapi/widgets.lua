@@ -211,7 +211,12 @@ function M.install(sim, env)
     return x >= l + (left or 0) and x <= l + w + (right or 0) and y >= b + (bottom or 0) and y <= b + h + (top or 0)
   end
   function R:IsMouseMotionFocus() return sim.mouseFocus == self end
-  function R:SetAlpha(a) S(self).alpha = a end
+  -- WFB patch (HUD2): a non-number is an error, as in the client, instead
+  -- of a nil alpha that breaks every effective alpha below it.
+  function R:SetAlpha(a)
+    if type(a) ~= "number" then error("Usage: " .. (S(self).type or "Region") .. ":SetAlpha(alpha)", 2) end
+    S(self).alpha = a
+  end
   function R:GetAlpha() return S(self).alpha end
   function R:GetEffectiveAlpha()
     local a, o = 1, self

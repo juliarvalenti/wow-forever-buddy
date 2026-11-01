@@ -277,6 +277,9 @@ for _, dir in ipairs(extra) do
 end
 
 sim:Login()
+-- The client's settings load at login too; the extra action bars show or
+-- hide then (MultiActionBar_Update).
+sim:FireEvent("SETTINGS_LOADED")
 if class then
     fixtures.apply(sim, class)
 else

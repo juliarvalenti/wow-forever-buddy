@@ -12,42 +12,57 @@ local function icon(name)
 end
 
 M.CLASSES = {
-    -- A level 22 human rogue in Westfall (old enough for Vanish), with a
-    -- Defias Pillager targeted and three combo points on it. The bar and
-    -- keys are Julia's: 1 to 5, Q, E, ` (Stealth) and Shift-V (Vanish); in
-    -- stealth, 1 to 4 become Ambush, Garrote, Cheap Shot and Sap.
+    -- A level 34 human rogue in the Arathi Highlands (old enough for Blind),
+    -- with a Syndicate Highwayman targeted and three combo points on it. The
+    -- bars and keys are Julia's: twelve spells on the main bar and four
+    -- Shift binds on bar 2; in stealth, 1 to 5 become Ambush, Garrote, Cheap
+    -- Shot, Sap and Pick Pocket.
     rogue = {
-        player = { name = "Kessra", class = "ROGUE", race = "Human", level = 22, zone = "Westfall", subZone = "Moonbrook",
-            health = 595, healthMax = 700, powerType = 3, power = 70, powerMax = 100,
+        player = { name = "Kessra", class = "ROGUE", race = "Human", level = 34, zone = "Arathi Highlands",
+            subZone = "Northfold Manor", health = 1240, healthMax = 1460, powerType = 3, power = 70, powerMax = 100,
             -- Enum.PowerType.ComboPoints = 4
             powers = { [4] = { 3, 5 } } },
-        target = { name = "Defias Pillager", level = 19, classification = "normal", creatureType = "Humanoid",
-            reaction = 2, health = 310, healthMax = 520, class = "MAGE", powerType = 0, power = 340, powerMax = 600,
-            guid = "Creature-0-0-0-0-589-0" },
-        -- action slot -> { spell ID, icon }
+        target = { name = "Syndicate Highwayman", level = 33, classification = "normal", creatureType = "Humanoid",
+            reaction = 2, health = 690, healthMax = 1150, class = "ROGUE", powerType = 3, power = 100, powerMax = 100,
+            guid = "Creature-0-0-0-0-2586-0" },
+        -- action slot -> { spell ID, icon }; bar 2 (MultiBarBottomLeft) is
+        -- page 6, slots 61 to 72
         actions = {
             [1] = { 1752, icon("Spell_Shadow_RitualOfSacrifice") }, -- Sinister Strike
             [2] = { 53, icon("Ability_BackStab") },
             [3] = { 1776, icon("Ability_Gouge") },
-            [4] = { 1766, icon("Ability_Kick") },
-            [5] = { 1943, icon("Ability_Rogue_Rupture") },
+            [4] = { 1943, icon("Ability_Rogue_Rupture") },
+            [5] = { 5277, icon("Spell_Shadow_ShadowWard") }, -- Evasion
             [6] = { 2098, icon("Ability_Rogue_Eviscerate") },
-            [7] = { 5171, icon("Ability_Rogue_SliceDice") },
-            [8] = { 1784, icon("Ability_Stealth") },
-            [9] = { 1856, icon("Ability_Vanish") },
+            [7] = { 1766, icon("Ability_Kick") },
+            [8] = { 5171, icon("Ability_Rogue_SliceDice") },
+            [9] = { 1966, icon("Ability_Rogue_Feint") },
             [10] = { 408, icon("Ability_Rogue_KidneyShot") },
-            [11] = { 2983, icon("Ability_Rogue_Sprint") },
-            [12] = { 5277, icon("Spell_Shadow_ShadowWard") }, -- Evasion
+            [11] = { 2094, icon("Spell_Shadow_MindSteal") }, -- Blind
+            [12] = { 1784, icon("Ability_Stealth") },
+            [61] = { 8647, icon("Ability_Warrior_Riposte") }, -- Expose Armor
+            [62] = { 1725, icon("Ability_Rogue_Distract") },
+            [63] = { 2983, icon("Ability_Rogue_Sprint") },
+            [64] = { 1856, icon("Ability_Vanish") },
         },
-        -- Stealth's bar (bonus bar 1: slots 73 to 84) changes the first four.
+        -- Stealth's bar (bonus bar 1: slots 73 to 84) changes the first five.
         stealthActions = {
             [1] = { 8676, icon("Ability_Rogue_Ambush") },
             [2] = { 703, icon("Ability_Rogue_Garrote") },
             [3] = { 1833, icon("Ability_CheapShot") },
             [4] = { 6770, icon("Ability_Sap") },
+            [5] = { 921, icon("INV_Misc_Bag_11") }, -- Pick Pocket
         },
-        -- main bar button -> key (the rest keep the default 0, -, =)
-        keys = { "1", "2", "3", "4", "5", "Q", "E", "`", "SHIFT-V", "0", "-", "=" },
+        -- the bars shown besides the main bar (IsMultibarVisible)
+        multibars = { [1] = true },
+        -- binding -> key
+        keys = {
+            ACTIONBUTTON1 = "1", ACTIONBUTTON2 = "2", ACTIONBUTTON3 = "3", ACTIONBUTTON4 = "4", ACTIONBUTTON5 = "5",
+            ACTIONBUTTON6 = "Q", ACTIONBUTTON7 = "E", ACTIONBUTTON8 = "R", ACTIONBUTTON9 = "F",
+            ACTIONBUTTON10 = "X", ACTIONBUTTON11 = "B", ACTIONBUTTON12 = "`",
+            MULTIACTIONBAR1BUTTON1 = "SHIFT-E", MULTIACTIONBAR1BUTTON2 = "SHIFT-F",
+            MULTIACTIONBAR1BUTTON3 = "SHIFT-R", MULTIACTIONBAR1BUTTON4 = "SHIFT-V",
+        },
     },
 }
 
@@ -85,8 +100,8 @@ function M.mock(sim, class, opts)
             actions[72 + slot] = c.stealthActions[slot] or actions[slot]
         end
     end
-    for button, key in ipairs(c.keys or {}) do
-        sim.env.SetBinding(key, "ACTIONBUTTON" .. button)
+    for action, key in pairs(c.keys or {}) do
+        sim.env.SetBinding(key, action)
     end
     local function has(slot)
         return actions[slot] ~= nil
@@ -95,6 +110,11 @@ function M.mock(sim, class, opts)
         ["C_ActionBar.GetActionBarPage"] = function() return 1 end,
         ["C_ActionBar.GetBonusBarOffset"] = function() return bonusBar end,
         GetBonusBarOffset = function() return bonusBar end,
+        -- Settings' "Action Bar 2" to "Action Bar 8" toggles
+        GetActionBarToggles = function()
+            local m = c.multibars or {}
+            return m[1] == true, m[2] == true, m[3] == true, m[4] == true, m[5] == true, m[6] == true, m[7] == true
+        end,
         -- no stance bar (a class with stances lists its forms)
         GetNumShapeshiftForms = function() return c.forms and #c.forms or 0 end,
         -- the bar controller pages the main bar to bonus bar 1 (page 7)
