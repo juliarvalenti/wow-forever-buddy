@@ -22,27 +22,6 @@
       "acts": false
     },
     {
-      "id": "window.coach",
-      "module": "window",
-      "section": "In game",
-      "type": "bool",
-      "default": false,
-      "label": "Session coach",
-      "help": "A small strip with this session's gold, experience and loot.",
-      "acts": false
-    },
-    {
-      "id": "window.coachCombat",
-      "module": "window",
-      "section": "In game",
-      "type": "bool",
-      "default": false,
-      "label": "Hide the coach in combat",
-      "help": "Steps out of the way while you fight.",
-      "parent": "window.coach",
-      "acts": false
-    },
-    {
       "id": "window.card",
       "module": "window",
       "section": "In game",
@@ -63,14 +42,48 @@
       "acts": false
     },
     {
-      "id": "tooltips.alts",
-      "module": "tooltips",
-      "section": "Tooltips",
+      "id": "bags.enabled",
+      "module": "bags",
+      "section": "Bags",
       "type": "bool",
       "default": true,
-      "label": "Your alts on item tooltips",
-      "help": "Which of your other characters hold an item, and where.",
+      "label": "Bags",
+      "help": "Junk and item levels on what you carry. Display only.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
+      "id": "bags.junk",
+      "module": "bags",
+      "section": "Bags",
+      "type": "bool",
+      "default": false,
+      "label": "Junk in your bags",
+      "help": "A small coin on grey items, the ones only worth selling, in your bags and bank.",
+      "parent": "bags.enabled",
       "acts": false
+    },
+    {
+      "id": "bags.itemLevel",
+      "module": "bags",
+      "section": "Bags",
+      "type": "bool",
+      "default": false,
+      "label": "Item level on gear",
+      "help": "The item level on each piece of gear in your bags and bank, in its quality colour.",
+      "parent": "bags.enabled",
+      "acts": false
+    },
+    {
+      "id": "map.enabled",
+      "module": "map",
+      "section": "Map",
+      "type": "bool",
+      "default": true,
+      "label": "Map",
+      "help": "Coordinates, and a map you can see through. Display only.",
+      "acts": false,
+      "moduleSwitch": true
     },
     {
       "id": "map.coords",
@@ -80,6 +93,7 @@
       "default": false,
       "label": "Coordinates on the world map",
       "help": "Where you are, and where the cursor points, along the bottom of the world map.",
+      "parent": "map.enabled",
       "acts": false
     },
     {
@@ -90,6 +104,7 @@
       "default": false,
       "label": "Coordinates under the minimap",
       "help": "Where you are, in small numbers under the minimap.",
+      "parent": "map.enabled",
       "acts": false
     },
     {
@@ -100,6 +115,7 @@
       "default": false,
       "label": "Fade the world map while you move",
       "help": "The map turns see-through while you walk or ride, so you can see where you're going.",
+      "parent": "map.enabled",
       "acts": false
     },
     {
@@ -117,6 +133,17 @@
       "step": 0.05
     },
     {
+      "id": "quest.enabled",
+      "module": "quest",
+      "section": "Quests",
+      "type": "bool",
+      "default": true,
+      "label": "Quests",
+      "help": "Levels, new quests and progress where you look. Display only.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
       "id": "quest.levels",
       "module": "quest",
       "section": "Quests",
@@ -124,6 +151,7 @@
       "default": false,
       "label": "Quest levels in the quest log",
       "help": "Each quest's level before its title, like [23] Wanted: Hogger.",
+      "parent": "quest.enabled",
       "acts": false
     },
     {
@@ -134,6 +162,7 @@
       "default": false,
       "label": "Mark quests that are new in Forever",
       "help": "A (New) tag after the quests WoW Forever added, so you can tell them from the original game's.",
+      "parent": "quest.enabled",
       "acts": false
     },
     {
@@ -144,6 +173,7 @@
       "default": false,
       "label": "Quest progress on item tooltips",
       "help": "When a quest in your log needs an item, its tooltip says which quest and how many you have.",
+      "parent": "quest.enabled",
       "acts": false
     },
     {
@@ -154,6 +184,7 @@
       "default": false,
       "label": "See-through quest tracker",
       "help": "The quest tracker fades until you move the mouse over it.",
+      "parent": "quest.enabled",
       "acts": false
     },
     {
@@ -171,24 +202,70 @@
       "step": 0.05
     },
     {
-      "id": "bags.junk",
-      "module": "bags",
-      "section": "Bags",
+      "id": "tooltips.enabled",
+      "module": "tooltips",
+      "section": "Tooltips",
       "type": "bool",
-      "default": false,
-      "label": "Junk in your bags",
-      "help": "A small coin on grey items, the ones only worth selling, in your bags and bank.",
+      "default": true,
+      "label": "Tooltips",
+      "help": "Who has an item, on its tooltip.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
+      "id": "tooltips.alts",
+      "module": "tooltips",
+      "section": "Tooltips",
+      "type": "bool",
+      "default": true,
+      "label": "Your alts on item tooltips",
+      "help": "Which of your other characters hold an item, and where.",
+      "parent": "tooltips.enabled",
       "acts": false
     },
     {
-      "id": "bags.itemLevel",
-      "module": "bags",
-      "section": "Bags",
+      "id": "coach.enabled",
+      "module": "coach",
+      "section": "Coach",
+      "type": "bool",
+      "default": true,
+      "label": "Coach",
+      "help": "This session's gold, experience and loot, on screen.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
+      "id": "window.coach",
+      "module": "window",
+      "section": "Coach",
       "type": "bool",
       "default": false,
-      "label": "Item level on gear",
-      "help": "The item level on each piece of gear in your bags and bank, in its quality colour.",
+      "label": "Session coach",
+      "help": "A small strip with this session's gold, experience and loot.",
+      "parent": "coach.enabled",
       "acts": false
+    },
+    {
+      "id": "window.coachCombat",
+      "module": "window",
+      "section": "Coach",
+      "type": "bool",
+      "default": false,
+      "label": "Hide the coach in combat",
+      "help": "Steps out of the way while you fight.",
+      "parent": "window.coach",
+      "acts": false
+    },
+    {
+      "id": "merchant.enabled",
+      "module": "merchant",
+      "section": "Merchant",
+      "type": "bool",
+      "default": true,
+      "label": "Merchant",
+      "help": "Repairs and selling, at a vendor you open. Each option is off until you turn it on.",
+      "acts": false,
+      "moduleSwitch": true
     },
     {
       "id": "merchant.repair",
@@ -198,6 +275,7 @@
       "default": false,
       "label": "Repair at vendors",
       "help": "When you open a vendor who repairs, pays for your repairs.",
+      "parent": "merchant.enabled",
       "acts": true
     },
     {
@@ -219,6 +297,7 @@
       "default": false,
       "label": "Sell grey items",
       "help": "When you open a vendor, sells up to 12 grey items. The vendor's buyback keeps them.",
+      "parent": "merchant.enabled",
       "acts": true
     },
     {
@@ -229,6 +308,7 @@
       "default": false,
       "label": "Sell items you marked",
       "help": "Also sells items you marked to sell in Forever Buddy, within the same 12.",
+      "parent": "merchant.enabled",
       "acts": true
     },
     {
@@ -296,16 +376,22 @@
       "id": "quiet",
       "label": "Quiet",
       "values": {
+        "bags.enabled": true,
         "bags.itemLevel": false,
         "bags.junk": false,
+        "coach.enabled": true,
         "map.coords": false,
+        "map.enabled": true,
         "map.fade": false,
         "map.minimap": false,
+        "merchant.enabled": true,
+        "quest.enabled": true,
         "quest.levels": false,
         "quest.newTag": false,
         "quest.tooltips": false,
         "quest.trackerFade": false,
         "tooltips.alts": true,
+        "tooltips.enabled": true,
         "window.bagMarks": false,
         "window.briefing": true,
         "window.card": false,
@@ -319,16 +405,22 @@
       "id": "helpful",
       "label": "Helpful",
       "values": {
+        "bags.enabled": true,
         "bags.itemLevel": true,
         "bags.junk": true,
+        "coach.enabled": true,
         "map.coords": true,
+        "map.enabled": true,
         "map.fade": false,
         "map.minimap": false,
+        "merchant.enabled": true,
+        "quest.enabled": true,
         "quest.levels": true,
         "quest.newTag": true,
         "quest.tooltips": true,
         "quest.trackerFade": false,
         "tooltips.alts": true,
+        "tooltips.enabled": true,
         "window.bagMarks": true,
         "window.briefing": true,
         "window.card": true,
@@ -342,18 +434,24 @@
       "id": "everything",
       "label": "Everything",
       "values": {
+        "bags.enabled": true,
         "bags.itemLevel": true,
         "bags.junk": true,
+        "coach.enabled": true,
         "map.coords": true,
+        "map.enabled": true,
         "map.fade": true,
         "map.fadeAlpha": 0.5,
         "map.minimap": true,
+        "merchant.enabled": true,
+        "quest.enabled": true,
         "quest.levels": true,
         "quest.newTag": true,
         "quest.tooltips": true,
         "quest.trackerAlpha": 0.5,
         "quest.trackerFade": true,
         "tooltips.alts": true,
+        "tooltips.enabled": true,
         "window.bagMarks": true,
         "window.briefing": true,
         "window.card": true,

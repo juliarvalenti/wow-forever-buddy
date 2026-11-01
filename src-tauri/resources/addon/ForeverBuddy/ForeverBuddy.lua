@@ -537,16 +537,76 @@ function C.setOpt(key, on)
     end
 end
 
+-- Modules (W1) --------------------------------------------------------------------------
+--
+-- The contract every module plugs into: U.mods.register{ id, enable,
+-- disable }. Its label, the line under its page title and its options come
+-- from Settings.lua (`modules`); its own on/off is the option "<id>.enabled",
+-- on unless turned off. Turning it off calls disable() at once, with no
+-- /reload: the module hides its frames and unregisters its events, and each
+-- of its parts asks U.mods.on before doing anything, so a module that's off
+-- costs nothing. (A hook can't be undone; ours do nothing while their module
+-- is off.) The window's rail lists the modules in Settings.lua's order.
+
+U.mods = { list = {}, byId = {}, declared = select(2, ...).settings }
+
+function U.mods.on(id)
+    local m = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.modules
+    return not (type(m) == "table" and m[id] == false)
+end
+
+function U.mods.register(m)
+    U.mods.byId[m.id] = m
+    U.mods.list[#U.mods.list + 1] = m
+end
+
+function U.mods.set(id, on)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    if type(ForeverBuddySettings.modules) ~= "table" then
+        ForeverBuddySettings.modules = {}
+    end
+    if on then
+        ForeverBuddySettings.modules[id] = nil
+    else
+        ForeverBuddySettings.modules[id] = false
+    end
+    local m = U.mods.byId[id]
+    local fn = m and (on and m.enable or m.disable)
+    if fn and not pcall(fn) then
+        U.errors = U.errors + 1
+    end
+end
+
+-- "<id>.enabled" as the Settings list's get and set.
+function U.mods.option(id)
+    return {
+        get = function()
+            return U.mods.on(id)
+        end,
+        set = function(on)
+            U.mods.set(id, on and true or false)
+        end,
+    }
+end
+
 -- The Map module (P4c) ------------------------------------------------------------------
 --
 -- Display only: coordinates on the world map and under the minimap, and the
 -- world map fading while you move. The settings are ForeverBuddySettings.map.
--- A part that's off costs nothing: its frame isn't made until it's first
--- turned on, and once off again it's hidden (so no OnUpdate runs) and its
--- events are unregistered. Nothing is hooked: our frames are children of
--- the world map and the minimap, so they show and hide with them.
+-- A part that's off (or the whole module, W1) costs nothing: its frame isn't
+-- made until it's first turned on, and once off again it's hidden (so no
+-- OnUpdate runs) and its events are unregistered. Nothing is hooked: our
+-- frames are children of the world map and the minimap, so they show and
+-- hide with them.
 
 U.map = { defaults = { coords = false, minimap = false, fade = false, fadeAlpha = 0.5 } }
+
+-- A part that's in effect: its setting on, and the module on.
+function U.map.on(key)
+    return U.mods.on("map") and U.map.get(key) and true or false
+end
 
 function U.map.get(key)
     local m = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.map
@@ -666,7 +726,7 @@ end
 -- The world map at the faded alpha while you move, else whole.
 function U.map.fadeNow(moving)
     if type(WorldMapFrame) == "table" then
-        WorldMapFrame:SetAlpha(moving and U.map.get("fade") and U.map.get("fadeAlpha") or 1)
+        WorldMapFrame:SetAlpha(moving and U.map.on("fade") and U.map.get("fadeAlpha") or 1)
     end
 end
 
@@ -689,27 +749,28 @@ end
 -- Each part as its setting says: made the first time it's on, then shown
 -- or hidden.
 function U.map.apply()
-    local mini = U.map.get("minimap") and U.map.minimapText() or U.map.mini
+    local mini = U.map.on("minimap") and U.map.minimapText() or U.map.mini
     if mini then
-        mini:SetShown(U.map.get("minimap"))
+        mini:SetShown(U.map.on("minimap"))
     end
-    local world = U.map.get("coords") and U.map.worldText() or U.map.world
+    local world = U.map.on("coords") and U.map.worldText() or U.map.world
     if world then
-        world:SetShown(U.map.get("coords"))
+        world:SetShown(U.map.on("coords"))
     end
-    local fade = U.map.get("fade") and U.map.fader() or U.map.fading
+    local fade = U.map.on("fade") and U.map.fader() or U.map.fading
     if fade then
         for _, event in ipairs({ "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING" }) do
-            if U.map.get("fade") then
+            if U.map.on("fade") then
                 pcall(fade.RegisterEvent, fade, event)
             else
                 fade:UnregisterEvent(event)
             end
         end
-        fade:SetShown(U.map.get("fade"))
-        U.map.fadeNow(U.map.get("fade") and read("IsPlayerMoving"))
+        fade:SetShown(U.map.on("fade"))
+        U.map.fadeNow(U.map.on("fade") and read("IsPlayerMoving"))
     end
 end
+U.mods.register({ id = "map", enable = U.map.apply, disable = U.map.apply })
 
 -- The Quest module (P4e) ----------------------------------------------------------------
 --
@@ -760,6 +821,11 @@ function U.quest.option(key)
     }
 end
 
+-- A part that's in effect: its setting on, and the module on (W1).
+function U.quest.on(key)
+    return U.mods.on("quest") and U.quest.get(key) and true or false
+end
+
 -- The quests in the log (not headers): { questID, title, level }.
 function U.quest.log()
     local out = {}
@@ -774,10 +840,10 @@ end
 
 -- A quest log title as shown: "[23] Wanted: Hogger (New)".
 function U.quest.title(title, level, questID)
-    if U.quest.get("levels") and type(level) == "number" and level > 0 then
+    if U.quest.on("levels") and type(level) == "number" and level > 0 then
         title = "[" .. level .. "] " .. title
     end
-    if U.quest.get("newTag") and questID >= U.quest.NEW_FROM then
+    if U.quest.on("newTag") and questID >= U.quest.NEW_FROM then
         title = title .. " |cff40c0ff(New)|r"
     end
     return title
@@ -785,7 +851,7 @@ end
 
 -- After the client fills the quest log's title buttons: ours on top.
 function U.quest.decorate()
-    if not (U.quest.get("levels") or U.quest.get("newTag")) then
+    if not (U.quest.on("levels") or U.quest.on("newTag")) then
         return
     end
     local pool = type(QuestScrollFrame) == "table" and QuestScrollFrame.titleFramePool
@@ -842,7 +908,7 @@ end
 function U.quest.apply()
     -- The log hook, once a log part is first on (a hook can't be undone; it
     -- does nothing while both are off).
-    if (U.quest.get("levels") or U.quest.get("newTag")) and not U.quest.hooked
+    if (U.quest.on("levels") or U.quest.on("newTag")) and not U.quest.hooked
         and type(QuestLogQuests_Update) == "function" and type(hooksecurefunc) == "function" then
         U.quest.hooked = true
         hooksecurefunc("QuestLogQuests_Update", function()
@@ -851,14 +917,15 @@ function U.quest.apply()
             end
         end)
     end
-    local fade = U.quest.get("trackerFade") and U.quest.trackerFader() or U.quest.fader
+    local fade = U.quest.on("trackerFade") and U.quest.trackerFader() or U.quest.fader
     if fade then
-        fade:SetShown(U.quest.get("trackerFade"))
-        if not U.quest.get("trackerFade") and type(ObjectiveTrackerFrame) == "table" then
+        fade:SetShown(U.quest.on("trackerFade"))
+        if not U.quest.on("trackerFade") and type(ObjectiveTrackerFrame) == "table" then
             ObjectiveTrackerFrame:SetAlpha(1)
         end
     end
 end
+U.mods.register({ id = "quest", enable = U.quest.apply, disable = U.quest.apply })
 
 -- Placement in Edit Mode (U1d) --------------------------------------------------------
 --
@@ -1891,8 +1958,9 @@ local function hookTooltips()
         if owner and owner.IsForbidden and owner:IsForbidden() then
             return
         end
-        -- U1: "Your alts on item tooltips" (C.opt is filled in further down).
-        if C.opt("tooltips") and not pcall(addItemLines, tooltip, data) then
+        -- U1: "Your alts on item tooltips" (C.opt is filled in further
+        -- down), while the Tooltips module is on (W1).
+        if U.mods.on("tooltips") and C.opt("tooltips") and not pcall(addItemLines, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
         -- B3: a marked item's line, after ours (C is filled in further down).
@@ -1900,11 +1968,16 @@ local function hookTooltips()
             tooltipErrors = tooltipErrors + 1
         end
         -- P4e: the quests in the log that need this item.
-        if U.quest.get("tooltips") and not pcall(U.quest.tooltip, tooltip, data) then
+        if U.quest.on("tooltips") and not pcall(U.quest.tooltip, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
     end)
 end
+
+-- W1: the Tooltips module. Its lines come from the one item hook above
+-- (shared with the bag marks and the Quests module, so it stays), and only
+-- while it's on, so turning it off or on needs nothing else.
+U.mods.register({ id = "tooltips", enable = function() end, disable = function() end })
 
 -- Lists and errands: the data (B2, INGAME §10) ---------------------------------------
 --
@@ -3006,14 +3079,19 @@ do
         end
     end
 
-    -- At a vendor the player just opened (MERCHANT_SHOW).
+    -- At a vendor the player just opened (MERCHANT_SHOW). Nothing while the
+    -- module is off (W1).
     function C.merchantActs()
-        if read("InCombatLockdown") then
+        if read("InCombatLockdown") or not U.mods.on("merchant") then
             return
         end
         repair()
         sell()
     end
+
+    -- W1: the Merchant module. It acts only at MERCHANT_SHOW, which checks
+    -- the module first, so turning it off or on needs nothing else.
+    U.mods.register({ id = "merchant", enable = function() end, disable = function() end })
 end
 
 -- The AH's browse results: which listed items show there.
@@ -3266,6 +3344,21 @@ do
         }
     end
 
+    -- W1: the Bags module. Off, its marks come off the open bags and bank
+    -- (the redraw below draws none), and nothing new is drawn.
+    function C.bagShows(key)
+        return U.mods.on("bags") and bagOn(key)
+    end
+    U.mods.register({
+        id = "bags",
+        enable = function()
+            pcall(C.tagBags)
+        end,
+        disable = function()
+            pcall(C.tagBags)
+        end,
+    })
+
     -- A value the client handed over, unless it's secret.
     local function plain(v)
         if isSecret(v) then
@@ -3283,9 +3376,9 @@ do
         local quality = info and plain(info.quality)
         local link = info and plain(info.hyperlink)
         local id = info and plain(info.itemID)
-        local junk = quality == 0 and bagOn("bagJunk")
+        local junk = quality == 0 and C.bagShows("bagJunk")
         local level
-        if type(link) == "string" and type(id) == "number" and bagOn("bagLevel") then
+        if type(link) == "string" and type(id) == "number" and C.bagShows("bagLevel") then
             local loc = plain(select(9, read("C_Item.GetItemInfo", id)))
             if type(loc) == "string" and not NO_LEVEL[loc] then
                 level = plain(read("C_Item.GetDetailedItemLevelInfo", link))
@@ -3800,7 +3893,7 @@ end
 -- stays empty for most players.
 local function setCoach(on)
     settings().coach = on or nil
-    if on then
+    if on and U.mods.on("coach") then
         showCoach()
     else
         hideCoach()
@@ -3916,6 +4009,23 @@ end
 
 S.guarded, S.xpBaseline, S.countXp = sessionGuarded, xpBaseline, countXp
 S.coachOn, S.setCoach, S.showCoach, S.hideCoach = coachOn, setCoach, showCoach, hideCoach
+
+-- W1: the Coach module. The strip shows while it's on and the module is;
+-- turning the module off hides it, and on brings it back if it was on.
+function S.coachShows()
+    return coachOn() and U.mods.on("coach")
+end
+U.mods.register({
+    id = "coach",
+    enable = function()
+        if coachOn() then
+            sessionGuarded(showCoach)
+        end
+    end,
+    disable = function()
+        hideCoach()
+    end,
+})
 S.hidesInCombat, S.setCoachCombat = coachHidesInCombat, setCoachCombat
 S.cardOn, S.setCard, S.showCard, S.hideCard = cardOn, setCard, showCard, hideCard
 end
@@ -4082,7 +4192,7 @@ end
 do
     local ICON = "Interface\\AddOns\\ForeverBuddy\\Media\\Icon"
     local TABS = { "Plan", "Lists", "Errands", "Cleanup", "Settings" }
-    local W, H = 360, 420
+    local W, H = 580, 452 -- W1: rail, header, content and footer
     local BLUE = "|cff4fb8ff" -- the verbs in the minimap button's tooltip
     local win, button, optionChecks
     local panes = {}
@@ -4137,24 +4247,27 @@ do
     local function planRow(p, i)
         local row = p.rows[i]
         if not row then
+            -- W1, the designer's own-plan: the current step on a soft accent
+            -- with a bar at its edge, the step's place under its text, and
+            -- Map on the right.
             row = CreateFrame("Frame", nil, p)
-            row:SetSize(W - 70, 30)
-            row.edge = row:CreateTexture(nil, "ARTWORK")
-            row.edge:SetSize(2, 26)
-            row.edge:SetPoint("LEFT", -6, 0)
-            row.edge:SetColorTexture(1, 0.82, 0)
-            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            row.label:SetPoint("TOPLEFT", 0, -2)
-            row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
-            row.go = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-            row.go:SetSize(24, 18)
-            row.go:SetPoint("RIGHT", 0, 0)
-            row.go:SetText("→")
+            row:SetSize(W - U.LAYOUT.RAIL - 20, 44)
+            row.glow = U.ui.fill(row, U.STYLE.accentSoft)
+            row.glow:SetAllPoints()
+            row.edge = U.ui.fill(row, U.STYLE.accent, "ARTWORK")
+            row.edge:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+            row.edge:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+            row.edge:SetWidth(2)
+            row.label = U.ui.text(row, 13, U.STYLE.text)
+            row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -7)
+            row.detail = U.ui.text(row, 11, U.STYLE.dim)
+            row.detail:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -4)
+            row.go = U.ui.button(row, "Map", 46)
+            row.go:SetPoint("RIGHT", row, "RIGHT", -12, 0)
             p.rows[i] = row
         end
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", p, "TOPLEFT", 18, -36 - (i - 1) * 32)
+        row:SetPoint("TOPLEFT", p, "TOPLEFT", 8, -12 - (i - 1) * 46)
         row:Show()
         return row
     end
@@ -4163,7 +4276,6 @@ do
         for _, row in ipairs(p.rows) do
             row:Hide()
         end
-        p.tracker:SetChecked(planFrame ~= nil and planFrame:IsShown())
         if not plan then
             p.footer:SetText("No plan for " .. who() .. ". Make one in Forever Buddy, or ask Claude for one.")
             p:SetHeight(64)
@@ -4178,13 +4290,14 @@ do
             local done = progress.done[i]
             row.label:SetText(i .. ". " .. plain(step.text))
             if done then
-                row.label:SetTextColor(0.5, 0.5, 0.5)
+                row.label:SetTextColor(U.ui.rgba(U.STYLE.faint))
             elseif i == current then
-                row.label:SetTextColor(1, 0.82, 0)
+                row.label:SetTextColor(U.ui.rgba(U.STYLE.accent))
             else
-                row.label:SetTextColor(1, 1, 1)
+                row.label:SetTextColor(U.ui.rgba(U.STYLE.text))
             end
             row.edge:SetShown(i == current)
+            row.glow:SetShown(i == current)
             local where = {}
             if type(step.zone) == "string" then
                 where[#where + 1] = plain(step.zone)
@@ -4202,7 +4315,7 @@ do
             end)
         end
         p.footer:SetText(doneCount() .. " of " .. #plan.steps .. " done")
-        p:SetHeight(64 + n * 32)
+        p:SetHeight(64 + n * 46)
     end
 
     local function renderErrandsTab(p)
@@ -4290,6 +4403,13 @@ do
         end
         return list
     end)(select(2, ...).settings.options, {
+        -- W1: each module's own on/off.
+        ["bags.enabled"] = U.mods.option("bags"),
+        ["map.enabled"] = U.mods.option("map"),
+        ["quest.enabled"] = U.mods.option("quest"),
+        ["tooltips.enabled"] = U.mods.option("tooltips"),
+        ["coach.enabled"] = U.mods.option("coach"),
+        ["merchant.enabled"] = U.mods.option("merchant"),
         ["window.briefing"] = { get = briefingOn, set = setBriefing },
         ["window.lockouts"] = { get = L.on, set = L.set },
         ["window.coach"] = {
@@ -4438,10 +4558,18 @@ do
     -- For the harness, which checks every type against it.
     select(2, ...).fits = U.prefs.fits
 
-    -- An option whose parent is off isn't shown at all (U1d).
+    -- An option whose parent is off isn't shown at all (U1d), all the way up
+    -- (W1: a module's options hang off its switch, and a slider off its
+    -- option).
     function OPTIONS.shows(o)
         local parent = o.parent and OPTIONS.byKey[o.parent]
-        return not parent or parent.get() and true or false
+        return not parent or (parent.get() and true or false) and OPTIONS.shows(parent)
+    end
+
+    -- How deep an option sits under parents, for its indent.
+    function OPTIONS.depth(o)
+        local parent = o.parent and OPTIONS.byKey[o.parent]
+        return parent and 1 + OPTIONS.depth(parent) or 0
     end
 
     -- Ticks every box, shows only the options whose parent is on, and lays
@@ -4621,7 +4749,7 @@ do
                 local parent = o.parent and inits[o.parent]
                 if parent then
                     local function parentOn()
-                        return OPTIONS.byKey[o.parent].get() and true or false
+                        return OPTIONS.shows(o)
                     end
                     init:SetParentInitializer(parent, parentOn)
                     if type(init.AddShownPredicate) == "function" then
@@ -4670,99 +4798,344 @@ do
         end
     end
 
-    local function pane(i)
-        local scroll = CreateFrame("ScrollFrame", nil, win, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 10, -64)
-        scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -30, 34)
-        local p = CreateFrame("Frame", nil, scroll)
-        p:SetSize(W - 44, 64)
-        scroll:SetScrollChild(p)
-        p.rows = {}
-        p.top = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        p.top:SetPoint("TOPLEFT", 12, -8)
-        p.meta = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        p.meta:SetPoint("TOPRIGHT", -8, -8)
-        p.footer = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        p.footer:SetPoint("BOTTOMLEFT", 12, 8)
-        p.footer:SetWidth(W - 70)
-        p.footer:SetJustifyH("LEFT")
-        p.scroll = scroll
-        scroll:Hide()
-        if i == 1 then
-            p.tracker = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
-            p.tracker:SetSize(24, 24)
-            p.tracker:SetPoint("TOPLEFT", 8, -4)
-            p.tracker.label = p.tracker:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            p.tracker.label:SetPoint("LEFT", p.tracker, "RIGHT", 2, 0)
-            p.tracker.label:SetText("Show the plan tracker on screen")
-            p.tracker:SetScript("OnClick", function(b)
-                if not read("InCombatLockdown") then
-                    U.setTracker(b:GetChecked() and true or false)
+    -- W1: the window's own look (bible ch. 5, the designer's own-look
+    -- prototype): our frames only, chrome from colour textures, 1px light
+    -- borders, and every colour in one STYLE table. No Blizzard templates.
+    -- Builders return their frame (and height) with a Refresh where they
+    -- show a value. (On U, not locals: the main chunk is at Lua's 200-locals
+    -- limit.)
+    U.STYLE = {
+        font = "Fonts\\FRIZQT__.TTF",
+        bg = { 0.086, 0.074, 0.058, 0.97 },
+        bgTop = { 0.125, 0.105, 0.082, 0.97 },
+        rail = { 0.062, 0.053, 0.042, 1 },
+        line = { 1, 1, 1, 0.08 },
+        lineStrong = { 1, 1, 1, 0.14 },
+        hover = { 1, 1, 1, 0.04 },
+        text = { 0.93, 0.89, 0.81, 1 },
+        dim = { 0.93, 0.89, 0.81, 0.55 },
+        faint = { 0.93, 0.89, 0.81, 0.32 },
+        accent = { 0.80, 0.56, 0.31, 1 },
+        accentSoft = { 0.80, 0.56, 0.31, 0.16 },
+        onAccent = { 0.10, 0.07, 0.04, 1 },
+    }
+    U.LAYOUT = { W = W, H = H, RAIL = 148, HEAD = 56, FOOT = 46 }
+    U.ui = {}
+
+    function U.ui.rgba(c, a)
+        return c[1], c[2], c[3], a or c[4]
+    end
+
+    function U.ui.fill(parent, c, layer)
+        local t = parent:CreateTexture(nil, layer or "BACKGROUND")
+        t:SetColorTexture(U.ui.rgba(c))
+        return t
+    end
+
+    -- A 1px border from four strips.
+    function U.ui.border(f, c)
+        local function strip()
+            return U.ui.fill(f, c or U.STYLE.line, "BORDER")
+        end
+        local t, b, l, r = strip(), strip(), strip(), strip()
+        t:SetPoint("TOPLEFT", 0, 0)
+        t:SetPoint("TOPRIGHT", 0, 0)
+        t:SetHeight(1)
+        b:SetPoint("BOTTOMLEFT", 0, 0)
+        b:SetPoint("BOTTOMRIGHT", 0, 0)
+        b:SetHeight(1)
+        l:SetPoint("TOPLEFT", 0, 0)
+        l:SetPoint("BOTTOMLEFT", 0, 0)
+        l:SetWidth(1)
+        r:SetPoint("TOPRIGHT", 0, 0)
+        r:SetPoint("BOTTOMRIGHT", 0, 0)
+        r:SetWidth(1)
+    end
+
+    function U.ui.text(parent, size, c, justify)
+        local s = parent:CreateFontString(nil, "OVERLAY")
+        s:SetFont(U.STYLE.font, size, "")
+        s:SetTextColor(U.ui.rgba(c or U.STYLE.text))
+        s:SetJustifyH(justify or "LEFT")
+        return s
+    end
+
+    -- A small bordered button; `filled` is the page's one main action.
+    function U.ui.button(parent, label, w, filled)
+        local b = CreateFrame("Button", nil, parent)
+        b:SetSize(w, 22)
+        if filled then
+            U.ui.fill(b, U.STYLE.accent):SetAllPoints()
+        else
+            U.ui.fill(b, U.STYLE.hover):SetAllPoints()
+            U.ui.border(b, U.STYLE.lineStrong)
+        end
+        b.label = U.ui.text(b, 11, filled and U.STYLE.onAccent or U.STYLE.text, "CENTER")
+        b.label:SetPoint("CENTER", b, "CENTER", 0, 0)
+        b.label:SetText(label)
+        return b
+    end
+
+    -- A switch: a CheckButton (so the client flips it on click) drawn as a
+    -- 26x14 track with a knob. `label` and `help` sit beside it.
+    function U.ui.switch(parent, label, help)
+        local f = CreateFrame("CheckButton", nil, parent)
+        f:SetSize(26, 14)
+        f.track = U.ui.fill(f, U.STYLE.lineStrong, "ARTWORK")
+        f.track:SetAllPoints()
+        f.knob = U.ui.fill(f, U.STYLE.text, "OVERLAY")
+        f.knob:SetSize(10, 10)
+        if label then
+            f.label = U.ui.text(f, 12, U.STYLE.text)
+            f.label:SetPoint("LEFT", f, "RIGHT", 10, 0)
+            f.label:SetText(label)
+        end
+        if help then
+            f.sub = U.ui.text(f, 10, U.STYLE.dim)
+            f.sub:SetPoint("TOPLEFT", f.label, "BOTTOMLEFT", 0, -4)
+            f.sub:SetWidth(U.LAYOUT.W - U.LAYOUT.RAIL - 110)
+            f.sub:SetText(help)
+        end
+        function f.Refresh()
+            local on = f:GetChecked() and true or false
+            f.track:SetColorTexture(U.ui.rgba(on and U.STYLE.accent or U.STYLE.lineStrong))
+            f.knob:SetColorTexture(U.ui.rgba(on and U.STYLE.onAccent or U.STYLE.text))
+            f.knob:ClearAllPoints()
+            f.knob:SetPoint("LEFT", f, "LEFT", on and 14 or 2, 0)
+        end
+        return f
+    end
+
+    -- A number option (P4c): a thin track with an accent fill and a thumb,
+    -- its label above and its value in a box beside it ("40%"). Dragging
+    -- sets it; nothing changes in combat (the slider goes back).
+    function U.ui.slider(parent, o)
+        local d = o.decl
+        local s = CreateFrame("Slider", nil, parent)
+        pcall(s.SetOrientation, s, "HORIZONTAL")
+        s:SetSize(U.LAYOUT.W - U.LAYOUT.RAIL - 150, 14)
+        s:SetMinMaxValues(d.min, d.max)
+        s:SetValueStep(d.step or 0.05)
+        s:SetObeyStepOnDrag(true)
+        s.track = U.ui.fill(s, U.STYLE.lineStrong, "ARTWORK")
+        s.track:SetPoint("LEFT", s, "LEFT", 0, 0)
+        s.track:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+        s.track:SetHeight(3)
+        s.fill = U.ui.fill(s, U.STYLE.accent, "OVERLAY")
+        s.fill:SetPoint("LEFT", s.track, "LEFT", 0, 0)
+        s.fill:SetHeight(3)
+        -- The thumb: a plain bronze diamond (our accent, turned), not
+        -- Blizzard's knob.
+        s.thumb = U.ui.fill(s, U.STYLE.accent, "OVERLAY")
+        s.thumb:SetSize(10, 10)
+        pcall(s.thumb.SetRotation, s.thumb, math.rad(45))
+        s:SetThumbTexture(s.thumb)
+        s.slider, s.option = true, o
+        s.label = U.ui.text(s, 11, U.STYLE.dim)
+        s.label:SetPoint("BOTTOMLEFT", s, "TOPLEFT", 0, 6)
+        s.label:SetText(o.label)
+        local box = CreateFrame("Frame", nil, s)
+        box:SetSize(48, 22)
+        box:SetPoint("LEFT", s, "RIGHT", 12, 0)
+        U.ui.fill(box, U.STYLE.hover):SetAllPoints()
+        U.ui.border(box, U.STYLE.lineStrong)
+        s.value = U.ui.text(box, 11, U.STYLE.text, "CENTER")
+        s.value:SetPoint("CENTER", box, "CENTER", 0, 0)
+        s:SetScript("OnValueChanged", function(self, v, byUser)
+            v = math.floor(v * 100 + 0.5) / 100
+            self.value:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+            local width = (U.LAYOUT.W - U.LAYOUT.RAIL - 150) * (v - d.min) / (d.max - d.min)
+            self.fill:SetWidth(math.max(width, 1))
+            if byUser then
+                if not read("InCombatLockdown") and not pcall(o.set, v) then
+                    U.errors = U.errors + 1
+                end
+                U.refresh()
+            end
+        end)
+        OPTIONS.tip(s)
+        return s
+    end
+
+    -- One option as a row of the window: a switch with its label and help,
+    -- or a slider. Its control goes on `list` (the page's .checks).
+    function U.ui.optionRow(parent, o, list)
+        local cb
+        if o.decl.type == "number" then
+            cb = U.ui.slider(parent, o)
+            cb.height = 52
+        else
+            cb = U.ui.switch(parent, o.label, o.description)
+            cb.option = o
+            -- A help line long enough to wrap takes a second line.
+            cb.height = #(o.description or "") > 62 and 60 or 46
+            cb:SetScript("OnClick", function(b)
+                -- Nothing changes in combat: the switch goes back.
+                if not read("InCombatLockdown") and not pcall(o.set, b:GetChecked() and true or false) then
+                    U.errors = U.errors + 1
                 end
                 U.refresh()
             end)
-        elseif i == 5 then
-            p.checks = buildOptions(p, -8)
-            p:SetHeight(380)
+            OPTIONS.tip(cb)
         end
+        list[#list + 1] = cb
+        return cb
+    end
+
+    -- Shows each row's value, hides the ones whose parent is off, and lays
+    -- the rest out top to bottom so a hidden one leaves no gap. `root` is
+    -- the depth that isn't indented (a module page's options hang off its
+    -- switch, one level down).
+    function U.ui.layout(page)
+        local y = -14
+        for _, item in ipairs(page.items) do
+            if item.head then
+                item.head:ClearAllPoints()
+                item.head:SetPoint("TOPLEFT", page, "TOPLEFT", 20, y - 6)
+                y = y - 30
+            else
+                local cb, o = item.cb, item.cb.option
+                if cb.slider then
+                    cb:SetValue(o.get())
+                else
+                    cb:SetChecked(o.get() and true or false)
+                    cb.Refresh()
+                end
+                local shown = OPTIONS.shows(o)
+                cb:SetShown(shown)
+                if shown then
+                    local x = 20 + 36 * math.max(OPTIONS.depth(o) - (page.root or 0), 0)
+                    cb:ClearAllPoints()
+                    cb:SetPoint("TOPLEFT", page, "TOPLEFT", x, y - (cb.slider and 22 or 2))
+                    y = y - cb.height
+                end
+            end
+        end
+        page:SetHeight(-y + 10)
+    end
+
+    -- A scrolling page in the content area, scrolled by the mouse wheel.
+    function U.ui.page(key)
+        local L = U.LAYOUT
+        local scroll = CreateFrame("ScrollFrame", nil, win)
+        scroll:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 2, -L.HEAD)
+        scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, L.FOOT + 1)
+        local p = CreateFrame("Frame", nil, scroll)
+        p:SetSize(L.W - L.RAIL - 4, 64)
+        scroll:SetScrollChild(p)
+        scroll:EnableMouseWheel(true)
+        scroll:SetScript("OnMouseWheel", function(sf, delta)
+            local range = sf:GetVerticalScrollRange() or 0
+            local v = math.max(0, math.min(range, (sf:GetVerticalScroll() or 0) - delta * 40))
+            sf:SetVerticalScroll(v)
+        end)
+        p.scroll, p.key, p.rows, p.items = scroll, key, {}, {}
+        scroll:Hide()
+        win.pages[key] = p
+        return p
+    end
+
+    -- Tonight's pages: Plan, Lists, Errands and Cleanup, drawn by RENDER.
+    local function pane(i)
+        local p = U.ui.page(i)
+        p.top = U.ui.text(p, 11, U.STYLE.dim)
+        p.top:SetPoint("TOPLEFT", 20, -12)
+        p.meta = U.ui.text(p, 10, U.STYLE.faint, "RIGHT")
+        p.meta:SetPoint("TOPRIGHT", -20, -12)
+        p.footer = U.ui.text(p, 10, U.STYLE.dim)
+        p.footer:SetPoint("BOTTOMLEFT", 20, 8)
+        p.footer:SetWidth(U.LAYOUT.W - U.LAYOUT.RAIL - 44)
         panes[i] = p
     end
 
-    -- EllesmereUI's look (R3a, its SKINNING_API.md): with EllesmereUI
-    -- installed and its skinning on for us, it hands us `S` (U.skin) and
-    -- paints the window in the player's theme. Its calls are idempotent and
-    -- change art by alpha only. Without EllesmereUI none of this runs. (On U,
-    -- not in locals: this file is at Lua 5.1's 200-locals limit.)
-    function U.skinned(f, frame, ...)
-        if type(f) == "function" and frame and not pcall(f, frame, ...) then
-            U.errors = U.errors + 1
+    -- A module's page (built the first time it opens): its switch at the
+    -- top right, then its options, with sliders under their parent.
+    function U.ui.modulePage(id)
+        local p = U.ui.page(id)
+        p.root = 1
+        p.checks = {}
+        for _, o in ipairs(OPTIONS) do
+            if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch then
+                p.items[#p.items + 1] = { cb = U.ui.optionRow(p, o, p.checks) }
+            end
         end
+        return p
     end
 
-    -- Shows tab `i` as the selected one in EllesmereUI's tab style: we
-    -- switch tabs ourselves, so it's told which.
-    function U.skinTabs(i)
-        if U.skin and win then
-            for k, tab in ipairs(win.Tabs) do
-                U.skinned(U.skin.SetTabSelection, tab, k == i)
+    -- The Settings page: what isn't a module, under its section headings.
+    function U.ui.settingsPage()
+        local p = U.ui.page(5)
+        p.checks = {}
+        local section
+        for _, o in ipairs(OPTIONS) do
+            if o.key and not U.ui.inModule(o) then
+                if o.decl.section ~= section then
+                    section = o.decl.section
+                    local h = U.ui.text(p, 10, U.STYLE.faint)
+                    h:SetText(section)
+                    p.items[#p.items + 1] = { head = h }
+                end
+                p.items[#p.items + 1] = { cb = U.ui.optionRow(p, o, p.checks) }
+            end
+        end
+        panes[5] = p
+        return p
+    end
+
+    -- Whether an option belongs to module `id` (or, with no id, to any):
+    -- by its module, or listed by the module (Settings.lua `modules`).
+    function U.ui.inModule(o, id)
+        for _, m in ipairs(U.mods.declared.modules or {}) do
+            if not id or m.id == id then
+                if o.decl.module == m.id then
+                    return m
+                end
+                for _, key in ipairs(m.options or {}) do
+                    if key == o.key then
+                        return m
+                    end
+                end
             end
         end
     end
 
-    function U.applySkin()
-        local S = U.skin
-        if not S or not win then
-            return
-        end
-        U.skinned(S.Shell, win)
-        U.skinned(S.CloseButton, win.CloseButton)
-        for _, tab in ipairs(win.Tabs) do
-            U.skinned(S.Tab, tab)
-        end
-        for _, p in ipairs(panes) do
-            U.skinned(S.ScrollBar, p.scroll.ScrollBar)
-            U.skinned(S.Checkbox, p.tracker)
-            for _, cb in ipairs(p.checks or {}) do
-                U.skinned(S.Checkbox, cb)
-            end
-        end
-        U.skinTabs(win.current)
-    end
+    -- (W1: the window has its own look now, so it no longer asks EllesmereUI
+    -- to skin it, R3a. Nothing in it is a Blizzard template to repaint.)
 
-    if type(EllesmereUI) == "table" and type(EllesmereUI.RegisterSkin) == "function" then
-        pcall(EllesmereUI.RegisterSkin, "ForeverBuddy", function(S)
-            U.skin = S
-            U.applySkin()
+    -- The rail: Tonight's pages with their counts, then the modules with a
+    -- dot for on or off, and Settings at the foot. Each is a Button; the
+    -- Tonight ones and Settings are win.Tabs[1..5], the modules win.mods[id].
+    function U.ui.railButton(name, label, y, key)
+        local L = U.LAYOUT
+        local b = CreateFrame("Button", name, win)
+        b:SetSize(L.RAIL, 28)
+        b:SetPoint("TOPLEFT", win, "TOPLEFT", 1, y)
+        b.here = U.ui.fill(b, U.STYLE.hover)
+        b.here:SetAllPoints()
+        b.bar = U.ui.fill(b, U.STYLE.accent, "ARTWORK")
+        b.bar:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+        b.bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+        b.bar:SetWidth(2)
+        b.label = U.ui.text(b, 12, U.STYLE.dim)
+        b.label:SetPoint("LEFT", b, "LEFT", 16, 0)
+        b.label:SetText(label)
+        b.key = key
+        b:SetScript("OnClick", function()
+            U.show(key)
         end)
+        return b
     end
 
     local function build()
-        win = CreateFrame("Frame", "ForeverBuddyWindow", UIParent, "ButtonFrameTemplate")
+        local L = U.LAYOUT
+        win = CreateFrame("Frame", "ForeverBuddyWindow", UIParent)
         win:SetSize(W, H)
         win:SetFrameStrata("HIGH")
         win:SetToplevel(true)
         win:SetClampedToScreen(true)
         win:SetMovable(true)
+        win:EnableMouse(true)
+        win.pages = {}
         local at = cfg().window
         win:ClearAllPoints()
         if type(at) == "table" and type(at[1]) == "string" and type(at[3]) == "number" and type(at[4]) == "number" then
@@ -4770,14 +5143,58 @@ do
         else
             win:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
         end
-        pcall(win.SetTitle, win, "Forever Buddy")
-        pcall(win.SetPortraitToAsset, win, ICON)
         win.title = "Forever Buddy"
-        -- Moved by its title bar; where it was left is kept.
+        local bg = U.ui.fill(win, { 1, 1, 1, 1 })
+        bg:SetAllPoints()
+        if type(CreateColor) == "function" then
+            pcall(bg.SetGradient, bg, "VERTICAL", CreateColor(U.ui.rgba(U.STYLE.bg)),
+                CreateColor(U.ui.rgba(U.STYLE.bgTop)))
+        end
+        U.ui.border(win, U.STYLE.lineStrong)
+        local rail = U.ui.fill(win, U.STYLE.rail)
+        rail:SetPoint("TOPLEFT", win, "TOPLEFT", 1, -1)
+        rail:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 1)
+        rail:SetWidth(L.RAIL)
+        local railLine = U.ui.fill(win, U.STYLE.line, "BORDER")
+        railLine:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 1, -1)
+        railLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 1, 1)
+        railLine:SetWidth(1)
+        local footLine = U.ui.fill(win, U.STYLE.line, "BORDER")
+        footLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 2, L.FOOT)
+        footLine:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, L.FOOT)
+        footLine:SetHeight(1)
+
+        -- Who: our shield, the name and this character.
+        local icon = win:CreateTexture(nil, "ARTWORK")
+        icon:SetTexture(ICON)
+        icon:SetSize(26, 26)
+        icon:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -13)
+        local name = U.ui.text(win, 13, U.STYLE.text)
+        name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 8, -1)
+        name:SetText("Forever Buddy")
+        win.who = U.ui.text(win, 10, U.STYLE.dim)
+        win.who:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -3)
+
+        -- The page's title and its line (for Tonight's pages, how fresh).
+        win.heading = U.ui.text(win, 17, U.STYLE.text)
+        win.heading:SetPoint("TOPLEFT", win, "TOPLEFT", L.RAIL + 22, -16)
+        win.fresh = U.ui.text(win, 10, U.STYLE.dim)
+        win.fresh:SetPoint("TOPLEFT", win.heading, "BOTTOMLEFT", 0, -4)
+
+        -- Close (Esc too), and moved by the header; where it was left is kept.
+        win.CloseButton = CreateFrame("Button", nil, win)
+        win.CloseButton:SetSize(24, 24)
+        win.CloseButton:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -14)
+        local x = U.ui.text(win.CloseButton, 16, U.STYLE.dim, "CENTER")
+        x:SetPoint("CENTER", win.CloseButton, "CENTER", 0, 0)
+        x:SetText("×")
+        win.CloseButton:SetScript("OnClick", function()
+            win:Hide()
+        end)
         local grip = CreateFrame("Frame", nil, win)
-        grip:SetPoint("TOPLEFT", 60, 0)
-        grip:SetPoint("TOPRIGHT", -26, 0)
-        grip:SetHeight(24)
+        grip:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
+        grip:SetPoint("TOPRIGHT", win, "TOPRIGHT", -40, 0)
+        grip:SetHeight(L.HEAD - 8)
         grip:EnableMouse(true)
         grip:RegisterForDrag("LeftButton")
         grip:SetScript("OnDragStart", function()
@@ -4785,66 +5202,151 @@ do
         end)
         grip:SetScript("OnDragStop", function()
             win:StopMovingOrSizing()
-            local point, _, rel, x, y = win:GetPoint()
-            if type(point) == "string" and type(x) == "number" and type(y) == "number" then
-                cfg().window = { point, rel, x, y }
+            local point, _, rel, px, py = win:GetPoint()
+            if type(point) == "string" and type(px) == "number" and type(py) == "number" then
+                cfg().window = { point, rel, px, py }
             end
         end)
         if type(UISpecialFrames) == "table" then
             table.insert(UISpecialFrames, "ForeverBuddyWindow") -- Esc closes it
         end
-        win.fresh = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        win.fresh:SetPoint("BOTTOMLEFT", 14, 12)
+
+        -- The rail.
+        win.Tabs, win.mods = {}, {}
+        local y = -L.HEAD - 4
+        local function group(label)
+            local g = U.ui.text(win, 10, U.STYLE.faint)
+            g:SetPoint("TOPLEFT", win, "TOPLEFT", 16, y - 12)
+            g:SetText(label)
+            y = y - 30
+        end
+        group("Tonight")
+        for i = 1, 4 do
+            local b = U.ui.railButton("ForeverBuddyWindowTab" .. i, TABS[i], y, i)
+            b.count = U.ui.text(b, 10, U.STYLE.faint, "RIGHT")
+            b.count:SetPoint("RIGHT", b, "RIGHT", -14, 0)
+            win.Tabs[i] = b
+            y = y - 28
+        end
+        group("Modules")
+        for _, m in ipairs(U.mods.declared.modules or {}) do
+            if U.mods.byId[m.id] then
+                local b = U.ui.railButton("ForeverBuddyWindowModule_" .. m.id, m.label, y, m.id)
+                b.dot = U.ui.fill(b, U.STYLE.accent, "ARTWORK")
+                b.dot:SetSize(6, 6)
+                b.dot:SetPoint("RIGHT", b, "RIGHT", -16, 0)
+                b.module = m
+                win.mods[m.id] = b
+                y = y - 28
+            end
+        end
+        local settings = U.ui.railButton("ForeverBuddyWindowTab5", TABS[5], 0, 5)
+        settings:ClearAllPoints()
+        settings:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 10)
+        win.Tabs[5] = settings
+
+        -- The footer: the plan tracker's switch on Plan, and Sync.
+        win.tracker = U.ui.switch(win, "Show the plan tracker on screen")
+        win.tracker:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", L.RAIL + 22, 16)
+        win.tracker:SetScript("OnClick", function(b)
+            if not read("InCombatLockdown") then
+                U.setTracker(b:GetChecked() and true or false)
+            end
+            U.refresh()
+        end)
         -- B4: Sync reloads, ReloadUI() first thing in the click. The typed
-        -- way stays as the line beside it once the game has refused.
-        win.sync = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        win.sync:SetPoint("BOTTOMRIGHT", -14, 12)
-        win.syncButton = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-        win.syncButton:SetSize(70, 20)
-        win.syncButton:SetPoint("BOTTOMRIGHT", -10, 8)
-        win.syncButton:SetText("Sync")
+        -- way stays as the line in its place once the game has refused.
+        win.sync = U.ui.text(win, 10, U.STYLE.dim, "RIGHT")
+        win.sync:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -16, 18)
+        win.syncButton = U.ui.button(win, "Sync", 64, true)
+        win.syncButton:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -14, 12)
         win.syncButton:SetScript("OnClick", function()
             read(ReloadUI)
             U.sync.asked()
         end)
-        win.Tabs = {}
-        for i, name in ipairs(TABS) do
-            local tab = CreateFrame("Button", "ForeverBuddyWindowTab" .. i, win, "PanelTabButtonTemplate")
-            tab:SetID(i)
-            tab:SetText(name)
-            if i == 1 then
-                tab:SetPoint("TOPLEFT", win, "BOTTOMLEFT", 11, 2)
-            else
-                tab:SetPoint("TOPLEFT", win.Tabs[i - 1], "TOPRIGHT", 3, 0)
+
+        -- A module's page has its switch at the top right.
+        win.modSwitch = U.ui.switch(win)
+        win.modSwitch:SetPoint("TOPRIGHT", win, "TOPRIGHT", -52, -22)
+        win.modSwitch:SetScript("OnClick", function(b)
+            local id = win.current
+            if U.mods.byId[id] then
+                if not read("InCombatLockdown") then
+                    U.mods.set(id, b:GetChecked() and true or false)
+                end
+                U.refresh()
             end
-            tab:SetScript("OnClick", function()
-                U.show(i)
-            end)
-            if type(PanelTemplates_TabResize) == "function" then
-                pcall(PanelTemplates_TabResize, tab, 0)
-            end
-            win.Tabs[i] = tab
-        end
-        if type(PanelTemplates_SetNumTabs) == "function" then
-            pcall(PanelTemplates_SetNumTabs, win, #TABS)
-        end
-        for i = 1, #TABS do
+        end)
+
+        for i = 1, 4 do
             pane(i)
         end
+        U.ui.settingsPage()
+        panes[1].tracker = win.tracker
         win.panes = panes
         win:Hide()
-        U.applySkin()
     end
 
-    -- Redraws the open tab and both copies of the settings. Nothing changes
-    -- in combat (INGAME §4).
+    -- The page for `key`: 1-4 Tonight, 5 Settings, or a module's id (its
+    -- page is built the first time it opens).
+    function U.ui.pageFor(key)
+        if win.pages[key] then
+            return win.pages[key]
+        end
+        if U.mods.byId[key] then
+            return U.ui.modulePage(key)
+        end
+    end
+
+    -- The rail as it is now: where you are, Tonight's counts, the modules'
+    -- dots.
+    function U.ui.rail()
+        for _, b in pairs(win.Tabs) do
+            local here = b.key == win.current
+            b.here:SetShown(here)
+            b.bar:SetShown(here)
+            b.label:SetTextColor(U.ui.rgba(here and U.STYLE.text or U.STYLE.dim))
+        end
+        for id, b in pairs(win.mods) do
+            local here, on = id == win.current, U.mods.on(id)
+            b.here:SetShown(here)
+            b.bar:SetShown(here)
+            b.label:SetTextColor(U.ui.rgba(here and U.STYLE.text or on and U.STYLE.dim or U.STYLE.faint))
+            b.dot:SetColorTexture(U.ui.rgba(on and U.STYLE.accent or U.STYLE.lineStrong))
+        end
+        local counts = {
+            plan and math.max(#plan.steps - doneCount(), 0) or 0,
+            (function()
+                local s = listsSlot()
+                return s and type(s.lists) == "table" and #s.lists or 0
+            end)(),
+            #C.errands(),
+            #(select(1, C.rows())),
+        }
+        for i = 1, 4 do
+            local n = counts[i]
+            win.Tabs[i].count:SetText(n and n > 0 and tostring(n) or "")
+        end
+    end
+
+    -- Tonight's page titles; the Settings page's.
+    U.TITLES = { "Tonight's plan", "Lists", "Errands", "Cleanup", "Settings" }
+
+    -- Redraws the open page, the rail and both copies of the settings.
+    -- Nothing changes in combat (INGAME §4): the settings only show their
+    -- values again (a switch flipped in combat goes back).
     function U.refresh()
+        local page = win and win.current and win.pages[win.current]
         if read("InCombatLockdown") then
             if optionChecks then
                 refreshChecks(optionChecks)
             end
-            if win then
-                refreshChecks(panes[5].checks)
+            if page and page.checks then
+                U.ui.layout(page)
+            end
+            if win and U.mods.byId[win.current] then
+                win.modSwitch:SetChecked(U.mods.on(win.current))
+                win.modSwitch.Refresh()
             end
             return
         end
@@ -4854,33 +5356,65 @@ do
         if not win or not win:IsShown() then
             return
         end
-        refreshChecks(panes[5].checks)
-        local i = win.current
-        if not pcall(RENDER[i], panes[i]) then
+        local key = win.current
+        local m = U.mods.byId[key] and U.ui.inModuleDecl(key)
+        if not pcall(U.ui.rail) then
             U.errors = U.errors + 1
         end
-        win.fresh:SetText(U.fresh(newest(SOURCES[i])))
+        if type(key) == "number" and key <= 4 then
+            if not pcall(RENDER[key], panes[key]) then
+                U.errors = U.errors + 1
+            end
+            win.heading:SetText(U.TITLES[key])
+            win.fresh:SetText(U.fresh(newest(SOURCES[key])))
+        else
+            U.ui.layout(page)
+            win.heading:SetText(m and m.label or U.TITLES[5])
+            win.fresh:SetText(m and m.sub or "The rest of Forever Buddy's options.")
+        end
+        win.who:SetText(who() .. (character and character.level and (", level " .. tostring(character.level)) or ""))
+        win.tracker:SetShown(key == 1)
+        win.tracker:SetChecked(planFrame ~= nil and planFrame:IsShown())
+        win.tracker.Refresh()
+        win.modSwitch:SetShown(m ~= nil)
+        if m then
+            win.modSwitch:SetChecked(U.mods.on(key))
+            win.modSwitch.Refresh()
+        end
         -- The button, or once the game has refused it, the typed way.
         local refused = U.sync.refused()
         win.syncButton:SetShown(not refused)
         win.sync:SetText(refused and "Type /reload to sync" or "")
     end
 
-    -- Opens on tab `i`, or the last one used.
-    function U.show(i)
+    -- A module's declaration (label, its line, options) by id.
+    function U.ui.inModuleDecl(id)
+        for _, m in ipairs(U.mods.declared.modules or {}) do
+            if m.id == id then
+                return m
+            end
+        end
+    end
+
+    -- Opens on page `key` (1-4 Tonight, 5 Settings, or a module's id), or
+    -- the last one used.
+    function U.show(key)
         if not win then
             build()
         end
-        i = TABS[i] and i or (TABS[cfg().tab] and cfg().tab) or 1
-        cfg().tab = i
-        win.current = i
-        for k, p in ipairs(panes) do
-            p.scroll:SetShown(k == i)
+        local function known(k)
+            return (type(k) == "number" and TABS[k] ~= nil) or (type(k) == "string" and U.mods.byId[k] ~= nil)
         end
-        if type(PanelTemplates_SetTab) == "function" then
-            pcall(PanelTemplates_SetTab, win, i)
+        key = known(key) and key or (known(cfg().tab) and cfg().tab) or 1
+        cfg().tab = key
+        win.current = key
+        local page = U.ui.pageFor(key)
+        for k, p in pairs(win.pages) do
+            p.scroll:SetShown(p == page)
+            if k == key then
+                p.scroll:SetVerticalScroll(0)
+            end
         end
-        U.skinTabs(i)
         win:Show()
         U.refresh()
     end
@@ -5210,8 +5744,13 @@ local function slash(msg)
         setBriefing(cmd == "brief on")
         say(GOLD_PREFIX .. "login briefing " .. (briefingOn() and "on." or "off."))
     elseif cmd == "coach" then
-        S.guarded(S.setCoach, not S.coachOn())
-        say(GOLD_PREFIX .. "session coach " .. (S.coachOn() and "on." or "off."))
+        -- Asking for the coach turns its module on too (W1).
+        local on = not S.coachShows()
+        if on and not U.mods.on("coach") then
+            U.mods.set("coach", true)
+        end
+        S.guarded(S.setCoach, on)
+        say(GOLD_PREFIX .. "session coach " .. (S.coachShows() and "on." or "off."))
     elseif cmd == "coach combat" then
         S.setCoachCombat(not S.hidesInCombat())
         say(GOLD_PREFIX .. "session coach " .. (S.hidesInCombat() and "hides in combat." or "stays in combat."))
@@ -5338,7 +5877,7 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     end
     -- The coach counts from the session as joined above.
     S.guarded(S.xpBaseline)
-    if S.coachOn() then
+    if S.coachShows() then
         S.guarded(S.showCoach)
     end
 end
@@ -5355,7 +5894,7 @@ handlers.PLAYER_REGEN_DISABLED = function()
 end
 
 handlers.PLAYER_REGEN_ENABLED = function()
-    if S.coachOn() then
+    if S.coachShows() then
         S.guarded(S.showCoach)
     end
     -- L2: entered while fighting, so the line waited.

@@ -125,19 +125,20 @@ local function tabs(sim, state)
     sim:Click(sim:Get("ForeverBuddyWindowTab5"))
     sim:Advance(1)
     shot(sim, state .. "-settings")
-    -- P4c: with the map's fading on (at 40%), its slider shows indented
-    -- under it; the pane is scrolled down so the whole Map section shows.
+    -- W1: the Map module's page, with its fading on (at 40%) so the slider
+    -- shows indented under it (P4c).
     local saved = sim:Get("ForeverBuddySettings")
     saved.map = { fadeAlpha = 0.4 }
-    local pane = sim:Get("ForeverBuddyWindow").panes[5]
-    for _, cb in ipairs(pane.checks) do
+    local win = sim:Get("ForeverBuddyWindow")
+    sim:Click(win.mods.map)
+    sim:Advance(1)
+    for _, cb in ipairs(win.pages.map.checks) do
         if cb.option and cb.option.key == "map.fade" then
             sim:Click(cb)
         end
     end
-    pane.scroll:SetVerticalScroll(150)
     sim:Advance(1)
-    shot(sim, state .. "-settings-map")
+    shot(sim, state .. "-module-map")
 end
 
 sh("mkdir -p " .. quote(out))
