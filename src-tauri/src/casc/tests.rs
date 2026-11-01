@@ -274,6 +274,20 @@ fn a_stale_index_is_caught_by_the_archive_header() {
 }
 
 #[test]
+fn a_zeroed_header_from_the_streaming_downloader_is_accepted() {
+    let game = install();
+    let casc = Casc::open(&game.flavor).unwrap();
+    // The downloader writes some blocks without the verification header:
+    // an all-zero one reads; only a wrong key is the stale-index error.
+    let archive = game.data.join("data").join("data.000");
+    let mut bytes = std::fs::read(&archive).unwrap();
+    bytes[..30].fill(0);
+    std::fs::write(&archive, bytes).unwrap();
+    let ckey = casc.ckeys(&[ICON].into())[&ICON];
+    assert!(casc.by_ckey(&ckey).is_ok());
+}
+
+#[test]
 fn a_missing_or_foreign_install_is_an_error_not_a_panic() {
     let tmp = tempfile::tempdir().unwrap();
     assert!(Casc::open(&tmp.path().join("_classic_beta_")).is_err());

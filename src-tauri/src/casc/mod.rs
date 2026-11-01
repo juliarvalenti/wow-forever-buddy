@@ -17,9 +17,14 @@ mod blte;
 mod bytes;
 mod config;
 mod encoding;
+mod extract;
 mod icons;
 mod idx;
 mod root;
+#[cfg(feature = "casc-dev")]
+mod salsa;
+#[cfg(feature = "casc-dev")]
+mod tact;
 
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
@@ -28,8 +33,15 @@ use std::sync::OnceLock;
 
 use crate::fsx::read::{open_shared, safe_read};
 
-pub use config::BuildInfo;
+pub use config::{hex, BuildInfo};
+pub use extract::{parse_listfile, run, Entry, Summary, DEFAULT_FILTERS};
 pub use icons::{build_dir, cache_path, IconCache};
+#[cfg(feature = "casc-dev")]
+pub use tact::{load as load_tact_keys, parse as parse_tact_keys, TactKeys};
+// The shipped reader has no key table to load, so the type the store holds
+// is blte's empty placeholder: `None` is its only possible value.
+#[cfg(not(feature = "casc-dev"))]
+use blte::TactKeys;
 
 /// A 16-byte content or encoding key.
 pub type Key = [u8; 16];
@@ -87,6 +99,10 @@ struct Store {
     indexes: [Option<PathBuf>; idx::BUCKETS],
     /// Each bucket's index, read on first use (`None` if it wouldn't parse).
     buckets: [OnceLock<Option<idx::Entries>>; idx::BUCKETS],
+    /// The public TACT keys, when the caller loaded them; without them
+    /// encrypted files fail with `Encrypted`, as they always did. Only
+    /// the casc-dev build can hold any (see the type note above).
+    keys: Option<TactKeys>,
 }
 
 /// The installed build for a flavor folder (`<WoW root>/_classic_beta_`):
@@ -126,6 +142,7 @@ impl Casc {
             indexes: idx::newest(&data_dir)?,
             data_dir,
             buckets: std::array::from_fn(|_| OnceLock::new()),
+            keys: None,
         };
         let encoding = encoding::Encoding::parse(store.read(&encoding_ekey, MAX_META)?)?;
         let root_ekey = encoding
@@ -145,9 +162,22 @@ impl Casc {
         self.store.indexes.iter().flatten().cloned().collect()
     }
 
+    /// Reads encrypted files too, under the public TACT keys. Only the
+    /// casc-dev build has this; the shipped reader is unencrypted-only.
+    #[cfg(feature = "casc-dev")]
+    pub fn with_keys(mut self, keys: TactKeys) -> Casc {
+        self.store.keys = Some(keys);
+        self
+    }
+
     /// Content keys for the FileDataIDs that exist in this build.
     pub fn ckeys(&self, ids: &HashSet<u32>) -> HashMap<u32, Key> {
         self.root.ckeys(ids)
+    }
+
+    /// Every FileDataID this build's root lists (enUS blocks), ascending.
+    pub fn file_ids(&self) -> CascResult<Vec<u32>> {
+        self.root.ids()
     }
 
     pub fn by_ckey(&self, ckey: &Key) -> CascResult<Vec<u8>> {
@@ -188,16 +218,21 @@ impl Store {
             file.read_exact(&mut span)?;
         } // handle closed before decoding
         check_archive_header(&span, ekey, loc.size)?;
-        blte::decode(&span[ARCHIVE_HEADER..], cap)
+        blte::decode_with(&span[ARCHIVE_HEADER..], cap, self.keys.as_ref())
     }
 }
 
 /// `data.NNN` puts the encoding key (reversed) and size before each file; a
-/// mismatch means the index is stale (the game is patching).
+/// mismatch means the index is stale (the game is patching). Blocks the
+/// streaming downloader writes carry no verification header: an all-zero
+/// key is accepted, and a wrong offset still fails in the BLTE decode.
 fn check_archive_header(span: &[u8], ekey: &Key, size: u32) -> CascResult<()> {
     let mut b = bytes::Bytes::new(span);
     let mut stored: Key = b.array("archive header")?;
     stored.reverse();
+    if stored.iter().all(|&byte| byte == 0) {
+        return Ok(());
+    }
     let stored_size = b.u32_le("archive header")?;
     if stored[..9] != ekey[..9] || stored_size != size {
         return Err(CascError::Bad("archive header"));

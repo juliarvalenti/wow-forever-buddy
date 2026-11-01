@@ -71,6 +71,16 @@ impl Root {
         found
     }
 
+    /// Every FileDataID in the blocks we'd use, ascending, one scan. For
+    /// asking the listfile-free questions: what does this build contain?
+    pub fn ids(&self) -> CascResult<Vec<u32>> {
+        let mut ids = Vec::new();
+        self.scan(&mut |id, _| ids.push(id))?;
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+
     /// Calls `f(fileDataId, ckey)` for each file in a block we'd use.
     fn scan(&self, f: &mut dyn FnMut(u32, &Key)) -> CascResult<()> {
         let mut b = Bytes::new(&self.data[self.start..]);
