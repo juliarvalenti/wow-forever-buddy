@@ -171,6 +171,26 @@
       "step": 0.05
     },
     {
+      "id": "bags.junk",
+      "module": "bags",
+      "section": "Bags",
+      "type": "bool",
+      "default": false,
+      "label": "Junk in your bags",
+      "help": "A small coin on grey items, the ones only worth selling, in your bags and bank.",
+      "acts": false
+    },
+    {
+      "id": "bags.itemLevel",
+      "module": "bags",
+      "section": "Bags",
+      "type": "bool",
+      "default": false,
+      "label": "Item level on gear",
+      "help": "The item level on each piece of gear in your bags and bank, in its quality colour.",
+      "acts": false
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",
@@ -212,6 +232,14 @@
         "quest.trackerFade": true
       },
       "say": "The quest tracker almost disappears until you move the mouse over it."
+    },
+    {
+      "id": "bags.nothingToSell",
+      "when": {
+        "bags.junk": false,
+        "window.bagMarks": false
+      },
+      "say": "Nothing in your bags will show what's only worth selling."
     }
   ],
   "presets": [
@@ -219,6 +247,8 @@
       "id": "quiet",
       "label": "Quiet",
       "values": {
+        "bags.itemLevel": false,
+        "bags.junk": false,
         "map.coords": false,
         "map.fade": false,
         "map.minimap": false,
@@ -240,6 +270,8 @@
       "id": "helpful",
       "label": "Helpful",
       "values": {
+        "bags.itemLevel": true,
+        "bags.junk": true,
         "map.coords": true,
         "map.fade": false,
         "map.minimap": false,
@@ -261,6 +293,8 @@
       "id": "everything",
       "label": "Everything",
       "values": {
+        "bags.itemLevel": true,
+        "bags.junk": true,
         "map.coords": true,
         "map.fade": true,
         "map.fadeAlpha": 0.5,

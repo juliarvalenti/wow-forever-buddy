@@ -1741,6 +1741,78 @@ local CLEANUP = 'ForeverBuddyData_Cleanup = {\n\t["schema"] = 1,\n\t["stamp"] = 
     .. '\t\t[1] = { 2589, "sell", 0, "grey", 0, 6948, "send", 2, "", 0, 10005, "send", 2, "upgrade", 9 },\n'
     .. '\t},\n}\n'
 
+-- P4d: the Bags module, display only. Off until turned on (designer: no
+-- surprise on an update). Then junk gets a coin, and gear its item level in
+-- its quality's colour at the top left (beside a bag mark if there is one),
+-- in the bags and in the bank. Each option off takes its part away, and an
+-- item the client keeps secret gets nothing.
+local function extrasOf(button)
+    local out = {}
+    for _, ch in ipairs(button.children) do
+        if ch.shown then
+            if ch.texture == "Interface\\Buttons\\UI-GroupLoot-Coin-Up" then
+                out.junk = true
+            elseif ch.text then
+                out.level, out.color, out.x = tostring(ch.text), ch.color, ch.points[#ch.points][4]
+            end
+        end
+    end
+    return out
+end
+
+scenario("bags", function()
+    local c = client({ slots = { ["Data/Cleanup.lua"] = CLEANUP } })
+    c.world.bags[0].slots[3] = { id = 4865, count = 2 }
+    c.world.bags[0].slots[4] = { id = 10001, count = 1 }
+    c.world.bags[0].slots[5] = { id = 10002, count = 1, unreadable = true }
+    c.world.bags[0].slots[6] = { id = 10005, count = 1 } -- marked to send
+    c.world.bags[6].slots[1] = { id = 10010, count = 1 }
+    c.world.bags[6].slots[2] = { id = 4865, count = 1 }
+    c.login(nil)
+    c.advance(5)
+    c.openBags()
+    c.advance(1)
+    local bag = c.global("ContainerFrame1")
+    local function at(slot)
+        return extrasOf(bag.buttons[slot])
+    end
+    eq(at(3).junk or at(4).level, nil, "off by default: nothing drawn")
+    c.click(setting(c, "Junk in your bags"))
+    c.click(setting(c, "Item level on gear"))
+    eq(at(3).junk, true, "a coin on the grey pelt")
+    eq(at(3).level, nil, "no item level on junk")
+    eq(at(4).level, "63", "the cap's item level")
+    eq(table.concat(at(4).color, ","), "0,0.44,0.87", "in its quality's colour")
+    eq(at(4).x, 2, "at the top left")
+    eq(at(6).level, "40", "the marked hood's")
+    eq(at(6).x, 14, "moved along beside its mark")
+    eq(at(4).junk, nil, "no coin on gear")
+    eq(next(at(2)), nil, "linen: nothing")
+    eq(next(at(5)), nil, "a secret item: nothing")
+
+    c.openBank()
+    c.advance(1)
+    local bank = c.global("BankPanel")
+    eq(extrasOf(bank.buttons[1]).level, "63", "gear in the bank")
+    eq(extrasOf(bank.buttons[2]).junk, true, "junk in the bank")
+    -- Another tab: the game reuses the buttons for its items, with no bag
+    -- update, and they're done again.
+    c.world.bags[6].slots[1] = { id = 10020, count = 1 }
+    bank:RefreshAllItemsForSelectedTab()
+    c.advance(1)
+    eq(extrasOf(bank.buttons[1]).level, "50", "after a tab switch")
+
+    eq(c.global("ForeverBuddySettings").bagJunk, true, "saved")
+    c.click(setting(c, "Junk in your bags"))
+    eq(at(3).junk, nil, "junk off: no coin")
+    eq(extrasOf(bank.buttons[2]).junk, nil, "nor in the bank")
+    c.click(setting(c, "Item level on gear"))
+    eq(at(4).level, nil, "item level off: none")
+    eq(c.global("ForeverBuddySettings").bagJunk, nil, "off is the default again")
+    c.closeBank()
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2056,6 +2128,7 @@ scenario("window", function()
         .. "Fade the world map while you move, How much of the map shows while moving, "
         .. "Quest levels in the quest log, Mark quests that are new in Forever, Quest progress on item tooltips, "
         .. "See-through quest tracker, How much of the tracker shows, "
+        .. "Junk in your bags, Item level on gear, "
         .. "Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
@@ -2093,6 +2166,7 @@ scenario("window", function()
         .. "Fade the world map while you move, How much of the map shows while moving, "
         .. "[Quests], Quest levels in the quest log, Mark quests that are new in Forever, "
         .. "Quest progress on item tooltips, See-through quest tracker, How much of the tracker shows, "
+        .. "[Bags], Junk in your bags, Item level on gear, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
@@ -3349,6 +3423,11 @@ local function playAWhile(c)
     c.combat(false)
     c.openMailbox()
     c.closeMailbox()
+    -- P4d: the bags and the bank, where the Bags module draws.
+    c.openBags()
+    c.openBank()
+    c.advance(1)
+    c.closeBank()
     c.gainXp(800)
     c.startLogout()
     c.advance(5)
@@ -3880,7 +3959,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 18, "with every toggle")
+    eq(#options.frame.checks, 20, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

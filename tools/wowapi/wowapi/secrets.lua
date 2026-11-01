@@ -76,6 +76,19 @@ function M.install(sim, env)
   rawset(env, "issecrettable", function(t) return M.isSecret(t) end)
   rawset(env, "canaccesssecrets", function() return not sim.secretRestrictions end)
   rawset(env, "canaccessvalue", function(v) return not M.isSecret(v) end)
+  -- WFB patch (P4d): without these the documented fakes answered with a
+  -- made-up bool, so a plain table read as secret about half the time.
+  rawset(env, "canaccesstable", function(t)
+    if M.isSecret(t) then return false end
+    if realType(t) == "table" then
+      for _, v in pairs(t) do if M.isSecret(v) then return false end end
+    end
+    return true
+  end)
+  rawset(env, "canaccessallvalues", function(...)
+    for i = 1, select("#", ...) do if M.isSecret((select(i, ...))) then return false end end
+    return true
+  end)
   rawset(env, "hasanysecretvalues", function(...)
     for i = 1, select("#", ...) do if M.isSecret((select(i, ...))) then return true end end
     return false
