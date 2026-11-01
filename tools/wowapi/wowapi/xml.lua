@@ -263,6 +263,19 @@ end
 
 local buildFrameContents
 
+-- WFB patch (HUD1): a type="global" value may be a dotted path
+-- (Enum.EditModeSystem.UnitFrame), resolved as the client does. Without
+-- this, every Edit Mode system frame gets a nil `system`.
+local function globalPath(sim, path)
+  local v = sim:Get(path)
+  if v ~= nil or not tostring(path):find(".", 1, true) then return v end
+  for part in tostring(path):gmatch("[^%.]+") do
+    if v == nil then v = sim:Get(part) elseif type(v) == "table" then v = v[part] else return nil end
+    if v == nil then return nil end
+  end
+  return v
+end
+
 local function applyKeyValues(ctx, obj, node)
   local kv = kid(node, "KeyValues")
   if not kv then return end
@@ -271,7 +284,7 @@ local function applyKeyValues(ctx, obj, node)
     local v = value
     if typ == "number" then v = tonumber(value)
     elseif typ == "boolean" then v = value == "true"
-    elseif typ == "global" then v = ctx.sim:Get(value)
+    elseif typ == "global" then v = globalPath(ctx.sim, value)
     elseif typ == "nil" then v = nil end
     if k.attrs.keyType == "number" then key = tonumber(key) end
     obj[key] = v
@@ -284,7 +297,7 @@ local function applyAttributes(ctx, obj, node)
   for _, a in ipairs(kids(at, "Attribute")) do
     local v, typ = a.attrs.value, a.attrs.type or "string"
     if typ == "number" then v = tonumber(v) elseif typ == "boolean" then v = v == "true"
-    elseif typ == "global" then v = ctx.sim:Get(v) end
+    elseif typ == "global" then v = globalPath(ctx.sim, v) end
     ctx.sim.widgetState[obj].attributes[a.attrs.name] = v
   end
 end
