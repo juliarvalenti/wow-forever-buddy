@@ -2052,7 +2052,9 @@ scenario("window", function()
     end
     eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
         .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
-        .. "Your alts on item tooltips ✓, Minimap button ✓, Record my next session", "every toggle")
+        .. "Your alts on item tooltips ✓, Coordinates on the world map, Coordinates under the minimap, "
+        .. "Fade the world map while you move, How much of the map shows while moving, "
+        .. "Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
     local checks = w.panes[5].checks
@@ -2085,7 +2087,9 @@ scenario("window", function()
     end
     eq(table.concat(rows, ", "), "[In game], Login briefing, Lockouts at the entrance, Session coach, "
         .. "Hide the coach in combat, Session card at logout, Marks in your bags, [Tooltips], "
-        .. "Your alts on item tooltips, [This window], Minimap button, [Help fix bugs], Record my next session",
+        .. "Your alts on item tooltips, [Map], Coordinates on the world map, Coordinates under the minimap, "
+        .. "Fade the world map while you move, How much of the map shows while moving, "
+        .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
         for _, init in ipairs(options.layout.inits) do
@@ -2135,13 +2139,13 @@ scenario("window", function()
     c.click(b, "RightButton")
     eq(b.shown, false, "hidden")
     eq(c.chat[#c.chat], PREFIX .. "minimap button hidden. /fb minimap or the Settings tab brings it back.", "says how")
-    eq(w.panes[5].checks[8].checked, false, "the Settings tab agrees")
+    eq(w.panes[5].checks[12].checked, false, "the Settings tab agrees")
     c.slash("/fb minimap")
     eq(b.shown, true, "back")
     eq(c.chat[#c.chat], PREFIX .. "minimap button shown.", "says so")
-    c.click(w.panes[5].checks[8])
+    c.click(w.panes[5].checks[12])
     eq(b.shown, false, "the checkbox hides it too")
-    c.click(w.panes[5].checks[8])
+    c.click(w.panes[5].checks[12])
 
     -- Dragged, it follows the cursor round the edge, and the angle is kept.
     c.world.cursor = { 1000, 800 } -- straight above the minimap's centre
@@ -3177,6 +3181,15 @@ local function declared()
     return s
 end
 
+-- The addon's own check of a value against a declaration (U.prefs.fits).
+local function declaredFits()
+    local c = client()
+    c.login(nil)
+    local fits = c.ns().fits
+    file(c.logout())
+    return fits
+end
+
 local function json(v, indent)
     indent = indent or ""
     if type(v) == "string" then
@@ -3212,8 +3225,15 @@ scenario("settings_schema", function()
         eq(type(o.id) == "string" and o.id:match("^%l%w*%.%a%w*$") ~= nil, true, what .. ": id is module.name")
         eq(ids[o.id], nil, what .. ": unique")
         eq(o.id:match("^(%l%w*)%."), o.module, what .. ": its id starts with its module")
-        eq(o.type, "bool", what .. ": a bool (the only type so far)")
-        eq(type(o.default), "boolean", what .. ": a default")
+        eq(o.type == "bool" or o.type == "number", true, what .. ": a bool or a number (the types the UI draws)")
+        if o.type == "number" then
+            eq(type(o.min) == "number" and type(o.max) == "number" and o.min < o.max, true, what .. ": a range")
+            eq(type(o.step) == "number" and o.step > 0, true, what .. ": a step")
+            eq(type(o.default) == "number" and o.default >= o.min and o.default <= o.max, true,
+                what .. ": a default in range")
+        else
+            eq(type(o.default), "boolean", what .. ": a default")
+        end
         eq(type(o.label) == "string" and #o.label > 0, true, what .. ": a label")
         eq(type(o.help) == "string" and #o.help > 10, true, what .. ": a help line")
         eq(type(o.section) == "string", true, what .. ": a section")
@@ -3236,7 +3256,54 @@ scenario("settings_schema", function()
         end
         options[#options + 1] = row
     end
-    generated(SCHEMA_JSON, json({ __order = { "version", "options" }, version = s.version, options = options }) .. "\n")
+    -- P4c: lints and presets name only declared options, with values that
+    -- option takes (a lint's number condition is a { min, max } range).
+    local byId = {}
+    for _, o in ipairs(s.options) do
+        byId[o.id] = o
+    end
+    local fits = declaredFits()
+    -- A map's keys in order, for the JSON (an array has none).
+    local function ordered(t)
+        if type(t) ~= "table" or t[1] ~= nil then
+            return t
+        end
+        local keys, out = {}, {}
+        for k, v in pairs(t) do
+            keys[#keys + 1] = k
+            out[k] = ordered(v)
+        end
+        table.sort(keys)
+        out.__order = keys
+        return out
+    end
+    local lints, presets = {}, {}
+    for i, l in ipairs(s.lints or {}) do
+        local what = "lint " .. i .. " (" .. tostring(l.id) .. ")"
+        eq(type(l.id) == "string" and type(l.say) == "string" and #l.say > 10, true, what .. ": an id and a line")
+        eq(type(l.when) == "table" and next(l.when) ~= nil, true, what .. ": when it fires")
+        for id, v in pairs(l.when) do
+            eq(byId[id] ~= nil, true, what .. ": " .. id .. " is declared")
+            if type(v) == "table" then
+                eq(byId[id].type, "number", what .. ": a range is for a number")
+            else
+                eq(fits(byId[id], v), true, what .. ": " .. id .. " takes " .. tostring(v))
+            end
+        end
+        lints[#lints + 1] = { __order = { "id", "when", "say" }, id = l.id, when = ordered(l.when), say = l.say }
+    end
+    for i, p in ipairs(s.presets or {}) do
+        local what = "preset " .. i .. " (" .. tostring(p.id) .. ")"
+        eq(type(p.id) == "string" and type(p.label) == "string", true, what .. ": an id and a label")
+        for id, v in pairs(p.values) do
+            eq(byId[id] ~= nil and fits(byId[id], v), true, what .. ": " .. id .. " = " .. tostring(v))
+        end
+        presets[#presets + 1] = { __order = { "id", "label", "values" }, id = p.id, label = p.label, values = ordered(p.values) }
+    end
+    generated(SCHEMA_JSON, json({
+        __order = { "version", "options", "lints", "presets" },
+        version = s.version, options = options, lints = lints, presets = presets,
+    }) .. "\n")
 end)
 
 -- P4a: every declared value is run. For each option, on and then off (the
@@ -3246,7 +3313,7 @@ end)
 local function optionRows(c)
     local rows = {}
     for _, init in ipairs(c.global("Settings").categories[1].layout.inits) do
-        if init.kind == "checkbox" then
+        if init.kind == "checkbox" or init.kind == "slider" then
             rows[#rows + 1] = init
         end
     end
@@ -3270,14 +3337,25 @@ end
 scenario("settings_matrix", function()
     local s = declared()
     local profiles = {}
+    -- A bool on and off; a number (P4c) at its min, its max and its default.
+    local function values(o)
+        if o.type == "number" then
+            return { o.min, o.max, o.default }
+        end
+        return { true, false }
+    end
     for _, o in ipairs(s.options) do
-        for _, value in ipairs({ true, false }) do
+        for _, value in ipairs(values(o)) do
             profiles[#profiles + 1] = { name = o.id .. "=" .. tostring(value), set = { [o.id] = value } }
         end
     end
     local allOn, allOff = { name = "all on", set = {} }, { name = "all off", set = {} }
     for _, o in ipairs(s.options) do
-        allOn.set[o.id], allOff.set[o.id] = true, false
+        local v = values(o)
+        allOn.set[o.id], allOff.set[o.id] = v[1], v[2]
+        if o.type == "number" then
+            allOn.set[o.id], allOff.set[o.id] = o.max, o.min
+        end
     end
     profiles[#profiles + 1] = allOn
     profiles[#profiles + 1] = allOff
@@ -3329,6 +3407,121 @@ local function settingsSlot(profile, values, schema)
         "ForeverBuddyData_Settings = { schema = %d, stamp = 1790960000, profile = %d, values = { %s } }\n",
         schema or 1, profile, table.concat(parts, ", "))
 end
+
+-- P4c: the Map module. Display only, and nothing at all while it's off.
+scenario("map", function()
+    local c = client()
+    c.login(nil)
+    c.advance(5)
+    local function row(id)
+        for i, o in ipairs(declared().options) do
+            if o.id == id then
+                return optionRows(c)[i]
+            end
+        end
+    end
+    local map = c.global("WorldMapFrame")
+
+    -- Off (the default): no frame is made, and moving changes nothing.
+    eq(c.global("ForeverBuddyMinimapCoords"), nil, "no minimap frame while off")
+    eq(c.global("ForeverBuddyMapCoords"), nil, "no world map frame while off")
+    c.worldMap(true)
+    c.move(true)
+    eq(map:GetAlpha(), 1, "the map doesn't fade while off")
+    c.move(false)
+    c.worldMap(false)
+
+    -- Under the minimap: where you are, five times a second; nothing in an
+    -- instance.
+    row("map.minimap").setting:SetValue(true)
+    local mini = c.global("ForeverBuddyMinimapCoords")
+    eq(mini.parent, c.global("Minimap"), "a child of the minimap")
+    eq(mini.points[1][1] .. ">" .. mini.points[1][3], "TOP>BOTTOM", "under it")
+    c.update(mini, 0.3)
+    eq(mini.children[1].text, "41.2, 65.7", "where you are")
+    c.enterInstance("The Deadmines", "party", 1, "Normal")
+    c.update(mini, 0.3)
+    eq(mini.children[1].text, "", "nothing in an instance")
+    c.leaveInstance("Westfall")
+    row("map.minimap").setting:SetValue(false)
+    eq(mini.shown, false, "off: hidden")
+    eq(c.update(mini, 0.3), false, "so its OnUpdate doesn't run")
+
+    -- On the world map: you, and the cursor while it's over the map.
+    row("map.coords").setting:SetValue(true)
+    local coords = c.global("ForeverBuddyMapCoords")
+    eq(coords.parent, map.ScrollContainer, "on the world map")
+    c.worldMap(true)
+    c.update(coords, 0.3)
+    eq(coords.children[1].text, "You 41.2, 65.7", "you")
+    c.world.mapCursor = { 0.3, 0.405 }
+    c.update(coords, 0.1)
+    eq(coords.children[1].text, "You 41.2, 65.7", "not again within 0.2 s")
+    c.update(coords, 0.1)
+    eq(coords.children[1].text, "You 41.2, 65.7     Cursor 30.0, 40.5", "and the cursor")
+    c.world.mapCursor = nil
+    c.worldMap(false)
+
+    -- Fading: the map at the chosen alpha while you move, whole when you stop.
+    row("map.fade").setting:SetValue(true)
+    c.worldMap(true)
+    c.move(true)
+    eq(map:GetAlpha(), 0.5, "faded while moving (the default, 50%)")
+    c.move(false)
+    eq(map:GetAlpha(), 1, "whole when you stop")
+    row("map.fadeAlpha").setting:SetValue(0.3)
+    c.move(true)
+    eq(map:GetAlpha(), 0.3, "at the chosen alpha")
+    c.move(false)
+    c.worldMap(false)
+    -- Opening the map while already moving.
+    c.world.moving = true
+    c.worldMap(true)
+    eq(map:GetAlpha(), 0.3, "faded as it opens")
+    c.world.moving = false
+    c.move(false)
+
+    -- The window's slider: dragging sets it, but not in combat.
+    c.slash("/fb")
+    local slider
+    for _, cb in ipairs(c.global("ForeverBuddyWindow").panes[5].checks) do
+        if cb.slider then
+            slider = cb
+        end
+    end
+    eq(slider.label.text, "How much of the map shows while moving", "the slider's label")
+    eq(slider.value.text, "30%", "its value, in percent")
+    slider:SetValue(0.65, true)
+    eq(row("map.fadeAlpha").setting:GetValue(), 0.65, "dragged to 65%")
+    c.world.combat = true
+    slider:SetValue(0.2, true)
+    eq(row("map.fadeAlpha").setting:GetValue(), 0.65, "not in combat")
+    eq(slider:GetValue(), 0.65, "the slider goes back")
+    c.world.combat = false
+
+    -- Off again: events unregistered and the map whole.
+    row("map.fade").setting:SetValue(false)
+    c.move(true)
+    eq(map:GetAlpha(), 1, "off: no fading")
+    c.move(false)
+    local db = file(c.logout())
+    eq(db.settings.values["map.fadeAlpha"], 0.65, "the file has the number")
+    eq(db.settings.values["map.coords"], true, "and the rest")
+    eq(c.settings.map.fadeAlpha, 0.65, "kept account-wide")
+
+    -- From the app: a profile's number is applied when it's in range, and
+    -- ignored when it isn't.
+    local slot = client({ slots = { ["Data/Settings.lua"] = settingsSlot(3, { ["map.fadeAlpha"] = 0.25 }) } })
+    slot.settings = c.settings
+    slot.login(nil)
+    eq(slot.global("ForeverBuddySettings").map.fadeAlpha, 0.25, "an approved 25% is applied")
+    file(slot.logout())
+    local bad = client({ slots = { ["Data/Settings.lua"] = settingsSlot(4, { ["map.fadeAlpha"] = 0.95 }) } })
+    bad.settings = slot.settings
+    bad.login(nil)
+    eq(bad.global("ForeverBuddySettings").map.fadeAlpha, 0.25, "95% is out of range: left alone")
+    file(bad.logout())
+end)
 
 -- P4b-follow (security): what the addon accepts from a profile, for every
 -- type a declaration can have, not only today's bools.
@@ -3557,7 +3750,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 9, "with every toggle")
+    eq(#options.frame.checks, 13, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

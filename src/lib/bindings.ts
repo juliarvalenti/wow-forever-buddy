@@ -2231,6 +2231,8 @@ export type SettingView = {
 	acts: boolean,
 	/**  Already the value (changed since): Approve changes nothing. */
 	same: boolean,
+	/**  Our lint lines this change would make fire (P4c), shown beside it. */
+	lints: string[],
 };
 
 /**

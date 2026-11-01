@@ -30,6 +30,67 @@ pub const MAX_CHANGES: usize = 50;
 pub struct Schema {
     pub version: i64,
     pub options: Vec<Opt>,
+    #[serde(default)]
+    pub lints: Vec<Lint>,
+    #[serde(default)]
+    pub presets: Vec<Preset>,
+}
+
+/// A known poor combination (P4 §1, layer 4): it fires when every value in
+/// `when` holds (a `{ min, max }` range for a number, else that value).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Lint {
+    pub id: String,
+    pub when: BTreeMap<String, Value>,
+    pub say: String,
+}
+
+/// A named starting point; each module adds its row of values.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Preset {
+    pub id: String,
+    pub label: String,
+    pub values: Values,
+}
+
+impl Lint {
+    fn fires(&self, vals: &Values) -> bool {
+        self.when.iter().all(|(id, want)| {
+            let have = vals.get(id).or_else(|| option(id).map(|o| &o.default));
+            match (want, have) {
+                (Value::Object(range), Some(v)) => v.as_f64().is_some_and(|n| {
+                    range
+                        .get("min")
+                        .and_then(Value::as_f64)
+                        .is_none_or(|m| n >= m)
+                        && range
+                            .get("max")
+                            .and_then(Value::as_f64)
+                            .is_none_or(|m| n <= m)
+                }),
+                (want, Some(v)) => same(want, v),
+                (_, None) => false,
+            }
+        })
+    }
+}
+
+/// Equal values; numbers compared as numbers (0.5 from Lua, 0.5 from JSON).
+fn same(a: &Value, b: &Value) -> bool {
+    match (a.as_f64(), b.as_f64()) {
+        (Some(x), Some(y)) => (x - y).abs() < 1e-9,
+        _ => a == b,
+    }
+}
+
+/// The lines of the lints that fire with `vals` and mention `option`.
+pub fn lints_for(vals: &Values, option: &str) -> Vec<String> {
+    schema()
+        .lints
+        .iter()
+        .filter(|l| l.when.contains_key(option) && l.fires(vals))
+        .map(|l| l.say.clone())
+        .collect()
 }
 
 /// One option as `Settings.lua` declares it.
@@ -49,11 +110,13 @@ pub struct Opt {
     /// Turning it on lets the addon do something in the game for you
     /// (§8): never approved together with others.
     pub acts: bool,
-    /// A number's range.
+    /// A number's range, and the step its slider moves by.
     #[serde(default)]
     pub min: Option<f64>,
     #[serde(default)]
     pub max: Option<f64>,
+    #[serde(default)]
+    pub step: Option<f64>,
     /// A choice's values.
     #[serde(default)]
     pub values: Option<Vec<String>>,
@@ -254,12 +317,18 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
         .iter()
         .filter(|o| module.is_none_or(|m| o.module == m))
         .map(|o| {
-            serde_json::json!({
+            let mut row = serde_json::json!({
                 "id": o.id, "module": o.module, "section": o.section, "type": o.kind,
                 "label": o.label, "help": o.help, "default": o.default,
                 "requires": o.parent, "acts": o.acts,
                 "value": vals.get(&o.id).unwrap_or(&o.default),
-            })
+            });
+            if o.kind == "number" {
+                row["min"] = serde_json::json!(o.min);
+                row["max"] = serde_json::json!(o.max);
+                row["step"] = serde_json::json!(o.step);
+            }
+            row
         })
         .collect();
     if options.is_empty() {
@@ -280,8 +349,11 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
             "the game's, as of the last logout (defaults before the first)"
         },
         "options": options,
-        "presets": [],
-        "lints": [],
+        // Starting points: propose a preset's values as changes, plus your own.
+        "presets": schema().presets,
+        // Poor combinations, shown to the player beside a change that makes
+        // one fire: avoid them.
+        "lints": schema().lints,
     }))
 }
 
@@ -340,7 +412,7 @@ pub fn check(
         if out.iter().any(|(b, _)| b.option == o.id) {
             return Err(format!("{} is changed twice", o.id));
         }
-        if now.get(&o.id) == Some(&ch.value) {
+        if now.get(&o.id).is_some_and(|v| same(v, &ch.value)) {
             return Err(format!("{} is already {}", o.id, word(&ch.value)));
         }
         let reason = ch
@@ -399,6 +471,8 @@ pub struct SettingView {
     pub acts: bool,
     /// Already the value (changed since): Approve changes nothing.
     pub same: bool,
+    /// Our lint lines this change would make fire (P4c), shown beside it.
+    pub lints: Vec<String>,
 }
 
 pub fn view(db: &Db, flavor: &str, b: &SettingBody) -> AppResult<SettingView> {
@@ -406,7 +480,10 @@ pub fn view(db: &Db, flavor: &str, b: &SettingBody) -> AppResult<SettingView> {
     let o =
         option(&b.option).ok_or_else(|| AppError::NotFound(format!("the setting {}", b.option)))?;
     let from = now.get(&o.id).unwrap_or(&o.default);
+    let mut after = now.clone();
+    after.insert(o.id.clone(), b.value.clone());
     Ok(SettingView {
+        lints: lints_for(&after, &o.id),
         option: o.id.clone(),
         label: o.label.clone(),
         help: o.help.clone(),
@@ -414,7 +491,7 @@ pub fn view(db: &Db, flavor: &str, b: &SettingBody) -> AppResult<SettingView> {
         from: word(from),
         to: word(&b.value),
         acts: o.acts,
-        same: from == &b.value,
+        same: same(from, &b.value),
     })
 }
 
@@ -426,7 +503,7 @@ pub fn approve(db: &Db, flavor: &str, b: &SettingBody, now: i64) -> AppResult<()
     db.with_conn(|c| {
         let tx = c.transaction()?;
         let (mut vals, _) = effective(&tx, flavor)?;
-        if vals.get(&o.id) == Some(&b.value) {
+        if vals.get(&o.id).is_some_and(|v| same(v, &b.value)) {
             return Ok(());
         }
         let s = seen(&tx, flavor)?;
@@ -527,7 +604,7 @@ fn trial_in(c: &Connection, flavor: &str) -> AppResult<Option<(Profile, Vec<Tria
         .iter()
         .filter_map(|o| {
             let (was, is) = (base.get(&o.id)?, p.vals.get(&o.id)?);
-            (was != is).then(|| TrialChange {
+            (!same(was, is)).then(|| TrialChange {
                 label: o.label.clone(),
                 from: word(was),
                 to: word(is),
@@ -606,10 +683,15 @@ mod tests {
             .hash
             .iter()
             .map(|(k, v)| {
-                let LuaValue::Bool(b) = v else { panic!() };
+                let v = match v {
+                    LuaValue::Bool(b) => json!(b),
+                    LuaValue::Num(n) => json!(n),
+                    LuaValue::Int(n) => json!(n),
+                    _ => panic!(),
+                };
                 (
                     String::from_utf8(k.as_bytes().unwrap().to_vec()).unwrap(),
-                    json!(b),
+                    v,
                 )
             })
             .collect();
@@ -621,6 +703,68 @@ mod tests {
         assert!(!schema().options.is_empty());
         for o in &schema().options {
             assert!(fits(o, &o.default), "{}", o.id);
+        }
+    }
+
+    /// P4c: the map's number option: checked against its range, shown with
+    /// the lint it would make fire, and its presets and lints in get_settings.
+    #[test]
+    fn the_map_fade_is_a_number_with_a_lint() {
+        let db = Db::open_in_memory().unwrap();
+        let bad = check(
+            &db,
+            FLAVOR,
+            &proposal(vec![
+                change("map.fade", json!(true)),
+                change("map.fadeAlpha", json!(0.95)),
+            ]),
+        )
+        .unwrap_err();
+        assert_eq!(bad, "map.fadeAlpha takes a number from 0.1 to 0.9");
+        assert!(check(
+            &db,
+            FLAVOR,
+            &proposal(vec![change("map.fadeAlpha", json!(0.3))])
+        )
+        .unwrap_err()
+        .contains("only works while map.fade is on"));
+
+        let fade = SettingBody {
+            option: "map.fade".into(),
+            value: json!(true),
+        };
+        approve(&db, FLAVOR, &fade, 100).unwrap();
+        let faint = SettingBody {
+            option: "map.fadeAlpha".into(),
+            value: json!(0.15),
+        };
+        let v = view(&db, FLAVOR, &faint).unwrap();
+        assert_eq!((v.from.as_str(), v.to.as_str()), ("0.5", "0.15"));
+        assert_eq!(v.lints, ["The world map almost disappears while you move."]);
+        let fine = SettingBody {
+            option: "map.fadeAlpha".into(),
+            value: json!(0.4),
+        };
+        assert!(view(&db, FLAVOR, &fine).unwrap().lints.is_empty());
+
+        let r = read(&db, FLAVOR, Some("map")).unwrap();
+        let alpha = r["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["id"] == "map.fadeAlpha")
+            .unwrap();
+        assert_eq!(
+            (alpha["min"].clone(), alpha["max"].clone()),
+            (json!(0.1), json!(0.9))
+        );
+        assert_eq!(r["lints"][0]["id"], "map.fadeNearlyGone");
+        assert_eq!(r["presets"][1]["values"]["map.coords"], true);
+        // Every preset's values are ones their options take.
+        for p in &schema().presets {
+            for (id, v) in &p.values {
+                assert!(option(id).is_some_and(|o| fits(o, v)), "{} {id}", p.id);
+            }
         }
     }
 

@@ -125,6 +125,14 @@ local function tabs(sim, state)
     sim:Click(sim:Get("ForeverBuddyWindowTab5"))
     sim:Advance(1)
     shot(sim, state .. "-settings")
+    -- P4c: with the map's fading on, its slider shows under it.
+    for _, cb in ipairs(sim:Get("ForeverBuddyWindow").panes[5].checks) do
+        if cb.option and cb.option.key == "map.fade" then
+            sim:Click(cb)
+        end
+    end
+    sim:Advance(1)
+    shot(sim, state .. "-settings-map")
 end
 
 sh("mkdir -p " .. quote(out))

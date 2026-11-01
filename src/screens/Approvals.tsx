@@ -204,18 +204,29 @@ function BagPreview({ v }: { v: BagMarksView }) {
   );
 }
 
-/** P4b: one addon setting, old value to new, with our own help line. */
+/**
+ * P4b: one addon setting, old value to new, with our own help line, and
+ * (P4c) our lint line for any poor combination it would make.
+ */
 function SettingPreview({ v }: { v: SettingView }) {
   return (
-    <div className="ap-cmp one">
-      <div className="ap-pv new">
-        <h3>{v.section}</h3>
-        <div className="ap-notetxt">
-          {v.label}: {v.from} → {v.to}
+    <>
+      <div className="ap-cmp one">
+        <div className="ap-pv new">
+          <h3>{v.section}</h3>
+          <div className="ap-notetxt">
+            {v.label}: {v.from} → {v.to}
+          </div>
+          <small>{v.help}</small>
         </div>
-        <small>{v.help}</small>
       </div>
-    </div>
+      {v.lints.map((line) => (
+        <div key={line} className="ap-conflict">
+          <AlertTriangle size={13} aria-hidden />
+          {line}
+        </div>
+      ))}
+    </>
   );
 }
 

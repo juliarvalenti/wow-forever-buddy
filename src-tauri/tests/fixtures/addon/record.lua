@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario record). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.9.9",
+		["addon"] = "0.10.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 3,
@@ -72,7 +72,7 @@ ForeverBuddyDB = {
 		},
 	},
 	["record"] = {
-		["addon"] = "0.9.9",
+		["addon"] = "0.10.0",
 		["counts"] = {
 			["ITEM_DATA_LOAD_RESULT"] = 50,
 		},
@@ -252,6 +252,10 @@ ForeverBuddyDB = {
 	},
 	["settings"] = {
 		["values"] = {
+			["map.coords"] = false,
+			["map.fade"] = false,
+			["map.fadeAlpha"] = 0.5,
+			["map.minimap"] = false,
 			["tooltips.alts"] = true,
 			["window.bagMarks"] = true,
 			["window.briefing"] = true,

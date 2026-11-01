@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario secret_values). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.9.9",
+		["addon"] = "0.10.0",
 		["counts"] = {
 			["bag_items"] = 0,
 			["events"] = 0,
@@ -33,6 +33,10 @@ ForeverBuddyDB = {
 	},
 	["settings"] = {
 		["values"] = {
+			["map.coords"] = false,
+			["map.fade"] = false,
+			["map.fadeAlpha"] = 0.5,
+			["map.minimap"] = false,
 			["tooltips.alts"] = true,
 			["window.bagMarks"] = true,
 			["window.briefing"] = true,
