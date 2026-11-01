@@ -12,10 +12,12 @@ local function icon(name)
 end
 
 M.CLASSES = {
-    -- A level 20 human rogue in Westfall, stealthed out of combat, with a
-    -- Defias Pillager targeted and three combo points on it.
+    -- A level 22 human rogue in Westfall (old enough for Vanish), with a
+    -- Defias Pillager targeted and three combo points on it. The bar and
+    -- keys are Julia's: 1 to 5, Q, E, ` (Stealth) and Shift-V (Vanish); in
+    -- stealth, 1 to 4 become Ambush, Garrote, Cheap Shot and Sap.
     rogue = {
-        player = { name = "Kessra", class = "ROGUE", race = "Human", level = 20, zone = "Westfall", subZone = "Moonbrook",
+        player = { name = "Kessra", class = "ROGUE", race = "Human", level = 22, zone = "Westfall", subZone = "Moonbrook",
             health = 595, healthMax = 700, powerType = 3, power = 70, powerMax = 100,
             -- Enum.PowerType.ComboPoints = 4
             powers = { [4] = { 3, 5 } } },
@@ -25,18 +27,27 @@ M.CLASSES = {
         -- action slot -> { spell ID, icon }
         actions = {
             [1] = { 1752, icon("Spell_Shadow_RitualOfSacrifice") }, -- Sinister Strike
-            [2] = { 2098, icon("Ability_Rogue_Eviscerate") },
-            [3] = { 5171, icon("Ability_Rogue_SliceDice") },
-            [4] = { 53, icon("Ability_BackStab") },
-            [5] = { 1776, icon("Ability_Gouge") },
-            [6] = { 1766, icon("Ability_Kick") },
-            [7] = { 1833, icon("Ability_CheapShot") },
-            [8] = { 408, icon("Ability_Rogue_KidneyShot") },
-            [9] = { 2983, icon("Ability_Rogue_Sprint") },
-            [10] = { 5277, icon("Spell_Shadow_ShadowWard") }, -- Evasion
-            [11] = { 1784, icon("Ability_Stealth") },
-            [12] = { 6770, icon("Ability_Sap") },
+            [2] = { 53, icon("Ability_BackStab") },
+            [3] = { 1776, icon("Ability_Gouge") },
+            [4] = { 1766, icon("Ability_Kick") },
+            [5] = { 1943, icon("Ability_Rogue_Rupture") },
+            [6] = { 2098, icon("Ability_Rogue_Eviscerate") },
+            [7] = { 5171, icon("Ability_Rogue_SliceDice") },
+            [8] = { 1784, icon("Ability_Stealth") },
+            [9] = { 1856, icon("Ability_Vanish") },
+            [10] = { 408, icon("Ability_Rogue_KidneyShot") },
+            [11] = { 2983, icon("Ability_Rogue_Sprint") },
+            [12] = { 5277, icon("Spell_Shadow_ShadowWard") }, -- Evasion
         },
+        -- Stealth's bar (bonus bar 1: slots 73 to 84) changes the first four.
+        stealthActions = {
+            [1] = { 8676, icon("Ability_Rogue_Ambush") },
+            [2] = { 703, icon("Ability_Rogue_Garrote") },
+            [3] = { 1833, icon("Ability_CheapShot") },
+            [4] = { 6770, icon("Ability_Sap") },
+        },
+        -- main bar button -> key (the rest keep the default 0, -, =)
+        keys = { "1", "2", "3", "4", "5", "Q", "E", "`", "SHIFT-V", "0", "-", "=" },
     },
 }
 
@@ -54,20 +65,41 @@ function M.player(class, level)
     return p
 end
 
--- Puts the class's spells on the action bar. Call before the UI loads: the
--- action buttons read their page and slots as they're built.
-function M.mock(sim, class)
+-- Puts the class's spells on the action bar and binds its keys. Call before
+-- the UI loads: the action buttons read their page and slots as they're
+-- built. opts.stealth shows the stealth bar (a rogue's bonus bar 1).
+function M.mock(sim, class, opts)
     local c = M.CLASSES[class]
     if not c then
         return
     end
-    local actions = c.actions or {}
+    opts = opts or {}
+    local actions = {}
+    for slot, a in pairs(c.actions or {}) do
+        actions[slot] = a
+    end
+    local bonusBar = 0
+    if opts.stealth and c.stealthActions then
+        bonusBar = 1
+        for slot = 1, 12 do
+            actions[72 + slot] = c.stealthActions[slot] or actions[slot]
+        end
+    end
+    for button, key in ipairs(c.keys or {}) do
+        sim.env.SetBinding(key, "ACTIONBUTTON" .. button)
+    end
     local function has(slot)
         return actions[slot] ~= nil
     end
     local mocks = {
         ["C_ActionBar.GetActionBarPage"] = function() return 1 end,
-        ["C_ActionBar.GetBonusBarOffset"] = function() return 0 end,
+        ["C_ActionBar.GetBonusBarOffset"] = function() return bonusBar end,
+        GetBonusBarOffset = function() return bonusBar end,
+        -- no stance bar (a class with stances lists its forms)
+        GetNumShapeshiftForms = function() return c.forms and #c.forms or 0 end,
+        -- the bar controller pages the main bar to bonus bar 1 (page 7)
+        ["C_ActionBar.HasBonusActionBar"] = function() return bonusBar > 0 end,
+        ["C_ActionBar.GetBonusBarIndex"] = function() return bonusBar > 0 and 6 + bonusBar or 0 end,
         ["C_ActionBar.GetExtraBarIndex"] = function() return 0 end,
         ["C_ActionBar.GetMultiCastBarIndex"] = function() return 0 end,
         ["C_ActionBar.HasAction"] = has,
@@ -110,6 +142,8 @@ function M.apply(sim, class)
     end
     sim:FireEvent("ACTIONBAR_SLOT_CHANGED", 0)
     sim:FireEvent("UPDATE_SHAPESHIFT_FORM")
+    sim:FireEvent("UPDATE_BONUS_ACTIONBAR")
+    sim:FireEvent("UPDATE_BINDINGS")
 end
 
 return M

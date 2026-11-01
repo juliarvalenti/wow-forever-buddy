@@ -97,7 +97,12 @@ function M.install(sim, env)
     s.shown = false
     if was then fire(self, "OnHide") end
   end
-  function R:SetShown(v) if v then self:Show() else self:Hide() end end
+  -- WFB patch (HUD2): SetShown is native, as in the client: it doesn't call
+  -- a mixin's Show or Hide. The action bars keep it as SetShownBase and
+  -- override Show to call that, which looped until the stack overflowed (and
+  -- Edit Mode never laid the main bar out).
+  local nativeShow, nativeHide = R.Show, R.Hide
+  function R:SetShown(v) if v then nativeShow(self) else nativeHide(self) end end
   function R:IsShown() return S(self).shown end
   function R:IsVisible() return visible(self) end
   function R:SetPoint(point, rel, relPoint, x, y)
@@ -347,7 +352,20 @@ function M.install(sim, env)
   function F:IsUserPlaced() return S(self).userPlaced or false end
   function F:SetResizeBounds(minW, minH, maxW, maxH) S(self).resizeBounds = { minW, minH, maxW, maxH } end
   function F:GetResizeBounds() return unpack(S(self).resizeBounds or { 0, 0, 0, 0 }) end
-  function F:GetAttribute(k) return S(self).attributes[k] end
+  -- WFB patch (HUD2): GetAttribute(prefix, name, suffix), as secure buttons
+  -- read their attributes ("shift-actionpage1"), tries the client's
+  -- wildcards: prefix..name..suffix, *name..suffix, prefix..name*, *name*,
+  -- then name.
+  function F:GetAttribute(k, name, suffix)
+    local a = S(self).attributes
+    if name == nil then return a[k] end
+    local prefix = k or ""
+    suffix = suffix or ""
+    for _, key in ipairs({ prefix .. name .. suffix, "*" .. name .. suffix, prefix .. name .. "*",
+      "*" .. name .. "*", name }) do
+      if a[key] ~= nil then return a[key] end
+    end
+  end
   function F:SetAttribute(k, v)
     S(self).attributes[k] = v
     fire(self, "OnAttributeChanged", k, v)

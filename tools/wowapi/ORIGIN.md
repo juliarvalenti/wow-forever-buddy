@@ -68,6 +68,9 @@ HUD2, for the logged-in scene (`hud.lua --class rogue`):
 - `widgets.lua`: `Texture:GetDrawLayer()` also returns the sublevel; `SetTexture` replaces an atlas; `StatusBar:SetStatusBarTexture(name)` reuses the bar's texture instead of making a new one each call.
 - `render.lua`: a status bar's texture draws only as its fill, not again as a full-size region (both bars looked full); a texture set to an atlas name draws the atlas (the unit frames' bars); file ID 0 draws nothing.
 - `xml.lua`: a frame that loads visible gets `OnShow` after `OnLoad`, as in the client. The personal resource display sets itself up there, and Edit Mode then hides it.
+- `widgets.lua`: `SetShown` is native: it doesn't call a mixin's `Show` or `Hide`. Blizzard's action bars keep it as `SetShownBase` and override `Show` to call that, which looped until the stack overflowed, so Edit Mode never laid the main bar out (it ran right to left).
+- `widgets.lua`: `GetAttribute(prefix, name, suffix)` tries the client's wildcards (`prefix..name..suffix`, `*name..suffix`, `prefix..name*`, `*name*`, `name`), as secure action buttons read `actionpage`. Without it, the main bar ignores its page (a rogue's stealth bar).
+- `input.lua`: `GetBindingText(key, 1)` abbreviates modifiers as the client does (`SHIFT-V` is `s-V`), for the action buttons' hotkeys.
 - `assets.lua`: `data/atlases-forever.txt` (`fetch-forever-atlases.sh`: Forever's UiTextureAtlas tables at its build, from wago.tools) replaces retail's atlases of the same name, keeping the c60 variants where an atlas has them. Forever's own UI names its c60 art directly (`INV_SideTab_Bank_c60`). Without it, Forever-only atlases (`ui-hud-minimap-header-button`) draw as placeholders. Local art runs only: CI renders `--no-art` and doesn't fetch it.
 
 ## Updating

@@ -4,6 +4,7 @@
 --
 --   luajit tools/addon-shots/hud.lua <out.svg> [--blizzard <interface/addons dir>] [--addon <dir>]...
 --       [--background <texture>] [--ui-scale <pixels per unit>] [--class <class> [--level <n>]]
+--       [--layout <name or file>] [--stealth]
 --
 -- With --blizzard (the CASC extract's interface/addons, local only), the
 -- screen is Blizzard's own UI: every Blizzard addon the client loads at
@@ -15,16 +16,22 @@
 -- 85% health with Hogger targeted, the UI at the client's 1080p scale
 -- (768 units tall). --class picks a character from fixtures.lua instead
 -- (rogue: spells on the bar, energy, combo points, a target). There's no
--- 3D world; --background draws a texture in its place.
+-- 3D world; --background draws a texture in its place. --layout moves Edit
+-- Mode systems (layouts/<name>.lua, or a file of the same shape), as a saved
+-- layout would.
 --
 -- Prints a summary of the Lua errors, most frequent first. This script only
 -- writes files; it never starts a browser or opens a window.
 
 local out, blizzard, extra, background, uiScale = nil, nil, {}, nil, 1080 / 768
-local class, level
+local class, level, layout, stealth
 local i = 1
 while arg[i] do
-    if arg[i] == "--class" then
+    if arg[i] == "--stealth" then
+        stealth, i = true, i + 1
+    elseif arg[i] == "--layout" then
+        layout, i = arg[i + 1], i + 2
+    elseif arg[i] == "--class" then
         class, i = arg[i + 1]:lower(), i + 2
     elseif arg[i] == "--level" then
         level, i = tonumber(arg[i + 1]), i + 2
@@ -157,8 +164,74 @@ end)
 -- Edit Mode, as on a fresh install: no saved layouts (so the active one is
 -- Blizzard's preset 1, Modern) and its account settings (its own "show in
 -- Edit Mode" toggles) off, grid spacing 100.
+--
+-- With --layout, a saved layout instead: Forever's preset with the named
+-- systems moved, made active (saved layouts come after the presets).
+-- The file is either Lua returning a list of moves, or the export string
+-- the game's Edit Mode gives (Share > Copy to Clipboard).
+local layoutMoves, layoutString
+if layout then
+    local file = layout:find("[/\\]") and layout or (here .. "/layouts/" .. layout .. ".lua")
+    local f = assert(io.open(file, "r"))
+    local text = f:read("*a")
+    f:close()
+    if text:match("^%s*%d") then
+        layoutString = require("editmode_string").decode(text)
+    else
+        layoutMoves = assert(assert(loadstring(text, "@" .. file))(), "a layout file returns a list of moves")
+    end
+end
 local function layouts()
-    return { layouts = {}, activeLayout = 1 }
+    if not (layoutMoves or layoutString) then
+        return { layouts = {}, activeLayout = 1 }
+    end
+    local env = sim.env
+    local presets = env.EditModePresetLayoutManager:GetCopyOfPresetLayouts()
+    local saved = presets[1]
+    saved.layoutName = "Scene"
+    saved.layoutType = env.Enum.EditModeLayoutType.Account
+    for _, s in ipairs(layoutString and layoutString.systems or {}) do
+        local found = false
+        for _, info in ipairs(saved.systems) do
+            if info.system == s.system and info.systemIndex == s.systemIndex then
+                found = true
+                info.isInDefaultPosition = s.isInDefaultPosition
+                if not s.isInDefaultPosition then
+                    info.anchorInfo, info.anchorInfo2 = s.anchorInfo, s.anchorInfo2
+                end
+                local have = {}
+                for _, setting in ipairs(info.settings) do
+                    have[setting.setting] = setting
+                end
+                for id, value in pairs(s.settings) do
+                    if have[id] then
+                        have[id].value = value
+                    else
+                        table.insert(info.settings, { setting = id, value = value })
+                    end
+                end
+            end
+        end
+        if not found then
+            print(("layout string: no system %d/%s here, skipped"):format(s.system, tostring(s.systemIndex)))
+        end
+    end
+    for _, move in ipairs(layoutMoves or {}) do
+        local system = env.Enum.EditModeSystem[move.system]
+        local indices = env.Enum["EditMode" .. move.system .. "SystemIndices"]
+        local index = move.index and indices and indices[move.index] or nil
+        local found = false
+        for _, info in ipairs(saved.systems) do
+            if info.system == system and info.systemIndex == index then
+                info.anchorInfo = { point = move.point, relativeTo = move.relativeTo or "UIParent",
+                    relativePoint = move.relativePoint or move.point, offsetX = move.x or 0, offsetY = move.y or 0 }
+                info.isInDefaultPosition = false
+                found = true
+            end
+        end
+        assert(found, "no Edit Mode system " .. move.system .. (move.index and ("." .. move.index) or ""))
+    end
+    return { layouts = { saved }, activeLayout = #presets + 1 }
 end
 sim:Mock("C_EditMode.GetLayouts", layouts)
 sim:Mock("C_EditMode.GetAccountSettings", function()
@@ -181,9 +254,13 @@ end)
 sim:Mock("C_GameRules.IsPersonalResourceDisplayEnabled", function()
     return false
 end)
+-- Not in a pet battle (the action bar controller asks before paging).
+sim:Mock("C_PetBattles.IsInBattle", function()
+    return false
+end)
 
 if class then
-    fixtures.mock(sim, class)
+    fixtures.mock(sim, class, { stealth = stealth })
 end
 
 local loaded = 0
