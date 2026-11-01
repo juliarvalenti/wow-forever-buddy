@@ -34,7 +34,8 @@ When the addon's output changes, run the harness and commit the fixtures with th
 **The settings schema (P4a):** the addon's settings are declared once, in `ForeverBuddy/Settings.lua`: id, module, section, type, default, label, help, parent and acts. The window's Settings tab and Esc › Options read that list; what each option does is in `ForeverBuddy.lua`, by id, and the addon refuses to load if a declared option does nothing.
 - `settings_schema` checks every declaration and generates `src-tauri/resources/settings-schema.json` for the app. Under `--check`, a stale file fails, so commit it with the change.
 - `settings_matrix` runs every declared value. Each option is set on and then off from the Options page, with a session played through and the file it writes checked. The value must be kept at the next login. Then every option off, and every option on.
-- A new option needs its declaration, its get and set, then a run of the harness and a commit of the schema.
+- **Presets and lints (P4d).** Each option carries its row in the three presets (Quiet, Helpful, Everything), with Helpful equal to its default. The few that no preset touches are listed in `PRESET_FREE` with the reason. `lints` are combinations worth a word before they're approved, each two or more declared values and a line of 120 characters at most. Both go into the schema, and `get_settings` gives them to Claude.
+- A new option needs its declaration with its preset row, its get and set, then a run of the harness and a commit of the schema.
 
 ## The Forever census (SIM5a)
 

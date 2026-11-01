@@ -30,6 +30,27 @@ pub const MAX_CHANGES: usize = 50;
 pub struct Schema {
     pub version: i64,
     pub options: Vec<Opt>,
+    /// The named profiles (Quiet, Helpful, Everything); each option's row
+    /// says what they set (P4d).
+    #[serde(default)]
+    pub presets: Vec<Preset>,
+    /// Combinations worth a word before they're approved.
+    #[serde(default)]
+    pub lints: Vec<Lint>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Preset {
+    pub id: String,
+    pub label: String,
+    pub help: String,
+}
+
+/// When every `when` value holds together, `say` is shown under the change.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Lint {
+    pub when: BTreeMap<String, Value>,
+    pub say: String,
 }
 
 /// One option as `Settings.lua` declares it.
@@ -60,6 +81,9 @@ pub struct Opt {
     /// Text's length in bytes (the addon counts bytes too); 200 if unset.
     #[serde(default)]
     pub max_length: Option<usize>,
+    /// Preset id → the value that preset sets; none, and presets leave it be.
+    #[serde(default)]
+    pub presets: Option<BTreeMap<String, Value>>,
 }
 
 /// Text's length when the declaration doesn't say.
@@ -280,9 +304,40 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
             "the game's, as of the last logout (defaults before the first)"
         },
         "options": options,
-        "presets": [],
-        "lints": [],
+        "presets": presets(module),
+        "lints": lints(module),
     }))
+}
+
+/// Each preset with what it sets among the options asked about.
+fn presets(module: Option<&str>) -> Vec<Value> {
+    schema()
+        .presets
+        .iter()
+        .map(|p| {
+            let sets: BTreeMap<&str, &Value> = schema()
+                .options
+                .iter()
+                .filter(|o| module.is_none_or(|m| o.module == m))
+                .filter_map(|o| Some((o.id.as_str(), o.presets.as_ref()?.get(&p.id)?)))
+                .collect();
+            serde_json::json!({ "id": p.id, "label": p.label, "help": p.help, "sets": sets })
+        })
+        .collect()
+}
+
+/// The lints that name an option asked about.
+fn lints(module: Option<&str>) -> Vec<Value> {
+    schema()
+        .lints
+        .iter()
+        .filter(|l| {
+            l.when
+                .keys()
+                .any(|id| option(id).is_some_and(|o| module.is_none_or(|m| o.module == m)))
+        })
+        .map(|l| serde_json::json!({ "when": l.when, "say": l.say }))
+        .collect()
 }
 
 // ---- proposals -------------------------------------------------------------
@@ -621,6 +676,32 @@ mod tests {
         assert!(!schema().options.is_empty());
         for o in &schema().options {
             assert!(fits(o, &o.default), "{}", o.id);
+        }
+    }
+
+    /// P4d: get_settings gives Claude the presets (what each sets, among
+    /// the options asked about) and the lints that name one of them.
+    #[test]
+    fn get_settings_carries_presets_and_lints() {
+        let db = Db::open_in_memory().unwrap();
+        let bags = read(&db, FLAVOR, Some("bags")).unwrap();
+        let presets = bags["presets"].as_array().unwrap();
+        let ids: Vec<&str> = presets.iter().map(|p| p["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["quiet", "helpful", "everything"]);
+        assert_eq!(presets[0]["sets"]["bags.junk"], json!(false));
+        assert_eq!(presets[2]["sets"]["bags.qualityGlow"], json!(true));
+        assert!(
+            presets[1]["sets"].get("window.coach").is_none(),
+            "only the bags module's options"
+        );
+        let lints = bags["lints"].as_array().unwrap();
+        assert_eq!(lints.len(), 1);
+        assert_eq!(lints[0]["when"]["window.bagMarks"], json!(false));
+        // Helpful is what a new player has.
+        for o in &schema().options {
+            if let Some(row) = &o.presets {
+                assert_eq!(row.get("helpful"), Some(&o.default), "{}", o.id);
+            }
         }
     }
 

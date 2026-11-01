@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.9"
+local VERSION = "0.9.10"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -2789,7 +2789,103 @@ do
         t:Show()
     end
 
-    -- Every item button in Blizzard's bag frames (combined or separate).
+    -- P4d, the Bags module (display only): a coin on junk, the item level
+    -- on gear and a brighter quality border, on the buttons in the bags and
+    -- the bank. Junk and item level are on unless turned off; the border is
+    -- off unless turned on.
+    local JUNK = "Interface\\Buttons\\UI-GroupLoot-Coin-Up"
+    local GLOW = "Interface\\Buttons\\UI-ActionButton-Border"
+    local QUALITY = {
+        [0] = { 0.62, 0.62, 0.62 }, [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 },
+        [4] = { 0.64, 0.21, 0.93 }, [5] = { 1, 0.5, 0 }, [6] = { 0.9, 0.8, 0.5 }, [7] = { 0, 0.8, 1 },
+    }
+    -- Worn slots whose item level says nothing (shirts, tabards, bags).
+    local NO_LEVEL = { [""] = true, INVTYPE_BAG = true, INVTYPE_BODY = true, INVTYPE_TABARD = true,
+        INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_QUIVER = true, INVTYPE_AMMO = true }
+    local extras = setmetatable({}, { __mode = "k" }) -- our textures and text, by button
+
+    function C.glowOn()
+        return type(ForeverBuddySettings) == "table" and ForeverBuddySettings.bagGlow == true
+    end
+
+    function C.setGlow(on)
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        ForeverBuddySettings.bagGlow = on and true or nil
+    end
+
+    -- A value the client handed over, unless it's secret.
+    local function plain(v)
+        if isSecret(v) then
+            return nil
+        end
+        return v
+    end
+
+    local function decorate(button, bag, slot)
+        local x = extras[button]
+        local info = bag and slot and read("C_Container.GetContainerItemInfo", bag, slot)
+        info = type(info) == "table" and not isSecret(info) and info or nil
+        local quality = info and plain(info.quality)
+        local link = info and plain(info.hyperlink)
+        local id = info and plain(info.itemID)
+        local junk = quality == 0 and C.opt("bagJunk")
+        local level
+        if type(link) == "string" and type(id) == "number" and C.opt("bagLevel") then
+            local loc = plain(select(9, read("C_Item.GetItemInfo", id)))
+            if type(loc) == "string" and not NO_LEVEL[loc] then
+                level = plain(read("C_Item.GetDetailedItemLevelInfo", link))
+            end
+        end
+        local glow = type(quality) == "number" and quality >= 2 and C.glowOn() and QUALITY[quality]
+        if not (junk or level or glow) and not x then
+            return
+        end
+        if not x then
+            x = {}
+            extras[button] = x
+        end
+        if junk then
+            if not x.junk then
+                x.junk = button:CreateTexture(nil, "OVERLAY")
+                x.junk:SetSize(12, 12)
+                x.junk:SetPoint("TOPRIGHT", -1, -1)
+                x.junk:SetTexture(JUNK)
+            end
+            x.junk:Show()
+        elseif x.junk then
+            x.junk:Hide()
+        end
+        if type(level) == "number" and level > 0 then
+            if not x.level then
+                x.level = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+                x.level:SetPoint("BOTTOMRIGHT", -2, 2)
+            end
+            local c = QUALITY[quality] or QUALITY[1]
+            x.level:SetText(math.floor(level))
+            x.level:SetTextColor(c[1], c[2], c[3])
+            x.level:Show()
+        elseif x.level then
+            x.level:Hide()
+        end
+        if glow then
+            if not x.glow then
+                x.glow = button:CreateTexture(nil, "OVERLAY")
+                x.glow:SetTexture(GLOW)
+                x.glow:SetBlendMode("ADD")
+                x.glow:SetPoint("TOPLEFT", -14, 14)
+                x.glow:SetPoint("BOTTOMRIGHT", 14, -14)
+            end
+            x.glow:SetVertexColor(glow[1], glow[2], glow[3], 0.9)
+            x.glow:Show()
+        elseif x.glow then
+            x.glow:Hide()
+        end
+    end
+
+    -- Every item button in Blizzard's bag frames (combined or separate),
+    -- and the bank's while it's open.
     function C.tagBags()
         local each = rawget(_G, "ContainerFrameUtil_EnumerateContainerFrames")
         if type(each) ~= "function" then
@@ -2803,6 +2899,15 @@ do
                     local bag = type(button.GetBagID) == "function" and button:GetBagID()
                     local id = bag and read("C_Container.GetContainerItemID", bag, button:GetID())
                     tag(button, type(id) == "number" and marks[id] or nil)
+                    decorate(button, bag, button:GetID())
+                end
+            end
+        end
+        local bank = rawget(_G, "BankPanel")
+        if type(bank) == "table" and type(bank.EnumerateValidItems) == "function" and bank:IsShown() then
+            for _, button in bank:EnumerateValidItems() do
+                if type(button.GetBankTabID) == "function" then
+                    decorate(button, button:GetBankTabID(), button:GetContainerSlotID())
                 end
             end
         end
@@ -2835,7 +2940,14 @@ do
                 pcall(hooksecurefunc, name, bagsOpened)
             end
         end
+        -- P4d: the bank builds its buttons per tab, as you switch tabs.
+        local bank = rawget(_G, "BankPanel")
+        if type(bank) == "table" and type(bank.RefreshAllItemsForSelectedTab) == "function" then
+            pcall(hooksecurefunc, bank, "RefreshAllItemsForSelectedTab", bagsOpened)
+        end
     end
+
+    C.bagsOpened = bagsOpened
 
     -- The item tooltip's line, for an item this character carries.
     function C.tooltip(tooltip, data)
@@ -3761,6 +3873,32 @@ do
             end,
             set = function(on)
                 C.setOpt("tooltips", on)
+            end,
+        },
+        -- P4d: the Bags module redraws the open bags and bank on a change.
+        ["bags.junk"] = {
+            get = function()
+                return C.opt("bagJunk")
+            end,
+            set = function(on)
+                C.setOpt("bagJunk", on)
+                pcall(C.tagBags)
+            end,
+        },
+        ["bags.itemLevel"] = {
+            get = function()
+                return C.opt("bagLevel")
+            end,
+            set = function(on)
+                C.setOpt("bagLevel", on)
+                pcall(C.tagBags)
+            end,
+        },
+        ["bags.qualityGlow"] = {
+            get = C.glowOn,
+            set = function(on)
+                C.setGlow(on)
+                pcall(C.tagBags)
             end,
         },
         ["window.minimap"] = {
@@ -4910,6 +5048,8 @@ end
 handlers.BANKFRAME_OPENED = function()
     bankOpen = true
     scanBank()
+    -- P4d: the bank's buttons, once the game has drawn them.
+    pcall(C.bagsOpened)
 end
 
 -- The main bank's slots change without a BAG_UPDATE.

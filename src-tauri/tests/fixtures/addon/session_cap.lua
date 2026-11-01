@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario session_cap). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.9.9",
+		["addon"] = "0.9.10",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 2,
@@ -196,6 +196,9 @@ ForeverBuddyDB = {
 	},
 	["settings"] = {
 		["values"] = {
+			["bags.itemLevel"] = true,
+			["bags.junk"] = true,
+			["bags.qualityGlow"] = false,
 			["tooltips.alts"] = true,
 			["window.bagMarks"] = true,
 			["window.briefing"] = true,

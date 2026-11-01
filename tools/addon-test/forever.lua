@@ -108,6 +108,7 @@ return {
 
     -- Item data: the client's cache, not the character.
     ["C_Item.GetItemInfo"] = { from = "assumed" },
+    ["C_Item.GetDetailedItemLevelInfo"] = { from = "assumed" },
     ["C_Item.GetItemNameByID"] = { from = "assumed" },
     ["C_Item.GetItemSpell"] = { from = "assumed" },
     ["C_Item.RequestLoadItemDataByID"] = { from = "assumed" },

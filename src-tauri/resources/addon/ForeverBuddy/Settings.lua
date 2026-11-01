@@ -17,6 +17,15 @@
 --   acts     whether turning it on lets the addon do something in the game
 --            for you (none do yet; P4 §8)
 --   showHelp (optional) the help line also shows under the label
+--   presets  (optional) its row in the presets below: the value each preset
+--            sets. Left out, a preset doesn't touch it. Helpful is always
+--            the default.
+--
+-- presets: the three named profiles (designer, P4 §8.3). A new module adds
+-- its row to these rather than a new preset.
+-- lints: combinations worth a word before they're approved. Each one's
+-- `when` is option values that all hold together; `say` is the line shown
+-- under the change.
 --
 -- Ready for the types after "bool" (a profile's values are checked against
 -- these, in the addon and in the app): "number" with min and max, "enum"
@@ -36,6 +45,7 @@ ns.settings = {
             label = "Login briefing",
             help = "One quiet chat line when you log in: quests to hand in, repairs, mail on your alts, your note.",
             acts = false,
+            presets = { quiet = true, helpful = true, everything = true },
         },
         {
             id = "window.lockouts",
@@ -46,6 +56,7 @@ ns.settings = {
             label = "Lockouts at the entrance",
             help = "When you enter a dungeon or raid, says which of your other characters are saved there.",
             acts = false,
+            presets = { quiet = false, helpful = true, everything = true },
         },
         {
             id = "window.coach",
@@ -56,6 +67,7 @@ ns.settings = {
             label = "Session coach",
             help = "A small strip with this session's gold, experience and loot.",
             acts = false,
+            presets = { quiet = false, helpful = false, everything = true },
         },
         {
             id = "window.coachCombat",
@@ -77,6 +89,7 @@ ns.settings = {
             label = "Session card at logout",
             help = "A short summary of the session during the logout countdown.",
             acts = false,
+            presets = { quiet = false, helpful = true, everything = true },
         },
         {
             id = "window.bagMarks",
@@ -87,6 +100,7 @@ ns.settings = {
             label = "Marks in your bags",
             help = "Coin and letter marks on items you marked to sell or send in Forever Buddy.",
             acts = false,
+            presets = { quiet = false, helpful = true, everything = true },
         },
         {
             id = "tooltips.alts",
@@ -97,6 +111,42 @@ ns.settings = {
             label = "Your alts on item tooltips",
             help = "Which of your other characters hold an item, and where.",
             acts = false,
+            presets = { quiet = true, helpful = true, everything = true },
+        },
+        -- P4d: the Bags module, display only. Sorting and selling wait for
+        -- the "may the addon act" call (P4 §8.1).
+        {
+            id = "bags.junk",
+            module = "bags",
+            section = "Bags",
+            type = "bool",
+            default = true,
+            label = "Junk in your bags",
+            help = "A small coin on grey items, the ones only worth selling, in your bags and bank.",
+            acts = false,
+            presets = { quiet = false, helpful = true, everything = true },
+        },
+        {
+            id = "bags.itemLevel",
+            module = "bags",
+            section = "Bags",
+            type = "bool",
+            default = true,
+            label = "Item level on gear",
+            help = "The item level on each piece of gear in your bags and bank, in its quality colour.",
+            acts = false,
+            presets = { quiet = false, helpful = true, everything = true },
+        },
+        {
+            id = "bags.qualityGlow",
+            module = "bags",
+            section = "Bags",
+            type = "bool",
+            default = false,
+            label = "Brighter quality borders",
+            help = "A stronger border in the item's quality colour, on uncommon and better.",
+            acts = false,
+            presets = { quiet = false, helpful = false, everything = true },
         },
         {
             id = "window.minimap",
@@ -118,6 +168,21 @@ ns.settings = {
             help = "Numbers only: no names, chat or mail. Turns itself off when you log out.",
             showHelp = true,
             acts = false,
+        },
+    },
+    presets = {
+        { id = "quiet", label = "Quiet", help = "Alts on item tooltips and the login briefing, nothing else." },
+        { id = "helpful", label = "Helpful", help = "What a new player has: the quiet two, plus lockouts, bag marks, the logout card, junk and item levels." },
+        { id = "everything", label = "Everything", help = "Every display option, the session coach included." },
+    },
+    lints = {
+        {
+            when = { ["window.coach"] = true, ["window.coachCombat"] = false },
+            say = "The coach strip stays up while you fight.",
+        },
+        {
+            when = { ["bags.junk"] = false, ["window.bagMarks"] = false },
+            say = "Nothing in your bags shows what's only worth selling.",
         },
     },
 }

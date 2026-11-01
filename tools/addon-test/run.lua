@@ -1741,6 +1741,76 @@ local CLEANUP = 'ForeverBuddyData_Cleanup = {\n\t["schema"] = 1,\n\t["stamp"] = 
     .. '\t\t[1] = { 2589, "sell", 0, "grey", 0, 6948, "send", 2, "", 0, 10005, "send", 2, "upgrade", 9 },\n'
     .. '\t},\n}\n'
 
+-- P4d: the Bags module, display only. Junk gets a coin, gear its item level
+-- in its quality's colour, and (off by default) a brighter border, in the
+-- bags and in the bank. Each option off takes its part away, and an item
+-- the client keeps secret gets nothing.
+local function extrasOf(button)
+    local out = {}
+    for _, ch in ipairs(button.children) do
+        if ch.shown then
+            if ch.texture == "Interface\\Buttons\\UI-GroupLoot-Coin-Up" then
+                out.junk = true
+            elseif ch.texture == "Interface\\Buttons\\UI-ActionButton-Border" then
+                out.glow = ch.layout.SetVertexColor
+            elseif ch.text then
+                out.level, out.color = tostring(ch.text), ch.color
+            end
+        end
+    end
+    return out
+end
+
+scenario("bags", function()
+    local c = client()
+    c.world.bags[0].slots[3] = { id = 4865, count = 2 }
+    c.world.bags[0].slots[4] = { id = 10001, count = 1 }
+    c.world.bags[0].slots[5] = { id = 10002, count = 1, unreadable = true }
+    c.world.bags[6].slots[1] = { id = 10010, count = 1 }
+    c.world.bags[6].slots[2] = { id = 4865, count = 1 }
+    c.login(nil)
+    c.advance(5)
+    c.openBags()
+    c.advance(1)
+    local bag = c.global("ContainerFrame1")
+    local function at(slot)
+        return extrasOf(bag.buttons[slot])
+    end
+    eq(at(3).junk, true, "a coin on the grey pelt")
+    eq(at(3).level, nil, "no item level on junk")
+    eq(at(4).level, "63", "the cap's item level")
+    eq(table.concat(at(4).color, ","), "0,0.44,0.87", "in its quality's colour")
+    eq(at(4).junk or at(4).glow, nil, "no coin, and no border by default")
+    eq(next(at(2)), nil, "linen: nothing")
+    eq(next(at(5)), nil, "a secret item: nothing")
+
+    c.openBank()
+    c.advance(1)
+    local bank = c.global("BankPanel")
+    eq(extrasOf(bank.buttons[1]).level, "63", "gear in the bank")
+    eq(extrasOf(bank.buttons[2]).junk, true, "junk in the bank")
+    -- Another tab: the game reuses the buttons for its items, with no bag
+    -- update, and they're done again.
+    c.world.bags[6].slots[1] = { id = 10020, count = 1 }
+    bank:RefreshAllItemsForSelectedTab()
+    c.advance(1)
+    eq(extrasOf(bank.buttons[1]).level, "50", "after a tab switch")
+
+    c.click(setting(c, "Brighter quality borders"))
+    eq(table.concat(at(4).glow, ","), "0,0.44,0.87,0.9", "the border, on")
+    eq(extrasOf(bank.buttons[1]).glow ~= nil, true, "in the bank too")
+    eq(at(3).glow, nil, "never on junk")
+    c.click(setting(c, "Junk in your bags"))
+    eq(at(3).junk, nil, "junk off: no coin")
+    eq(extrasOf(bank.buttons[2]).junk, nil, "nor in the bank")
+    c.click(setting(c, "Item level on gear"))
+    eq(at(4).level, nil, "item level off: none")
+    eq(c.global("ForeverBuddySettings").bagGlow, true, "saved")
+    eq(c.global("ForeverBuddySettings").bagJunk, false, "saved")
+    c.closeBank()
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2052,7 +2122,8 @@ scenario("window", function()
     end
     eq(table.concat(labels, ", "), "Login briefing ✓, Lockouts at the entrance ✓, Session coach, "
         .. "Hide the coach in combat, Session card at logout ✓, Marks in your bags ✓, "
-        .. "Your alts on item tooltips ✓, Minimap button ✓, Record my next session", "every toggle")
+        .. "Your alts on item tooltips ✓, Junk in your bags ✓, Item level on gear ✓, "
+        .. "Brighter quality borders, Minimap button ✓, Record my next session", "every toggle")
     -- U1d: a dependent option isn't shown until its parent is on, and the
     -- rows below move up rather than leave a gap.
     local checks = w.panes[5].checks
@@ -2085,7 +2156,8 @@ scenario("window", function()
     end
     eq(table.concat(rows, ", "), "[In game], Login briefing, Lockouts at the entrance, Session coach, "
         .. "Hide the coach in combat, Session card at logout, Marks in your bags, [Tooltips], "
-        .. "Your alts on item tooltips, [This window], Minimap button, [Help fix bugs], Record my next session",
+        .. "Your alts on item tooltips, [Bags], Junk in your bags, Item level on gear, Brighter quality borders, "
+        .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
         for _, init in ipairs(options.layout.inits) do
@@ -2135,13 +2207,19 @@ scenario("window", function()
     c.click(b, "RightButton")
     eq(b.shown, false, "hidden")
     eq(c.chat[#c.chat], PREFIX .. "minimap button hidden. /fb minimap or the Settings tab brings it back.", "says how")
-    eq(w.panes[5].checks[8].checked, false, "the Settings tab agrees")
+    local minimapBox
+    for _, cb in ipairs(w.panes[5].checks) do
+        if cb.label.text == "Minimap button" then
+            minimapBox = cb
+        end
+    end
+    eq(minimapBox.checked, false, "the Settings tab agrees")
     c.slash("/fb minimap")
     eq(b.shown, true, "back")
     eq(c.chat[#c.chat], PREFIX .. "minimap button shown.", "says so")
-    c.click(w.panes[5].checks[8])
+    c.click(minimapBox)
     eq(b.shown, false, "the checkbox hides it too")
-    c.click(w.panes[5].checks[8])
+    c.click(minimapBox)
 
     -- Dragged, it follows the cursor round the edge, and the angle is kept.
     c.world.cursor = { 1000, 800 } -- straight above the minimap's centre
@@ -3167,6 +3245,15 @@ local SCHEMA_FIELDS = {
     -- For the types after bool (P4b-follow): a number's range, a choice's
     -- values, text's length.
     "min", "max", "step", "values", "maxLength",
+    -- P4d: its row in the presets.
+    "presets",
+}
+
+-- P4d: options no preset touches, and why. Every other one has a full row.
+local PRESET_FREE = {
+    ["window.coachCombat"] = "follows the coach, which the presets set",
+    ["window.minimap"] = "where to open the window from, not what the addon shows",
+    ["window.record"] = "a one-session switch for bug reports",
 }
 
 local function declared()
@@ -3206,6 +3293,22 @@ end
 scenario("settings_schema", function()
     local s = declared()
     eq(type(s.version), "number", "a schema version")
+
+    -- The presets: three, each named and explained (designer, P4 §8.3).
+    local presetIds, presets = {}, {}
+    eq(type(s.presets) == "table" and #s.presets, 3, "three presets")
+    for i, p in ipairs(s.presets) do
+        local what = "preset " .. i .. " (" .. tostring(p.id) .. ")"
+        eq(type(p.id) == "string" and p.id:match("^%l+$") ~= nil, true, what .. ": a lower-case id")
+        eq(presetIds[p.id], nil, what .. ": unique")
+        eq(type(p.label) == "string" and #p.label > 0, true, what .. ": a label")
+        eq(type(p.help) == "string" and #p.help > 10, true, what .. ": a help line")
+        presetIds[p.id] = true
+        presetIds[#presetIds + 1] = p.id
+        presets[i] = { __order = { "id", "label", "help" }, id = p.id, label = p.label, help = p.help }
+    end
+    eq(presetIds.helpful, true, "Helpful is one of them")
+
     local ids, options = {}, {}
     for i, o in ipairs(s.options) do
         local what = "option " .. i .. " (" .. tostring(o.id) .. ")"
@@ -3229,14 +3332,56 @@ scenario("settings_schema", function()
             end
             eq(known, true, what .. ": field " .. tostring(k) .. " is one the schema knows")
         end
-        ids[o.id] = true
+        -- Its preset row: a value for every preset, Helpful's the default.
+        if PRESET_FREE[o.id] then
+            eq(o.presets, nil, what .. ": no preset row (" .. PRESET_FREE[o.id] .. ")")
+        else
+            eq(type(o.presets), "table", what .. ": a preset row")
+            for k, v in pairs(o.presets or {}) do
+                eq(presetIds[k], true, what .. ": preset " .. tostring(k) .. " is declared")
+                eq(type(v), type(o.default), what .. ": its " .. tostring(k) .. " value is a " .. type(o.default))
+            end
+            for _, p in ipairs(presetIds) do
+                eq(o.presets and o.presets[p] ~= nil, true, what .. ": a value for " .. p)
+            end
+            eq(o.presets and o.presets.helpful, o.default, what .. ": Helpful is the default")
+        end
+        ids[o.id] = o
         local row = { __order = SCHEMA_FIELDS }
         for _, f in ipairs(SCHEMA_FIELDS) do
             row[f] = o[f]
         end
+        if o.presets then
+            row.presets = { __order = presetIds }
+            for k, v in pairs(o.presets) do
+                row.presets[k] = v
+            end
+        end
         options[#options + 1] = row
     end
-    generated(SCHEMA_JSON, json({ __order = { "version", "options" }, version = s.version, options = options }) .. "\n")
+
+    -- The lints: each a combination of declared values, and a short line.
+    local lints = {}
+    for i, l in ipairs(s.lints or {}) do
+        local what = "lint " .. i
+        eq(type(l.say) == "string" and #l.say > 10 and #l.say <= 120, true, what .. ": a line to show, 120 at most")
+        local keys = {}
+        for id, v in pairs(type(l.when) == "table" and l.when or {}) do
+            eq(ids[id] ~= nil, true, what .. ": " .. tostring(id) .. " is declared")
+            eq(ids[id] and type(v) == type(ids[id].default), true, what .. ": " .. tostring(id) .. "'s value fits it")
+            keys[#keys + 1] = id
+        end
+        eq(#keys >= 2, true, what .. ": a combination of two or more")
+        table.sort(keys)
+        local when = { __order = keys }
+        for _, k in ipairs(keys) do
+            when[k] = l.when[k]
+        end
+        lints[i] = { __order = { "when", "say" }, when = when, say = l.say }
+    end
+
+    generated(SCHEMA_JSON, json({ __order = { "version", "options", "presets", "lints" }, version = s.version,
+        options = options, presets = presets, lints = lints }) .. "\n")
 end)
 
 -- P4a: every declared value is run. For each option, on and then off (the
@@ -3262,6 +3407,11 @@ local function playAWhile(c)
     c.combat(false)
     c.openMailbox()
     c.closeMailbox()
+    -- P4d: the bags and the bank, where the Bags module draws.
+    c.openBags()
+    c.openBank()
+    c.advance(1)
+    c.closeBank()
     c.gainXp(800)
     c.startLogout()
     c.advance(5)
@@ -3557,7 +3707,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 9, "with every toggle")
+    eq(#options.frame.checks, 12, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

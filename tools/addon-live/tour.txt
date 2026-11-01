@@ -13,6 +13,12 @@ set window.coach on
 screenshot filled-settings
 reload
 state ForeverBuddySettings
+# P4d: the Bags module in the bags and the bank, then with the border on too.
+bags
+screenshot filled-bags bags
+set bags.qualityGlow on
+bags
+screenshot filled-bags-glow bags
 login empty
 slash /fb
 screenshot empty-plan

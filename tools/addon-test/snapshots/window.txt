@@ -72,13 +72,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "Bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Junk in your bags"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.15:RIGHT(2,0) "Item level on gear"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-282) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Brighter quality borders"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.18:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.20.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb list
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -170,13 +177,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "Bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Junk in your bags"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.15:RIGHT(2,0) "Item level on gear"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-282) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Brighter quality borders"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.18:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.20.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb errands
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -283,13 +297,20 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "Bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Junk in your bags"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.15:RIGHT(2,0) "Item level on gear"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-282) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Brighter quality borders"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.18:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.20.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb cleanup
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -404,10 +425,17 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       FontString TOPLEFT>parent:TOPLEFT(14,-160) "Tooltips"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-182) 24x24
         FontString LEFT>ForeverBuddyWindow.14.1.12:RIGHT(2,0) "Your alts on item tooltips"
-      FontString TOPLEFT>parent:TOPLEFT(14,-208) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-208) "Bags"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-230) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-256) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-278) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.16.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.14:RIGHT(2,0) "Junk in your bags"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-256) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.15:RIGHT(2,0) "Item level on gear"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-282) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.16:RIGHT(2,0) "Brighter quality borders"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.18:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.20.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
