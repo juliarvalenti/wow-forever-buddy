@@ -490,7 +490,20 @@ function M.new(opts)
         end,
         ["C_QuestLog.GetInfo"] = function(i)
             local q = world.questlog[i]
-            return q and { questID = q.questID, isHeader = q.header == true }
+            return q and {
+                questID = q.questID, isHeader = q.header == true,
+                title = q.title or M.QUESTS[q.questID], level = q.level,
+            }
+        end,
+        -- P4e: a quest's objectives, as the log entry lists them
+        -- ({ text, type, numFulfilled, numRequired, finished }).
+        ["C_QuestLog.GetQuestObjectives"] = function(id)
+            for _, q in ipairs(world.questlog) do
+                if q.questID == id then
+                    return q.objectives or {}
+                end
+            end
+            return {}
         end,
         -- Objectives done: in the log, or by client.questComplete.
         ["C_QuestLog.IsComplete"] = function(id)
@@ -1141,6 +1154,40 @@ function M.new(opts)
         env.WorldMapFrame.ScrollContainer.GetNormalizedCursorPosition = function()
             local c = world.mapCursor or { 0, 0 }
             return c[1], c[2]
+        end
+        -- P4e: the quest log's title buttons (one per quest in world.questlog,
+        -- { questID, Text }), filled by QuestLogQuests_Update the way the
+        -- client does: the plain title, then whatever hooks it has.
+        env.QuestScrollFrame = newWidget(env.WorldMapFrame)
+        local titles = {}
+        env.QuestScrollFrame.titleFramePool = {
+            EnumerateActive = function()
+                local i = 0
+                return function()
+                    i = i + 1
+                    return titles[i]
+                end
+            end,
+        }
+        env.QuestLogQuests_Update = function()
+            for k in pairs(titles) do
+                titles[k] = nil
+            end
+            for _, q in ipairs(world.questlog) do
+                if not q.header then
+                    local b = newWidget(env.QuestScrollFrame, "Button")
+                    b.questID = q.questID
+                    b.Text = b:CreateFontString()
+                    b.Text:SetText(q.title or M.QUESTS[q.questID])
+                    titles[#titles + 1] = b
+                end
+            end
+        end
+        client.questTitles = titles
+        -- P4e: the objective tracker; world.trackerMouse is the mouse over it.
+        env.ObjectiveTrackerFrame = newWidget(env.UIParent)
+        env.ObjectiveTrackerFrame.IsMouseOver = function()
+            return world.trackerMouse == true
         end
         env.UISpecialFrames = {}
         env.Settings = {

@@ -82,13 +82,25 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       Slider 180x16 hidden
         FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.17:TOPLEFT(0,4) "How much of the map shows while moving"
         FontString LEFT>ForeverBuddyWindow.14.1.17:RIGHT(10,0) "50%"
-      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "Quests"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.21.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Quest levels in the quest log"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-356) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Mark quests that are new in Forever"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-382) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Quest progress on item tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-408) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.22:RIGHT(2,0) "See-through quest tracker"
+      Slider 180x16 hidden
+        FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.23:TOPLEFT(0,4) "How much of the tracker shows"
+        FontString LEFT>ForeverBuddyWindow.14.1.23:RIGHT(10,0) "40%"
+      FontString TOPLEFT>parent:TOPLEFT(14,-434) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-456) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-482) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-504) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.27:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.27.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb list
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -190,13 +202,25 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       Slider 180x16 hidden
         FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.17:TOPLEFT(0,4) "How much of the map shows while moving"
         FontString LEFT>ForeverBuddyWindow.14.1.17:RIGHT(10,0) "50%"
-      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "Quests"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.21.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Quest levels in the quest log"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-356) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Mark quests that are new in Forever"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-382) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Quest progress on item tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-408) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.22:RIGHT(2,0) "See-through quest tracker"
+      Slider 180x16 hidden
+        FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.23:TOPLEFT(0,4) "How much of the tracker shows"
+        FontString LEFT>ForeverBuddyWindow.14.1.23:RIGHT(10,0) "40%"
+      FontString TOPLEFT>parent:TOPLEFT(14,-434) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-456) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-482) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-504) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.27:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.27.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb errands
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -313,13 +337,25 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       Slider 180x16 hidden
         FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.17:TOPLEFT(0,4) "How much of the map shows while moving"
         FontString LEFT>ForeverBuddyWindow.14.1.17:RIGHT(10,0) "50%"
-      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "Quests"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.21.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Quest levels in the quest log"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-356) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Mark quests that are new in Forever"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-382) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Quest progress on item tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-408) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.22:RIGHT(2,0) "See-through quest tracker"
+      Slider 180x16 hidden
+        FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.23:TOPLEFT(0,4) "How much of the tracker shows"
+        FontString LEFT>ForeverBuddyWindow.14.1.23:RIGHT(10,0) "40%"
+      FontString TOPLEFT>parent:TOPLEFT(14,-434) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-456) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-482) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-504) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.27:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.27.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
 
 == /fb cleanup
 Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
@@ -444,10 +480,22 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 360x420
       Slider 180x16 hidden
         FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.17:TOPLEFT(0,4) "How much of the map shows while moving"
         FontString LEFT>ForeverBuddyWindow.14.1.17:RIGHT(10,0) "50%"
-      FontString TOPLEFT>parent:TOPLEFT(14,-308) "This window"
+      FontString TOPLEFT>parent:TOPLEFT(14,-308) "Quests"
       CheckButton TOPLEFT>parent:TOPLEFT(14,-330) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Minimap button"
-      FontString TOPLEFT>parent:TOPLEFT(14,-356) "Help fix bugs"
-      CheckButton TOPLEFT>parent:TOPLEFT(14,-378) 24x24
-        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Record my next session"
-        FontString TOPLEFT>ForeverBuddyWindow.14.1.21.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."
+        FontString LEFT>ForeverBuddyWindow.14.1.19:RIGHT(2,0) "Quest levels in the quest log"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-356) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.20:RIGHT(2,0) "Mark quests that are new in Forever"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-382) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.21:RIGHT(2,0) "Quest progress on item tooltips"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-408) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.22:RIGHT(2,0) "See-through quest tracker"
+      Slider 180x16 hidden
+        FontString BOTTOMLEFT>ForeverBuddyWindow.14.1.23:TOPLEFT(0,4) "How much of the tracker shows"
+        FontString LEFT>ForeverBuddyWindow.14.1.23:RIGHT(10,0) "40%"
+      FontString TOPLEFT>parent:TOPLEFT(14,-434) "This window"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-456) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.25:RIGHT(2,0) "Minimap button"
+      FontString TOPLEFT>parent:TOPLEFT(14,-482) "Help fix bugs"
+      CheckButton TOPLEFT>parent:TOPLEFT(14,-504) 24x24
+        FontString LEFT>ForeverBuddyWindow.14.1.27:RIGHT(2,0) "Record my next session"
+        FontString TOPLEFT>ForeverBuddyWindow.14.1.27.1:BOTTOMLEFT(0,-2) 270x? "Numbers only: no names, chat or mail. Turns itself off when you log out."

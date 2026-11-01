@@ -711,6 +711,155 @@ function U.map.apply()
     end
 end
 
+-- The Quest module (P4e) ----------------------------------------------------------------
+--
+-- Display only: nothing here accepts, hands in or tracks a quest.
+-- - In the quest log: each quest's level before its title, and a tag on
+--   quests that are new in Forever (quest IDs from 55000 up; the original
+--   game's are under 10000, Q-SPIKE).
+-- - On an item's tooltip: the quests in your log that need it, and how far
+--   along you are.
+-- - The objective tracker see-through until the mouse is over it: alpha only,
+--   so its secure item buttons are never hidden or moved.
+-- The settings are ForeverBuddySettings.quest. As with the map, a part that's
+-- off costs nothing: the log hook and the tracker frame are made the first
+-- time their setting is turned on, and do nothing while it's off.
+
+U.quest = {
+    defaults = { levels = false, newTag = false, tooltips = false, trackerFade = false, trackerAlpha = 0.4 },
+    NEW_FROM = 55000,
+}
+
+function U.quest.get(key)
+    local q = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.quest
+    if type(q) ~= "table" or q[key] == nil then
+        return U.quest.defaults[key]
+    end
+    return q[key]
+end
+
+function U.quest.set(key, v)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    if type(ForeverBuddySettings.quest) ~= "table" then
+        ForeverBuddySettings.quest = {}
+    end
+    ForeverBuddySettings.quest[key] = v
+    U.quest.apply()
+end
+
+function U.quest.option(key)
+    return {
+        get = function()
+            return U.quest.get(key)
+        end,
+        set = function(v)
+            U.quest.set(key, v)
+        end,
+    }
+end
+
+-- The quests in the log (not headers): { questID, title, level }.
+function U.quest.log()
+    local out = {}
+    for i = 1, read("C_QuestLog.GetNumQuestLogEntries") or 0 do
+        local info = read("C_QuestLog.GetInfo", i)
+        if type(info) == "table" and not info.isHeader and type(info.questID) == "number" then
+            out[#out + 1] = info
+        end
+    end
+    return out
+end
+
+-- A quest log title as shown: "[23] Wanted: Hogger (New)".
+function U.quest.title(title, level, questID)
+    if U.quest.get("levels") and type(level) == "number" and level > 0 then
+        title = "[" .. level .. "] " .. title
+    end
+    if U.quest.get("newTag") and questID >= U.quest.NEW_FROM then
+        title = title .. " |cff40c0ff(New)|r"
+    end
+    return title
+end
+
+-- After the client fills the quest log's title buttons: ours on top.
+function U.quest.decorate()
+    if not (U.quest.get("levels") or U.quest.get("newTag")) then
+        return
+    end
+    local pool = type(QuestScrollFrame) == "table" and QuestScrollFrame.titleFramePool
+    if type(pool) ~= "table" or type(pool.EnumerateActive) ~= "function" then
+        return
+    end
+    local byId = {}
+    for _, q in ipairs(U.quest.log()) do
+        byId[q.questID] = q
+    end
+    for button in pool:EnumerateActive() do
+        local q = byId[button.questID]
+        local text = button.Text
+        if q and type(q.title) == "string" and type(text) == "table" then
+            text:SetText(U.quest.title(q.title, q.level, q.questID))
+        end
+    end
+end
+
+-- An item's tooltip: "Quest: Wanted: Hogger 3/8" for each quest in the log
+-- with an item objective that names it (both texts come from the client,
+-- so this holds in any language).
+function U.quest.tooltip(tooltip, data)
+    local name = type(data) == "table" and type(data.lines) == "table" and data.lines[1]
+        and data.lines[1].leftText
+    if type(name) ~= "string" or name == "" then
+        return
+    end
+    for _, q in ipairs(U.quest.log()) do
+        for _, o in ipairs(read("C_QuestLog.GetQuestObjectives", q.questID) or {}) do
+            if type(o) == "table" and o.type == "item" and type(o.text) == "string"
+                and o.text:find(name, 1, true) and type(o.numRequired) == "number" then
+                tooltip:AddLine(string.format("Quest: %s %d/%d", tostring(q.title or ""),
+                    tonumber(o.numFulfilled) or 0, o.numRequired), 1, 0.82, 0)
+            end
+        end
+    end
+end
+
+-- A child of the objective tracker (so it ticks only while the tracker
+-- shows) that keeps it see-through unless the mouse is over it.
+function U.quest.trackerFader()
+    local tracker = type(ObjectiveTrackerFrame) == "table" and ObjectiveTrackerFrame
+    if not U.quest.fader and tracker then
+        local f = CreateFrame("Frame", nil, tracker)
+        U.map.ticking(f, function()
+            tracker:SetAlpha(read(tracker.IsMouseOver, tracker) and 1 or U.quest.get("trackerAlpha"))
+        end)
+        U.quest.fader = f
+    end
+    return U.quest.fader
+end
+
+function U.quest.apply()
+    -- The log hook, once a log part is first on (a hook can't be undone; it
+    -- does nothing while both are off).
+    if (U.quest.get("levels") or U.quest.get("newTag")) and not U.quest.hooked
+        and type(QuestLogQuests_Update) == "function" and type(hooksecurefunc) == "function" then
+        U.quest.hooked = true
+        hooksecurefunc("QuestLogQuests_Update", function()
+            if not pcall(U.quest.decorate) then
+                U.errors = U.errors + 1
+            end
+        end)
+    end
+    local fade = U.quest.get("trackerFade") and U.quest.trackerFader() or U.quest.fader
+    if fade then
+        fade:SetShown(U.quest.get("trackerFade"))
+        if not U.quest.get("trackerFade") and type(ObjectiveTrackerFrame) == "table" then
+            ObjectiveTrackerFrame:SetAlpha(1)
+        end
+    end
+end
+
 -- Placement in Edit Mode (U1d) --------------------------------------------------------
 --
 -- The coach strip, the plan tracker and the logout card are placed in
@@ -1748,6 +1897,10 @@ local function hookTooltips()
         end
         -- B3: a marked item's line, after ours (C is filled in further down).
         if C.tooltip and not pcall(C.tooltip, tooltip, data) then
+            tooltipErrors = tooltipErrors + 1
+        end
+        -- P4e: the quests in the log that need this item.
+        if U.quest.get("tooltips") and not pcall(U.quest.tooltip, tooltip, data) then
             tooltipErrors = tooltipErrors + 1
         end
     end)
@@ -3941,6 +4094,11 @@ do
         ["map.minimap"] = U.map.option("minimap"),
         ["map.fade"] = U.map.option("fade"),
         ["map.fadeAlpha"] = U.map.option("fadeAlpha"),
+        ["quest.levels"] = U.quest.option("levels"),
+        ["quest.newTag"] = U.quest.option("newTag"),
+        ["quest.tooltips"] = U.quest.option("tooltips"),
+        ["quest.trackerFade"] = U.quest.option("trackerFade"),
+        ["quest.trackerAlpha"] = U.quest.option("trackerAlpha"),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
@@ -4872,6 +5030,10 @@ handlers.PLAYER_LOGIN = function()
     end
     -- P4c: the map's parts that are on (nothing at all while all are off).
     if not pcall(U.map.apply) then
+        U.errors = U.errors + 1
+    end
+    -- P4e: the quest module's parts that are on.
+    if not pcall(U.quest.apply) then
         U.errors = U.errors + 1
     end
     session = {

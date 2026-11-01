@@ -62,6 +62,7 @@ return {
     ["C_QuestLog.GetAllCompletedQuestIDs"] = { loading = "{}", torn = "{}", from = "report", seen = "AUDIT-F", probe = "q" },
     ["C_QuestLog.GetNumQuestLogEntries"] = row(NOT_UP, { from = "assumed" }),
     ["C_QuestLog.GetInfo"] = row(NONE, { from = "assumed" }),
+    ["C_QuestLog.GetQuestObjectives"] = row(NONE, { from = "assumed" }),
     GetProfessions = row(NONE, { from = "report", seen = "AUDIT-F" }),
     GetProfessionInfo = row(NONE, { from = "report", seen = "AUDIT-F" }),
     GetNumSavedInstances = row(NOT_UP, { from = "report", seen = "AUDIT-F", probe = "sv" }),
