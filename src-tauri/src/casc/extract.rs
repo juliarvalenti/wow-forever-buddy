@@ -13,11 +13,17 @@ use std::path::{Path, PathBuf};
 use super::{blp, icons, Casc, CascError};
 
 /// The paths worth taking by default: the game's own UI code (the modern
-/// layout puts it in Interface/AddOns/Blizzard_*), the fonts, and the art
-/// the addon windows draw with. Case doesn't matter; see `selected`.
+/// layout puts it in Interface/AddOns/Blizzard_*), the fonts (top-level
+/// Fonts/, where FRIZQT__.TTF lives), and the art the addon windows draw
+/// with, frame borders included. Case doesn't matter; see `selected`.
 pub const DEFAULT_FILTERS: &[&str] = &[
     "interface/addons",
+    "fonts",
     "interface/fonts",
+    "interface/dialogframe",
+    "interface/framegeneral",
+    // Blizzard's own doubled folder: the inset frame's corners live here.
+    "interface/interface/framegeneral",
     "interface/buttons",
     "interface/common",
     "interface/tooltips",

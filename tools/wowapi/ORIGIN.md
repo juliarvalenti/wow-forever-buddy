@@ -15,9 +15,12 @@ It's a test tool. It's never bundled into the app or the addon zip: the app bund
 Each patch is marked `-- WFB patch (G1)` in the code. Their diffs against the commit above are in this folder's git history.
 
 - `layout.lua`: a ScrollFrame's scroll child is placed at the frame's top left, moved up by the vertical scroll, as in the client. Without this, the window's panes draw empty.
-- `framexml.lua`: `PanelTemplates_TabResize`, `_SetNumTabs` and `_SetTab`. A `PanelTabButtonTemplate` tab is sized to its label plus the template's ends, as in the client. Without this, the tabs are 0 wide and pile up.
+- `framexml.lua`: `PanelTemplates_TabResize`, `_SetNumTabs` and `_SetTab`. A `PanelTabButtonTemplate` tab is sized to its label plus the template's ends, as in the client. Without this, the tabs are 0 wide and pile up. `_SetTab` also selects and deselects (`_UpdateTabs`, `_SelectTab`, `_DeselectTab`) as `SharedUIPanelTemplates.lua` does: the selected tab shows its active art, a white label set lower, and is disabled.
+- `templates.lua`: `PanelTabButtonTemplate` carries its art as `SharedUIPanelTemplates.xml` defines it (the `uiframe-tab-*` and `uiframe-activetab-*` atlases, 32 tall). Without this, the tabs draw as bare labels.
 - `templates.lua`: `PortraitFrameTemplate`'s portrait is placed over the top-left corner (62×62 at -5, 7), as in the client. Without this, the window has no portrait.
+- `templates.lua`: `PortraitFrameTemplate`, `ButtonFrameTemplate` and `InsetFrameTemplate` are built as `SharedUIPanelTemplates.xml` builds them: the metal nine-slice and the inset's inner nine-slice from `NineSliceLayouts.lua` (anchored as `NineSlice.lua` does, 2x atlases at half size), the rock and marble backgrounds tiled, the top streaks, a gold title and the close button at TOPRIGHT 0, 3. Without this, the window draws as a grey dialog box.
 - `render.lua`: a frame inside a ScrollFrame is clipped to it. Without this, a pane taller than its window (Settings) draws past the window's edge.
+- `assets.lua`: the local art folder (`WOWAPI_ART`) indexes `.ttf` files as well as images, so the fonts `casc-extract` pulls from the game serve `Store:font` offline. Without this, pictures drawn from the extract fall back to a browser serif.
 
 ## Updating
 

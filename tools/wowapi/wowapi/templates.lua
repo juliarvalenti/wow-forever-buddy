@@ -46,6 +46,36 @@ function M.builtins(env)
     "UIPanelDynamicResizeButtonTemplate", "TabButtonTemplate", "PanelTabButtonTemplate", "UIPanelSquareButton" }) do
     B[n] = buttonText
   end
+  -- WFB patch (G1): PanelTabButtonTemplate's art, as SharedUIPanelTemplates.xml
+  -- defines it: Left/Middle/Right for a tab, *Active for the selected one
+  -- (PanelTemplates_SetTab shows one set or the other). Without this the
+  -- tabs draw as bare labels.
+  B.PanelTabButtonTemplate = function(sim, obj, create)
+    buttonText(sim, obj, create)
+    sim.widgetState[obj].chrome = nil
+    sim.widgetState[obj].height = 32
+    obj.Text:SetFontObject("GameFontNormalSmall")
+    obj.Text:ClearAllPoints()
+    obj.Text:SetPoint("CENTER", 0, 2)
+    local function tex(key, atlas)
+      local t = child(sim, create, "Texture", obj, key, key, "BACKGROUND")
+      t:SetAtlas(atlas, true)
+      return t
+    end
+    tex("LeftActive", "uiframe-activetab-left"):SetPoint("TOPLEFT", -1, 0)
+    tex("RightActive", "uiframe-activetab-right"):SetPoint("TOPRIGHT", 8, 0)
+    tex("MiddleActive", "_uiframe-activetab-center")
+    obj.MiddleActive:SetPoint("TOPLEFT", obj.LeftActive, "TOPRIGHT")
+    obj.MiddleActive:SetPoint("TOPRIGHT", obj.RightActive, "TOPLEFT")
+    tex("Left", "uiframe-tab-left"):SetPoint("TOPLEFT", -3, 0)
+    tex("Right", "uiframe-tab-right"):SetPoint("TOPRIGHT", 7, 0)
+    tex("Middle", "_uiframe-tab-center")
+    obj.Middle:SetPoint("TOPLEFT", obj.Left, "TOPRIGHT")
+    obj.Middle:SetPoint("TOPRIGHT", obj.Right, "TOPLEFT")
+    obj.LeftActive:Hide()
+    obj.MiddleActive:Hide()
+    obj.RightActive:Hide()
+  end
   for _, n in ipairs({ "UIPanelCloseButton", "UIPanelCloseButtonNoScripts", "UIPanelHideButtonNoScripts" }) do
     B[n] = function(sim, obj)
       sim.widgetState[obj].width, sim.widgetState[obj].height = 24, 24
@@ -223,18 +253,94 @@ function M.builtins(env)
   end
   B.BasicFrameTemplate = function(sim, obj, create) panel(sim, obj, create, "TitleText") end
   B.BasicFrameTemplateWithInset = function(sim, obj, create) panel(sim, obj, create, "TitleText", true) end
+  -- WFB patch (G1): Blizzard's frame art. The NineSliceLayouts.lua layouts,
+  -- placed as NineSlice.lua places them: corners at their offsets, edges
+  -- stretched between the corners. Atlases on a 2x texture draw at half
+  -- their pixel size, as in the client.
+  local LAYOUTS = {
+    PortraitFrameTemplate = { layer = "OVERLAY",
+      TopLeftCorner = { "UI-Frame-PortraitMetal-CornerTopLeft", -13, 16 },
+      TopRightCorner = { "UI-Frame-Metal-CornerTopRight", 4, 16 },
+      BottomLeftCorner = { "UI-Frame-Metal-CornerBottomLeft", -13, -3 },
+      BottomRightCorner = { "UI-Frame-Metal-CornerBottomRight", 4, -3 },
+      TopEdge = { "_UI-Frame-Metal-EdgeTop" }, BottomEdge = { "_UI-Frame-Metal-EdgeBottom" },
+      LeftEdge = { "!UI-Frame-Metal-EdgeLeft" }, RightEdge = { "!UI-Frame-Metal-EdgeRight" } },
+    InsetFrameTemplate = { layer = "BORDER",
+      TopLeftCorner = { "UI-Frame-InnerTopLeft" }, TopRightCorner = { "UI-Frame-InnerTopRight" },
+      BottomLeftCorner = { "UI-Frame-InnerBotLeftCorner", 0, -1 },
+      BottomRightCorner = { "UI-Frame-InnerBotRight", 0, -1 },
+      TopEdge = { "_UI-Frame-InnerTopTile" }, BottomEdge = { "_UI-Frame-InnerBotTile" },
+      LeftEdge = { "!UI-Frame-InnerLeftTile" }, RightEdge = { "!UI-Frame-InnerRightTile" } },
+  }
+  local CORNERS = { TopLeftCorner = "TOPLEFT", TopRightCorner = "TOPRIGHT",
+    BottomLeftCorner = "BOTTOMLEFT", BottomRightCorner = "BOTTOMRIGHT" }
+  local EDGES = {
+    { "TopEdge", "TOPLEFT", "TOPRIGHT", "TopLeftCorner", "TopRightCorner" },
+    { "BottomEdge", "BOTTOMLEFT", "BOTTOMRIGHT", "BottomLeftCorner", "BottomRightCorner" },
+    { "LeftEdge", "TOPLEFT", "BOTTOMLEFT", "TopLeftCorner", "BottomLeftCorner" },
+    { "RightEdge", "TOPRIGHT", "BOTTOMRIGHT", "TopRightCorner", "BottomRightCorner" },
+  }
+  local function nineSlice(sim, obj, create, layout)
+    local L = LAYOUTS[layout]
+    local ns = child(sim, create, "Frame", obj, "NineSlice", "NineSlice")
+    ns:SetAllPoints()
+    local function piece(key)
+      local atlas = L[key][1]
+      local t = child(sim, create, "Texture", ns, key, key, L.layer)
+      t:SetAtlas(atlas, true)
+      local info = require("wowapi.assets").atlasInfo(atlas)
+      if info and info.path and info.path:lower():match("2x$") then t:SetSize(info.width / 2, info.height / 2) end
+      return t
+    end
+    for key, point in pairs(CORNERS) do
+      piece(key):SetPoint(point, ns, point, L[key][2] or 0, L[key][3] or 0)
+    end
+    for _, e in ipairs(EDGES) do
+      local t = piece(e[1])
+      t:SetPoint(e[2], ns[e[4]], e[3])
+      t:SetPoint(e[3], ns[e[5]], e[2])
+    end
+  end
+  -- PortraitFrameBaseTemplate and its textured base, as SharedUIPanelTemplates.xml
+  -- builds them: the metal nine-slice, the rock background and top streaks, a
+  -- gold title in TitleContainer, the close button at TOPRIGHT 0, 3.
   B.PortraitFrameTemplate = function(sim, obj, create)
-    panel(sim, obj, create, "TitleContainer")
-    obj.TitleText = obj.TitleContainer
+    nineSlice(sim, obj, create, "PortraitFrameTemplate")
+    local bg = child(sim, create, "Texture", obj, "Bg", "Bg", "BACKGROUND")
+    bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock")
+    bg:SetHorizTile(true)
+    bg:SetVertTile(true)
+    bg:SetPoint("TOPLEFT", 2, -21)
+    bg:SetPoint("BOTTOMRIGHT", -2, 2)
+    local streaks = child(sim, create, "Texture", obj, "TopTileStreaks", "TopTileStreaks", "BORDER")
+    streaks:SetAtlas("_UI-Frame-TopTileStreaks", true)
+    streaks:SetPoint("TOPLEFT", 6, -21)
+    streaks:SetPoint("TOPRIGHT", -2, -21)
+    local tc = child(sim, create, "Frame", obj, "TitleContainer", "TitleContainer")
+    tc:SetPoint("TOPLEFT", 58, -1)
+    tc:SetPoint("TOPRIGHT", -24, -1)
+    tc:SetHeight(20)
+    tc:SetFrameLevel(obj:GetFrameLevel() + 4)
+    local title = child(sim, create, "FontString", tc, "TitleText", "TitleText", "OVERLAY")
+    title:SetFontObject("GameFontNormal")
+    title:SetPoint("TOP", 0, -5)
+    title:SetPoint("LEFT")
+    title:SetPoint("RIGHT")
+    obj.TitleText = title
     obj.SetTitle = function(self, text) self.TitleText:SetText(text) end
     obj.GetTitleText = function(self) return self.TitleText end
+    local close = child(sim, create, "Button", obj, "CloseButton", "CloseButton")
+    B.UIPanelCloseButton(sim, close)
+    close:SetSize(28, 28)
+    close:SetPoint("TOPRIGHT", 0, 3)
+    close:SetFrameLevel(obj:GetFrameLevel() + 4)
     obj.PortraitContainer = create(sim, "Frame", nil, obj)
     obj.PortraitContainer.portrait = create(sim, "Texture", nil, obj.PortraitContainer)
     -- WFB patch (G1): the portrait sits over the top-left corner, as in the
     -- client; unplaced, it isn't drawn.
     obj.PortraitContainer:SetPoint("TOPLEFT", -5, 7)
     obj.PortraitContainer:SetSize(62, 62)
-    obj.PortraitContainer:SetFrameLevel(obj:GetFrameLevel() + 2)
+    obj.PortraitContainer:SetFrameLevel(obj:GetFrameLevel() + 3)
     obj.PortraitContainer.portrait:SetAllPoints()
     obj.SetPortraitToAsset = function(self, tex) self.PortraitContainer.portrait:SetTexture(tex) end
   end
@@ -243,17 +349,17 @@ function M.builtins(env)
     local i = child(sim, create, "Frame", obj, "Inset", "Inset")
     i:SetPoint("TOPLEFT", 4, -60)
     i:SetPoint("BOTTOMRIGHT", -6, 26)
+    B.InsetFrameTemplate(sim, i, create)
   end
   B.DefaultPanelTemplate = B.BasicFrameTemplate
   B.DefaultPanelFlatTemplate = B.BasicFrameTemplate
   B.InsetFrameTemplate = function(sim, obj, create)
     local bg = child(sim, create, "Texture", obj, "Bg", "Bg", "BACKGROUND")
-    bg:SetAtlas("UI-Frame-InnerBotTile")
-    bg:SetPoint("TOPLEFT", 2, -2)
-    bg:SetPoint("BOTTOMRIGHT", -2, 2)
-    bg:SetVertexColor(0.3, 0.3, 0.3)
-    obj.NineSlice = create(sim, "Frame", nil, obj)
-    obj.NineSlice:SetAllPoints()
+    bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble")
+    bg:SetHorizTile(true)
+    bg:SetVertTile(true)
+    bg:SetAllPoints()
+    nineSlice(sim, obj, create, "InsetFrameTemplate")
   end
   B.InsetFrameTemplate2 = B.InsetFrameTemplate
   B.InsetFrameTemplate3 = B.InsetFrameTemplate
