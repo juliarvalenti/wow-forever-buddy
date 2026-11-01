@@ -60,6 +60,11 @@ ns.settings = {
             label = "Merchant",
             sub = "Repairs and selling, at a vendor you open. Each option is off until you turn it on.",
         },
+        {
+            id = "questhelp",
+            label = "Quest helper",
+            sub = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
+        },
     },
     options = {
         {
@@ -346,8 +351,9 @@ ns.settings = {
             type = "bool",
             default = false,
             label = "Repair at vendors",
-            help = "When you open a vendor who repairs, pays for your repairs.",
+            help = "Pays for your repairs when you open a vendor who can repair.",
             parent = "merchant.enabled",
+            showHelp = true,
             acts = true,
         },
         {
@@ -359,6 +365,7 @@ ns.settings = {
             label = "Guild bank pays first",
             help = "Uses guild funds when your rank allows it, and your own gold when it doesn't.",
             parent = "merchant.repair",
+            showHelp = true,
             acts = true,
         },
         {
@@ -370,6 +377,7 @@ ns.settings = {
             label = "Sell grey items",
             help = "When you open a vendor, sells up to 12 grey items. The vendor's buyback keeps them.",
             parent = "merchant.enabled",
+            showHelp = true,
             acts = true,
         },
         {
@@ -381,6 +389,57 @@ ns.settings = {
             label = "Sell items you marked",
             help = "Also sells items you marked to sell in Forever Buddy, within the same 12.",
             parent = "merchant.enabled",
+            showHelp = true,
+            acts = true,
+        },
+        -- M3: the Quest helper, acting on quest windows you open with an NPC.
+        -- Off until turned on, one at a time (never by a preset). W1: the
+        -- module's switch stops all of it at once.
+        {
+            id = "questhelp.enabled",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = true,
+            label = "Quest helper",
+            help = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
+            moduleSwitch = true,
+            acts = false,
+        },
+        {
+            id = "questhelp.accept",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Accept quests",
+            help = "Accepts a quest when you open it with an NPC. Hold Shift as you open it to read it first.",
+            parent = "questhelp.enabled",
+            showHelp = true,
+            acts = true,
+        },
+        {
+            id = "questhelp.turnIn",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Hand in quests",
+            help = "Hands in a finished quest when you open it. With a reward to choose, or gold to pay, it waits for you.",
+            parent = "questhelp.enabled",
+            showHelp = true,
+            acts = true,
+        },
+        {
+            id = "questhelp.repeatable",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Daily and repeatable quests too",
+            help = "Without this, the helper leaves those for you to accept and hand in.",
+            parent = "questhelp.enabled",
+            showHelp = true,
             acts = true,
         },
         {
@@ -444,6 +503,7 @@ ns.settings = {
                 ["bags.junk"] = false, ["bags.itemLevel"] = false,
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
+                ["questhelp.enabled"] = true,
             },
         },
         {
@@ -459,6 +519,7 @@ ns.settings = {
                 ["bags.junk"] = true, ["bags.itemLevel"] = true,
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
+                ["questhelp.enabled"] = true,
             },
         },
         {
@@ -474,6 +535,7 @@ ns.settings = {
                 ["bags.junk"] = true, ["bags.itemLevel"] = true,
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
+                ["questhelp.enabled"] = true,
             },
         },
     },

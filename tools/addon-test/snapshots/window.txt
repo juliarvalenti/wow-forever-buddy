@@ -64,6 +64,10 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+      Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
+      Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-406) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-406) ?x1
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-407) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-407) ?x1
     Button ForeverBuddyWindowTab5 BOTTOMLEFT>ForeverBuddyWindow.9:BOTTOMLEFT(0,9) 148x28
@@ -317,6 +321,10 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+      Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
+      Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-406) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-406) ?x1
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-407) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-407) ?x1
     Button ForeverBuddyWindowTab5 BOTTOMLEFT>ForeverBuddyWindow.9:BOTTOMLEFT(0,9) 148x28
@@ -586,6 +594,10 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+      Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
+      Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-406) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-406) ?x1
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-407) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-407) ?x1
     Button ForeverBuddyWindowTab5 BOTTOMLEFT>ForeverBuddyWindow.9:BOTTOMLEFT(0,9) 148x28
@@ -870,6 +882,10 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+      Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
+      Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-406) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-406) ?x1
     Texture TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(10,-407) TOPRIGHT>ForeverBuddyWindow.9:TOPRIGHT(-10,-407) ?x1
     Button ForeverBuddyWindowTab5 BOTTOMLEFT>ForeverBuddyWindow.9:BOTTOMLEFT(0,9) 148x28
