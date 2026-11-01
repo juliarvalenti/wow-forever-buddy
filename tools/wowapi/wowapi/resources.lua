@@ -211,9 +211,18 @@ function M.blizzardFallback(sim, obj, label)
       rawset(t, k, fn)
       return fn
     end
+    -- WFB patch (SIM6): no endless chain. A placeholder's child of the same
+    -- name (frame.NineSlice.NineSlice), or one four deep, is nil, as in the
+    -- client; otherwise code that walks children by key (EllesmereUI's
+    -- FadeRegions follows .NineSlice) creates frames until memory runs out.
+    local st = sim.widgetState[t]
+    local depth = (st and st.autoDepth or 0) + 1
+    if (st and st.autoKey == k) or depth > 4 then return nil end
     local child = require("wowapi.widgets").create(sim, "Frame", nil, t)
     sim.widgetState[child].placeholder = true
     sim.widgetState[child].autoChild = true
+    sim.widgetState[child].autoKey = k
+    sim.widgetState[child].autoDepth = depth
     sim.widgetState[child].shown = false
     M.blizzardFallback(sim, child, label .. "." .. k)
     rawset(t, k, child)

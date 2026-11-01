@@ -116,11 +116,27 @@ function M.install(sim, env)
   rawset(env, "gcinfo", function() return collectgarbage("count") end)
   rawset(env, "loadstring", function(src, name) return compat.loadstring(src, name or src, env) end)
   if compat.is51 then
+    -- WFB patch (SIM6): the simulator's own functions (CreateFrame, print,
+    -- a timer's caller) run in the host's globals, which hold io and os.
+    -- Addon code never gets those back from getfenv, and can't re-point
+    -- one of them with setfenv: it sees its own environment instead.
+    local host = _G
+    local function resolve(f)
+      if type(f) == "number" then return f > 0 and f + 2 or f end
+      return f
+    end
     rawset(env, "getfenv", function(f)
       if f == nil or f == 0 or f == 1 then return env end
-      return getfenv(f)
+      local ok, e = pcall(getfenv, resolve(f))
+      if not ok or e == host then return env end
+      return e
     end)
-    rawset(env, "setfenv", setfenv)
+    rawset(env, "setfenv", function(f, t)
+      local ok, e = pcall(getfenv, resolve(f))
+      if ok and e == host then error("setfenv: can't change the game's own functions", 2) end
+      if type(f) == "number" then f = resolve(f) end
+      return setfenv(f, t)
+    end)
   end
 
   -- string library + WoW extensions (also reachable as ("x"):trim()).
@@ -150,6 +166,35 @@ function M.install(sim, env)
   end
   local function strsplittable(delims, s, pieces) return { strsplit(delims, s, pieces) } end
   S.trim, S.split, S.join, S.splittable = strtrim, strsplit, strjoin, strsplittable
+  -- WFB patch (SIM6): positional arguments ("%2$s %1$d"), which WoW's
+  -- string.format takes (localized strings reorder with them) and plain Lua
+  -- 5.1 doesn't. A format string without one goes straight through.
+  if not S._wfbPositional then
+    local rawformat = S.format
+    S._wfbPositional = true
+    S.format = function(fmt, ...)
+      if type(fmt) ~= "string" or not fmt:find("%%%d+%$") then return rawformat(fmt, ...) end
+      local args, picked, i, plain = { ... }, {}, 1, {}
+      while i <= #fmt do
+        local c = fmt:sub(i, i)
+        if c ~= "%" then
+          plain[#plain + 1] = c
+          i = i + 1
+        elseif fmt:sub(i + 1, i + 1) == "%" then
+          plain[#plain + 1] = "%%"
+          i = i + 2
+        else
+          local n, rest = fmt:match("^%%(%d+)%$()", i)
+          local spec, after = fmt:match("^([-+ #0]*%d*%.?%d*[%a])()", rest or (i + 1))
+          if not spec then error("invalid format string: " .. fmt, 2) end
+          picked[#picked + 1] = n and args[tonumber(n)] or args[#picked + 1]
+          plain[#plain + 1] = "%" .. spec
+          i = after
+        end
+      end
+      return rawformat(table.concat(plain), unpack(picked, 1, #picked))
+    end
+  end
   rawset(env, "string", S)
   local G = {
     strlen = S.len, strsub = S.sub, strupper = S.upper, strlower = S.lower, strfind = S.find,

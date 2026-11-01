@@ -10,6 +10,11 @@ compat.unpack = unpack
 
 -- Load a chunk from a string with a custom environment.
 function compat.loadstring(src, chunkname, env)
+  -- WFB patch (SIM6): source only, as in the client. Bytecode (it starts
+  -- with ESC) can be crafted to break out of the sandbox.
+  if type(src) == "string" and src:byte(1) == 27 then
+    return nil, "bytecode isn't loaded"
+  end
   if compat.is51 then
     local fn, err = loadstring(src, chunkname)
     if not fn then return nil, err end

@@ -1,0 +1,104 @@
+name: EllesmereUI pictures
+
+# SIM6: EllesmereUI (pinned in tools/addon-smoke/addons.txt) and ForeverBuddy
+# loaded together in WOWAPI, with pictures of Ellesmere's frames and of our
+# window with Ellesmere's skin. Third-party code runs only here, on a
+# throwaway runner with a read-only token and no secrets. Run by hand (or by
+# a PR that changes it); the PNGs and a report are the "ellesmere-pictures"
+# artifact.
+
+on:
+  pull_request:
+    paths:
+      - tools/addon-shots/ellesmere.lua
+      - .github/workflows/sim6-ellesmere.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pictures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Third-party code runs in this job, so the token stays out of .git/config.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - run: |
+          echo "WOWAPI_CACHE=$RUNNER_TEMP/wowapi-cache" >> "$GITHUB_ENV"
+          echo "OUT=$RUNNER_TEMP/ellesmere-pictures" >> "$GITHUB_ENV"
+          echo "WT=$RUNNER_TEMP/wt" >> "$GITHUB_ENV"
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
+
+      # Restore only (security on #227): this job runs someone else's code, so
+      # it never saves into the art cache the addon-shots workflow restores.
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/wowapi-cache
+          key: wowapi-art-${{ hashFiles('tools/wowapi/ORIGIN.md') }}-${{ github.run_id }}
+          restore-keys: wowapi-art-${{ hashFiles('tools/wowapi/ORIGIN.md') }}-
+
+      - name: Fetch WOWAPI's data at the vendored commit
+        run: tools/wowapi/fetch-data.sh
+
+      # The smoke test's installer: EllesmereUI at its pinned commit, packaged
+      # as the CurseForge packager would. (It also smoke-tests it.)
+      - name: Fetch EllesmereUI at its pin
+        run: |
+          grep '^EllesmereGaming/EllesmereUI@' tools/addon-smoke/addons.txt > "$RUNNER_TEMP/ellesmere.txt"
+          lua5.1 tools/addon-smoke/smoke.lua --install "$RUNNER_TEMP/ellesmere.txt" "$WT" --md "$RUNNER_TEMP/smoke.md"
+
+      - name: Add ForeverBuddy with the app's slots
+        run: |
+          cp -R src-tauri/resources/addon/ForeverBuddy "$WT/AddOns/"
+          for s in Tooltip1 Tooltip2 Plan Briefing Lists Cleanup; do
+            cp "src-tauri/tests/fixtures/bridge/$s.lua" "$WT/AddOns/ForeverBuddy/Data/$s.lua"
+          done
+          ls "$WT/AddOns"
+
+      # SIM6's modules, a set per process (the whole suite in one process ran
+      # the runner out of memory), each with a memory and time cap so a
+      # runaway shows as an error, and its own pictures.
+      - name: Draw
+        run: |
+          draw() {
+            mkdir -p "$OUT/$1"
+            ( ulimit -v 3000000
+              timeout 300 lua5.1 tools/addon-shots/ellesmere.lua "$WT/AddOns" "$OUT/$1" --only "$2" \
+                || echo "ellesmere.lua stopped: exit $?" )
+            if [ -f "$OUT/$1/report.md" ]; then
+              { echo "# Set: $1"; cat "$OUT/$1/report.md"; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          draw skin EllesmereUI,EllesmereUIBlizzardSkin,ForeverBuddy 2>&1 | tail -60
+          draw core EllesmereUI,ForeverBuddy
+          draw unitframes EllesmereUI,EllesmereUIUnitFrames
+          draw actionbars EllesmereUI,EllesmereUIActionBars
+          ls -R "$OUT"
+
+      - name: SVG to PNG (headless Chrome, at 2x)
+        run: |
+          for svg in "$OUT"/*/*.svg; do
+            [ -f "$svg" ] || continue
+            set=$(basename "$(dirname "$svg")")
+            w=$(grep -o -m1 'width="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
+            h=$(grep -o -m1 'height="[0-9]*"' "$svg" | head -1 | tr -dc 0-9)
+            google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+              --force-device-scale-factor=2 --window-size="$w,$h" \
+              --screenshot="$OUT/$set-$(basename "${svg%.svg}").png" "file://$svg" 2>/dev/null
+          done
+          ls -la "$OUT"/*.png || true
+
+      # Only our pictures and the report: never the addon code or the art cache.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ellesmere-pictures
+          path: |
+            ${{ runner.temp }}/ellesmere-pictures/*.png
+            ${{ runner.temp }}/ellesmere-pictures/*/report.md
+          if-no-files-found: error
+          retention-days: 14
