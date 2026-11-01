@@ -39,6 +39,8 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 - `render.lua`: a colour texture (`SetColorTexture`) turns with `SetRotation`, like a file texture.
 - `assets.lua`: a miss for an addon's file rescans its folder (at most once a second) and isn't memoized, so art or fonts added while a session runs show up on the next render.
 - `docs.lua`: `SetAttributeNoHandler` takes any value, like `SetAttribute`.
+- `xml.lua`: a region (Texture, FontString) applies its `mixin`, inline or from a region template, after its XML attributes (which the client sets natively, so a mixin's `SetText` doesn't run for them). Without this, `TextStatusBarSparkTemplate` has no `Initialize` and every unit frame's health bar setup fails.
+- `framexml.lua`: `RegionalUniqueNamesEnabled()` returns false (US realms). Without it, `UnitFrame_Update` stops on its first line.
 - `framexml.lua`: `Menu.GetManager()` returns one manager, with `OpenMenu` and the other methods addons hook (`hooksecurefunc`).
 - `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.
 - `toc.lua`: every `## Dep:`, `## Dependencies:`, `## RequiredDep(s):` and `## OptionalDep(s):` line counts, each with its own game-type tag. Without this, only the last line is kept (Blizzard lists one dependency per line), and `RequiredDep`, which `Blizzard_WorldMap` uses for the load-on-demand `Blizzard_MapCanvas`, was missed: the map then opened at login with its full-screen black backdrop.
