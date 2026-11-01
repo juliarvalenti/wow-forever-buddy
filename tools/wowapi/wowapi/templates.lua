@@ -165,12 +165,33 @@ function M.builtins(env)
       b:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-Scroll" .. dir .. "Button-Disabled")
       b:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-Scroll" .. dir .. "Button-Highlight")
       b.Normal, b.Pushed, b.Disabled, b.Highlight = b:GetNormalTexture(), b:GetPushedTexture(), b:GetDisabledTexture(), b:GetHighlightTexture()
+      -- WFB patch (G1): UIPanelScrollBarButton's crop, so the arrow fills
+      -- the button as in the client.
+      for _, t in ipairs({ b.Normal, b.Pushed, b.Disabled, b.Highlight }) do
+        if t then t:SetTexCoord(0.20, 0.80, 0.25, 0.75) end
+      end
     end
     bar.ThumbTexture = create(sim, "Texture", nil, bar)
     bar:SetThumbTexture(bar.ThumbTexture)
+    -- WFB patch (G1): UIPanelScrollBarTemplate's width and knob, as
+    -- SecureScrollTemplates.xml has them. Without these the bar is 0 wide
+    -- and draws nothing.
+    sim.widgetState[bar].width = 16
+    bar.ThumbTexture:SetTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
+    bar.ThumbTexture:SetSize(18, 24)
+    bar.ThumbTexture:SetTexCoord(0.20, 0.80, 0.125, 0.875)
     bar:SetPoint("TOPLEFT", obj, "TOPRIGHT", 6, -16)
     bar:SetPoint("BOTTOMLEFT", obj, "BOTTOMRIGHT", 6, 16)
-    bar:SetScript("OnValueChanged", function(self, v) obj:SetVerticalScroll(v) end)
+    -- WFB patch (G1): an arrow is disabled at its end of the range, so with
+    -- nothing to scroll both are, as ScrollFrame_OnScrollRangeChanged does.
+    local function arrows()
+      local lo, hi = bar:GetMinMaxValues()
+      local v = bar:GetValue() or 0
+      up:SetEnabled(hi > lo and v > lo)
+      down:SetEnabled(hi > lo and v < hi)
+    end
+    arrows()
+    bar:SetScript("OnValueChanged", function(self, v) obj:SetVerticalScroll(v); arrows() end)
     obj:EnableMouseWheel(true)
     obj:SetScript("OnMouseWheel", function(self, delta)
       local lo, hi = bar:GetMinMaxValues()
@@ -178,6 +199,7 @@ function M.builtins(env)
     end)
     obj:SetScript("OnScrollRangeChanged", function(self, x, y)
       bar:SetMinMaxValues(0, y or 0)
+      arrows()
     end)
   end
   -- a standalone legacy scroll bar (Slider with arrow buttons)

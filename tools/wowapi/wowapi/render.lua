@@ -395,6 +395,21 @@ local function frameBody(ctx, obj)
     local text = s.password and string.rep("*", #(s.text or "")) or (s.text or "")
     local tc = s.textColor or { 1, 1, 1, 1 }
     textSvg(ctx, x + 4, y + h / 2 + 4, text .. (sim.keyboardFocus == obj and "|" or ""), 12, rgb(tc[1], tc[2], tc[3]), "start", alpha)
+  elseif s.type == "Slider" and (function()
+      -- WFB patch (G1): a vertical slider with its own thumb texture (a
+      -- UIPanelScrollBarTemplate scroll bar) draws only that thumb, at its
+      -- size, moving down the bar with the value, as in the client.
+      local o = s.props and s.props.Orientation and s.props.Orientation[1]
+      local thumb = rawget(obj, "ThumbTexture")
+      local ts = thumb and st[thumb]
+      if o == "HORIZONTAL" or h <= w or not (ts and ts.texture) then return false end
+      local lo, hi = s.min or 0, s.max or 0
+      local frac = hi > lo and math.max(0, math.min(1, ((s.value or 0) - lo) / (hi - lo))) or 0
+      local tw, th = ts.width or w, ts.height or w
+      drawTexture(ctx, thumb, ts, x + (w - tw) / 2, y + (h - th) * frac, tw, th, alpha)
+      return true
+    end)() then
+    -- drawn above
   elseif s.type == "Slider" then
     local lo, hi = s.min or 0, s.max or 0
     local frac = hi > lo and ((s.value or 0) - lo) / (hi - lo) or 0
@@ -495,13 +510,15 @@ local function frameBody(ctx, obj)
   end
 end
 
--- WFB patch (G1): a frame inside a ScrollFrame is clipped to it, as in the
--- client, so a pane taller than its window doesn't draw past the edge.
+-- WFB patch (G1): a frame inside a ScrollFrame's scroll child is clipped to
+-- the ScrollFrame, as in the client, so a pane taller than its window
+-- doesn't draw past the edge. Its other children (the ScrollBar, which sits
+-- outside the frame's right edge) aren't clipped.
 local function frame(ctx, obj)
   local st = ctx.sim.widgetState
-  local p = st[obj].parent
-  while p and st[p] and st[p].type ~= "ScrollFrame" do p = st[p].parent end
-  if not (p and st[p]) then return frameBody(ctx, obj) end
+  local c, p = obj, st[obj].parent
+  while p and st[p] and st[p].type ~= "ScrollFrame" do c, p = p, st[p].parent end
+  if not (p and st[p]) or st[p].scrollChild ~= c then return frameBody(ctx, obj) end
   ctx.clips = ctx.clips or {}
   if not ctx.clips[p] then
     local l, b, w, h = layout.rect(ctx.sim, p)
