@@ -61,6 +61,11 @@ sim:Mock("UnitName", function(unit)
     end
 end)
 
+-- A returning player: Ellesmere's one-time "Welcome to EllesmereUI" setup
+-- popup (EllesmereUI_FirstInstall.lua) was dismissed long ago. Otherwise it
+-- covers the screen, our window included.
+sim.store.account.EllesmereUI = { EllesmereUIDB = { firstInstallPopupShown = true } }
+
 local report = {}
 local function add(s)
     report[#report + 1] = s
@@ -179,7 +184,7 @@ line("- RegisterSkin: " .. ((type(E) == "table" and type(E.RegisterSkin) == "fun
 line("")
 line("## Shown frames by addon prefix")
 line("")
-local counts = {}
+local counts, shownNames = {}, {}
 for obj, s in pairs(sim.widgetState) do
     if s.isFrame and sim._isVisible(obj) and type(obj.GetName) == "function" then
         local name = obj:GetName()
@@ -187,10 +192,14 @@ for obj, s in pairs(sim.widgetState) do
             local prefix = name:match("^(Ellesmere%a*)") or name:match("^(ForeverBuddy)") or name:match("^(EUI)")
             if prefix then
                 counts[prefix] = (counts[prefix] or 0) + 1
+                if prefix ~= "ForeverBuddy" then
+                    shownNames[#shownNames + 1] = name
+                end
             end
         end
     end
 end
+table.sort(shownNames)
 local keys = {}
 for k in pairs(counts) do
     keys[#keys + 1] = k
@@ -201,6 +210,10 @@ for _, k in ipairs(keys) do
 end
 if #keys == 0 then
     line("- none")
+end
+if #shownNames > 0 then
+    line("")
+    line("Ellesmere's shown frames: " .. table.concat(shownNames, ", ", 1, math.min(40, #shownNames)))
 end
 line("")
 line("## Lua errors")
