@@ -106,7 +106,7 @@ end
 -- each with its own game-type tag, so these keys collect every line whose
 -- tag allows this client instead of keeping the last.
 local LIST_KEYS = { dep = "deps", deps = "deps", dependencies = "deps", requireddeps = "deps",
-  dependancies = "deps", optionaldeps = "optionaldeps" }
+  requireddep = "deps", dependancies = "deps", optionaldeps = "optionaldeps", optionaldep = "optionaldeps" }
 
 function M.parse(text, name)
   local toc = { name = name, metadata = {}, files = {} }

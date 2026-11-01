@@ -3,6 +3,7 @@
 -- such as EllesmereUI for SIM6).
 --
 --   luajit tools/addon-shots/hud.lua <out.svg> [--blizzard <interface/addons dir>] [--addon <dir>]...
+--       [--background <texture>] [--ui-scale <pixels per unit>]
 --
 -- With --blizzard (the CASC extract's interface/addons, local only), the
 -- screen is Blizzard's own UI: every Blizzard addon the client loads at
@@ -10,16 +11,25 @@
 -- default layout. Without it, WOWAPI's stand-in FrameXML (what CI has).
 -- Set WOWAPI_ART (and WOWAPI_OFFLINE=1) to draw with the extract's art.
 --
+-- It looks like logging in: Thrandor, a level 12 warrior in Elwynn, at
+-- 85% health with Hogger targeted, the UI at the client's 1080p scale
+-- (768 units tall). There's no 3D world; --background draws a texture in
+-- its place (a loading screen from the extract, say).
+--
 -- Prints a summary of the Lua errors, most frequent first. This script only
 -- writes files; it never starts a browser or opens a window.
 
-local out, blizzard, extra = nil, nil, {}
+local out, blizzard, extra, background, uiScale = nil, nil, {}, nil, 1080 / 768
 local i = 1
 while arg[i] do
     if arg[i] == "--blizzard" then
         blizzard, i = arg[i + 1], i + 2
     elseif arg[i] == "--addon" then
         extra[#extra + 1], i = arg[i + 1], i + 2
+    elseif arg[i] == "--background" then
+        background, i = arg[i + 1], i + 2
+    elseif arg[i] == "--ui-scale" then
+        uiScale, i = tonumber(arg[i + 1]), i + 2
     else
         out, i = arg[i], i + 1
     end
@@ -104,7 +114,8 @@ end
 
 local art = os.getenv("WOWAPI_ART") ~= nil
 local sim = WoW.new({
-    player = { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000, zone = "Elwynn Forest" },
+    player = { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000, zone = "Elwynn Forest",
+        health = 425, healthMax = 500 },
     art = art,
     offline = os.getenv("WOWAPI_OFFLINE") == "1" or not art,
     quiet = true,
@@ -113,6 +124,19 @@ local sim = WoW.new({
     fakeData = false,
     apiDocsDir = blizzard and (blizzard .. "/blizzard_apidocumentationgenerated") or nil,
 })
+
+-- The client's UI scale at 1080p: UIParent is 768 units tall, each unit
+-- 1080/768 pixels. Set before anything loads, since Blizzard's code reads
+-- the screen size as it loads.
+local uiParent = sim:Get("UIParent")
+sim.widgetState[uiParent].scale = uiScale
+local screenW, screenH = 1920 / uiScale, 1080 / uiScale
+sim:Mock("GetScreenWidth", function()
+    return screenW
+end)
+sim:Mock("GetScreenHeight", function()
+    return screenH
+end)
 
 -- Edit Mode, as on a fresh install: no saved layouts (so the active one is
 -- Blizzard's preset 1, Modern) and its account settings (its own "show in
@@ -143,6 +167,8 @@ for _, dir in ipairs(extra) do
 end
 
 sim:Login()
+sim:SetTarget({ name = "Hogger", level = 11, classification = "elite", creatureType = "Humanoid",
+    reaction = 2, health = 520, healthMax = 666, class = "WARRIOR", guid = "Creature-0-0-0-0-448-0" })
 -- The client announces the layouts at login; Blizzard's Edit Mode places
 -- the HUD then. An error in it is the UI's, recorded like any other.
 local em = blizzard and sim:Get("EditModeManagerFrame")
@@ -158,7 +184,7 @@ if art then
 end
 
 local f = assert(io.open(out, "w"))
-f:write(render.svg(sim, { art = art, embed = true }))
+f:write(render.svg(sim, { art = art, embed = true, background = art and background or nil }))
 f:close()
 
 local counts, list = {}, {}
