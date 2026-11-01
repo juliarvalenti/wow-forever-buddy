@@ -311,6 +311,13 @@ function M.new(opts)
         sold = {}, -- { id, count, bag, slot } per item sold, in order
         repaired = nil, -- { cost, guild } once RepairAllItems ran
         misused = {}, -- items "used" with no vendor open: a test fails on any
+        -- M3: the quest window open now, an NPC's chat and old-style quest
+        -- list, which quests are repeatable, and what the addon did to them.
+        dialog = nil, -- { questID, choices, money, completable, autoAccept, areaTrigger }
+        gossip = { available = {}, active = {} }, -- C_GossipInfo's quest entries
+        greeting = { available = {}, active = {} }, -- QUEST_GREETING's lists
+        repeatable = {}, -- quest id -> true
+        quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
     }
@@ -387,7 +394,7 @@ function M.new(opts)
             if unit == "player" then
                 return true
             end
-            return unit == "npc" and world.npc ~= nil and world.npc.player == true
+            return (unit == "npc" or unit == "questnpc") and world.npc ~= nil and world.npc.player == true
         end,
         -- A position object, as the client returns; nil in an instance.
         ["C_Map.GetPlayerMapPosition"] = function(map, unit)
@@ -501,6 +508,83 @@ function M.new(opts)
             end
             local quest = world.quest_items[item.id]
             return { isQuestItem = quest ~= nil, questID = quest, isActive = quest ~= nil }
+        end,
+        -- M3: the quest window open now (world.dialog) and the lists an NPC
+        -- shows. Every quest action is recorded in world.quest_actions.
+        GetQuestID = function()
+            return world.dialog and world.dialog.questID or 0
+        end,
+        GetNumQuestChoices = function()
+            return world.dialog and world.dialog.choices or 0
+        end,
+        GetQuestMoneyToGet = function()
+            return world.dialog and world.dialog.money or 0
+        end,
+        IsQuestCompletable = function()
+            return world.dialog ~= nil and world.dialog.completable ~= false
+        end,
+        QuestGetAutoAccept = function()
+            return world.dialog ~= nil and world.dialog.autoAccept == true
+        end,
+        QuestIsFromAreaTrigger = function()
+            return world.dialog ~= nil and world.dialog.areaTrigger == true
+        end,
+        ["C_QuestLog.IsRepeatableQuest"] = function(id)
+            return world.repeatable[id] == true
+        end,
+        AcceptQuest = function()
+            if world.dialog then
+                table.insert(world.quest_actions, "accept:" .. world.dialog.questID)
+            end
+        end,
+        CompleteQuest = function()
+            if world.dialog then
+                table.insert(world.quest_actions, "complete:" .. world.dialog.questID)
+            end
+        end,
+        GetQuestReward = function(choice)
+            if world.dialog then
+                table.insert(world.quest_actions, "reward:" .. world.dialog.questID .. ":" .. tostring(choice))
+            end
+        end,
+        ["C_GossipInfo.GetAvailableQuests"] = function()
+            return world.gossip.available
+        end,
+        ["C_GossipInfo.GetActiveQuests"] = function()
+            return world.gossip.active
+        end,
+        ["C_GossipInfo.SelectAvailableQuest"] = function(id)
+            table.insert(world.quest_actions, "gossip-available:" .. id)
+        end,
+        ["C_GossipInfo.SelectActiveQuest"] = function(id)
+            table.insert(world.quest_actions, "gossip-active:" .. id)
+        end,
+        GetNumAvailableQuests = function()
+            return #world.greeting.available
+        end,
+        GetAvailableQuestInfo = function(i)
+            local q = world.greeting.available[i]
+            if q then
+                return q.trivial == true, q.frequency or 0, q.repeatable == true, false, q.questID
+            end
+        end,
+        SelectAvailableQuest = function(i)
+            table.insert(world.quest_actions, "greeting-available:" .. world.greeting.available[i].questID)
+        end,
+        GetNumActiveQuests = function()
+            return #world.greeting.active
+        end,
+        GetActiveTitle = function(i)
+            local q = world.greeting.active[i]
+            if q then
+                return M.QUESTS[q.questID] or "?", q.complete == true
+            end
+        end,
+        GetActiveQuestID = function(i)
+            return world.greeting.active[i] and world.greeting.active[i].questID
+        end,
+        SelectActiveQuest = function(i)
+            table.insert(world.quest_actions, "greeting-active:" .. world.greeting.active[i].questID)
         end,
         ["C_Container.GetContainerNumSlots"] = function(bag)
             local b = readable(bag) and world.bags[bag]
@@ -1783,6 +1867,33 @@ function M.new(opts)
 
     function client.encounter(id, name, success)
         client.fire("ENCOUNTER_END", id, name, 1, 5, success and 1 or 0)
+    end
+
+    -- M3: a quest window opens on `dialog` (see world.dialog), with an NPC
+    -- unless `from` says otherwise ({ name, player = true } for a share),
+    -- then closes. `page`: "detail", "progress" or "complete".
+    local QUEST_PAGES = { detail = "QUEST_DETAIL", progress = "QUEST_PROGRESS", complete = "QUEST_COMPLETE" }
+    function client.questWindow(page, dialog, from)
+        world.dialog = dialog
+        world.npc = from or { name = "Marshal Dughan" }
+        client.fire(QUEST_PAGES[page])
+        world.dialog, world.npc = nil, nil
+    end
+
+    -- An NPC's chat (GOSSIP_SHOW) listing quests: { available, active }.
+    function client.gossip(lists)
+        world.gossip = { available = lists.available or {}, active = lists.active or {} }
+        world.npc = { name = "Marshal Dughan" }
+        client.fire("GOSSIP_SHOW")
+        world.npc = nil
+    end
+
+    -- The older quest list (QUEST_GREETING): { available, active }.
+    function client.greeting(lists)
+        world.greeting = { available = lists.available or {}, active = lists.active or {} }
+        world.npc = { name = "Marshal Dughan" }
+        client.fire("QUEST_GREETING")
+        world.npc = nil
     end
 
     -- `items`: the ids the vendor sells (B2's highlights), none if not given.

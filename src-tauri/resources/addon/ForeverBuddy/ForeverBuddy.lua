@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.11.0"
+local VERSION = "0.12.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -2914,8 +2914,9 @@ do
         return type(ForeverBuddySettings) == "table" and ForeverBuddySettings[key] == true
     end
 
-    -- The Settings tab's get and set for one of its options.
-    function C.merchantOption(key)
+    -- The Settings tab's get and set for an option that acts (Merchant's,
+    -- the Quest helper's): on only once turned on.
+    function C.actsOption(key)
         return {
             get = function()
                 return on(key)
@@ -3013,6 +3014,130 @@ do
         end
         repair()
         sell()
+    end
+end
+
+-- M3, the Quest helper (acts; P4 §8.1, security's rules on #201). On a quest
+-- window the player opened with an NPC, it accepts the quest and hands it in.
+-- Not on a party member's share, an area trigger or the game's own
+-- auto-accept. It never picks a reward when there's a choice, never pays
+-- gold to finish a quest, and leaves daily and repeatable quests (and any
+-- it can't tell) unless that's on. Shift held as the window opens, or
+-- combat, and it does nothing.
+do
+    local function on(key)
+        return type(ForeverBuddySettings) == "table" and ForeverBuddySettings[key] == true
+    end
+
+    -- The player's turn: Shift held, or in combat.
+    local function manual()
+        return read("IsShiftKeyDown") == true or read("InCombatLockdown") == true
+    end
+
+    -- The quest window is with an NPC (or an item), not a player sharing.
+    local function withNpc()
+        return read("UnitIsPlayer", "questnpc") ~= true
+    end
+
+    -- A quest the helper may take: not repeatable, or repeatables are on.
+    local function mayTake(questID)
+        if on("questRepeatable") then
+            return true
+        end
+        return type(questID) == "number" and questID > 0
+            and read("C_QuestLog.IsRepeatableQuest", questID) == false
+    end
+
+    -- QUEST_DETAIL: the quest's page, to accept.
+    function C.questDetail()
+        if not on("questAccept") or manual() or not withNpc() then
+            return
+        end
+        if read("QuestGetAutoAccept") or read("QuestIsFromAreaTrigger") then
+            return
+        end
+        if mayTake(read("GetQuestID")) then
+            read("AcceptQuest")
+        end
+    end
+
+    -- QUEST_PROGRESS: what the quest needs, to hand over.
+    function C.questProgress()
+        if not on("questTurnIn") or manual() or not withNpc() then
+            return
+        end
+        if mayTake(read("GetQuestID")) and read("IsQuestCompletable") == true then
+            read("CompleteQuest")
+        end
+    end
+
+    -- QUEST_COMPLETE: the reward page, to finish on.
+    function C.questComplete()
+        if not on("questTurnIn") or manual() or not withNpc() or not mayTake(read("GetQuestID")) then
+            return
+        end
+        local choices, money = read("GetNumQuestChoices"), read("GetQuestMoneyToGet")
+        if type(choices) ~= "number" or type(money) ~= "number" or money > 0 then
+            return
+        end
+        if choices > 1 then
+            say(GOLD_PREFIX .. "pick your reward.")
+            return
+        end
+        read("GetQuestReward", choices)
+    end
+
+    -- A gossip list's first quest to open: finished ones to hand in, or
+    -- new ones to accept; never a trivial (grey) one.
+    local function pick(list, finished)
+        for _, q in ipairs(type(list) == "table" and list or {}) do
+            if type(q) == "table" and type(q.questID) == "number" and not q.isTrivial
+                and (not finished or q.isComplete == true)
+                and (on("questRepeatable") or (q.repeatable == false and (q.frequency or 0) == 0)) then
+                return q.questID
+            end
+        end
+    end
+
+    -- GOSSIP_SHOW: an NPC's chat, with quests among its options.
+    function C.questGossip()
+        if manual() then
+            return
+        end
+        local id = on("questTurnIn") and pick(read("C_GossipInfo.GetActiveQuests"), true)
+        if id then
+            read("C_GossipInfo.SelectActiveQuest", id)
+            return
+        end
+        id = on("questAccept") and pick(read("C_GossipInfo.GetAvailableQuests"), false)
+        if id then
+            read("C_GossipInfo.SelectAvailableQuest", id)
+        end
+    end
+
+    -- QUEST_GREETING: the older quest list some NPCs show instead.
+    function C.questGreeting()
+        if manual() or not withNpc() then
+            return
+        end
+        if on("questTurnIn") then
+            for i = 1, num(read("GetNumActiveQuests")) do
+                local _, done = read("GetActiveTitle", i)
+                if done == true and mayTake(read("GetActiveQuestID", i)) then
+                    read("SelectActiveQuest", i)
+                    return
+                end
+            end
+        end
+        if on("questAccept") then
+            for i = 1, num(read("GetNumAvailableQuests")) do
+                local trivial, frequency, repeatable = read("GetAvailableQuestInfo", i)
+                if trivial == false and (on("questRepeatable") or (repeatable == false and frequency == 0)) then
+                    read("SelectAvailableQuest", i)
+                    return
+                end
+            end
+        end
     end
 end
 
@@ -4330,10 +4455,14 @@ do
         ["bags.junk"] = C.bagOption("bagJunk"),
         ["bags.itemLevel"] = C.bagOption("bagLevel"),
         -- M1: the Merchant module (acts; at a vendor you opened).
-        ["merchant.repair"] = C.merchantOption("merchantRepair"),
-        ["merchant.repairGuild"] = C.merchantOption("merchantRepairGuild"),
-        ["merchant.sellJunk"] = C.merchantOption("merchantSellJunk"),
-        ["merchant.sellMarked"] = C.merchantOption("merchantSellMarked"),
+        ["merchant.repair"] = C.actsOption("merchantRepair"),
+        ["merchant.repairGuild"] = C.actsOption("merchantRepairGuild"),
+        ["merchant.sellJunk"] = C.actsOption("merchantSellJunk"),
+        ["merchant.sellMarked"] = C.actsOption("merchantSellMarked"),
+        -- M3: the Quest helper (acts; on quest windows you open with an NPC).
+        ["questhelp.accept"] = C.actsOption("questAccept"),
+        ["questhelp.turnIn"] = C.actsOption("questTurnIn"),
+        ["questhelp.repeatable"] = C.actsOption("questRepeatable"),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
@@ -4548,7 +4677,9 @@ do
                     -- A grey line under the label.
                     cb.sub = cb:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                     cb.sub:SetPoint("TOPLEFT", cb.label, "BOTTOMLEFT", 0, -2)
-                    cb.sub:SetWidth(W - 90)
+                    -- (Narrower under an indented option, so it ends at the
+                    -- same right edge.)
+                    cb.sub:SetWidth(W - 90 - (o.parent and 20 or 0))
                     cb.sub:SetJustifyH("LEFT")
                     cb.sub:SetText(o.sub)
                 end
@@ -5452,6 +5583,27 @@ handlers.QUEST_LOG_UPDATE = function()
     if not pcall(planObjectives) then
         planErrors = planErrors + 1
     end
+end
+
+-- M3: the Quest helper's windows (it does nothing while its options are off).
+handlers.QUEST_DETAIL = function()
+    guarded(C.questDetail)
+end
+
+handlers.QUEST_PROGRESS = function()
+    guarded(C.questProgress)
+end
+
+handlers.QUEST_COMPLETE = function()
+    guarded(C.questComplete)
+end
+
+handlers.GOSSIP_SHOW = function()
+    guarded(C.questGossip)
+end
+
+handlers.QUEST_GREETING = function()
+    guarded(C.questGreeting)
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xp, money)
