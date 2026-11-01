@@ -116,11 +116,27 @@ function M.install(sim, env)
   rawset(env, "gcinfo", function() return collectgarbage("count") end)
   rawset(env, "loadstring", function(src, name) return compat.loadstring(src, name or src, env) end)
   if compat.is51 then
+    -- WFB patch (SIM6): the simulator's own functions (CreateFrame, print,
+    -- a timer's caller) run in the host's globals, which hold io and os.
+    -- Addon code never gets those back from getfenv, and can't re-point
+    -- one of them with setfenv: it sees its own environment instead.
+    local host = _G
+    local function resolve(f)
+      if type(f) == "number" then return f > 0 and f + 2 or f end
+      return f
+    end
     rawset(env, "getfenv", function(f)
       if f == nil or f == 0 or f == 1 then return env end
-      return getfenv(f)
+      local ok, e = pcall(getfenv, resolve(f))
+      if not ok or e == host then return env end
+      return e
     end)
-    rawset(env, "setfenv", setfenv)
+    rawset(env, "setfenv", function(f, t)
+      local ok, e = pcall(getfenv, resolve(f))
+      if ok and e == host then error("setfenv: can't change the game's own functions", 2) end
+      if type(f) == "number" then f = resolve(f) end
+      return setfenv(f, t)
+    end)
   end
 
   -- string library + WoW extensions (also reachable as ("x"):trim()).
