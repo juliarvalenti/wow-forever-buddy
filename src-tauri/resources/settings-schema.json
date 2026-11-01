@@ -73,6 +73,50 @@
       "acts": false
     },
     {
+      "id": "map.coords",
+      "module": "map",
+      "section": "Map",
+      "type": "bool",
+      "default": false,
+      "label": "Coordinates on the world map",
+      "help": "Where you are, and where the cursor points, along the bottom of the world map.",
+      "acts": false
+    },
+    {
+      "id": "map.minimap",
+      "module": "map",
+      "section": "Map",
+      "type": "bool",
+      "default": false,
+      "label": "Coordinates under the minimap",
+      "help": "Where you are, in small numbers under the minimap.",
+      "acts": false
+    },
+    {
+      "id": "map.fade",
+      "module": "map",
+      "section": "Map",
+      "type": "bool",
+      "default": false,
+      "label": "Fade the world map while you move",
+      "help": "The map turns see-through while you walk or ride, so you can see where you're going.",
+      "acts": false
+    },
+    {
+      "id": "map.fadeAlpha",
+      "module": "map",
+      "section": "Map",
+      "type": "number",
+      "default": 0.5,
+      "label": "How much of the map shows while moving",
+      "help": "Lower is more see-through.",
+      "parent": "map.fade",
+      "acts": false,
+      "min": 0.1,
+      "max": 0.9,
+      "step": 0.05
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",
@@ -92,6 +136,48 @@
       "help": "Numbers only: no names, chat or mail. Turns itself off when you log out.",
       "acts": false,
       "showHelp": true
+    }
+  ],
+  "lints": [
+    {
+      "id": "map.fadeNearlyGone",
+      "when": {
+        "map.fade": true,
+        "map.fadeAlpha": {
+          "max": 0.2
+        }
+      },
+      "say": "The world map almost disappears while you move."
+    }
+  ],
+  "presets": [
+    {
+      "id": "quiet",
+      "label": "Quiet",
+      "values": {
+        "map.coords": false,
+        "map.fade": false,
+        "map.minimap": false
+      }
+    },
+    {
+      "id": "helpful",
+      "label": "Helpful",
+      "values": {
+        "map.coords": true,
+        "map.fade": false,
+        "map.minimap": false
+      }
+    },
+    {
+      "id": "everything",
+      "label": "Everything",
+      "values": {
+        "map.coords": true,
+        "map.fade": true,
+        "map.fadeAlpha": 0.5,
+        "map.minimap": true
+      }
     }
   ]
 }

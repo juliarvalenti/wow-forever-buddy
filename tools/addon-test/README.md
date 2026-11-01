@@ -13,9 +13,10 @@ On macOS, `brew install luajit` and run it with `luajit` instead (Homebrew has n
   - It also models a small game world (money, XP, zone, bags, gear, repair cost). Helpers such as `loot`, `sell`, `die`, `turnIn` and `bank` change that world and fire the events the client would.
   - Any API can be made secret, throwing or missing. `RegisterEvent` can refuse named events, and chosen events can deliver secret arguments.
   - The client's settings and Edit Mode (U1d):
-    - `Settings`'s vertical layout: categories, proxy settings, checkbox rows with their parent and shown predicates, and section headers.
+    - `Settings`'s vertical layout: categories, proxy settings, checkbox and slider rows with their parent and shown predicates, and section headers.
     - Edit Mode through `EventRegistry`, opened and closed with `client.editMode(true/false)`.
     - `opts.canvasOnly` makes an older client that only has the canvas page, and `opts.noEditMode` a client without Edit Mode.
+  - The Map module's world (P4c): the world map (`client.worldMap(open)`, `world.mapCursor`), moving (`client.move(on)`), and `client.update(frame, seconds)` to run a frame's OnUpdate while it and its parents are shown.
 - `serialize.lua`: writes a table the way the client writes SavedVariables, with keys sorted.
 - `run.lua`: the scenarios. Each one checks the file the addon wrote, including `_meta.counts` against its own recount. After every scenario, each client's file must have no caught errors (`_meta.errors` and the `*_errors` counters). Scenarios that return a file save it as `<scenario>.lua`.
 

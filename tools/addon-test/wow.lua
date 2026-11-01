@@ -273,6 +273,8 @@ function M.new(opts)
         -- B4: the client refuses addon reloads, firing ADDON_ACTION_BLOCKED.
         reloadBlocked = false,
         combat = false, -- InCombatLockdown
+        moving = false, -- IsPlayerMoving (P4c)
+        mapCursor = nil, -- { x, y } over the world map, 0..1 (P4c)
         shift = false, -- IsShiftKeyDown
         bound = {}, -- id -> the bind line its tooltip shows ("Soulbound")
         cursor = { 0, 0 }, -- GetCursorPosition (U1's minimap button drag)
@@ -459,6 +461,9 @@ function M.new(opts)
         end,
         InCombatLockdown = function()
             return world.combat
+        end,
+        IsPlayerMoving = function()
+            return world.moving
         end,
         IsShiftKeyDown = function()
             return world.shift
@@ -983,6 +988,42 @@ function M.new(opts)
     function Frame:GetChecked()
         return rawget(self, "checked")
     end
+    -- A slider (P4c's map fade). SetValue clamps and calls OnValueChanged
+    -- with byUser false, as the client does; client.drag(slider, v) is the
+    -- player moving it.
+    -- (Kept under w.sliding, so the fake's fields can't collide with the
+    -- addon's own on the same frame.)
+    function Frame:SetMinMaxValues(lo, hi)
+        self.sliding = self.sliding or {}
+        self.sliding.min, self.sliding.max = lo, hi
+    end
+    function Frame:SetValueStep(step)
+        self.sliding = self.sliding or {}
+        self.sliding.step = step
+    end
+    function Frame:SetObeyStepOnDrag(on)
+        self.sliding = self.sliding or {}
+        self.sliding.obeyStep = on
+    end
+    function Frame:SetValue(v, byUser)
+        local s = self.sliding or {}
+        v = math.max(s.min or v, math.min(s.max or v, v))
+        s.value = v
+        self.sliding = s
+        if self.scripts.OnValueChanged then
+            self.scripts.OnValueChanged(self, v, byUser and true or false)
+        end
+    end
+    function Frame:GetValue()
+        return self.sliding and self.sliding.value
+    end
+    -- The world map's alpha (P4c's fade).
+    function Frame:SetAlpha(a)
+        self.alpha = a
+    end
+    function Frame:GetAlpha()
+        return rawget(self, "alpha") or 1
+    end
     function Frame:RegisterEvent(event)
         if client.unknown[event] then
             error('Frame:RegisterEvent(): Attempt to register unknown event "' .. event .. '"', 2)
@@ -1085,6 +1126,22 @@ function M.new(opts)
         env.GetCursorPosition = function()
             return world.cursor[1], world.cursor[2]
         end
+        -- P4c: the world map (Elwynn, 1429) and its scroll container, which
+        -- knows where the cursor is over it (world.mapCursor, 0..1, or nil
+        -- while the cursor is elsewhere).
+        env.WorldMapFrame = newWidget(env.UIParent)
+        env.WorldMapFrame.shown = false
+        env.WorldMapFrame.GetMapID = function()
+            return 1429
+        end
+        env.WorldMapFrame.ScrollContainer = newWidget(env.WorldMapFrame)
+        env.WorldMapFrame.ScrollContainer.IsMouseOver = function()
+            return world.mapCursor ~= nil
+        end
+        env.WorldMapFrame.ScrollContainer.GetNormalizedCursorPosition = function()
+            local c = world.mapCursor or { 0, 0 }
+            return c[1], c[2]
+        end
         env.UISpecialFrames = {}
         env.Settings = {
             categories = {},
@@ -1118,7 +1175,8 @@ function M.new(opts)
             end
             S.RegisterProxySetting = function(category, variable, varType, name, default, get, set)
                 assert(type(variable) == "string" and category.settings[variable] == nil, "a unique variable")
-                assert(varType == S.VarType.Boolean and type(default) == "boolean", "a boolean setting")
+                assert((varType == S.VarType.Boolean and type(default) == "boolean")
+                    or (varType == S.VarType.Number and type(default) == "number"), "a boolean or number setting")
                 local setting = { variable = variable, name = name, default = default }
                 function setting:GetValue()
                     return get()
@@ -1148,6 +1206,21 @@ function M.new(opts)
                 category.layout:AddInitializer(init)
                 return init
             end
+            -- P4c: a number setting's slider row, { kind = "slider", setting,
+            -- options = { min, max, step, formatter } }, shown like a checkbox.
+            S.CreateSliderOptions = function(lo, hi, step)
+                local o = { min = lo, max = hi, step = step }
+                function o:SetLabelFormatter(_, fn)
+                    self.formatter = fn
+                end
+                return o
+            end
+            S.CreateSlider = function(category, setting, options, tooltip)
+                local init = S.CreateCheckbox(category, setting, tooltip)
+                init.kind, init.options = "slider", options
+                return init
+            end
+            env.MinimalSliderWithSteppersMixin = { Label = { Right = "right" } }
             env.CreateSettingsListSectionHeaderInitializer = function(text)
                 return { kind = "header", text = text }
             end
@@ -1671,6 +1744,46 @@ function M.new(opts)
             end
         end
         error("no slash command " .. cmd)
+    end
+
+    -- P4c: the player starts (true) or stops moving, as the client says.
+    function client.move(on)
+        world.moving = on
+        client.fire(on and "PLAYER_STARTED_MOVING" or "PLAYER_STOPPED_MOVING")
+    end
+
+    -- P4c: the world map opens or closes. Our frames on it see OnShow, as
+    -- a shown child does when its parent shows.
+    function client.worldMap(open)
+        local map = state.env.WorldMapFrame
+        map.shown = open
+        if open then
+            local function shown(f)
+                for _, child in ipairs(f.children) do
+                    if child.shown and child.scripts.OnShow then
+                        child.scripts.OnShow(child)
+                    end
+                    shown(child)
+                end
+            end
+            shown(map)
+        end
+    end
+
+    -- P4c: a frame's OnUpdate, `seconds` after the last (the client runs it
+    -- every frame while the frame and its parents are shown).
+    function client.update(frame, seconds)
+        local f = frame
+        while f do
+            if not f.shown then
+                return false
+            end
+            f = f.parent
+        end
+        if frame.scripts.OnUpdate then
+            frame.scripts.OnUpdate(frame, seconds)
+        end
+        return true
     end
 
     -- A quest's objectives are all done: the log updates.

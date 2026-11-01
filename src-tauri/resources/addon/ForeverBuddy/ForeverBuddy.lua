@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.9.9"
+local VERSION = "0.10.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -534,6 +534,171 @@ function C.setOpt(key, on)
         ForeverBuddySettings[key] = nil
     else
         ForeverBuddySettings[key] = false
+    end
+end
+
+-- The Map module (P4c) ------------------------------------------------------------------
+--
+-- Display only: coordinates on the world map and under the minimap, and the
+-- world map fading while you move. The settings are ForeverBuddySettings.map.
+-- A part that's off costs nothing: its frame isn't made until it's first
+-- turned on, and once off again it's hidden (so no OnUpdate runs) and its
+-- events are unregistered. Nothing is hooked: our frames are children of
+-- the world map and the minimap, so they show and hide with them.
+
+U.map = { defaults = { coords = false, minimap = false, fade = false, fadeAlpha = 0.5 } }
+
+function U.map.get(key)
+    local m = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.map
+    if type(m) ~= "table" or m[key] == nil then
+        return U.map.defaults[key]
+    end
+    return m[key]
+end
+
+function U.map.set(key, v)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    if type(ForeverBuddySettings.map) ~= "table" then
+        ForeverBuddySettings.map = {}
+    end
+    ForeverBuddySettings.map[key] = v
+    U.map.apply()
+end
+
+-- A setting's get and set, for the Settings list.
+function U.map.option(key)
+    return {
+        get = function()
+            return U.map.get(key)
+        end,
+        set = function(v)
+            U.map.set(key, v)
+        end,
+    }
+end
+
+-- "45.2, 61.8": a position on a map in percent; nil off the map.
+function U.map.fmt(x, y)
+    if type(x) ~= "number" or type(y) ~= "number" or (x <= 0 and y <= 0) or x > 1 or y > 1 then
+        return nil
+    end
+    return string.format("%.1f, %.1f", x * 100, y * 100)
+end
+
+-- Where you are on `map` (by default the map you're on); nil in an instance,
+-- or while the client keeps it secret.
+function U.map.player(map)
+    map = map or read("C_Map.GetBestMapForUnit", "player")
+    local pos = map and read("C_Map.GetPlayerMapPosition", map, "player")
+    if type(pos) ~= "table" or type(pos.GetXY) ~= "function" then
+        return nil
+    end
+    return U.map.fmt(read(pos.GetXY, pos))
+end
+
+-- Runs fn five times a second while `f` is shown.
+function U.map.ticking(f, fn)
+    local since = 1
+    f:SetScript("OnUpdate", function(_, elapsed)
+        since = since + (type(elapsed) == "number" and elapsed or 0)
+        if since >= 0.2 then
+            since = 0
+            fn()
+        end
+    end)
+end
+
+-- Under the minimap: where you are.
+function U.map.minimapText()
+    if not U.map.mini and type(Minimap) == "table" then
+        local f = CreateFrame("Frame", "ForeverBuddyMinimapCoords", Minimap)
+        f:SetSize(90, 14)
+        f:SetPoint("TOP", Minimap, "BOTTOM", 0, -2)
+        f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.text:SetPoint("CENTER", f, "CENTER", 0, 0)
+        U.map.ticking(f, function()
+            f.text:SetText(U.map.player() or "")
+        end)
+        U.map.mini = f
+    end
+    return U.map.mini
+end
+
+-- Along the bottom of the world map: where you are on the map shown, and
+-- where the cursor points while it's over the map.
+function U.map.worldText()
+    local map = type(WorldMapFrame) == "table" and WorldMapFrame
+    local scroll = map and map.ScrollContainer
+    if not U.map.world and type(scroll) == "table" then
+        local f = CreateFrame("Frame", "ForeverBuddyMapCoords", scroll)
+        f:SetSize(320, 18)
+        f:SetPoint("BOTTOM", scroll, "BOTTOM", 0, 6)
+        f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        f.text:SetPoint("CENTER", f, "CENTER", 0, 0)
+        U.map.ticking(f, function()
+            local parts = {}
+            local you = U.map.player(read(map.GetMapID, map))
+            if you then
+                parts[#parts + 1] = "You " .. you
+            end
+            local cursor = read(scroll.IsMouseOver, scroll) and U.map.fmt(read(scroll.GetNormalizedCursorPosition, scroll))
+            if cursor then
+                parts[#parts + 1] = "Cursor " .. cursor
+            end
+            f.text:SetText(table.concat(parts, "     "))
+        end)
+        U.map.world = f
+    end
+    return U.map.world
+end
+
+-- The world map at the faded alpha while you move, else whole.
+function U.map.fadeNow(moving)
+    if type(WorldMapFrame) == "table" then
+        WorldMapFrame:SetAlpha(moving and U.map.get("fade") and U.map.get("fadeAlpha") or 1)
+    end
+end
+
+-- A child of the world map that hears you start and stop moving; its OnShow
+-- is the map opening (perhaps while you're already moving).
+function U.map.fader()
+    if not U.map.fading and type(WorldMapFrame) == "table" then
+        local f = CreateFrame("Frame", nil, WorldMapFrame)
+        f:SetScript("OnEvent", function(_, event)
+            U.map.fadeNow(event == "PLAYER_STARTED_MOVING")
+        end)
+        f:SetScript("OnShow", function()
+            U.map.fadeNow(read("IsPlayerMoving"))
+        end)
+        U.map.fading = f
+    end
+    return U.map.fading
+end
+
+-- Each part as its setting says: made the first time it's on, then shown
+-- or hidden.
+function U.map.apply()
+    local mini = U.map.get("minimap") and U.map.minimapText() or U.map.mini
+    if mini then
+        mini:SetShown(U.map.get("minimap"))
+    end
+    local world = U.map.get("coords") and U.map.worldText() or U.map.world
+    if world then
+        world:SetShown(U.map.get("coords"))
+    end
+    local fade = U.map.get("fade") and U.map.fader() or U.map.fading
+    if fade then
+        for _, event in ipairs({ "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING" }) do
+            if U.map.get("fade") then
+                pcall(fade.RegisterEvent, fade, event)
+            else
+                fade:UnregisterEvent(event)
+            end
+        end
+        fade:SetShown(U.map.get("fade"))
+        U.map.fadeNow(U.map.get("fade") and read("IsPlayerMoving"))
     end
 end
 
@@ -3763,6 +3928,10 @@ do
                 C.setOpt("tooltips", on)
             end,
         },
+        ["map.coords"] = U.map.option("coords"),
+        ["map.minimap"] = U.map.option("minimap"),
+        ["map.fade"] = U.map.option("fade"),
+        ["map.fadeAlpha"] = U.map.option("fadeAlpha"),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
@@ -3884,13 +4053,19 @@ do
                 y = y - 22
             else
                 local cb, o = item.cb, item.cb.option
-                cb:SetChecked(o.get() and true or false)
+                if cb.slider then
+                    cb:SetValue(o.get())
+                else
+                    cb:SetChecked(o.get() and true or false)
+                end
                 local shown = OPTIONS.shows(o)
                 cb:SetShown(shown)
                 if shown then
                     cb:ClearAllPoints()
-                    cb:SetPoint("TOPLEFT", o.parent and 34 or 14, y)
-                    y = y - 26 - (cb.sub and 16 or 0)
+                    -- A slider's label sits above it, so it goes lower.
+                    local x = (o.parent and 34 or 14) + (cb.slider and 6 or 0)
+                    cb:SetPoint("TOPLEFT", x, y - (cb.slider and 18 or 0))
+                    y = y - (cb.slider and 48 or 26) - (cb.sub and 16 or 0)
                 end
             end
         end
@@ -3913,6 +4088,43 @@ do
         end)
     end
 
+    -- A number option (P4c's map fade): a slider with its label above and
+    -- its value, in percent, beside it. Dragging sets it; nothing changes in
+    -- combat (the slider goes back).
+    function OPTIONS.slider(parent, o)
+        local d = o.decl
+        local s = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+        s:SetSize(180, 16)
+        s:SetMinMaxValues(d.min, d.max)
+        s:SetValueStep(d.step or 0.05)
+        s:SetObeyStepOnDrag(true)
+        -- The template's own labels (Low, High, Text) stay empty.
+        for _, k in ipairs({ "Low", "High", "Text" }) do
+            local fs = rawget(s, k)
+            if type(fs) == "table" then
+                fs:SetText("")
+            end
+        end
+        s.slider, s.option = true, o
+        s.label = s:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        s.label:SetPoint("BOTTOMLEFT", s, "TOPLEFT", 0, 4)
+        s.label:SetText(o.label)
+        s.value = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        s.value:SetPoint("LEFT", s, "RIGHT", 10, 0)
+        s:SetScript("OnValueChanged", function(self, v, byUser)
+            v = math.floor(v * 100 + 0.5) / 100
+            self.value:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+            if byUser then
+                if not read("InCombatLockdown") and not pcall(o.set, v) then
+                    U.errors = U.errors + 1
+                end
+                U.refresh()
+            end
+        end)
+        OPTIONS.tip(s)
+        return s
+    end
+
     local function buildOptions(parent, y)
         local checks = { top = y, items = {} }
         for _, o in ipairs(OPTIONS) do
@@ -3920,6 +4132,10 @@ do
                 local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 h:SetText(o.head)
                 checks.items[#checks.items + 1] = { head = h }
+            elseif o.decl.type == "number" then
+                local s = OPTIONS.slider(parent, o)
+                checks[#checks + 1] = s
+                checks.items[#checks.items + 1] = { cb = s }
             else
                 local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
                 cb:SetSize(24, 24)
@@ -3965,10 +4181,12 @@ do
                 end
             else
                 local variable = "FOREVERBUDDY_" .. o.key:gsub("%.", "_"):upper()
+                local number = o.decl.type == "number"
                 local setting = Settings.RegisterProxySetting(category, variable,
-                    Settings.VarType.Boolean, o.label, o.default and true or false,
+                    number and Settings.VarType.Number or Settings.VarType.Boolean, o.label,
+                    number and o.default or (o.default and true or false),
                     function()
-                        return o.get() and true or false
+                        return U.prefs.now(o)
                     end,
                     function(on)
                         -- As in the window: nothing changes in combat, and
@@ -3978,12 +4196,25 @@ do
                             read("C_Timer.After", 0, function()
                                 read("Settings.NotifyUpdate", variable)
                             end)
-                        elseif not pcall(o.set, on and true or false) then
+                        elseif not pcall(o.set, number and on or (on and true or false)) then
                             U.errors = U.errors + 1
                         end
                         U.refresh()
                     end)
-                local init = Settings.CreateCheckbox(category, setting, o.description)
+                local init
+                if number then
+                    -- A slider with the value in percent at its right.
+                    local opts = Settings.CreateSliderOptions(o.decl.min, o.decl.max, o.decl.step or 0.05)
+                    local label = type(MinimalSliderWithSteppersMixin) == "table" and MinimalSliderWithSteppersMixin.Label
+                    if label and opts.SetLabelFormatter then
+                        opts:SetLabelFormatter(label.Right, function(v)
+                            return string.format("%d%%", math.floor(v * 100 + 0.5))
+                        end)
+                    end
+                    init = Settings.CreateSlider(category, setting, opts, o.description)
+                else
+                    init = Settings.CreateCheckbox(category, setting, o.description)
+                end
                 inits[o.key] = init
                 local parent = o.parent and inits[o.parent]
                 if parent then
@@ -4628,6 +4859,10 @@ handlers.PLAYER_LOGIN = function()
         U.errors = U.errors + 1
     end
     if not pcall(U.prefs.apply) then
+        U.errors = U.errors + 1
+    end
+    -- P4c: the map's parts that are on (nothing at all while all are off).
+    if not pcall(U.map.apply) then
         U.errors = U.errors + 1
     end
     session = {

@@ -290,6 +290,23 @@ export function installMockIpc(): void {
                 to: "off",
                 acts: false,
                 same: false,
+                lints: [],
+              },
+            }),
+            // P4c: a number, with the lint it would make fire.
+            proposal(9, 5, "Claude Desktop", {
+              kind: "settings",
+              reason: "You said the map gets in the way when you ride.",
+              setting: {
+                option: "map.fadeAlpha",
+                label: "How much of the map shows while moving",
+                help: "Lower is more see-through.",
+                section: "Map",
+                from: "0.5",
+                to: "0.15",
+                acts: false,
+                same: false,
+                lints: ["The world map almost disappears while you move."],
               },
             }),
             proposal(2, 12, "Claude Desktop", {
