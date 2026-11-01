@@ -171,7 +171,8 @@ local CHILD_NOUN = {}
 for _, n in ipairs({ "Button", "Buttons", "Frame", "Frames", "Bar", "Bars", "Text", "Texture", "Textures", "Icon",
   "Border", "Background", "Bg", "Cap", "Caps", "Container", "Highlight", "Glow", "Label", "Title", "Header",
   "Overlay", "Mask", "Portrait", "Arrow", "Tab", "Tabs", "List", "Box", "Inset", "Slider", "ScrollBar", "Line",
-  "Edge", "Corner", "Divider", "Shadow", "Flash", "Spark", "Fill", "Art", "Pool", "Region", "Anim", "Model" }) do
+  "Edge", "Corner", "Divider", "Shadow", "Flash", "Spark", "Fill", "Art", "Pool", "Region", "Anim", "Model",
+  "Dropdown", "DropDown", "Search" }) do
   CHILD_NOUN[n] = true
 end
 local METHOD_ONLY = { "Get", "Set", "Is", "Has", "Can", "Should", "Update", "Refresh", "Register", "Unregister",
