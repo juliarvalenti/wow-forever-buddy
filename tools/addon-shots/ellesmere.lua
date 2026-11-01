@@ -9,11 +9,28 @@
 -- In CI it draws on WOWAPI's stand-in FrameXML with the downloaded retail
 -- art, not Forever's own (the extract never leaves Julia's Mac).
 --
---   lua5.1 tools/addon-shots/ellesmere.lua <AddOns folder> <out dir> [--no-art]
+--   lua5.1 tools/addon-shots/ellesmere.lua <AddOns folder> <out dir> [--only A,B] [--no-art]
+--
+-- --only loads those addons, in that order (their dependencies come from
+-- the same folder); without it, every addon in the folder.
 
 local addonsDir, out = arg[1], arg[2]
-assert(addonsDir and out, "usage: ellesmere.lua <AddOns folder> <out dir> [--no-art]")
-local art = arg[3] ~= "--no-art"
+assert(addonsDir and out, "usage: ellesmere.lua <AddOns folder> <out dir> [--only A,B] [--no-art]")
+local art, only = true, nil
+for i = 3, #arg do
+    if arg[i] == "--no-art" then
+        art = false
+    elseif arg[i] == "--only" then
+        only = {}
+        for name in (arg[i + 1] or ""):gmatch("[^,]+") do
+            only[#only + 1] = name
+        end
+    end
+end
+io.stdout:setvbuf("line")
+local function step(s)
+    print("-- " .. s .. " (" .. math.floor(collectgarbage("count") / 1024) .. " MB)")
+end
 
 local here = (arg[0]:match("^(.*)[/\\]") or ".")
 local wowapiDir = here .. "/../wowapi"
@@ -49,15 +66,33 @@ local function add(s)
     report[#report + 1] = s
 end
 
-local okLoad, loadErr = pcall(sim.LoadAllAddons, sim, addonsDir)
+local okLoad, loadErr = pcall(function()
+    if not only then
+        sim:LoadAllAddons(addonsDir)
+        return
+    end
+    sim:AddAddonPath(addonsDir)
+    for _, name in ipairs(only) do
+        step("loading " .. name)
+        local ok, why = sim:LoadAddon(addonsDir .. "/" .. name)
+        if not ok then
+            add("- " .. name .. " didn't load: " .. tostring(why))
+        end
+    end
+end)
+step("logging in")
 local okLogin, loginErr = okLoad and pcall(function()
     sim:Login()
-    sim:Advance(6)
+    for i = 1, 6 do
+        sim:Advance(1)
+        step("advanced " .. i .. " s")
+    end
 end)
 
 -- A screen's SVG, cropped to `frames` (and a margin) when any is shown.
 local written = {}
 local function shot(name, frames)
+    step("drawing " .. name)
     if art then
         pcall(sim._registerAddonArt, sim)
     end

@@ -58,11 +58,17 @@ jobs:
           done
           ls "$WT/AddOns"
 
+      # SIM6's modules only (the whole suite in one process ran the runner out
+      # of memory), with a memory and time cap so a runaway shows as an error.
       - name: Draw
         run: |
           mkdir -p "$OUT"
-          lua5.1 tools/addon-shots/ellesmere.lua "$WT/AddOns" "$OUT"
-          cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
+          ulimit -v 3000000
+          timeout 300 lua5.1 tools/addon-shots/ellesmere.lua "$WT/AddOns" "$OUT" \
+            --only EllesmereUI,EllesmereUIUnitFrames,EllesmereUIActionBars,EllesmereUIBlizzardSkin,ForeverBuddy \
+            || echo "ellesmere.lua stopped: exit $?"
+          [ -f "$OUT/report.md" ] && cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
+          ls "$OUT"
 
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
