@@ -28,6 +28,9 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 
 - `toc.lua`: a `[AllowLoadGameType ...]` tag names game types only: `mainline` is retail's, not Forever's family. (HUD1a briefly matched the family too, which loaded retail's `ActionButtonOverrides.lua` over Forever's; Blizzard_ActionBar lists the two as alternatives.)
 - `templates.lua`: in XML, an unknown inherited node is logged and the frame built without it, as in the client (Forever's `PetFrame.xml` inherits a template only retail loads); Lua's `CreateFrame` still throws.
+- `resources.lua`: on a placeholder frame, a key whose last word is a child noun (`EndCaps`, `CloseButton`, `TitleText`) is a placeholder child, not a stub method, unless it starts with a method-only prefix (`GetButton`, `SetText`). Without this, `frame.EndCaps:Hide()` fails (EllesmereUI's action bars and window skin).
+- `secure.lua`: restricted snippets have the `table`, `string` and `math` libraries (copies), as in the client's restricted environment.
+- `framexml.lua`: `FACTION_BAR_COLORS` for the stand-in FrameXML (Blizzard's SharedColorConstants.lua defines it in the real UI).
 - `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.
 - `toc.lua`: every `## Dep:` / `## Dependencies:` / `## OptionalDeps:` line counts, each with its own game-type tag. Without this, only the last line is kept, and Blizzard's TOCs list one dependency per line.
 - `toc.lua`: file lines tagged `[AllowLoad Glue]` aren't loaded in game, and any other tag (`[LoadIntoEnvironment secure]`) is dropped from the file name after `[Family]`/`[Game]` are filled in. Without this, those files are reported missing.

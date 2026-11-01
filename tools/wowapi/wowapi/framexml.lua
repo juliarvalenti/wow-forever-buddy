@@ -139,6 +139,21 @@ function M.install(sim, env)
   rawset(env, "CallbackRegistryMixin", CallbackRegistryMixin)
   rawset(env, "CallbackRegistry", CallbackRegistryMixin)
 
+  ------------------------------------------------------------ colors
+  -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
+  -- (exalted), as SharedColorConstants.lua builds it from the client's
+  -- faction colors. Addons iterate it (EllesmereUI's unit frames do, and
+  -- every unit-frames file after that one depends on it).
+  if rawget(env, "FACTION_BAR_COLORS") == nil then
+    local function color(r, g, b)
+      local c = env.CreateColor and env.CreateColor(r, g, b, 1) or {}
+      c.r, c.g, c.b = r, g, b
+      return c
+    end
+    local red, orange, yellow, green = color(0.8, 0.3, 0.22), color(0.75, 0.27, 0), color(0.9, 0.7, 0), color(0, 0.6, 0.1)
+    rawset(env, "FACTION_BAR_COLORS", { red, red, orange, yellow, green, green, green, green })
+  end
+
   ------------------------------------------------------------ panel tabs
   -- WFB patch (G1): PanelTemplates' tab helpers. A PanelTabButtonTemplate
   -- tab has no width of its own; the client sizes it to its label plus the
