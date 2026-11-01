@@ -129,7 +129,11 @@ M.ITEMS = {
     [10013] = "Wand of Biting Cold",
     [10020] = "Warhammer",
     [10021] = "Shortsword",
+    [4865] = "Ruined Pelt",
 }
+
+-- Grey items, only worth selling (P4d's junk).
+M.JUNK = { [4865] = true }
 
 -- Recipe items (item class 9): what C_Item.GetItemSpell gives for them
 -- (the "learn" spell, not the recipe) and their tooltip data's line types.
@@ -158,6 +162,11 @@ M.QUESTS = { [176] = "Wanted: Hogger" }
 
 function M.link(id)
     return "|cffffffff|Hitem:" .. id .. "::::::::12:::::|h[" .. (M.ITEMS[id] or "?") .. "]|h|r"
+end
+
+-- An item's quality: gear rare, recipes uncommon, junk poor, the rest common.
+function M.quality(id)
+    return M.GEAR[id] and 3 or M.RECIPES[id] and 2 or M.JUNK[id] and 0 or 1
 end
 
 -- The global `name` set by a SavedVariables file's text.
@@ -453,7 +462,7 @@ function M.new(opts)
             elseif item then
                 -- Soulbound when its tooltip says so (world.bound).
                 return { itemID = item.id, stackCount = item.count, hyperlink = M.link(item.id),
-                    isBound = world.bound[item.id] == "Soulbound" }
+                    quality = M.quality(item.id), isBound = world.bound[item.id] == "Soulbound" }
             end
         end,
         ["C_Bank.FetchPurchasedBankTabIDs"] = function()
@@ -563,7 +572,20 @@ function M.new(opts)
             if M.RECIPES[id] then
                 return name, M.link(id), 2, 50, 0, "Recipe", "Tailoring", 1, "", 134939, 1250, 9, 2
             end
+            if M.JUNK[id] then
+                return name, M.link(id), 0, 10, 0, "Junk", "Junk", 20, "", 134360, 9, 15, 0
+            end
             return name, M.link(id), 1, 10, 0, "Trade Goods", "Cloth", 20, "", 132889, 13, 7, 5
+        end,
+        -- The item level of an item link, as on its tooltip.
+        ["C_Item.GetDetailedItemLevelInfo"] = function(link)
+            local id = tonumber(tostring(link):match("item:(%d+)"))
+            local g = id and M.GEAR[id]
+            if not id or not M.ITEMS[id] then
+                return nil
+            end
+            local level = g and g[1] or 10
+            return level, false, level
         end,
         ["C_Item.RequestLoadItemDataByID"] = function(id)
             world.requests.items = world.requests.items + 1
@@ -878,7 +900,7 @@ function M.new(opts)
         "EnableMouse", "RegisterForClicks", "RegisterForDrag", "SetClampedToScreen",
         "SetColorTexture", "SetFrameLevel", "SetFrameStrata", "SetHighlightTexture",
         "SetJustifyH", "SetMovable", "SetToplevel", "StartMoving", "StopMovingOrSizing",
-        "SetOwner", "SetPortraitToAsset", "SetTitle",
+        "SetOwner", "SetPortraitToAsset", "SetTitle", "SetBlendMode", "SetVertexColor",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -1111,10 +1133,15 @@ function M.new(opts)
         for _, name in ipairs({ "OpenAllBags", "ToggleAllBags", "OpenBag", "ToggleBag", "ToggleBackpack" }) do
             env[name] = function() end
         end
-        env.hooksecurefunc = function(name, hook)
-            local original = env[name]
+        -- Also the client's (table, "method", hook) form.
+        env.hooksecurefunc = function(a, b, c)
+            local holder, name, hook = env, a, b
+            if type(a) == "table" then
+                holder, name, hook = a, b, c
+            end
+            local original = holder[name]
             assert(type(original) == "function", "hooksecurefunc: no function " .. tostring(name))
-            env[name] = function(...)
+            holder[name] = function(...)
                 local r = pack(original(...))
                 hook(...)
                 return unpack(r, 1, r.n)
@@ -1304,6 +1331,29 @@ function M.new(opts)
         env.ContainerFrameUtil_EnumerateContainerFrames = function()
             return ipairs({ backpack })
         end
+        -- The bank (P4d): Forever's BankPanel, its first tab's buttons
+        -- (bag 6), shown while the bank is open. Switching tabs redraws
+        -- them through RefreshAllItemsForSelectedTab.
+        local bankPanel = newWidget(env.UIParent)
+        bankPanel.buttons = {}
+        for slot = 1, 28 do
+            local b = newWidget(bankPanel)
+            b.GetBankTabID = function()
+                return 6
+            end
+            b.GetContainerSlotID = function()
+                return slot
+            end
+            bankPanel.buttons[slot] = b
+        end
+        bankPanel.EnumerateValidItems = function(self)
+            return ipairs(self.buttons)
+        end
+        bankPanel.IsShown = function()
+            return world.bank_open == true
+        end
+        bankPanel.RefreshAllItemsForSelectedTab = function() end
+        env.BankPanel = bankPanel
         env.DEFAULT_CHAT_FRAME = {
             AddMessage = function(_, msg)
                 table.insert(client.chat, msg)
@@ -1737,6 +1787,17 @@ function M.new(opts)
         -- The client fires it twice.
         client.fire("MERCHANT_CLOSED")
         client.fire("MERCHANT_CLOSED")
+    end
+
+    -- The bank window, opened and left open (P4d), then closed.
+    function client.openBank()
+        world.bank_open = true
+        client.fire("BANKFRAME_OPENED")
+    end
+
+    function client.closeBank()
+        client.fire("BANKFRAME_CLOSED")
+        world.bank_open = false
     end
 
     -- Moves items between the bags and the main bank while it's open.

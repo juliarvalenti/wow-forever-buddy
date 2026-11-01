@@ -206,6 +206,29 @@ ns.settings = {
             parent = "quest.trackerFade",
             acts = false,
         },
+        -- P4d: the Bags module, display only. Sorting and selling wait for
+        -- the "may the addon act" call (P4 §8.1). Off until turned on or a
+        -- preset picks them, like every new module.
+        {
+            id = "bags.junk",
+            module = "bags",
+            section = "Bags",
+            type = "bool",
+            default = false,
+            label = "Junk in your bags",
+            help = "A small coin on grey items, the ones only worth selling, in your bags and bank.",
+            acts = false,
+        },
+        {
+            id = "bags.itemLevel",
+            module = "bags",
+            section = "Bags",
+            type = "bool",
+            default = false,
+            label = "Item level on gear",
+            help = "The item level on each piece of gear in your bags and bank, in its quality colour.",
+            acts = false,
+        },
         {
             id = "window.minimap",
             module = "window",
@@ -239,6 +262,11 @@ ns.settings = {
             when = { ["quest.trackerFade"] = true, ["quest.trackerAlpha"] = { max = 0.15 } },
             say = "The quest tracker almost disappears until you move the mouse over it.",
         },
+        {
+            id = "bags.nothingToSell",
+            when = { ["bags.junk"] = false, ["window.bagMarks"] = false },
+            say = "Nothing in your bags will show what's only worth selling.",
+        },
     },
     presets = {
         -- The designer's three (P4c), a row for every option except "Record
@@ -253,6 +281,7 @@ ns.settings = {
                 ["map.coords"] = false, ["map.minimap"] = false, ["map.fade"] = false,
                 ["quest.levels"] = false, ["quest.newTag"] = false, ["quest.tooltips"] = false,
                 ["quest.trackerFade"] = false,
+                ["bags.junk"] = false, ["bags.itemLevel"] = false,
             },
         },
         {
@@ -265,6 +294,7 @@ ns.settings = {
                 ["map.coords"] = true, ["map.minimap"] = false, ["map.fade"] = false,
                 ["quest.levels"] = true, ["quest.newTag"] = true, ["quest.tooltips"] = true,
                 ["quest.trackerFade"] = false,
+                ["bags.junk"] = true, ["bags.itemLevel"] = true,
             },
         },
         {
@@ -277,6 +307,7 @@ ns.settings = {
                 ["map.coords"] = true, ["map.minimap"] = true, ["map.fade"] = true, ["map.fadeAlpha"] = 0.5,
                 ["quest.levels"] = true, ["quest.newTag"] = true, ["quest.tooltips"] = true,
                 ["quest.trackerFade"] = true, ["quest.trackerAlpha"] = 0.5,
+                ["bags.junk"] = true, ["bags.itemLevel"] = true,
             },
         },
     },

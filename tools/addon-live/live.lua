@@ -137,6 +137,13 @@ local function login(profile)
     -- An empty quest log: WOWAPI makes one up otherwise, differently from
     -- run to run, and the same session should give the same pictures.
     sim:Mock("C_QuestLog.GetNumQuestLogEntries", 0, 0)
+    -- An item's level from the items added below, not a made-up one.
+    sim:Mock("C_Item.GetDetailedItemLevelInfo", function(ref)
+        local it = sim.items[tonumber(tostring(ref):match("item:(%d+)") or ref)]
+        if it and it.itemLevel then
+            return it.itemLevel, false, it.itemLevel
+        end
+    end)
     sim:AddItem(2589, { name = "Linen Cloth", quality = 1 })
     sim:AddItem(6948, { name = "Hearthstone", quality = 1 })
     sim:AddItem(14047, { name = "Runecloth", quality = 1 })
@@ -245,8 +252,120 @@ local function settingBox(key)
     error("no setting " .. key .. " (there are: " .. table.concat(names, ", ") .. ")", 0)
 end
 
--- The SVG of the screen, cropped to the window and its tabs when it's open.
-local function bounds(sim)
+-- The bags and the bank (P4d's pictures). WOWAPI draws no bag frames, so
+-- these are stand-ins with what the addon reads from Blizzard's: a backpack
+-- whose item buttons know their bag and slot (ContainerFrameUtil_
+-- EnumerateContainerFrames), and the bank's BankPanel, whose buttons know
+-- their tab and slot. Blizzard's own quality border is drawn on each, as
+-- the game does for uncommon and better.
+local BAG_ITEMS = {
+    -- id, name, quality, item level, equip slot, stack
+    { 6948, "Hearthstone", 1 },
+    { 2589, "Linen Cloth", 1, nil, nil, 12 },
+    { 4865, "Ruined Pelt", 0, nil, nil, 3 },
+    { 10001, "Shadowcraft Cap", 3, 63, "INVTYPE_HEAD" },
+    { 10010, "Arcanite Reaper", 4, 63, "INVTYPE_2HWEAPON" },
+    { 10003, "Band of the Unicorn", 2, 55, "INVTYPE_FINGER" },
+    { 6096, "Apprentice's Shirt", 1, 1, "INVTYPE_BODY" },
+    { 4867, "Broken Scorpid Leg", 0, nil, nil, 2 },
+}
+local BANK_ITEMS = {
+    { 10005, "Felcloth Hood", 2, 40, "INVTYPE_HEAD" },
+    { 4865, "Ruined Pelt", 0, nil, nil, 5 },
+    { 14047, "Runecloth", 1, nil, nil, 20 },
+    { 10011, "Dal'Rend's Sacred Charge", 3, 63, "INVTYPE_WEAPON" },
+}
+local BORDER = { [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 } }
+
+local function putUpBags()
+    local sim = need()
+    local CreateFrame = sim:Get("CreateFrame")
+    local UIParent = sim:Get("UIParent")
+    local function grid(name, title, list, bag, x, y, bank)
+        sim.bags[bag] = { size = 16 }
+        for slot, it in ipairs(list) do
+            sim:AddItem(it[1], { name = it[2], quality = it[3], itemLevel = it[4], equipLoc = it[5] })
+            sim.bags[bag][slot] = { itemID = it[1], stackCount = it[6] or 1 }
+        end
+        local f = sim:Get(name) or CreateFrame("Frame", name, UIParent, "BackdropTemplate")
+        f:SetSize(4 * 40 + 16, 4 * 40 + 40)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", x, y)
+        if f.SetBackdrop then
+            f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+            f:SetBackdropColor(0.08, 0.08, 0.1, 0.95)
+            f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        end
+        if not f.title then
+            f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f.title:SetPoint("TOPLEFT", 10, -10)
+        end
+        f.title:SetText(title)
+        f.buttons = f.buttons or {}
+        for slot = 1, 16 do
+            local b = f.buttons[slot]
+            if not b then
+                b = CreateFrame("Button", name .. "Item" .. slot, f)
+                b:SetSize(37, 37)
+                b:SetPoint("TOPLEFT", 8 + ((slot - 1) % 4) * 40, -32 - math.floor((slot - 1) / 4) * 40)
+                b.icon = b:CreateTexture(nil, "BORDER")
+                b.icon:SetAllPoints()
+                b.border = b:CreateTexture(nil, "ARTWORK")
+                b.border:SetAllPoints()
+                b.border:SetTexture("Interface\\Common\\WhiteIconFrame")
+                b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+                b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+                b:SetID(slot)
+                f.buttons[slot] = b
+            end
+            local s = sim.bags[bag][slot]
+            local it = s and sim.items[s.itemID]
+            b.icon:SetColorTexture(it and 0.25 or 0.12, it and 0.22 or 0.12, it and 0.18 or 0.12, 1)
+            local c = it and BORDER[it.quality]
+            b.border:SetShown(c ~= nil)
+            if c then
+                b.border:SetVertexColor(c[1], c[2], c[3])
+            end
+            b.count:SetText(s and (s.stackCount or 1) > 1 and s.stackCount or "")
+            if bank then
+                b.GetBankTabID = function()
+                    return bag
+                end
+                b.GetContainerSlotID = function()
+                    return slot
+                end
+            else
+                b.GetBagID = function()
+                    return bag
+                end
+            end
+        end
+        function f:EnumerateValidItems()
+            return ipairs(self.buttons)
+        end
+        f:Show()
+        return f
+    end
+    -- (The window would sit on top of them.)
+    local w = sim:Get("ForeverBuddyWindow")
+    if w and w:IsShown() then
+        w:Hide()
+    end
+    local backpack = grid("LiveBags", "Backpack", BAG_ITEMS, 0, 110, 0)
+    local bank = grid("BankPanel", "Bank", BANK_ITEMS, 6, -110, 0, true)
+    function bank.RefreshAllItemsForSelectedTab() end
+    rawset(sim.env, "ContainerFrameUtil_EnumerateContainerFrames", function()
+        return ipairs({ backpack })
+    end)
+    sim:FireEvent("BANKFRAME_OPENED")
+    sim:FireEvent("BAG_UPDATE_DELAYED")
+    sim:Advance(1)
+    return "bags and bank up: junk, gear of each quality, a shirt, stacks (screenshot <name> bags)"
+end
+
+-- The SVG of the screen, cropped to the window and its tabs when it's open,
+-- or with `bags` to the bags and bank the `bags` command put up.
+local function bounds(sim, what)
     local l, b, r, t
     local function add(frame)
         if frame and sim._isVisible(frame) then
@@ -257,10 +376,15 @@ local function bounds(sim)
             end
         end
     end
-    local w = sim:Get("ForeverBuddyWindow")
-    add(w)
-    for _, tab in ipairs(w and w.Tabs or {}) do
-        add(tab)
+    if what == "bags" then
+        add(sim:Get("LiveBags"))
+        add(sim:Get("BankPanel"))
+    else
+        local w = sim:Get("ForeverBuddyWindow")
+        add(w)
+        for _, tab in ipairs(w and w.Tabs or {}) do
+            add(tab)
+        end
     end
     if not l then
         return nil
@@ -269,14 +393,14 @@ local function bounds(sim)
     return math.floor(l - M), math.floor(b - M), math.ceil(r - l + 2 * M), math.ceil(t - b + 2 * M)
 end
 
-local function svgOf(sim, full)
+local function svgOf(sim, what)
     if opts.art then
         sim:_registerAddonArt()
     end
     local svg = S.render.svg(sim, { art = opts.art, embed = true })
     local l, b, w, h
-    if not full then
-        l, b, w, h = bounds(sim)
+    if what ~= "full" then
+        l, b, w, h = bounds(sim, what)
     end
     if not l then
         l, b, w, h = 0, 0, S.layout.SCREEN_W, S.layout.SCREEN_H
@@ -327,13 +451,16 @@ local function png(svgPath, pngPath, svg, vx, vy, w, h)
     return false
 end
 
-local function screenshot(name, full)
+local function screenshot(name, what)
     if not name or not name:match("^[%w_%-]+$") then
-        error("screenshot <name> [full]: a name of letters, digits, - and _", 0)
+        error("screenshot <name> [full|bags]: a name of letters, digits, - and _", 0)
+    end
+    if what ~= "" and what ~= "full" and what ~= "bags" then
+        error("screenshot <name> [full|bags]", 0)
     end
     local sim = need()
     sh("mkdir -p " .. sq(DIR .. "/shots"))
-    local svg, vx, vy, w, h = svgOf(sim, full)
+    local svg, vx, vy, w, h = svgOf(sim, what)
     local svgPath, pngPath = DIR .. "/shots/" .. name .. ".svg", DIR .. "/shots/" .. name .. ".png"
     writeAll(svgPath, svg)
     os.remove(pngPath)
@@ -385,7 +512,8 @@ state [path]             SavedVariables: ForeverBuddyDB, ForeverBuddySettings, o
 chat [n]                 the last n chat lines (10)
 errors                   every Lua error this session
 lua <code>               run Lua in the game (like /run); prints what it returns
-screenshot <name> [full] .addon-live/shots/<name>.png, of the window (full: the whole screen)
+bags                     put up the bags and the bank (stand-ins in Blizzard's shape, with junk and gear)
+screenshot <name> [full|bags]  .addon-live/shots/<name>.png, of the window (or the screen, or the bags)
 upload <name> ...        those shots to the mycelium room (mycelium file upload); prints the links]]
 
 local COMMANDS = {}
@@ -428,6 +556,10 @@ function COMMANDS.set(rest)
         S.sim:Advance(0.2)
     end
     return ("%s is %s"):format(cb.option.key, (cb:GetChecked() and true or false) and "on" or "off")
+end
+
+function COMMANDS.bags()
+    return putUpBags()
 end
 
 function COMMANDS.buttons()
@@ -520,8 +652,8 @@ function COMMANDS.lua(rest)
 end
 
 function COMMANDS.screenshot(rest)
-    local name, full = rest:match("^(%S+)%s*(%S*)$")
-    return screenshot(name, full == "full")
+    local name, what = rest:match("^(%S+)%s*(%S*)$")
+    return screenshot(name, what or "")
 end
 
 function COMMANDS.upload(rest)
