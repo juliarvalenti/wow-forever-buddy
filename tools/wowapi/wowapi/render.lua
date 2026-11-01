@@ -37,6 +37,26 @@ local function newCtx(sim, opts)
 end
 
 function Ctx:add(s) self.out[#self.out + 1] = s end
+
+-- WFB patch (HUD1): the font family for a font file, embedding each file
+-- once (an addon's own fonts as well as the game's), falling back to the
+-- default family when the file isn't available.
+function Ctx:familyFor(path)
+  if not (self.store and path and self.fontsOn) then return self.fontFamily end
+  local key = tostring(path):lower()
+  self.families = self.families or {}
+  if self.families[key] == nil then
+    local font = self.store:font(path)
+    if font and font.data then
+      local name = "wf" .. (#self.defs + 1)
+      self.defs[#self.defs + 1] = '<style>@font-face{font-family:' .. name .. ';src:url(' .. self.store:dataURI(font) .. ')}</style>'
+      self.families[key] = name .. ", " .. (self.fontFamily or "serif")
+    else
+      self.families[key] = false
+    end
+  end
+  return self.families[key] or self.fontFamily
+end
 function Ctx:id(prefix) self.seq = self.seq + 1; return prefix .. self.seq end
 
 local cwd
@@ -152,10 +172,10 @@ local function colorRuns(text, default)
   return runs
 end
 
-local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline)
+local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline, family)
   local lines = {}
   for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
-  local family = ctx.fontFamily or "Friz Quadrata TT, Georgia, serif"
+  family = family or ctx.fontFamily or "Friz Quadrata TT, Georgia, serif"
   for i, line in ipairs(lines) do
     local parts = {}
     for _, run in ipairs(colorRuns(line, color)) do
@@ -255,7 +275,7 @@ local function region(ctx, obj)
     drawTexture(ctx, obj, s, x, y, w, h, alpha)
   elseif s.type == "FontString" then
     if not s.text or s.text == "" then return end
-    local _, size, flags = layout.fontOf(sim, obj)
+    local fontFile, size, flags = layout.fontOf(sim, obj)
     local tc = s.textColor
     if not tc then
       local fo = s.fontObject
@@ -276,7 +296,7 @@ local function region(ctx, obj)
     elseif jv == "BOTTOM" then ty = y + h - (lines - 1) * size * 1.15 - size * 0.2
     else ty = y + h / 2 - (lines - 1) * size * 0.575 + size * 0.35 end
     textSvg(ctx, tx, ty, text, size, rgb(tc[1], tc[2], tc[3]), anchor, alpha * (tc[4] or 1),
-      flags and tostring(flags):find("OUTLINE"))
+      flags and tostring(flags):find("OUTLINE"), ctx:familyFor(fontFile))
   end
 end
 
@@ -558,6 +578,8 @@ function M.svg(sim, opts)
       ctx.fontFamily = "WoWFriz, Friz Quadrata TT, Georgia, serif"
       ctx.defs[#ctx.defs + 1] = '<style>@font-face{font-family:WoWFriz;src:url(' .. ctx.store:dataURI(font) .. ')}</style>'
     end
+    ctx.fontsOn = true
+    ctx.families = { ["fonts\\frizqt__.ttf"] = ctx.fontFamily or false }
   end
 
   -- background: a real game backdrop if requested, else a dusk gradient

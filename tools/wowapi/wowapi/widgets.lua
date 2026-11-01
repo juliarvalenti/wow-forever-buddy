@@ -661,7 +661,10 @@ function M.install(sim, env)
   function Font:GetName() return S(self).name end
   function Font:GetObjectType() return "Font" end
   function Font:IsObjectType(t) return t == "Font" end
-  function Font:SetFont(f, sz, fl) S(self).font = { f, sz, fl or "" } end
+  -- WFB patch (HUD1): returns success, as the client's does (and as the
+  -- FontString and EditBox versions here do); LibSharedMedia tests it to
+  -- validate a font, and called every addon font invalid.
+  function Font:SetFont(f, sz, fl) S(self).font = { f, sz, fl or "" }; return true end
   function Font:GetFont() return unpack(S(self).font or { "Fonts\\FRIZQT__.TTF", 12, "" }) end
   function Font:SetFontObject(o) if o and state[o] then S(self).font = state[o].font end end
   function Font:CopyFontObject(o) self:SetFontObject(o) end

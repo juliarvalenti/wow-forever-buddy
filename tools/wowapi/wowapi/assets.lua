@@ -422,7 +422,7 @@ function Store:font(path)
   if self.memo[key] ~= nil then return self.memo[key] or nil end
   local result = false
   local li = self:localIndex()
-  local file = li and li[norm]
+  local file = li and li[norm] or self:addonFont(norm)
   local cached = self.cacheDir .. SEP .. "files" .. SEP .. norm:gsub("/", SEP) .. ".ttf"
   if not file and exists(cached) then file = cached end
   if not file and not self.offline and have("curl") then
@@ -430,9 +430,35 @@ function Store:font(path)
     mkdirp((cached:gsub("[/\\][^/\\]*$", "")))
     if id and download(WAGO_CASC:format(id), cached) then file = cached end
   end
-  if file then result = { file = file, data = readAll(file), mime = "font/ttf" } end
+  if file then
+    result = { file = file, data = readAll(file), mime = file:lower():match("%.otf$") and "font/otf" or "font/ttf" }
+  end
   self.memo[key] = result
   return result or nil
+end
+
+-- WFB patch (HUD1): a font file inside a loaded addon's folder
+-- (Interface\AddOns\EllesmereUI\media\fonts\X.ttf), matched case-insensitively
+-- like the client; see Sim:_registerAddonArt for the folders.
+function Store:addonFont(norm)
+  local addon, rest = norm:match("^addons/([^/]+)/(.+)$")
+  local dir = addon and self.addonDirs and self.addonDirs[addon]
+  if not dir then return nil end
+  self._addonFonts = self._addonFonts or {}
+  local idx = self._addonFonts[addon]
+  if not idx then
+    idx = {}
+    local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.ttf' -o -iname '*.otf' \\) 2>/dev/null")
+    if p then
+      for line in p:lines() do
+        local rel = line:gsub("^%./", "")
+        idx[rel:lower():gsub("\\", "/"):gsub("%.[%a%d]+$", "")] = dir .. SEP .. rel
+      end
+      p:close()
+    end
+    self._addonFonts[addon] = idx
+  end
+  return idx[rest]
 end
 
 -- Resolve an atlas to { image, left, right, top, bottom, width, height }.

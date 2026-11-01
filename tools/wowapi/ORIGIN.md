@@ -32,6 +32,9 @@ HUD1, so Blizzard's own UI addons (from the extract) load as the client loads th
 - `secure.lua`: restricted snippets have the `table` (with `table.new()`), `string` and `math` libraries (copies), as in the client's restricted environment.
 - `framexml.lua`: `CreateSecureDelegate(fn)` returns a function calling `fn`, and `RemoveKStrings` strips `|K...|k` strings. Without these, the error handler `Blizzard_ScriptErrors.lua` installs throws, so an addon reporting a soft error through `geterrorhandler()` (LibSharedMedia does) dies mid-file.
 - `framexml.lua`: `FACTION_BAR_COLORS` and `PowerBarColor` (by power token and type) for the stand-in FrameXML; Blizzard's own files define them in the real UI.
+- `assets.lua`, `render.lua`: an addon's own fonts (`Interface\AddOns\X\...ttf`/`.otf`) are found in its folder and each FontString draws in its own font, every font file embedded once (the game's Friz Quadrata keeps its `WoWFriz` family). Without this, all text draws in Friz.
+- `widgets.lua`: `Font:SetFont` returns success, as the client's does. Without this, LibSharedMedia calls every addon font invalid.
+- `docs.lua`: `SetAttributeNoHandler` takes any value, like `SetAttribute`.
 - `framexml.lua`: `Menu.GetManager()` returns one manager, with `OpenMenu` and the other methods addons hook (`hooksecurefunc`).
 - `widgets.lua`: `GetFrameMetatable()`, `GetButtonMetatable()`, `GetEditBoxMetatable()`, `GetFontStringMetatable()` and `GetTextureMetatable()` return the widget type's metatable. Without this, `SecureTemplates.lua` fails on its first line and no secure action button gets `SecureActionButtonMixin`.
 - `toc.lua`: every `## Dep:` / `## Dependencies:` / `## OptionalDeps:` line counts, each with its own game-type tag. Without this, only the last line is kept, and Blizzard's TOCs list one dependency per line.
