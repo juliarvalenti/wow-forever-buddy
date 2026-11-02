@@ -136,6 +136,20 @@ local function loginOrder(dir)
 end
 
 local art = os.getenv("WOWAPI_ART") ~= nil
+
+-- Blizzard's UI needs Forever's own data, which isn't in git: without it the
+-- unit frames draw hollow and Forever-only art as grey boxes. Say so.
+if blizzard then
+    for file, script in pairs({ ["globalcolor.csv"] = "fetch-globalcolors.sh",
+        ["atlases-forever.txt"] = "fetch-forever-atlases.sh", ["globalstrings-forever.csv"] = "fetch-forever-strings.sh" }) do
+        local f = io.open(wowapiDir .. "/wowapi/data/" .. file, "r")
+        if f then
+            f:close()
+        else
+            io.stderr:write(("warning: no wowapi/data/%s; run tools/wowapi/%s once\n"):format(file, script))
+        end
+    end
+end
 local sim = WoW.new({
     player = fixturePlayer or { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000,
         zone = "Elwynn Forest", health = 425, healthMax = 500 },
@@ -253,6 +267,10 @@ sim:Mock("GetMirrorTimerProgress", function()
 end)
 sim:Mock("C_GameRules.IsPersonalResourceDisplayEnabled", function()
     return false
+end)
+-- No new pets waiting to be shown off (the collections micro button asks).
+sim:Mock("C_PetJournal.GetNumPetsNeedingFanfare", function()
+    return 0
 end)
 -- Not in a pet battle (the action bar controller asks before paging).
 sim:Mock("C_PetBattles.IsInBattle", function()

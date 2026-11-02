@@ -167,6 +167,16 @@ function M.install(sim, env)
   -- GetCurrentEnvironment() is the global environment addon code runs in;
   -- Color.lua writes the colour globals into it.
   rawset(env, "GetCurrentEnvironment", function() return env end)
+  -- WFB patch (HUD2): Kiosk, the client's native demo-station table (not in
+  -- its API docs). A player's client isn't a kiosk. Without it, every micro
+  -- button update stops and the micro menu draws no icons.
+  if rawget(env, "Kiosk") == nil then
+    local function no() return false end
+    local function zero() return 0 end
+    rawset(env, "Kiosk", { IsEnabled = no, IsCompetitiveModeEnabled = no, IsExpired = no, IsInLobby = no,
+      IsSessionActive = no, IsSessionTimed = no, IsHousingResetPending = no, CanUserReturnToSplash = no,
+      GetSecondsRemaining = zero, GetSessionDuration = zero })
+  end
   do
     local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
     local f = io.open(here .. "/data/globalcolor.csv", "r")

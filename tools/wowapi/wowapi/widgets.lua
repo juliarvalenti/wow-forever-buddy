@@ -410,7 +410,10 @@ function M.install(sim, env)
       end
       local ts = state[tex]
       ts.buttonSlot = n
-      ts.layer = n == "Highlight" and "HIGHLIGHT" or (n == "Normal" and "BACKGROUND" or "ARTWORK")
+      -- WFB patch (HUD2): Normal is on ARTWORK like the other state textures
+      -- (and like an XML <NormalTexture>), not under the button's own
+      -- BACKGROUND art (the micro buttons' icons were hidden by it).
+      ts.layer = n == "Highlight" and "HIGHLIGHT" or "ARTWORK"
       if #ts.points == 0 then tex:SetAllPoints(self) end
       s.textures[n] = tex
     end

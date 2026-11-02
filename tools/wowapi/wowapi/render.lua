@@ -417,6 +417,7 @@ local function frameBody(ctx, obj)
   local x, y = l, H - b - h
   local alpha = obj:GetEffectiveAlpha()
   local store = ctx.store
+  local buttonSlots = {}
 
   if s.backdrop then drawBackdrop(ctx, s, x, y, w, h, alpha) end
 
@@ -546,12 +547,17 @@ local function frameBody(ctx, obj)
         or (slot == "Disabled" and s.enabled == false)
         or (slot == "Checked" and s.checked)
         or (slot == "Highlight" and sim.mouseFocus == obj)
-      if show and t and st[t] and st[t].shown then region(ctx, t) end
+      if show and t and st[t] and st[t].shown then buttonSlots[t] = true end
     end
   end
 
   -- regions by draw layer, then sublevel, then creation order
+  -- WFB patch (HUD2): a button's shown state textures (Normal, Pushed...)
+  -- sort with its other regions by their draw layer, as in the client,
+  -- instead of all going underneath (the micro buttons' icons were hidden
+  -- by their own background).
   local regions = {}
+  for t in pairs(buttonSlots) do regions[#regions + 1] = t end
   for _, c in ipairs(s.children) do
     local cs = st[c]
     if cs and not cs.isFrame and cs.shown and not cs.buttonSlot then
