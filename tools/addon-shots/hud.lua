@@ -98,7 +98,10 @@ local function loginOrder(dir)
                 return v and v:match("1") and toc.gameTypeAllowed(v)
             end
             local glue = md.allowload and md.allowload:lower():match("^%s*glue")
-            if t.gameTypeOk and not on(md.loadondemand) and not glue then
+            -- The scene is the live client: no beta/PTR-only addons (the
+            -- PTR Issue Reporter box in the middle of the screen).
+            local ptrOnly = on(md.onlybetaandptr)
+            if t.gameTypeOk and not on(md.loadondemand) and not glue and not ptrOnly then
                 found[name:lower()] = { dir = dir .. "/" .. name, deps = t.deps, first = on(md.loadfirst) }
             end
         end
