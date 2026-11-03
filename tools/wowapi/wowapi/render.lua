@@ -188,9 +188,11 @@ local function textSvg(ctx, x, y, text, size, color, anchor, opacity, outline, f
     end
     if outline or shadow == nil then
       ctx:add(string.format(
-        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s" paint-order="stroke">%s</text>',
+        '<text x="%s" y="%s" font-size="%s" text-anchor="%s" opacity="%.2f" font-family="%s" stroke="#000" stroke-width="%.1f" stroke-opacity="%s"%s paint-order="stroke">%s</text>',
         num(x), num(ly), num(size), anchor, opacity, esc(family),
-        outline and size / 6 or size / 10, outline and "1" or "0.6", table.concat(parts)))
+        outline and size / 6 * (tonumber(outline) or 1) or size / 10, outline and "1" or "0.6",
+        -- the heavy stroke spikes at sharp corners unless its joins are round
+        outline == 2 and ' stroke-linejoin="round"' or "", table.concat(parts)))
     else
       if shadow then
         ctx:add(string.format(
@@ -342,8 +344,12 @@ local function region(ctx, obj)
       sc = sc or { 0, 0, 0, 1 }
       shadow = (so[1] ~= 0 or so[2] ~= 0) and { so[1], so[2], rgb(sc[1], sc[2], sc[3]), sc[4] or 1 } or false
     end
+    -- WFB patch (HUD3): THICKOUTLINE strokes twice as heavy as OUTLINE, as
+    -- in the game (it was drawn the same).
+    local f = flags and tostring(flags):upper() or ""
+    local outline = f:find("THICKOUTLINE") and 2 or (f:find("OUTLINE") and 1 or nil)
     textSvg(ctx, tx, ty, text, size, rgb(tc[1], tc[2], tc[3]), anchor, alpha * (tc[4] or 1),
-      flags and tostring(flags):find("OUTLINE"), ctx:familyFor(fontFile), shadow)
+      outline, ctx:familyFor(fontFile), shadow)
   end
 end
 
@@ -547,7 +553,7 @@ local function frameBody(ctx, obj)
         or (slot == "Disabled" and s.enabled == false)
         or (slot == "Checked" and s.checked)
         or (slot == "Highlight" and sim.mouseFocus == obj)
-      if show and t and st[t] and st[t].shown then buttonSlots[t] = true end
+      if show and t and st[t] and st[t].shown then buttonSlots[#buttonSlots + 1] = t end
     end
   end
 
@@ -557,7 +563,7 @@ local function frameBody(ctx, obj)
   -- instead of all going underneath (the micro buttons' icons were hidden
   -- by their own background).
   local regions = {}
-  for t in pairs(buttonSlots) do regions[#regions + 1] = t end
+  for _, t in ipairs(buttonSlots) do regions[#regions + 1] = t end
   for _, c in ipairs(s.children) do
     local cs = st[c]
     if cs and not cs.isFrame and cs.shown and not cs.buttonSlot then

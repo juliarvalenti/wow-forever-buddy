@@ -64,6 +64,31 @@ function M.callerAddon(sim)
   return sim.currentAddon or "*** unknown ***"
 end
 
+-- WFB patch (HUD3): is this call Blizzard's own, untainted? True when the
+-- stack holds code from Blizzard's UI addons (Blizzard_*) and from no other
+-- addon, as the client's taint works: Blizzard's TargetFrame shows and
+-- hides itself in combat, while an addon anywhere on the path is blocked.
+function M.blizzardCall(sim)
+  local sawBlizzard = false
+  for level = 3, 60 do
+    local info = debug.getinfo(level, "S")
+    if not info then break end
+    local src = info.source or ""
+    if src:sub(1, 1) == "@" then
+      src = src:sub(2):gsub("\\", "/"):gsub("^%./", "")
+      for _, name in ipairs(sim.addonOrder) do
+        local dir = sim.addons[name].dir:gsub("\\", "/"):gsub("^%./", "")
+        if src:sub(1, #dir + 1) == dir .. "/" then
+          if not name:lower():match("^blizzard_") then return false end
+          sawBlizzard = true
+          break
+        end
+      end
+    end
+  end
+  return sawBlizzard
+end
+
 function M.forbid(sim, what)
   local addon = M.callerAddon(sim)
   table.insert(sim.blockedActions, { kind = "FORBIDDEN", addon = addon, action = what, time = sim.time })
