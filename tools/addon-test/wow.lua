@@ -335,6 +335,16 @@ function M.new(opts)
         quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
+        -- TH2: the HUD's units. Each is { name, health, healthMax, power,
+        -- powerMax, powerType, hostile }; target is nil with nothing
+        -- targeted. combo is the player's combo points; auras the player's
+        -- buffs, { spellId, name, icon, duration, expirationTime }.
+        class = { "Warrior", "WARRIOR", 1 },
+        units = {
+            player = { health = 1200, healthMax = 1200, power = 100, powerMax = 100, powerType = 1 },
+        },
+        combo = 0,
+        auras = {},
     }
     client.world = world
 
@@ -403,6 +413,8 @@ function M.new(opts)
                 return char.name, char.surname
             elseif unit == "npc" and world.npc then
                 return world.npc.name
+            elseif unit == "target" and world.units.target then
+                return world.units.target.name
             end
         end,
         UnitIsPlayer = function(unit)
@@ -878,8 +890,46 @@ function M.new(opts)
         end,
         UnitClass = function(unit)
             if unit == "player" then
-                return "Warrior", "WARRIOR", 1
+                return world.class[1], world.class[2], world.class[3]
             end
+        end,
+        -- TH2: the HUD's reads (world.units).
+        UnitExists = function(unit)
+            return world.units[unit] ~= nil
+        end,
+        UnitHealth = function(unit)
+            return world.units[unit] and world.units[unit].health or 0
+        end,
+        UnitHealthMax = function(unit)
+            return world.units[unit] and world.units[unit].healthMax or 0
+        end,
+        -- Enum.PowerType: 0 mana, 1 rage, 3 energy, 4 combo points.
+        UnitPower = function(unit, kind)
+            if kind == 4 then
+                return unit == "player" and world.combo or 0
+            end
+            return world.units[unit] and world.units[unit].power or 0
+        end,
+        UnitPowerMax = function(unit, kind)
+            if kind == 4 then
+                return 5
+            end
+            return world.units[unit] and world.units[unit].powerMax or 0
+        end,
+        UnitPowerType = function(unit)
+            local u = world.units[unit]
+            return u and u.powerType or 0, u and ({ [0] = "MANA", [1] = "RAGE", [3] = "ENERGY" })[u.powerType]
+        end,
+        UnitCanAttack = function(_, unit)
+            return world.units[unit] ~= nil and world.units[unit].hostile == true
+        end,
+        ["C_UnitAuras.GetAuraDataByIndex"] = function(unit, i, filter)
+            if unit == "player" and filter == "HELPFUL" then
+                return world.auras[i]
+            end
+        end,
+        ["C_Spell.GetSpellName"] = function(id)
+            return ({ [5171] = "Slice and Dice", [6774] = "Slice and Dice" })[id]
         end,
         UnitRace = function(unit)
             if unit == "player" then
@@ -1914,6 +1964,40 @@ function M.new(opts)
     function client.combat(on)
         world.combat = on
         client.fire(on and "PLAYER_REGEN_DISABLED" or "PLAYER_REGEN_ENABLED")
+    end
+
+    -- TH2: the HUD's world. A new target (or nil for none).
+    function client.target(t)
+        world.units.target = t
+        client.fire("PLAYER_TARGET_CHANGED")
+    end
+
+    -- A unit's health or power changed: fields of world.units[unit].
+    function client.unit(unit, fields)
+        local u = world.units[unit]
+        for k, v in pairs(fields) do
+            u[k] = v
+        end
+        if fields.health or fields.healthMax then
+            client.fire("UNIT_HEALTH", unit)
+        end
+        if fields.power or fields.powerMax then
+            client.fire("UNIT_POWER_FREQUENT", unit, ({ [0] = "MANA", [1] = "RAGE", [3] = "ENERGY" })[u.powerType])
+        end
+        if fields.powerType then
+            client.fire("UNIT_DISPLAYPOWER", unit)
+        end
+    end
+
+    function client.comboPoints(n)
+        world.combo = n
+        client.fire("UNIT_POWER_UPDATE", "player", "COMBO_POINTS")
+    end
+
+    -- The player's buffs, in the client's order.
+    function client.buffs(list)
+        world.auras = list
+        client.fire("UNIT_AURA", "player")
     end
 
     function client.die(durabilityCost)

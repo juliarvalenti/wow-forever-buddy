@@ -30,8 +30,8 @@
 -- the line under its page title, and its options: those whose module is its
 -- id, plus any it lists (the Coach's were declared before modules were).
 -- Its switch is "<id>.enabled", on by default so turning modules into
--- modules switched nobody's choices off; each option at the top of a module
--- hangs off it.
+-- modules switched nobody's choices off (a new module may default off, as
+-- the HUD does); each option at the top of a module hangs off it.
 --
 -- lints: known poor combinations (P4 §1, layer 4), each with the values it
 -- fires on ({ min, max } for a number, else the value itself) and the line
@@ -64,6 +64,11 @@ ns.settings = {
             id = "questhelp",
             label = "Quest helper",
             sub = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
+        },
+        {
+            id = "hud",
+            label = "HUD",
+            sub = "Health, power and combo points under your character. Display only.",
         },
     },
     options = {
@@ -442,6 +447,20 @@ ns.settings = {
             showHelp = true,
             acts = true,
         },
+        -- TH2: the HUD module, the one module that's off until you turn it
+        -- on (it takes over where your health shows).
+        {
+            id = "hud.enabled",
+            module = "hud",
+            section = "HUD",
+            type = "bool",
+            default = false,
+            label = "HUD",
+            help = "Your health and your target's, power, combo points and Slice and Dice, under your character. "
+                .. "Blizzard's player and target frames turn see-through while it's on. Display only.",
+            moduleSwitch = true,
+            acts = false,
+        },
         {
             id = "window.minimap",
             module = "window",
@@ -489,7 +508,8 @@ ns.settings = {
     presets = {
         -- The designer's three (P4c), a row for every option except "Record
         -- my next session", which no preset touches. Every module stays on
-        -- (W1): a preset picks what each one shows.
+        -- (W1): a preset picks what each one shows. The HUD (TH2) stays off:
+        -- it takes over your frames, so it's only ever your own choice.
         {
             id = "quiet",
             label = "Quiet",
@@ -504,6 +524,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
             },
         },
         {
@@ -520,6 +541,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
             },
         },
         {
@@ -536,6 +558,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
             },
         },
     },
