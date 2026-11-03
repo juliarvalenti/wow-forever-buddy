@@ -922,6 +922,15 @@ function U.hud.unitFrame(unit)
     if unit == "player" then
         f.hp = U.hud.text(f.health, 22 * P, "RIGHT")
         f.hp:SetPoint("RIGHT", f.health, "RIGHT", -8 * P, 0)
+        -- Your name on the left in your class's colour (th1-class-tuned).
+        f.name = U.hud.text(f.health, 18 * P, "LEFT")
+        f.name:SetPoint("LEFT", f.health, "LEFT", 8 * P, 0)
+        f.name:SetText((string.gsub(read("UnitName", "player") or "", "|", "||")))
+        local _, class = read(UnitClass, "player")
+        local c = type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[class or ""]
+        if type(c) == "table" and type(c.r) == "number" then
+            f.name:SetTextColor(c.r, c.g, c.b, 1)
+        end
     else
         f.name = U.hud.text(f.health, 16 * P, "LEFT")
         f.name:SetPoint("TOPLEFT", f.health, "TOPLEFT", 7 * P, -P)
@@ -5802,6 +5811,14 @@ do
         p.checks = {}
         local card = U.ui.card(p, "Options")
         p.items[1] = { card = card }
+        -- A module with no options yet says what its switch does (TH2).
+        local m = U.ui.inModuleDecl(id)
+        if m and m.note then
+            p.note = U.ui.text(p, 12, U.STYLE.colors.text)
+            p.note:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -4)
+            p.note:SetWidth(U.LAYOUT.CONTENT - 3)
+            p.note:SetText(m.note)
+        end
         for _, o in ipairs(OPTIONS) do
             if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch then
                 p.items[#p.items + 1] = { cb = U.ui.optionRow(card, o, p.checks) }
@@ -5925,6 +5942,7 @@ do
         win.heading:SetPoint("TOPLEFT", win, "TOPLEFT", L.X, -20)
         win.fresh = U.ui.text(win, 11, col.dim)
         win.fresh:SetPoint("TOPLEFT", win.heading, "BOTTOMLEFT", 0, -6)
+        win.fresh:SetWidth(L.CONTENT) -- a long line wraps rather than leaving the window
         U.ui.rule(win, -L.HEAD + 8, L.X, -20, { 0, 0, 0, 0.45 })
         U.ui.rule(win, -L.HEAD + 7, L.X, -20, col.line)
 

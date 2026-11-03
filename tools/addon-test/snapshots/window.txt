@@ -78,7 +78,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Tonight's plan"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -339,7 +339,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Lists"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -616,7 +616,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Errands"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -908,7 +908,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Cleanup"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24

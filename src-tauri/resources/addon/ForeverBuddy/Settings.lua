@@ -27,7 +27,8 @@
 -- values = { ... } and a "string"'s maxLength (200 if unset).
 --
 -- modules: the window's Modules (W1), in rail order. Each has its label,
--- the line under its page title, and its options: those whose module is its
+-- the line under its page title, optionally a note shown on its page (for
+-- one with no options yet), and its options: those whose module is its
 -- id, plus any it lists (the Coach's were declared before modules were).
 -- Its switch is "<id>.enabled", on by default so turning modules into
 -- modules switched nobody's choices off (a new module may default off, as
@@ -69,6 +70,7 @@ ns.settings = {
             id = "hud",
             label = "HUD",
             sub = "Health, power and combo points under your character. Display only.",
+            note = "Turn it on to replace your player and target frames. Blizzard's come back when it's off.",
         },
     },
     options = {
