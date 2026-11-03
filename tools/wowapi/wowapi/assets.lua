@@ -501,4 +501,18 @@ function Store:prefetch(list)
   return n
 end
 
+-- WFB patch (PV1): a store that knows only the loaded addons' own fonts
+-- (dirs: lowercase addon name -> folder), for drawing without art: no game
+-- files, cache, environment or downloads.
+function M.addonFonts(dirs)
+  local self = setmetatable({ addonDirs = dirs, memo = {}, missing = {} }, Store)
+  function self.font(s, path)
+    local file = s:addonFont(M.normalize(path))
+    local data = file and readAll(file)
+    if not data then return nil end
+    return { file = file, data = data, mime = file:lower():match("%.otf$") and "font/otf" or "font/ttf" }
+  end
+  return self
+end
+
 return M

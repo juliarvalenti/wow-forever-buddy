@@ -7,6 +7,7 @@ import {
   Home,
   ListChecks,
   type LucideIcon,
+  MonitorPlay,
   Puzzle,
   Scale,
   ScrollText,
@@ -40,6 +41,7 @@ import { Lists } from "@/screens/Lists";
 import { Macros } from "@/screens/Macros";
 import { RecoveryBanner, RecoveryDialog } from "@/screens/Recovery";
 import { Onboarding, SETUP_KEY, type SetupStep, STEPS } from "@/screens/Onboarding";
+import { Preview } from "@/screens/Preview";
 import { Settings as SettingsScreen } from "@/screens/Settings";
 import { StartupError } from "@/screens/StartupError";
 
@@ -55,6 +57,7 @@ type Screen =
   | "game"
   | "addons"
   | "macros"
+  | "preview"
   | "settings"
   | "setup";
 
@@ -158,6 +161,8 @@ function Shell() {
     { id: "game", label: "Game folder", icon: FolderOpen },
     { id: "addons", label: "Addons", icon: Puzzle },
     { id: "macros", label: "Macros", icon: SquareTerminal },
+    // PV1: the live preview of the player's screen.
+    { id: "preview", label: "Preview", icon: MonitorPlay },
   ];
   const folderOk = install.state.kind === "ok";
   // The saved folder went missing (drive unplugged, folder moved). Backups
@@ -363,6 +368,7 @@ function Shell() {
         )}
         {current === "addons" && <Addons />}
         {current === "macros" && <Macros />}
+        {current === "preview" && <Preview />}
         {current === "ledger" && (
           <Ledger onOpenDashboard={() => setScreen("dashboard")} onOpenAdventure={openAdventure} />
         )}

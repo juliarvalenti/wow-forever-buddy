@@ -27,6 +27,7 @@ mod lists;
 mod macros;
 mod notes;
 mod plans;
+mod preview;
 mod proposals;
 mod quests;
 mod secrets;
@@ -121,6 +122,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::quests_available,
             commands::plans::plans_list,
             commands::plans::plan_clear,
+            commands::preview::preview_status,
+            commands::preview::preview_frame,
+            commands::preview::preview_open,
+            commands::preview::preview_download,
+            commands::preview::preview_remove_data,
             commands::lists::lists_get,
             commands::lists::list_create,
             commands::lists::list_update,
@@ -166,7 +172,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sessions::SessionsChanged,
             ah::PricesUpdated,
             ingest::IngestCompleted,
-            proposals::ApprovalsChanged
+            proposals::ApprovalsChanged,
+            commands::preview::PreviewChanged
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
 }
@@ -210,6 +217,11 @@ pub fn run() {
                 }
             };
             let game = core.game.clone();
+            // PV1: the Preview tab hears about each new frame or step.
+            let preview_handle = app.handle().clone();
+            core.preview.on_change(move || {
+                let _ = commands::preview::PreviewChanged.emit(&preview_handle);
+            });
             // Before the watcher's first poll, which may start a new one.
             let _ = sessions::drop_unfinished(&core.db);
             let db = core.db.clone();

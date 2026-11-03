@@ -9,7 +9,7 @@ They're for the designer to check against the mock. They're not compared automat
 
 **How it works.** `scene.lua` runs the addon in WOWAPI, a WoW: Forever client emulator in plain Lua, with the game's real UI art. It writes one SVG per picture, cropped to the window and its tabs.
 
-WOWAPI is vendored in `tools/wowapi`, with patches for the gaps the window hit: scroll children, tab sizes, tab art and selection, and scroll clipping. `tools/wowapi/ORIGIN.md` gives its source, commit and patches. It's a test tool, never bundled into the app or the addon zip.
+WOWAPI is vendored in `tools/wowapi`, with patches for the gaps the window hit: scroll children, tab sizes, tab art and selection, and scroll clipping. `tools/wowapi/ORIGIN.md` gives its source, commit and patches. It never goes in the addon zip. The app bundles it for its Preview tab (PV1), running `preview.lua` in a sandboxed Lua state (`src-tauri/src/preview/`).
 
 **In CI.** `.github/workflows/addon-shots.yml` runs on any PR that touches the addon, the bridge slots, this folder or `tools/wowapi`. Headless Chrome turns each SVG into a PNG at 2x, and the PNGs are the run's **addon-pictures** artifact. The run's summary page lists them.
 
