@@ -26,18 +26,23 @@ local moduleDir = debug.getinfo(1, "S").source:sub(2):gsub("[^/\\]*$", "")
 
 ------------------------------------------------------------------ helpers
 
+-- WFB patch (PV1): reads and folder walks go through wowapi.host. (The
+-- downloads below are the command line's, online only.)
+local host = require("wowapi.host")
+
 local function exists(p)
-  local f = io.open(p, "rb")
-  if f then f:close(); return true end
-  return false
+  return host.exists(p)
 end
 
 local function readAll(p)
-  local f = io.open(p, "rb")
-  if not f then return nil end
-  local s = f:read("*a")
-  f:close()
-  return s
+  return (host.read(p))
+end
+
+-- A data file's lines (nil when it's missing).
+local function lines(p)
+  local text = host.read(p)
+  if not text then return nil end
+  return text:gmatch("[^\r\n]+")
 end
 
 local function sh(cmd)
@@ -111,9 +116,9 @@ local iconsById, iconsByName, iconList
 function M.icons()
   if iconsById then return iconsById, iconsByName, iconList end
   iconsById, iconsByName, iconList = {}, {}, {}
-  local f = io.open(moduleDir .. "data" .. SEP .. "icons.txt", "r")
+  local f = lines(moduleDir .. "data" .. SEP .. "icons.txt")
   if f then
-    for line in f:lines() do
+    for line in f do
       local id, name = line:match("^(%d+) (.+)$")
       if id then
         id = tonumber(id)
@@ -122,7 +127,6 @@ function M.icons()
         iconList[#iconList + 1] = { id, name }
       end
     end
-    f:close()
   end
   return iconsById, iconsByName, iconList
 end
@@ -134,9 +138,9 @@ function M.atlases()
   -- WFB patch (HUD2): WoW Forever's own atlases (fetch-forever-atlases.sh),
   -- when present, replace retail's of the same name.
   local function load(file, into)
-    local f = io.open(moduleDir .. "data" .. SEP .. file, "r")
+    local f = lines(moduleDir .. "data" .. SEP .. file)
     if not f then return end
-    for line in f:lines() do
+    for line in f do
       if line:sub(1, 1) ~= "#" then
         local p = {}
         for x in (line .. "\t"):gmatch("(.-)\t") do p[#p + 1] = x end
@@ -149,7 +153,6 @@ function M.atlases()
         table.insert(into[key], e)
       end
     end
-    f:close()
   end
   load("atlases.txt", atlases)
   local forever = {}
@@ -206,13 +209,9 @@ function Store:localIndex()
   local idx = {}
   -- WFB patch (G1): fonts too, so an extracted Fonts/ folder serves
   -- Store:font (FRIZQT__.TTF) offline, like the textures beside it.
-  local p = io.popen("cd " .. q(self.artDir) .. " && find . -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.tga' -o -iname '*.ttf' \\) 2>/dev/null")
-  if p then
-    for line in p:lines() do
-      local rel = line:gsub("^%./", "")
-      idx[M.normalize(rel)] = self.artDir .. SEP .. rel
-    end
-    p:close()
+  for _, line in ipairs(host.walk(self.artDir, { png = true, jpg = true, tga = true, ttf = true })) do
+    local rel = line:gsub("^%./", "")
+    idx[M.normalize(rel)] = self.artDir .. SEP .. rel
   end
   self._local = idx
   return idx
@@ -328,9 +327,9 @@ function Store:addonFile(norm)
   if not idx then
     self._addonScanned[addon] = os.time()
     idx = {}
-    local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.tga' -o -iname '*.blp' -o -iname '*.png' -o -iname '*.jpg' \\) 2>/dev/null")
-    if p then
-      for line in p:lines() do
+    local found = host.walk(dir, { tga = true, blp = true, png = true, jpg = true })
+    if found then
+      for _, line in ipairs(found) do
         local rel = line:gsub("^%./", "")
         local key = rel:lower():gsub("\\", "/"):gsub("%.[%a%d]+$", "")
         -- prefer png > blp > tga when several exist
@@ -338,7 +337,6 @@ function Store:addonFile(norm)
         local rank = ({ png = 3, jpg = 3, blp = 2, tga = 1 })[ext] or 0
         if not idx[key] or idx[key].rank < rank then idx[key] = { path = dir .. SEP .. rel, ext = ext, rank = rank } end
       end
-      p:close()
     end
     self._addonIndex[addon] = idx
   end
@@ -464,13 +462,9 @@ function Store:addonFont(norm)
   if not idx then
     self._addonFontsScanned[addon] = os.time()
     idx = {}
-    local p = io.popen("cd " .. q(dir) .. " && find . -type f \\( -iname '*.ttf' -o -iname '*.otf' \\) 2>/dev/null")
-    if p then
-      for line in p:lines() do
-        local rel = line:gsub("^%./", "")
-        idx[rel:lower():gsub("\\", "/"):gsub("%.[%a%d]+$", "")] = dir .. SEP .. rel
-      end
-      p:close()
+    for _, line in ipairs(host.walk(dir, { ttf = true, otf = true })) do
+      local rel = line:gsub("^%./", "")
+      idx[rel:lower():gsub("\\", "/"):gsub("%.[%a%d]+$", "")] = dir .. SEP .. rel
     end
     self._addonFonts[addon] = idx
   end

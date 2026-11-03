@@ -25,10 +25,10 @@ function compat.loadstring(src, chunkname, env)
 end
 
 function compat.loadfile(path, env)
-  local f, err = io.open(path, "rb")
-  if not f then return nil, err end
-  local src = f:read("*a")
-  f:close()
+  -- WFB patch (PV1): through wowapi.host, so the embedded preview reads
+  -- only what the app lets it.
+  local src, err = require("wowapi.host").read(path)
+  if not src then return nil, err end
   -- strip UTF-8 BOM, which WoW tolerates
   src = src:gsub("^\239\187\191", "")
   return compat.loadstring(src, "@" .. path, env)

@@ -28,21 +28,18 @@ function M.globalStrings(locale)
   if not toc.exists(path) then path = base .. "data/globalstrings_enUS.lua" end
   local t = {}
   t._G = t
-  local chunk = loadfile(path)
-  if chunk then
-    if setfenv then setfenv(chunk, t) else chunk = load(io.open(path):read("*a"), "=GlobalStrings", "t", t) end
-    pcall(chunk)
-  end
+  -- WFB patch (PV1): read through wowapi.host
+  local host = require("wowapi.host")
+  local chunk = require("wowapi.compat").loadfile(path, t)
+  if chunk then pcall(chunk) end
   t._G = nil
   -- WFB patch (HUD2): WoW Forever's own strings (GlobalStrings.db2 at its
   -- build, data/globalstrings-forever.csv from fetch-forever-strings.sh),
   -- when present, replace and add to the bundled retail ones. The retail
   -- list lacks Forever's (GAMEPAD_LABEL), and the settings order table that
   -- names it fails, so the action bar settings never register.
-  local f = io.open(base .. "data/globalstrings-forever.csv", "r")
-  if f then
-    local text = f:read("*a")
-    f:close()
+  local text = host.read(base .. "data/globalstrings-forever.csv")
+  if text then
     local row, field, i, n, quoted = {}, {}, 1, #text, false
     local first = true
     local function endRow()

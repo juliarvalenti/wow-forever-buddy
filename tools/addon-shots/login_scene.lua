@@ -17,18 +17,12 @@ local M = {}
 local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
 local wowapiDir = here .. "/../wowapi"
 
-local function quote(s)
-    return "'" .. s:gsub("'", "'\\''") .. "'"
-end
+-- Files through wowapi.host: the app's live preview (PV1) boots this scene
+-- with no io or shell.
+local host = require("wowapi.host")
 
 local function readFile(path)
-    local f = io.open(path, "rb")
-    if not f then
-        return nil
-    end
-    local text = f:read("*a")
-    f:close()
-    return text
+    return (host.read(path))
 end
 
 -- The Blizzard addons the client loads at login, in its order: not load on
@@ -38,8 +32,9 @@ end
 -- name, each after its dependencies.
 function M.loginOrder(dir)
     local found = {}
-    local p = assert(io.popen("ls " .. quote(dir)))
-    for name in p:lines() do
+    local names = host.list(dir) or {}
+    table.sort(names)
+    for _, name in ipairs(names) do
         local path = toc.findToc(dir .. "/" .. name)
         local text = path and readFile(path)
         if text then
@@ -57,7 +52,6 @@ function M.loginOrder(dir)
             end
         end
     end
-    p:close()
     local order, seen = {}, {}
     local function visit(key)
         key = key:lower()
@@ -94,10 +88,7 @@ end
 local function warnMissingData()
     for file, script in pairs({ ["globalcolor.csv"] = "fetch-globalcolors.sh",
         ["atlases-forever.txt"] = "fetch-forever-atlases.sh", ["globalstrings-forever.csv"] = "fetch-forever-strings.sh" }) do
-        local f = io.open(wowapiDir .. "/wowapi/data/" .. file, "r")
-        if f then
-            f:close()
-        else
+        if not host.exists(wowapiDir .. "/wowapi/data/" .. file) and not host.embedded then
             io.stderr:write(("warning: no wowapi/data/%s; run tools/wowapi/%s once\n"):format(file, script))
         end
     end
@@ -108,9 +99,7 @@ end
 -- layouts/<name>.lua.
 local function readLayout(layout)
     local file = layout:find("[/\\]") and layout or (here .. "/layouts/" .. layout .. ".lua")
-    local f = assert(io.open(file, "r"))
-    local text = f:read("*a")
-    f:close()
+    local text = assert(host.read(file))
     if text:match("^%s*%d") then
         return nil, require("editmode_string").decode(text)
     end
@@ -127,7 +116,7 @@ function M.boot(opts)
     local blizzard, extra, class = opts.blizzard, opts.extra or {}, opts.class
     local uiScale = opts.uiScale or 1080 / 768
     local art = opts.art
-    if art == nil then
+    if art == nil and os then
         art = os.getenv("WOWAPI_ART") ~= nil
     end
     local fixturePlayer = class and fixtures.player(class, opts.level)
@@ -146,7 +135,7 @@ function M.boot(opts)
         player = fixturePlayer or { name = "Thrandor", class = "WARRIOR", race = "Human", level = 12, money = 25000,
             zone = "Elwynn Forest", health = 425, healthMax = 500 },
         art = art,
-        offline = os.getenv("WOWAPI_OFFLINE") == "1" or not art,
+        offline = opts.offline or not art or (os and os.getenv and os.getenv("WOWAPI_OFFLINE") == "1"),
         quiet = true,
         -- Unmocked APIs return empty defaults, not random data: Blizzard's
         -- AuraUtil.ForEachAura never ends on random auras.

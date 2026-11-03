@@ -179,11 +179,10 @@ function M.install(sim, env)
   end
   do
     local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
-    local f = io.open(here .. "/data/globalcolor.csv", "r")
-    if f then
+    local text = require("wowapi.host").read(here .. "/data/globalcolor.csv") -- WFB patch (PV1)
+    if text then
       local colors = {}
-      f:read("*l")
-      for line in f:lines() do
+      for line in text:gmatch("[^\r\n]+") do
         local name, argb = line:match("^%d+,([%w_]+),(%-?%d+)")
         if name then
           local v = tonumber(argb) % 4294967296
@@ -192,7 +191,6 @@ function M.install(sim, env)
           colors[#colors + 1] = { baseTag = name, color = { r = r / 255, g = g / 255, b = b / 255, a = a / 255 } }
         end
       end
-      f:close()
       sim:Mock("C_UIColor.GetColors", function() return colors end)
     end
   end

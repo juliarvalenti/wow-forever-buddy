@@ -13,10 +13,12 @@ local function splitList(s)
 end
 M.splitList = splitList
 
+-- WFB patch (PV1): files go through wowapi.host (embedded: the app's
+-- confined functions; on the command line: io and the shell as before).
+local host = require("wowapi.host")
+
 function M.exists(path)
-  local f = io.open(path, "rb")
-  if f then f:close(); return true end
-  return false
+  return host.exists(path)
 end
 
 -- WoW reads addon files case-insensitively (Windows); find `path` on a
@@ -33,10 +35,8 @@ function M.resolve(path)
       cur = cand
     else
       local found
-      local p = io.popen('ls -1a "' .. (cur == "" and "/" or cur) .. '" 2>/dev/null')
-      if p then
-        for n in p:lines() do if n:lower() == part:lower() then found = n; break end end
-        p:close()
+      for _, n in ipairs(host.list(cur == "" and "/" or cur) or {}) do
+        if n:lower() == part:lower() then found = n; break end
       end
       if not found then return nil end
       cur = (cur == "" and "/" or cur .. "/") .. found
@@ -46,11 +46,7 @@ function M.resolve(path)
 end
 
 function M.readFile(path)
-  local f, err = io.open(path, "rb")
-  if not f then return nil, err end
-  local s = f:read("*a")
-  f:close()
-  return s
+  return host.read(path)
 end
 
 function M.basename(path) return (path:gsub("[/\\]+$", ""):match("([^/\\]+)$")) end
