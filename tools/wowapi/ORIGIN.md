@@ -89,6 +89,10 @@ HUD3, scene data for the live HUD:
 - `xml.lua`: an AnimationGroup's XML templates apply (a virtual top-level `<AnimationGroup>` is registered as one, and `inherits=` and `mixin=` work on groups). Without this, BuffFrame's warning fader has no `Animation` and no `Init`, and BuffFrame draws no aura.
 - `docs.lua`: the client docs' constants. Their group names don't always match the Lua ones (`QuestInfoLuaConsts` is read as `Constants.QuestConsts`), but each constant's name is unique, so a `Constants` group the environment lacks answers from all of them. Without it, the quest tracker stops.
 
+HUD4:
+
+- `secure.lua`: `SecureHandler_OnLoad` gives the frame the handler methods (`SetFrameRef`, `Execute`, `WrapScript`, `UnwrapScript`), as the client's does. With Blizzard's own UI loaded, the extract's `SecureHandlerStateTemplate` XML replaces WOWAPI's built-in template and its `OnLoad` is all that's left, while Blizzard's `SecureHandlers.lua` stops early on natives WOWAPI lacks (`C_Widget`, frame handles). Without this, a header from `CreateFrame(..., "SecureHandlerStateTemplate")` had no `SetFrameRef` (TH3's bars). `tests/securehandler.lua` checks it.
+
 ## Updating
 
 To move to a new commit:

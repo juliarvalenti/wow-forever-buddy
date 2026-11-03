@@ -464,7 +464,21 @@ function M.install(sim, env)
       if post then M.runSnippet(sim, self, post, "self, message, button, down", message, ...) end
     end)
   end)
-  rawset(env, "SecureHandler_OnLoad", function(self) end)
+  -- WFB patch (HUD4): SecureHandler_OnLoad gives the frame the handler
+  -- methods, as the client's does. With Blizzard's own UI loaded (the
+  -- extract), the SecureHandler*Template XML replaces WOWAPI's built-in
+  -- template and its OnLoad is all that's left; Blizzard's SecureHandlers.lua
+  -- needs natives WOWAPI lacks (C_Widget, frame handles) and stops before it
+  -- defines its own. Without this, a header from CreateFrame(...,
+  -- "SecureHandlerStateTemplate") had no SetFrameRef or Execute.
+  rawset(env, "SecureHandler_OnLoad", function(self)
+    if not sim.widgetState[self] then return end
+    sim.widgetState[self].protected = true
+    self.SetFrameRef = function(f, label, ref) f:SetAttribute("frameref-" .. label, ref) end
+    self.Execute = function(f, body) M.runSnippet(sim, f, body, "self") end
+    self.WrapScript = function(f, frame, script, pre, post) env.SecureHandlerWrapScript(frame, script, f, pre, post) end
+    self.UnwrapScript = function(f, frame, script) end
+  end)
   rawset(env, "IsSecureCmd", function(cmd) return cmd == "/cast" or cmd == "/use" or cmd == "/target" end)
 end
 
