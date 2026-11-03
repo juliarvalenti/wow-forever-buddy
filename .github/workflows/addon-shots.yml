@@ -55,6 +55,11 @@ jobs:
       - name: addon-live tour
         run: lua5.1 tools/addon-live/live.lua script tools/addon-live/tour.txt --dir "$RUNNER_TEMP/addon-live"
 
+      # HUD3: in combat our code is refused on protected frames, Blizzard's
+      # own isn't, and Blizzard calling ours is refused (TH3's secure buttons).
+      - name: WOWAPI combat lockdown
+        run: lua5.1 tools/wowapi/tests/lockdown.lua
+
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
           cd "$OUT"
