@@ -65,6 +65,11 @@ ns.settings = {
             label = "Quest helper",
             sub = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
         },
+        {
+            id = "actionbars",
+            label = "Action bars",
+            sub = "Your action bars in a clean grid, in place of Blizzard's. Off until you turn it on.",
+        },
     },
     options = {
         {
@@ -442,6 +447,32 @@ ns.settings = {
             showHelp = true,
             acts = true,
         },
+        -- TH3: our own action bars, secure buttons in the round 4 grid. Off
+        -- until turned on (the launch-week HUD ships behind this), and no
+        -- preset turns it on.
+        {
+            id = "actionbars.enabled",
+            module = "actionbars",
+            section = "Action bars",
+            type = "bool",
+            default = true,
+            label = "Action bars",
+            help = "Your action bars in a clean grid, in place of Blizzard's.",
+            moduleSwitch = true,
+            acts = false,
+        },
+        {
+            id = "actionbars.ours",
+            module = "actionbars",
+            section = "Action bars",
+            type = "bool",
+            default = false,
+            label = "Our action bars",
+            help = "Your first two bars in our look. Same spells, binds and drag and drop; Blizzard's bars fade out. Changes wait until you leave combat.",
+            parent = "actionbars.enabled",
+            showHelp = true,
+            acts = false,
+        },
         {
             id = "window.minimap",
             module = "window",
@@ -489,7 +520,8 @@ ns.settings = {
     presets = {
         -- The designer's three (P4c), a row for every option except "Record
         -- my next session", which no preset touches. Every module stays on
-        -- (W1): a preset picks what each one shows.
+        -- (W1): a preset picks what each one shows. Our action bars (TH3)
+        -- stay off in all three: they replace Blizzard's, so you choose them.
         {
             id = "quiet",
             label = "Quiet",
@@ -504,6 +536,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },
         {
@@ -520,6 +553,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },
         {
@@ -536,6 +570,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },
     },

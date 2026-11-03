@@ -196,6 +196,8 @@ ForeverBuddyDB = {
 	},
 	["settings"] = {
 		["values"] = {
+			["actionbars.enabled"] = true,
+			["actionbars.ours"] = false,
 			["bags.enabled"] = true,
 			["bags.itemLevel"] = false,
 			["bags.junk"] = false,

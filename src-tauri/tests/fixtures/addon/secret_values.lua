@@ -12,7 +12,7 @@ ForeverBuddyDB = {
 		["missing_events"] = {
 		},
 		["schema"] = 1,
-		["secret_hits"] = 87,
+		["secret_hits"] = 88,
 		["truncated"] = false,
 		["written"] = 1790967600,
 	},
@@ -33,6 +33,8 @@ ForeverBuddyDB = {
 	},
 	["settings"] = {
 		["values"] = {
+			["actionbars.enabled"] = true,
+			["actionbars.ours"] = false,
 			["bags.enabled"] = true,
 			["bags.itemLevel"] = false,
 			["bags.junk"] = false,
