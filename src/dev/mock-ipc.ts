@@ -1506,6 +1506,25 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
+    // PV1: the preview's data is downloaded and one frame drawn.
+    preview_status: () => ({
+      data: "ready",
+      data_error: null,
+      download_bytes: 7_768_345,
+      downloaded_bytes: 7_768_345,
+      drawing: false,
+      generation: 1,
+      drew_ms: 212,
+      lua_errors: 0,
+      class: "rogue",
+      draw_error: null,
+    }),
+    preview_frame: () =>
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>' +
+      '<rect x="660" y="960" width="600" height="56" rx="6" fill="#2a3338"/></svg>',
+    preview_open: () => null,
+    preview_download: () => null,
+    preview_remove_data: () => null,
     // O2: IMPLEMENTING §22. "tidy" has one of each; elsewhere nothing.
     tidy_get: (): Tidy => tidyView(),
     tidy_data: () => dataSize,

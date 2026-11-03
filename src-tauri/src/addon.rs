@@ -164,6 +164,12 @@ fn toc_version(toc: &[u8]) -> Option<String> {
     })
 }
 
+/// The bundled files, `(path in the addon folder, contents)`; the live
+/// preview (PV1) runs this copy of the addon.
+pub(crate) fn bundled_files() -> &'static [(&'static str, &'static [u8])] {
+    &FILES
+}
+
 pub fn bundled_version() -> String {
     toc_version(FILES[FILES.len() - 1].1).expect("the bundled TOC has a version")
 }

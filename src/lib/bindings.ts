@@ -367,6 +367,18 @@ export const commands = {
 	 *  the game at the next slot write.
 	 */
 	planClear: (characterId: number) => __TAURI_INVOKE<Plan[]>("plan_clear", { characterId }),
+	previewStatus: () => __TAURI_INVOKE<PreviewStatus>("preview_status"),
+	/**  The last good frame as SVG, if there is one. */
+	previewFrame: () => __TAURI_INVOKE<string | null>("preview_frame"),
+	/**  The tab opened: draw now, and redraw on every change from here on. */
+	previewOpen: () => __TAURI_INVOKE<null>("preview_open"),
+	/**
+	 *  "Download preview data": WOWAPI's data files from GitHub, checked against
+	 *  the hashes the app carries. Progress arrives as `PreviewChanged`.
+	 */
+	previewDownload: () => __TAURI_INVOKE<null>("preview_download"),
+	/**  Settings > "Remove preview data". */
+	previewRemoveData: () => __TAURI_INVOKE<null>("preview_remove_data"),
 	listsGet: () => __TAURI_INVOKE<ListsView>("lists_get"),
 	listCreate: (name: string, forCharacter: number | null) => __TAURI_INVOKE<ListsView>("list_create", { name, forCharacter }),
 	listUpdate: (id: number, name: string, forCharacter: number | null) => __TAURI_INVOKE<ListsView>("list_update", { id, name, forCharacter }),
@@ -482,6 +494,7 @@ export const events = {
 	ingestCompleted: makeEvent<IngestCompleted>("ingest-completed"),
 	installChanged: makeEvent<InstallChanged>("install-changed"),
 	moveProgress: makeEvent<MoveProgress>("move-progress"),
+	previewChanged: makeEvent<PreviewChanged>("preview-changed"),
 	pricesUpdated: makeEvent<PricesUpdated>("prices-updated"),
 	restoreCompleted: makeEvent<RestoreCompleted>("restore-completed"),
 	restoreProgress: makeEvent<RestoreProgress>("restore-progress"),
@@ -1911,6 +1924,39 @@ export type PlaySession = {
 	 *  killed without one can't be told apart from a clean exit.
 	 */
 	crashed: boolean,
+};
+
+/**
+ *  The preview's state changed (a new frame, a draw started or failed, the
+ *  download moved on): the tab asks for the status, and the frame if new.
+ */
+export type PreviewChanged = null;
+
+/**  Where WOWAPI's data stands. */
+export type PreviewData = 
+/**  Not downloaded: the tab offers the download. */
+"missing" | "downloading" | "ready" | 
+/**  The download failed (`data_error` says why); the tab offers a retry. */
+"failed";
+
+/**  The Preview tab's state. The frame itself comes from `frame()`. */
+export type PreviewStatus = {
+	data: PreviewData,
+	data_error: string | null,
+	/**  For the button: "Download preview data (8 MB)". */
+	download_bytes: number | null,
+	downloaded_bytes: number | null,
+	/**  A redraw is under way (the tab keeps the last frame meanwhile). */
+	drawing: boolean,
+	/**  Bumps with each new frame. */
+	generation: number,
+	drew_ms: number | null,
+	/**  The scene's Lua errors in the last frame (WOWAPI's gaps or ours). */
+	lua_errors: number,
+	/**  The fixture character drawn ("rogue"), or `None` for the generic one. */
+	class: string | null,
+	/**  The last draw failed; the tab shows this under the last good frame. */
+	draw_error: string | null,
 };
 
 /**  Emitted after new prices were read. */

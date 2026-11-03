@@ -326,6 +326,9 @@ impl AppCore {
                 "game data not sent: the installed addon lists no data files",
             );
         }
+        // PV1: the slots are what the preview draws from, so it redraws on
+        // every send, even one that waits for WoW to close.
+        self.preview_changed();
         sent
     }
 

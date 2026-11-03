@@ -71,13 +71,19 @@ png = "0.18"
 # The agent connection (P2) finds the app's data folders without Tauri, the
 # same way Tauri does. Already in the tree through it.
 dirs = "7"
+# The live preview (PV1) runs the WOWAPI emulator in a sandboxed Lua 5.1
+# state, like the game's Lua. Also what `cargo test` runs the addon's
+# harness in (H5), so the bridge contract is checked on every OS CI tests on.
+mlua = { version = "0.12", features = ["lua51", "vendored"] }
+# The preview's one download (PV1): WOWAPI's data files, fetched on the
+# player's click from one fixed URL and checked against SHA-256s the app
+# carries. Blocking HTTPS with rustls, no other network use.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 full_moon = "3"
 proptest = "1"
-# H5: runs the addon's Lua harness inside `cargo test`, in Lua 5.1 like the
-# game, so the bridge contract is checked on every OS CI tests on.
-mlua = { version = "0.12", features = ["lua51", "vendored"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

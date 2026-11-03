@@ -22,6 +22,7 @@ import { useEvent } from "@/hooks/useEvent";
 import type { useInstall } from "@/hooks/useInstall";
 import { useAppInfo, useSecrets, useSettings } from "@/hooks/useSettings";
 import { ago, bytes, errorText, plural } from "@/lib/format";
+import { PreviewDataRow } from "@/screens/Preview";
 import { DataPanel } from "@/screens/SettingsData";
 
 // Copy and layout from design/mocks/round-3/settings.html (F1).
@@ -192,6 +193,7 @@ export function Settings({
               onChange={(v) => update({ item_icons: v })}
             />
             <GameDataCache enabled={settings?.item_icons ?? false} />
+            <PreviewDataRow />
             <div className="st-set">
               <div className="t">Setup</div>
               <div className="d">The first-launch guide: game folder, first backup, the addon and the extras.</div>

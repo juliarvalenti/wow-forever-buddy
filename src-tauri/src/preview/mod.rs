@@ -1,0 +1,517 @@
+//! The live preview (PV1): the player's screen as the game would draw it
+//! with our addon and their settings, redrawn when a setting changes, in
+//! the Preview tab.
+//!
+//! The WOWAPI emulator and the logged-in scene from `tools/` run in a
+//! sandboxed Lua state (`sandbox`) on their own thread, compiled into the
+//! app (`bundle`). WOWAPI's data folder is downloaded on the player's click
+//! and checked against hashes the app carries (`data`). With the art switch
+//! off (the default) nothing reads the game's files; Blizzard's own frames
+//! are stand-ins and ours draw in full.
+//!
+//! Nothing runs until the Preview tab asks for a frame. After that, every
+//! change that would send the game new settings asks for a redraw too, and
+//! redraws that queue up are drawn once, with the newest settings.
+
+pub mod bundle;
+pub mod data;
+pub mod sandbox;
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
+
+use serde::Serialize;
+
+use sandbox::{DrawOptions, Host, Session};
+
+/// A draw that takes longer than this is stopped (a full-art screen with
+/// Blizzard's UI takes several seconds).
+const DRAW_LIMIT: Duration = Duration::from_secs(90);
+
+/// Where WOWAPI's data stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewData {
+    /// Not downloaded: the tab offers the download.
+    Missing,
+    Downloading,
+    Ready,
+    /// The download failed (`data_error` says why); the tab offers a retry.
+    Failed,
+}
+
+/// The Preview tab's state. The frame itself comes from `frame()`.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct PreviewStatus {
+    pub data: PreviewData,
+    pub data_error: Option<String>,
+    /// For the button: "Download preview data (8 MB)".
+    pub download_bytes: f64,
+    pub downloaded_bytes: f64,
+    /// A redraw is under way (the tab keeps the last frame meanwhile).
+    pub drawing: bool,
+    /// Bumps with each new frame.
+    pub generation: u32,
+    pub drew_ms: Option<u32>,
+    /// The scene's Lua errors in the last frame (WOWAPI's gaps or ours).
+    pub lua_errors: u32,
+    /// The fixture character drawn ("rogue"), or `None` for the generic one.
+    pub class: Option<String>,
+    /// The last draw failed; the tab shows this under the last good frame.
+    pub draw_error: Option<String>,
+}
+
+/// What a draw needs from the app.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inputs {
+    /// The addon's slot files the app would send the game, by their path in
+    /// the addon folder ("Data/Settings.lua").
+    pub slots: BTreeMap<String, Vec<u8>>,
+    /// The last-played character's class ("ROGUE").
+    pub class: Option<String>,
+    /// The player's extracted game files: only with the art switch on.
+    pub extract: Option<PathBuf>,
+}
+
+enum Job {
+    Draw(Inputs),
+    Download,
+    Remove(Sender<std::io::Result<()>>),
+}
+
+type Notify = Box<dyn Fn() + Send + Sync>;
+
+struct Shared {
+    status: Mutex<PreviewStatus>,
+    frame: Mutex<Option<String>>,
+    notify: Mutex<Option<Notify>>,
+}
+
+impl Shared {
+    fn update(&self, f: impl FnOnce(&mut PreviewStatus)) {
+        f(&mut self.status.lock().expect("preview status lock"));
+        if let Some(n) = self.notify.lock().expect("preview notify lock").as_ref() {
+            n();
+        }
+    }
+}
+
+pub struct Preview {
+    tx: Sender<Job>,
+    shared: Arc<Shared>,
+    started: Mutex<bool>,
+}
+
+impl Preview {
+    /// `dir` is the preview's own folder in the app's local data: `data/`
+    /// for WOWAPI's data, `scratch/` for the Lua's writes. `log_dir` gets a
+    /// line per draw with its time.
+    pub fn start(dir: PathBuf, log_dir: PathBuf) -> Preview {
+        let data_dir = dir.join("data");
+        let ready = data::is_ready(&data_dir);
+        let shared = Arc::new(Shared {
+            status: Mutex::new(PreviewStatus {
+                data: if ready {
+                    PreviewData::Ready
+                } else {
+                    PreviewData::Missing
+                },
+                data_error: None,
+                download_bytes: data::total_bytes() as f64,
+                downloaded_bytes: 0.0,
+                drawing: false,
+                generation: 0,
+                drew_ms: None,
+                lua_errors: 0,
+                class: None,
+                draw_error: None,
+            }),
+            frame: Mutex::new(None),
+            notify: Mutex::new(None),
+        });
+        let (tx, rx) = mpsc::channel();
+        let worker = Worker {
+            dir,
+            data_dir,
+            log_dir,
+            shared: shared.clone(),
+            host: None,
+            last: None,
+        };
+        std::thread::Builder::new()
+            .name("preview".into())
+            .spawn(move || worker.run(rx))
+            .expect("spawn the preview thread");
+        Preview {
+            tx,
+            shared,
+            started: Mutex::new(false),
+        }
+    }
+
+    /// Called on each status change (the app emits `PreviewChanged`).
+    pub fn on_change(&self, f: impl Fn() + Send + Sync + 'static) {
+        *self.shared.notify.lock().expect("preview notify lock") = Some(Box::new(f));
+    }
+
+    pub fn status(&self) -> PreviewStatus {
+        self.shared
+            .status
+            .lock()
+            .expect("preview status lock")
+            .clone()
+    }
+
+    pub fn frame(&self) -> Option<String> {
+        self.shared
+            .frame
+            .lock()
+            .expect("preview frame lock")
+            .clone()
+    }
+
+    /// The Preview tab asked: from now on, setting changes redraw too.
+    pub fn open(&self, inputs: Inputs) {
+        *self.started.lock().expect("preview started lock") = true;
+        let _ = self.tx.send(Job::Draw(inputs));
+    }
+
+    /// A setting changed: redraw, if the tab has ever been opened.
+    pub fn changed(&self, inputs: Inputs) {
+        if *self.started.lock().expect("preview started lock") {
+            let _ = self.tx.send(Job::Draw(inputs));
+        }
+    }
+
+    pub fn download(&self) {
+        let _ = self.tx.send(Job::Download);
+    }
+
+    /// Settings > "Remove preview data".
+    pub fn remove_data(&self) -> std::io::Result<()> {
+        let (done, wait) = mpsc::channel();
+        let _ = self.tx.send(Job::Remove(done));
+        wait.recv().unwrap_or(Ok(()))
+    }
+}
+
+struct Worker {
+    dir: PathBuf,
+    data_dir: PathBuf,
+    log_dir: PathBuf,
+    shared: Arc<Shared>,
+    host: Option<Arc<RwLock<Host>>>,
+    last: Option<Inputs>,
+}
+
+thread_local! {
+    /// The Lua state lives on the preview thread (it can't move between
+    /// threads), kept between draws so the modules stay loaded.
+    static SESSION: std::cell::RefCell<Option<Session>> = const { std::cell::RefCell::new(None) };
+}
+
+fn drop_session() {
+    SESSION.with(|s| *s.borrow_mut() = None);
+}
+
+impl Worker {
+    fn run(mut self, rx: Receiver<Job>) {
+        while let Ok(job) = rx.recv() {
+            match job {
+                Job::Draw(mut inputs) => {
+                    // Draw once with the newest of the queued requests.
+                    let mut later = Vec::new();
+                    while let Ok(next) = rx.try_recv() {
+                        match next {
+                            Job::Draw(newer) => inputs = newer,
+                            other => later.push(other),
+                        }
+                    }
+                    self.draw(inputs);
+                    for job in later {
+                        self.other(job);
+                    }
+                }
+                other => self.other(other),
+            }
+        }
+    }
+
+    fn other(&mut self, job: Job) {
+        match job {
+            Job::Download => self.download(),
+            Job::Remove(done) => {
+                drop_session();
+                self.host = None;
+                let r = data::remove(&self.data_dir);
+                *self.shared.frame.lock().expect("preview frame lock") = None;
+                self.shared.update(|s| {
+                    s.data = PreviewData::Missing;
+                    s.downloaded_bytes = 0.0;
+                    s.generation += 1;
+                });
+                let _ = done.send(r);
+            }
+            Job::Draw(inputs) => self.draw(inputs),
+        }
+    }
+
+    fn download(&mut self) {
+        self.shared.update(|s| {
+            s.data = PreviewData::Downloading;
+            s.data_error = None;
+            s.downloaded_bytes = 0.0;
+        });
+        let shared = self.shared.clone();
+        let result = data::download(&self.data_dir, |done| {
+            shared.update(|s| s.downloaded_bytes = done as f64)
+        });
+        match result {
+            Ok(()) => {
+                self.shared.update(|s| s.data = PreviewData::Ready);
+                if let Some(inputs) = self.last.clone() {
+                    self.draw(inputs);
+                }
+            }
+            Err(e) => {
+                crate::applog::append(&self.log_dir, &format!("preview: {e}"));
+                self.shared.update(|s| {
+                    s.data = PreviewData::Failed;
+                    s.data_error = Some(e.to_string());
+                });
+            }
+        }
+    }
+
+    fn draw(&mut self, inputs: Inputs) {
+        self.last = Some(inputs.clone());
+        if self.shared.status.lock().expect("preview status lock").data != PreviewData::Ready {
+            return;
+        }
+        self.shared.update(|s| s.drawing = true);
+        let started = Instant::now();
+        let result = self.draw_inner(&inputs);
+        let ms = started.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        let first = self
+            .shared
+            .status
+            .lock()
+            .expect("preview status lock")
+            .generation
+            == 0;
+        match result {
+            Ok(drawn) => {
+                crate::applog::append(
+                    &self.log_dir,
+                    &format!(
+                        "preview: {} frame in {ms} ms ({} KB, {} Lua errors{})",
+                        if first { "first" } else { "new" },
+                        drawn.svg.len() / 1024,
+                        drawn.lua_errors,
+                        if inputs.extract.is_some() {
+                            ", game art"
+                        } else {
+                            ""
+                        }
+                    ),
+                );
+                *self.shared.frame.lock().expect("preview frame lock") = Some(drawn.svg);
+                self.shared.update(|s| {
+                    s.drawing = false;
+                    s.generation += 1;
+                    s.drew_ms = Some(ms);
+                    s.lua_errors = drawn.lua_errors;
+                    s.class = drawn.class;
+                    s.draw_error = None;
+                });
+            }
+            Err(e) => {
+                crate::applog::append(
+                    &self.log_dir,
+                    &format!("preview: the draw failed after {ms} ms: {e}"),
+                );
+                // A failed state isn't reused.
+                drop_session();
+                self.host = None;
+                self.shared.update(|s| {
+                    s.drawing = false;
+                    s.draw_error = Some(e);
+                });
+            }
+        }
+    }
+
+    fn draw_inner(&mut self, inputs: &Inputs) -> Result<sandbox::Drawn, String> {
+        let scratch = self.dir.join("scratch");
+        std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+        let host = self.host.get_or_insert_with(|| {
+            Arc::new(RwLock::new(Host {
+                data: None,
+                scratch: scratch.clone(),
+                extract: None,
+                slots: BTreeMap::new(),
+            }))
+        });
+        {
+            let mut h = host.write().expect("preview host lock");
+            h.data = Some(self.data_dir.clone());
+            h.extract = inputs.extract.clone();
+            h.slots = inputs.slots.clone();
+        }
+        let opts = DrawOptions {
+            class: inputs.class.clone(),
+            art: inputs.extract.is_some(),
+        };
+        let host = host.clone();
+        SESSION.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.is_none() {
+                *s = Some(Session::new(host).map_err(|e| e.to_string())?);
+            }
+            s.as_ref().expect("just made").draw(&opts, DRAW_LIMIT)
+        })
+    }
+}
+
+/// The preview's folder in the app's local data.
+pub fn dir(local_data: &Path) -> PathBuf {
+    local_data.join("preview")
+}
+
+/// The addon with every slot the app would send the game now (so its
+/// settings profile is the newest one approved), and the last-played
+/// character's class.
+pub fn inputs(db: &crate::db::Db, flavor: &str, now: i64) -> crate::error::AppResult<Inputs> {
+    let built = crate::bridge::build(db, flavor, now, &crate::bridge::SLOTS)?;
+    let prefix = format!("{}/", crate::addon::FOLDER);
+    let slots = built
+        .slots
+        .into_iter()
+        .filter_map(|(slot, bytes)| {
+            let path = slot.path().as_string();
+            path.strip_prefix(&prefix).map(|p| (p.to_string(), bytes))
+        })
+        .collect();
+    let class = crate::characters::overview(db, flavor)?
+        .characters
+        .into_iter()
+        .next()
+        .and_then(|c| c.class);
+    // Blizzard's art and UI need an in-app extract of the player's game
+    // files, which comes with its own switch (PV1b); until then the preview
+    // never reads them (F8c).
+    Ok(Inputs {
+        slots,
+        class,
+        extract: None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    const FLAVOR: &str = "_classic_beta_";
+
+    /// A preview whose data folder already holds WOWAPI's data (as a player's
+    /// would after the download), and a way to wait for its next frame.
+    fn started(tmp: &Path) -> (Preview, mpsc::Receiver<()>) {
+        let dir = tmp.join("preview");
+        let data = dir.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let repo = sandbox::tests::repo_data();
+        for f in &data::FILES {
+            std::fs::copy(repo.join(f.name), data.join(f.name)).unwrap();
+        }
+        let preview = Preview::start(dir, tmp.join("logs"));
+        let (tx, rx) = mpsc::channel();
+        let tx = Mutex::new(tx);
+        preview.on_change(move || {
+            let _ = tx.lock().unwrap().send(());
+        });
+        (preview, rx)
+    }
+
+    fn next_frame(
+        preview: &Preview,
+        rx: &mpsc::Receiver<()>,
+        after: u32,
+    ) -> (PreviewStatus, String) {
+        let until = Instant::now() + Duration::from_secs(120);
+        loop {
+            let s = preview.status();
+            if s.generation > after && !s.drawing {
+                return (s, preview.frame().expect("a frame"));
+            }
+            assert!(s.draw_error.is_none(), "{:?}", s.draw_error);
+            let left = until.saturating_duration_since(Instant::now());
+            assert!(!left.is_zero(), "no new frame: {s:?}");
+            let _ = rx.recv_timeout(left);
+        }
+    }
+
+    /// The ticket's check: set a value, get a changed frame back.
+    #[test]
+    fn an_approved_setting_redraws_the_preview() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Db::open(&tmp.path().join("app.db")).unwrap();
+        let (preview, rx) = started(tmp.path());
+        assert_eq!(preview.status().data, PreviewData::Ready);
+        let rogue = |mut i: Inputs| {
+            i.class = Some("ROGUE".into());
+            i
+        };
+
+        // Nothing changed yet: the settings slot is the shipped stub, and our
+        // rogue HUD is off.
+        preview.open(rogue(inputs(&db, FLAVOR, 1).unwrap()));
+        let (first, before) = next_frame(&preview, &rx, 0);
+        assert_eq!(first.class.as_deref(), Some("rogue"));
+        assert!(!before.contains("Syndicate Highwayman"));
+
+        // Approving "hud.enabled" makes a profile the Settings slot carries;
+        // the redraw has the HUD.
+        crate::addon_settings::approve(
+            &db,
+            FLAVOR,
+            &crate::addon_settings::SettingBody {
+                option: "hud.enabled".into(),
+                value: serde_json::Value::Bool(true),
+            },
+            2,
+        )
+        .unwrap();
+        preview.changed(rogue(inputs(&db, FLAVOR, 2).unwrap()));
+        let (second, after) = next_frame(&preview, &rx, first.generation);
+        assert!(
+            after.contains("Syndicate Highwayman"),
+            "the HUD should show the target"
+        );
+        assert_ne!(before, after);
+        eprintln!(
+            "preview: first frame {:?} ms, redraw {:?} ms",
+            first.drew_ms, second.drew_ms
+        );
+    }
+
+    #[test]
+    fn without_data_nothing_draws_and_the_tab_offers_the_download() {
+        let tmp = tempfile::tempdir().unwrap();
+        let preview = Preview::start(tmp.path().join("preview"), tmp.path().join("logs"));
+        let s = preview.status();
+        assert_eq!(s.data, PreviewData::Missing);
+        assert_eq!(s.download_bytes as u64, data::total_bytes());
+        preview.open(Inputs {
+            slots: BTreeMap::new(),
+            class: None,
+            extract: None,
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(preview.status().generation, 0);
+        assert!(preview.frame().is_none());
+    }
+}
