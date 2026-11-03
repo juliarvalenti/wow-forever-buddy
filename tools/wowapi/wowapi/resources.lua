@@ -34,6 +34,58 @@ function M.globalStrings(locale)
     pcall(chunk)
   end
   t._G = nil
+  -- WFB patch (HUD2): WoW Forever's own strings (GlobalStrings.db2 at its
+  -- build, data/globalstrings-forever.csv from fetch-forever-strings.sh),
+  -- when present, replace and add to the bundled retail ones. The retail
+  -- list lacks Forever's (GAMEPAD_LABEL), and the settings order table that
+  -- names it fails, so the action bar settings never register.
+  local f = io.open(base .. "data/globalstrings-forever.csv", "r")
+  if f then
+    local text = f:read("*a")
+    f:close()
+    local row, field, i, n, quoted = {}, {}, 1, #text, false
+    local first = true
+    local function endRow()
+      if first then
+        first = false
+      elseif row[2] and row[2] ~= "" then
+        t[row[2]] = row[3] or ""
+      end
+      row = {}
+    end
+    while i <= n do
+      local c = text:sub(i, i)
+      if quoted then
+        if c == '"' then
+          if text:sub(i + 1, i + 1) == '"' then
+            field[#field + 1] = '"'
+            i = i + 1
+          else
+            quoted = false
+          end
+        else
+          field[#field + 1] = c
+        end
+      elseif c == '"' then
+        quoted = true
+      elseif c == "," then
+        row[#row + 1] = table.concat(field)
+        field = {}
+      elseif c == "\n" or c == "\r" then
+        if c == "\r" and text:sub(i + 1, i + 1) == "\n" then i = i + 1 end
+        row[#row + 1] = table.concat(field)
+        field = {}
+        endRow()
+      else
+        field[#field + 1] = c
+      end
+      i = i + 1
+    end
+    if #field > 0 or #row > 0 then
+      row[#row + 1] = table.concat(field)
+      endRow()
+    end
+  end
   stringsCache[locale] = t
   return t
 end

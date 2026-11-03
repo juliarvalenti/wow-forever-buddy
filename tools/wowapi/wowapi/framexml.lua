@@ -151,8 +151,51 @@ function M.install(sim, env)
   rawset(env, "RemoveKStrings", function(s)
     return (tostring(s or ""):gsub("|K.-|k", ""))
   end)
+  -- WFB patch (HUD1): whether the region names characters uniquely (false
+  -- for US realms). UnitFrame_Update asks first thing; without it every
+  -- unit frame stops there: no name, no portrait, "Dead" left showing.
+  if rawget(env, "RegionalUniqueNamesEnabled") == nil then
+    rawset(env, "RegionalUniqueNamesEnabled", function() return false end)
+  end
 
   ------------------------------------------------------------ colors
+  -- WFB patch (HUD1): C_UIColor.GetColors() returns the game's named
+  -- colours (data/globalcolor.csv, from fetch-globalcolors.sh), as the
+  -- client does from GlobalColor.db2. Blizzard's Color.lua makes the
+  -- globals from them (NORMAL_FONT_COLOR, ACTIONBAR_HOTKEY_FONT_COLOR...);
+  -- without it they're nil and the action buttons fail on their hotkeys.
+  -- GetCurrentEnvironment() is the global environment addon code runs in;
+  -- Color.lua writes the colour globals into it.
+  rawset(env, "GetCurrentEnvironment", function() return env end)
+  -- WFB patch (HUD2): Kiosk, the client's native demo-station table (not in
+  -- its API docs). A player's client isn't a kiosk. Without it, every micro
+  -- button update stops and the micro menu draws no icons.
+  if rawget(env, "Kiosk") == nil then
+    local function no() return false end
+    local function zero() return 0 end
+    rawset(env, "Kiosk", { IsEnabled = no, IsCompetitiveModeEnabled = no, IsExpired = no, IsInLobby = no,
+      IsSessionActive = no, IsSessionTimed = no, IsHousingResetPending = no, CanUserReturnToSplash = no,
+      GetSecondsRemaining = zero, GetSessionDuration = zero })
+  end
+  do
+    local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
+    local f = io.open(here .. "/data/globalcolor.csv", "r")
+    if f then
+      local colors = {}
+      f:read("*l")
+      for line in f:lines() do
+        local name, argb = line:match("^%d+,([%w_]+),(%-?%d+)")
+        if name then
+          local v = tonumber(argb) % 4294967296
+          local a, r = math.floor(v / 16777216) % 256, math.floor(v / 65536) % 256
+          local g, b = math.floor(v / 256) % 256, v % 256
+          colors[#colors + 1] = { baseTag = name, color = { r = r / 255, g = g / 255, b = b / 255, a = a / 255 } }
+        end
+      end
+      f:close()
+      sim:Mock("C_UIColor.GetColors", function() return colors end)
+    end
+  end
   -- WFB patch (HUD1): FACTION_BAR_COLORS, reaction 1 (hated) to 8
   -- (exalted), as SharedColorConstants.lua builds it from the client's
   -- faction colors. Addons iterate it (EllesmereUI's unit frames do, and

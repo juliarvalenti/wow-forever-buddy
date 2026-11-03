@@ -245,13 +245,23 @@ local function drawTexture(ctx, obj, s, x, y, w, h, alpha, clipFrac)
     return
   end
   if not s.texture and not s.atlas then return end
+  -- WFB patch (HUD2): file ID 0 (or "0") is no texture, as in the client.
+  if not s.atlas and (s.texture == 0 or s.texture == "0" or s.texture == "") then return end
   local props = s.props or {}
   local extra = { blend = s.blend, desaturate = s.desaturated or (props.Desaturation and (props.Desaturation[1] or 0) > 0.5),
     rotation = s.animRotation and math.rad(s.animRotation) or (props.Rotation and props.Rotation[1]) }
   if ctx.store then
     local img, tc
-    if s.atlas then
-      local at = ctx.store:atlas(s.atlas)
+    -- WFB patch (HUD2): a texture set to an atlas name (the unit frames'
+    -- SetStatusBarTexture("UI-HUD-UnitFrame-...-Bar-Health")) draws that
+    -- atlas, as in the client.
+    local atlasName = s.atlas
+    if not atlasName and type(s.texture) == "string" and not s.texture:find("[/\\]") then
+      local at = ctx.store:atlas(s.texture)
+      if at and at.image then atlasName = s.texture end
+    end
+    if atlasName then
+      local at = ctx.store:atlas(atlasName)
       if at and at.image then img, tc = at.image, { at.left, at.right, at.top, at.bottom } end
     else
       img = ctx:art(s.texture)
@@ -287,6 +297,8 @@ local function region(ctx, obj)
   local sim = ctx.sim
   local st = sim.widgetState
   local s = st[obj]
+  -- WFB patch (HUD2): a status bar's texture is drawn by its bar, as the fill.
+  if s.barOf then return end
   local l, b, w, h = layout.rect(sim, obj)
   if not l then return end
   local x, y = l, H - b - h
@@ -405,6 +417,7 @@ local function frameBody(ctx, obj)
   local x, y = l, H - b - h
   local alpha = obj:GetEffectiveAlpha()
   local store = ctx.store
+  local buttonSlots = {}
 
   if s.backdrop then drawBackdrop(ctx, s, x, y, w, h, alpha) end
 
@@ -534,12 +547,17 @@ local function frameBody(ctx, obj)
         or (slot == "Disabled" and s.enabled == false)
         or (slot == "Checked" and s.checked)
         or (slot == "Highlight" and sim.mouseFocus == obj)
-      if show and t and st[t] and st[t].shown then region(ctx, t) end
+      if show and t and st[t] and st[t].shown then buttonSlots[t] = true end
     end
   end
 
   -- regions by draw layer, then sublevel, then creation order
+  -- WFB patch (HUD2): a button's shown state textures (Normal, Pushed...)
+  -- sort with its other regions by their draw layer, as in the client,
+  -- instead of all going underneath (the micro buttons' icons were hidden
+  -- by their own background).
   local regions = {}
+  for t in pairs(buttonSlots) do regions[#regions + 1] = t end
   for _, c in ipairs(s.children) do
     local cs = st[c]
     if cs and not cs.isFrame and cs.shown and not cs.buttonSlot then
@@ -551,7 +569,10 @@ local function frameBody(ctx, obj)
     local la, lc = LAYER_INDEX[sa.layer or "ARTWORK"] or 3, LAYER_INDEX[sc.layer or "ARTWORK"] or 3
     if la ~= lc then return la < lc end
     if (sa.sublevel or 0) ~= (sc.sublevel or 0) then return (sa.sublevel or 0) < (sc.sublevel or 0) end
-    return (sa.seq or 0) < (sc.seq or 0)
+    -- WFB patch (HUD1): in one layer and sublevel the client draws the
+    -- region created first on top (an action button's icon over the slot
+    -- art declared after it).
+    return (sa.seq or 0) > (sc.seq or 0)
   end)
   for _, r in ipairs(regions) do region(ctx, r) end
 

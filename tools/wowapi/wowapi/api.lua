@@ -221,6 +221,20 @@ function M.install(sim, env)
   T.unpack = unpack
   T.maxn = T.maxn or function(t) local n = 0; for k in pairs(t) do if type(k) == "number" and k > n then n = k end end return n end
   T.removemulti = function(t, pos, count) for _ = 1, count or 1 do table.remove(t, pos) end end
+  -- WFB patch (HUD1): the rest of the client's table extensions, which
+  -- Blizzard's UI calls directly (table.removevalue, table.count, ...).
+  T.create = function() return {} end
+  T.isempty = function(t) return next(t) == nil end
+  T.count = function(t) local n = 0; for _ in pairs(t) do n = n + 1 end return n end
+  T.contains = function(t, v) for _, x in pairs(t) do if x == v then return true end end return false end
+  T.indexof = function(t, v) for i, x in ipairs(t) do if x == v then return i end end return nil end
+  T.keys = function(t) local o = {}; for k in pairs(t) do o[#o + 1] = k end return o end
+  T.values = function(t) local o = {}; for _, v in pairs(t) do o[#o + 1] = v end return o end
+  T.removevalue = function(t, v)
+    for i = #t, 1, -1 do if t[i] == v then table.remove(t, i); return i end end
+    return nil
+  end
+  T.removeunordered = function(t, i) local v = t[i]; t[i] = t[#t]; t[#t] = nil; return v end
   rawset(env, "table", T)
   rawset(env, "wipe", wipe)
   rawset(env, "tinsert", table.insert)
@@ -301,6 +315,16 @@ function M.install(sim, env)
   local Mth = {}
   for k, v in pairs(math) do Mth[k] = v end
   Mth.mod = math.fmod
+  -- WFB patch (HUD1): the client's math extensions. Blizzard's MathUtil.lua
+  -- starts with Clamp = math.clamp; without them Clamp is a nil stub and
+  -- every Edit Mode setting converts to nil (the minimap sized to 5%).
+  Mth.clamp = function(v, lo, hi) return math.min(math.max(v, lo), hi) end
+  Mth.saturate = function(v) return math.min(math.max(v, 0), 1) end
+  Mth.round = function(v) return math.floor(v + 0.5) end
+  Mth.sign = function(v) return v > 0 and 1 or (v < 0 and -1 or 0) end
+  Mth.lerp = function(a, b, t) return a + (b - a) * t end
+  Mth.normalize = function(v, a, b) if b == a then return 0 end return (v - a) / (b - a) end
+  Mth.wrap = function(v, lo, hi) local r = hi - lo; if r == 0 then return lo end return lo + (v - lo) % r end
   rawset(env, "math", Mth)
   local rng = opts_random(sim)
   Mth.random = rng
@@ -653,8 +677,23 @@ function M.install(sim, env)
     UnitEffectiveLevel = function(u) local x = U(u); return x and x.level or 0 end,
     UnitHealth = function(u) local x = U(u); return x and x.health or 0 end,
     UnitHealthMax = function(u) local x = U(u); return x and x.healthMax or 0 end,
-    UnitPower = function(u, t) local x = U(u); return x and x.power or 0 end,
-    UnitPowerMax = function(u, t) local x = U(u); return x and x.powerMax or 0 end,
+    -- WFB patch (HUD1): a unit can have secondary powers (x.powers[type] =
+    -- { cur, max }), such as a rogue's combo points next to its energy; an
+    -- explicit type that isn't the unit's main power and isn't modelled is 0.
+    UnitPower = function(u, t)
+      local x = U(u)
+      if not x then return 0 end
+      if t and x.powers and x.powers[t] then return x.powers[t][1] end
+      if t and x.powerType and t ~= x.powerType and t >= 0 then return 0 end
+      return x.power or 0
+    end,
+    UnitPowerMax = function(u, t)
+      local x = U(u)
+      if not x then return 0 end
+      if t and x.powers and x.powers[t] then return x.powers[t][2] end
+      if t and x.powerType and t ~= x.powerType and t >= 0 then return 0 end
+      return x.powerMax or 0
+    end,
     UnitPowerType = function(u) local x = U(u); if x then return x.powerType, POWER_TOKENS[x.powerType] end end,
     UnitIsDead = function(u) local x = U(u); return x and (x.dead or (x.health or 1) <= 0) or false end,
     UnitIsGhost = function(u) local x = U(u); return x and x.ghost or false end,

@@ -129,8 +129,16 @@ end
 local function resolveName(name, parent, sim)
   if not name then return nil end
   if name:find("%$[Pp]arent") then
-    local pname = parent and sim.widgetState[parent] and sim.widgetState[parent].name or ""
-    name = name:gsub("%$[Pp]arent", pname)
+    -- WFB patch (HUD1): an unnamed parent stands for its nearest named
+    -- ancestor, as in the client. Without this, the gamepad bar's
+    -- "$parentActionButton1" under an unnamed frame became a second global
+    -- ActionButton1, replacing the main action bar's.
+    local p, pname = parent, nil
+    while p and sim.widgetState[p] and not pname do
+      pname = sim.widgetState[p].name
+      p = sim.widgetState[p].parent
+    end
+    name = name:gsub("%$[Pp]arent", pname or "")
   end
   return name
 end
@@ -246,7 +254,8 @@ local function applyAnchors(ctx)
   local sim = ctx.sim
   for _, entry in ipairs(ctx.anchors) do
     if entry.all then
-      entry.obj:SetAllPoints()
+      local st = sim.widgetState[entry.obj]
+      if not (entry.default and st and #st.points > 0) then entry.obj:SetAllPoints() end
     else
       local a = entry.node.attrs
       local rel = resolveRelative(ctx, entry)
@@ -302,15 +311,29 @@ local function applyAttributes(ctx, obj, node)
   end
 end
 
+-- WFB patch (HUD1): parentKey and parentArray may come from an inherited
+-- template (EditModeSystemSelectionBaseTemplate sets parentKey="Selection"
+-- for every system's selection frame), first one found, as in the client.
+local function inheritedAttr(node, key, depth)
+  if node.attrs[key] then return node.attrs[key] end
+  if (depth or 0) > 8 or not node.attrs.inherits then return nil end
+  for _, t in ipairs(require("wowapi.templates").split(node.attrs.inherits)) do
+    local tmpl = M._sim and M._sim.templates[t]
+    local v = tmpl and tmpl.node and inheritedAttr(tmpl.node, key, (depth or 0) + 1)
+    if v then return v end
+  end
+end
+
 local function attachKey(obj, parent, node)
   if not parent then return end
-  if node.attrs.parentKey then
-    parent[node.attrs.parentKey] = obj
+  local parentKey = inheritedAttr(node, "parentKey")
+  if parentKey then
+    parent[parentKey] = obj
     local s = M._sim.widgetState[obj]
-    if s then s.parentKey = node.attrs.parentKey end
+    if s then s.parentKey = parentKey end
   end
-  if node.attrs.parentArray then
-    local k = node.attrs.parentArray
+  local k = inheritedAttr(node, "parentArray")
+  if k then
     parent[k] = parent[k] or {}
     table.insert(parent[k], obj)
   end
@@ -374,11 +397,32 @@ local function buildRegion(ctx, node, parent, layer, sublevel, existing)
   if w then s.width = w end
   if h then s.height = h end
   queueAnchors(ctx, obj, node, parent)
+  -- WFB patch (HUD1): a Texture or FontString with no anchors and no size,
+  -- here or in its templates, fills its parent, as in the client
+  -- (ActionButtonTemplate's icon is a bare <Texture parentKey="icon"/>).
+  if not existing and parent and not kid(node, "Anchors") and not kid(node, "Size")
+    and not bool(node.attrs.setAllPoints) and not node.attrs.inherits and #s.points == 0 then
+    table.insert(ctx.anchors, { obj = obj, all = true, parent = parent, default = true })
+  end
   applyKeyValues(ctx, obj, node)
   local anims = kid(node, "Animations")
   if anims then M.buildAnimations(ctx, obj, anims) end
   local scripts = kid(node, "Scripts")
   if scripts then setScripts(ctx, obj, scripts) end
+  -- WFB patch (HUD1): a region's mixin, as for frames (Blizzard's
+  -- TextStatusBarSparkTemplate is a Texture with TextStatusBarSparkMixin).
+  -- Applied after the XML attributes: the client sets those natively, so a
+  -- mixin's SetText (AutoScalingFontStringMixin) doesn't run for them.
+  if a.mixin then
+    for _, m in ipairs(require("wowapi.templates").split(a.mixin)) do
+      local mt = sim:Get(m)
+      if type(mt) == "table" then
+        for k, v in pairs(mt) do obj[k] = v end
+      else
+        sim:_error(string.format("%s:%d: mixin '%s' is not defined (load the Lua file that defines it first)", ctx.file, node.line or 0, m))
+      end
+    end
+  end
   return obj
 end
 
@@ -579,7 +623,8 @@ function M.applyTemplate(sim, obj, tmpl, ctx)
   local node = tmpl.node
   if REGION_TAGS[node.tag] then
     buildRegion(ctx, { tag = node.tag, attrs = { hidden = node.attrs.hidden, alpha = node.attrs.alpha, file = node.attrs.file,
-      atlas = node.attrs.atlas, text = node.attrs.text, justifyH = node.attrs.justifyH, justifyV = node.attrs.justifyV },
+      atlas = node.attrs.atlas, text = node.attrs.text, justifyH = node.attrs.justifyH, justifyV = node.attrs.justifyV,
+      mixin = node.attrs.mixin, useAtlasSize = node.attrs.useAtlasSize, alphaMode = node.attrs.alphaMode },
       children = node.children, line = node.line }, obj:GetParent(), nil, nil, obj)
   else
     local fileCtx = ctx
@@ -595,6 +640,12 @@ function M.runOnLoads(sim, ctx)
   ctx.onloads = {}
   for _, obj in ipairs(list) do
     sim:_runScript(obj, "OnLoad")
+  end
+  -- WFB patch (HUD2): a frame that loads visible is then shown, as in the
+  -- client (OnShow after OnLoad). The personal resource display sets itself
+  -- up in OnShow, and Edit Mode then hides it.
+  for _, obj in ipairs(list) do
+    if obj.IsVisible and obj:IsVisible() then sim:_runScript(obj, "OnShow") end
   end
 end
 

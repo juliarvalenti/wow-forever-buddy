@@ -88,7 +88,20 @@ function M.install(sim, env)
     return sim.bindings[key] or ""
   end)
   rawset(env, "GetBindingByKey", function(key) return env.GetBindingAction(key, true) end)
-  rawset(env, "GetBindingText", function(key, prefix, abbrev) return key and tostring(key) or "" end)
+  -- WFB patch (HUD2): abbreviated (GetBindingText(key, 1), the action
+  -- buttons' hotkeys), modifiers shorten as in the client: SHIFT-V is s-V.
+  rawset(env, "GetBindingText", function(key, a, b)
+    if not key then return "" end
+    local text = tostring(key)
+    -- the old form passes a prefix string first: (key, "KEY_", abbreviate)
+    local abbrev = (type(a) == "string") and b or a
+    if abbrev then
+      text = text:gsub("SHIFT%-", (env.SHIFT_KEY_TEXT_ABBR or "s") .. "-")
+        :gsub("CTRL%-", (env.CTRL_KEY_TEXT_ABBR or "c") .. "-")
+        :gsub("ALT%-", (env.ALT_KEY_TEXT_ABBR or "a") .. "-")
+    end
+    return text
+  end)
   rawset(env, "GetCurrentBindingSet", function() return 2 end)
   rawset(env, "SaveBindings", function() sim:FireEvent("UPDATE_BINDINGS") end)
   rawset(env, "LoadBindings", function() sim:FireEvent("UPDATE_BINDINGS") end)

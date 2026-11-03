@@ -97,7 +97,12 @@ function M.install(sim, env)
     s.shown = false
     if was then fire(self, "OnHide") end
   end
-  function R:SetShown(v) if v then self:Show() else self:Hide() end end
+  -- WFB patch (HUD2): SetShown is native, as in the client: it doesn't call
+  -- a mixin's Show or Hide. The action bars keep it as SetShownBase and
+  -- override Show to call that, which looped until the stack overflowed (and
+  -- Edit Mode never laid the main bar out).
+  local nativeShow, nativeHide = R.Show, R.Hide
+  function R:SetShown(v) if v then nativeShow(self) else nativeHide(self) end end
   function R:IsShown() return S(self).shown end
   function R:IsVisible() return visible(self) end
   function R:SetPoint(point, rel, relPoint, x, y)
@@ -206,7 +211,12 @@ function M.install(sim, env)
     return x >= l + (left or 0) and x <= l + w + (right or 0) and y >= b + (bottom or 0) and y <= b + h + (top or 0)
   end
   function R:IsMouseMotionFocus() return sim.mouseFocus == self end
-  function R:SetAlpha(a) S(self).alpha = a end
+  -- WFB patch (HUD2): a non-number is an error, as in the client, instead
+  -- of a nil alpha that breaks every effective alpha below it.
+  function R:SetAlpha(a)
+    if type(a) ~= "number" then error("Usage: " .. (S(self).type or "Region") .. ":SetAlpha(alpha)", 2) end
+    S(self).alpha = a
+  end
   function R:GetAlpha() return S(self).alpha end
   function R:GetEffectiveAlpha()
     local a, o = 1, self
@@ -307,7 +317,9 @@ function M.install(sim, env)
   function F:SetFrameLevel(v) S(self).level = v end
   function F:GetFrameLevel() return S(self).level end
   function F:SetID(id) S(self).id = id end
-  function F:GetID() return S(self).id end
+  -- WFB patch (HUD1): 0 until set, as in the client (SecureTemplates'
+  -- CalculateAction compares it with 0).
+  function F:GetID() return S(self).id or 0 end
   function F:EnableMouse(v) S(self).mouse = v and true or false end
   function F:IsMouseEnabled() return S(self).mouse end
   function F:EnableMouseWheel(v) S(self).mouseWheel = v and true or false end
@@ -345,7 +357,20 @@ function M.install(sim, env)
   function F:IsUserPlaced() return S(self).userPlaced or false end
   function F:SetResizeBounds(minW, minH, maxW, maxH) S(self).resizeBounds = { minW, minH, maxW, maxH } end
   function F:GetResizeBounds() return unpack(S(self).resizeBounds or { 0, 0, 0, 0 }) end
-  function F:GetAttribute(k) return S(self).attributes[k] end
+  -- WFB patch (HUD2): GetAttribute(prefix, name, suffix), as secure buttons
+  -- read their attributes ("shift-actionpage1"), tries the client's
+  -- wildcards: prefix..name..suffix, *name..suffix, prefix..name*, *name*,
+  -- then name.
+  function F:GetAttribute(k, name, suffix)
+    local a = S(self).attributes
+    if name == nil then return a[k] end
+    local prefix = k or ""
+    suffix = suffix or ""
+    for _, key in ipairs({ prefix .. name .. suffix, "*" .. name .. suffix, prefix .. name .. "*",
+      "*" .. name .. "*", name }) do
+      if a[key] ~= nil then return a[key] end
+    end
+  end
   function F:SetAttribute(k, v)
     S(self).attributes[k] = v
     fire(self, "OnAttributeChanged", k, v)
@@ -385,7 +410,10 @@ function M.install(sim, env)
       end
       local ts = state[tex]
       ts.buttonSlot = n
-      ts.layer = n == "Highlight" and "HIGHLIGHT" or (n == "Normal" and "BACKGROUND" or "ARTWORK")
+      -- WFB patch (HUD2): Normal is on ARTWORK like the other state textures
+      -- (and like an XML <NormalTexture>), not under the button's own
+      -- BACKGROUND art (the micro buttons' icons were hidden by it).
+      ts.layer = n == "Highlight" and "HIGHLIGHT" or "ARTWORK"
       if #ts.points == 0 then tex:SetAllPoints(self) end
       s.textures[n] = tex
     end
@@ -437,14 +465,23 @@ function M.install(sim, env)
     return W
   end
   local SB = valueWidget("StatusBar")
+  -- WFB patch (HUD2): a file or atlas name goes on the bar's one texture, as
+  -- in the client (each call made a new one). The bar texture is marked so
+  -- the renderer draws it only as the bar's fill.
   function SB:SetStatusBarTexture(t)
     local s = S(self)
-    s.barTexture = type(t) == "table" and t or M.create(sim, "Texture", nil, self)
-    if type(t) ~= "table" then s.barTexture:SetTexture(t) end
+    if type(t) == "table" then
+      s.barTexture = t
+    else
+      s.barTexture = s.barTexture or M.create(sim, "Texture", nil, self)
+      s.barTexture:SetTexture(t)
+    end
+    S(s.barTexture).barOf = self
   end
   function SB:GetStatusBarTexture()
     local s = S(self)
     if not s.barTexture then s.barTexture = M.create(sim, "Texture", nil, self) end
+    S(s.barTexture).barOf = self
     return s.barTexture
   end
   function SB:SetStatusBarColor(r, g, b, a) S(self).color = { r, g, b, a or 1 } end
@@ -500,6 +537,19 @@ function M.install(sim, env)
   classes.Cooldown.methods.GetCooldownTimes = function(self)
     local c = S(self).cooldown or { 0, 0 }
     return c[1] * 1000, c[2] * 1000
+  end
+  -- WFB patch (HUD1): the client's native AuraContainer (the target frame's
+  -- buffs and debuffs). It keeps its unit and settings and shows no auras.
+  local AC = define("AuraContainer", "Frame")
+  function AC:SetUnit(unit) S(self).unit = unit end
+  function AC:GetUnit() return S(self).unit end
+  function AC:GetNumVisibleFlowLayoutLines() return 0 end
+  function AC:IsFlowLayoutMirroredVertically() return S(self).mirrored or false end
+  function AC:SetFlowLayoutMirroredVertically(v) S(self).mirrored = v and true or false end
+  for _, m in ipairs({ "SetAuraContainerAnchorsChangedCallback", "SetConstrainedFlowLayoutLineSize",
+    "SetFlowLayoutMaximumLineSize", "SetMaxBuffs", "SetMaxDebuffs", "SetNumConstrainedFlowLayoutLines",
+    "SetPlayerIsTarget", "SetShowAuraCount", "SetTargetIsFriendly", "UpdateAllAuras" }) do
+    AC[m] = function() end
   end
   define("Model", "Frame")
   define("PlayerModel", "Model")
@@ -638,7 +688,8 @@ function M.install(sim, env)
   ---------------------------------------------------------------- Texture
   define("TextureBase", "Region")
   local T = define("Texture", "TextureBase")
-  function T:SetTexture(t) S(self).texture = t; return true end
+  -- WFB patch (HUD2): a new texture replaces an atlas, as in the client.
+  function T:SetTexture(t) S(self).texture = t; S(self).atlas = nil; return true end
   function T:GetTexture() return S(self).texture end
   function T:GetTextureFileID() return type(S(self).texture) == "number" and S(self).texture or nil end
   function T:SetColorTexture(r, g, b, a) S(self).texture = "color"; S(self).color = { r, g, b, a or 1 } end
@@ -672,7 +723,8 @@ function M.install(sim, env)
   function T:SetGradientAlpha(orientation, r1, g1, b1, a1, r2, g2, b2, a2)
     S(self).gradient = { orientation = tostring(orientation):upper(), { r1, g1, b1, a1 }, { r2, g2, b2, a2 } }
   end
-  function T:GetDrawLayer() return S(self).layer or "ARTWORK" end
+  -- WFB patch (HUD1): the sublevel too, as the client returns it.
+  function T:GetDrawLayer() return S(self).layer or "ARTWORK", S(self).sublevel or 0 end
 
   ---------------------------------------------------------------- Font
   local Font = define("Font", "Object")
