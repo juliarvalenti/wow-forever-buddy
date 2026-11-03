@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: FBUnitProto
+## Notes: Design prototype: unit frames drawn from a spec (TH1 vocabulary). Overlays only.
+## Version: 0.0.1
+
+Spec.lua
+UF.lua
