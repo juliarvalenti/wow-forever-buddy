@@ -171,6 +171,11 @@ return {
     ["C_AuctionHouse.GetItemSearchResultInfo"] = { from = "assumed" },
     ["C_AuctionHouse.GetNumItemSearchResults"] = { from = "assumed" },
     ["C_QuestLog.GetTitleForQuestID"] = { from = "assumed" },
+    -- M3b: dialog keys, read only while a window the player opened is up.
+    ["C_GossipInfo.GetOptions"] = { from = "assumed" },
+    ["C_GossipInfo.SelectOptionByIndex"] = { from = "assumed" },
+    IsModifierKeyDown = { from = "assumed" },
+    GetCurrentKeyBoardFocus = { from = "assumed" },
     ["C_QuestLog.IsComplete"] = { from = "assumed" },
     ["C_QuestLog.ReadyForTurnIn"] = { from = "assumed" },
     ["C_TradeSkillUI.GetAllRecipeIDs"] = { from = "assumed" },

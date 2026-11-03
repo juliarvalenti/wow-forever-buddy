@@ -64,7 +64,7 @@ ns.settings = {
         {
             id = "questhelp",
             label = "Quest helper",
-            sub = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
+            sub = "Accepts and hands in quests you open with an NPC. Each option starts off.",
         },
         {
             id = "hud",
@@ -450,6 +450,21 @@ ns.settings = {
             default = false,
             label = "Daily and repeatable quests too",
             help = "Without this, the helper leaves those for you to accept and hand in.",
+            parent = "questhelp.enabled",
+            showHelp = true,
+            acts = true,
+        },
+        -- M3b: dialog keys. Acts only on your own keypress, but it acts, so
+        -- it's off until turned on and in no preset.
+        {
+            id = "questhelp.dialogKeys",
+            module = "questhelp",
+            section = "Quest helper",
+            type = "bool",
+            default = false,
+            label = "Dialog keys",
+            help = "In an NPC's chat or a quest window, Space takes the first choice and 1 to 9 the others. "
+                .. "Not in combat, and never a reward choice.",
             parent = "questhelp.enabled",
             showHelp = true,
             acts = true,

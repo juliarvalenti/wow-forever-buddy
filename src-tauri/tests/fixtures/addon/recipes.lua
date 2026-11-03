@@ -103,6 +103,7 @@ ForeverBuddyDB = {
 			["quest.trackerAlpha"] = 0.4,
 			["quest.trackerFade"] = false,
 			["questhelp.accept"] = false,
+			["questhelp.dialogKeys"] = false,
 			["questhelp.enabled"] = true,
 			["questhelp.repeatable"] = false,
 			["questhelp.turnIn"] = false,
