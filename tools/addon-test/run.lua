@@ -2973,6 +2973,57 @@ scenario("forever_globals", function()
     eq(table.concat(found, ", "), "", "globals Forever doesn't have (use the C_ form)")
 end)
 
+-- P4f-1: the guard rails for bars and frames. At run time the fake's
+-- protected frames note any call but SetAlpha, any field written onto
+-- them, the reads that can come back secret, and hooksecurefunc on their
+-- methods (each scenario fails on a note). Here: that the fake catches each
+-- of those, and the same rules read off the addon's source, so a call in
+-- code no scenario reaches is caught too.
+scenario("guard_rails", function()
+    local c = client()
+    c.login(nil)
+    local env = c.env()
+    local tries = {
+        function() env.PlayerFrame:Hide() end,
+        function() env.MainActionBar:SetPoint("BOTTOM", env.UIParent, "BOTTOM", 0, 0) end,
+        function() env.TargetFrame:SetScale(1.2) end,
+        function() return env.MultiBarBottomLeft:GetAlpha() end,
+        function() env.PlayerFrame.fbFaded = true end,
+        function() env.hooksecurefunc(env.StanceBar, "Show", function() end) end,
+    }
+    for _, try in ipairs(tries) do
+        pcall(try)
+    end
+    eq(table.concat(c.taint, ", "), "PlayerFrame:Hide(), MainActionBar:SetPoint(), TargetFrame:SetScale(), "
+        .. "MultiBarBottomLeft:GetAlpha(), PlayerFrame.fbFaded = (a field written onto it), "
+        .. "hooksecurefunc(StanceBar, Show)", "each one noted")
+    c.taint = {}
+    env.PlayerFrame:SetAlpha(0.4)
+    eq(#c.taint, 0, "SetAlpha is allowed")
+    eq(c.protected.PlayerFrame.alpha, 0.4, "and kept for scenarios")
+
+    -- The source: Name:Call( or Name.field = for each protected frame, and
+    -- hooksecurefunc(Name, ...).
+    local src = wow.readFile(ADDON_DIR .. "ForeverBuddy.lua")
+    src = src:gsub("%-%-%[%[.-%]%]", ""):gsub("%-%-[^\n]*", "")
+    local found = {}
+    for _, name in ipairs(wow.PROTECTED) do
+        local at = "%f[%w_]" .. name .. "%s*"
+        for call in src:gmatch(at .. "[:%.]%s*([%a_][%w_]*)%s*%(") do
+            if wow.PROTECTED_CALLS[call] then
+                found[#found + 1] = name .. ":" .. call
+            end
+        end
+        for field in src:gmatch(at .. "%.%s*([%a_][%w_]*)%s*=[^=]") do
+            found[#found + 1] = name .. "." .. field .. " ="
+        end
+        if src:find("hooksecurefunc%(%s*" .. name .. "%f[^%w_]") then
+            found[#found + 1] = "hooksecurefunc(" .. name .. ")"
+        end
+    end
+    eq(table.concat(found, ", "), "", "protected Blizzard frames touched in the source")
+end)
+
 -- SIM4: the fake is as strict as the client where a mistake would otherwise
 -- pass. An unknown widget method raises (and is noted even if the addon's
 -- pcall swallows it), a misspelled anchor raises, and a secret value can't
@@ -4269,6 +4320,12 @@ for _, s in ipairs(scenarios) do
             if #c.unmodelled > 0 then
                 ok, text = false, "widget methods wow.lua doesn't model (a typo, or model it): "
                     .. table.concat(c.unmodelled, ", ")
+                break
+            end
+            -- P4f-1: Blizzard's bars and unit frames get SetAlpha only.
+            if #c.taint > 0 then
+                ok, text = false, "a protected Blizzard frame touched (alpha only, bars and frames rules): "
+                    .. table.concat(c.taint, ", ")
                 break
             end
             local found = caught(c)
