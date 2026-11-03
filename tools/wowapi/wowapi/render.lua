@@ -298,7 +298,8 @@ local function drawTexture(ctx, obj, s, x, y, w, h, alpha, clipFrac)
   ctx:add(string.format(
     '<g opacity="%.2f"><rect x="%s" y="%s" width="%s" height="%s" fill="%s" fill-opacity="0.55" stroke="%s" stroke-opacity="0.6"/>%s<title>%s</title></g>',
     a, num(x), num(y), num(w * (clipFrac or 1)), num(h), rgb(c[1] * 0.6, c[2] * 0.6, c[3] * 0.6), rgb(c[1], c[2], c[3]),
-    (w > 40 and h > 10) and string.format('<text x="%s" y="%s" font-size="9" fill="#ddd" font-family="monospace">%s</text>',
+    -- WFB patch (PV1): labels = false draws plain squares (the app's preview).
+    (w > 40 and h > 10 and ctx.opts.labels ~= false) and string.format('<text x="%s" y="%s" font-size="9" fill="#ddd" font-family="monospace">%s</text>',
       num(x + 2), num(y + 10), esc(label:sub(1, math.floor(w / 5.5)))) or "",
     esc(tostring(s.atlas or s.texture))))
 end
