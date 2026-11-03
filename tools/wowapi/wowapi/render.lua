@@ -32,7 +32,14 @@ Ctx.__index = Ctx
 
 local function newCtx(sim, opts)
   local c = setmetatable({ sim = sim, opts = opts, out = {}, defs = {}, ids = {}, seq = 0 }, Ctx)
-  if opts.art then c.store = sim:ArtStore() end
+  if opts.art then
+    c.store = sim:ArtStore()
+  elseif opts.addonFonts then
+    -- WFB patch (PV1): without art, an addon's own fonts still embed.
+    local dirs = {}
+    for name, a in pairs(sim.addons) do dirs[name:lower()] = a.dir end
+    c.fontStore = require("wowapi.assets").addonFonts(dirs)
+  end
   return c
 end
 
@@ -42,14 +49,15 @@ function Ctx:add(s) self.out[#self.out + 1] = s end
 -- once (an addon's own fonts as well as the game's), falling back to the
 -- default family when the file isn't available.
 function Ctx:familyFor(path)
-  if not (self.store and path and self.fontsOn) then return self.fontFamily end
+  local store = self.store or self.fontStore
+  if not (store and path and self.fontsOn) then return self.fontFamily end
   local key = tostring(path):lower()
   self.families = self.families or {}
   if self.families[key] == nil then
-    local font = self.store:font(path)
+    local font = store:font(path)
     if font and font.data then
       local name = "wf" .. (#self.defs + 1)
-      self.defs[#self.defs + 1] = '<style>@font-face{font-family:' .. name .. ';src:url(' .. self.store:dataURI(font) .. ')}</style>'
+      self.defs[#self.defs + 1] = '<style>@font-face{font-family:' .. name .. ';src:url(' .. store:dataURI(font) .. ')}</style>'
       self.families[key] = name .. ", " .. (self.fontFamily or "serif")
     else
       self.families[key] = false
@@ -634,8 +642,8 @@ function M.svg(sim, opts)
   end)
 
   -- the game font, when available
-  if ctx.store and opts.font ~= false then
-    local font = ctx.store:font("Fonts\\FRIZQT__.TTF")
+  if (ctx.store or ctx.fontStore) and opts.font ~= false then
+    local font = (ctx.store or ctx.fontStore):font("Fonts\\FRIZQT__.TTF")
     if font then
       ctx.fontFamily = "WoWFriz, Friz Quadrata TT, Georgia, serif"
       ctx.defs[#ctx.defs + 1] = '<style>@font-face{font-family:WoWFriz;src:url(' .. ctx.store:dataURI(font) .. ')}</style>'

@@ -491,6 +491,10 @@ mod tests {
             after.contains("Syndicate Highwayman"),
             "the HUD should show the target"
         );
+        assert!(
+            after.contains("data:font/ttf;base64,"),
+            "the HUD's own font (Barlow) should be embedded"
+        );
         assert_ne!(before, after);
         eprintln!(
             "preview: first frame {:?} ms, redraw {:?} ms",

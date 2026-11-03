@@ -112,7 +112,8 @@ export function Preview() {
               </div>
             )}
             <p className="d-dim" style={{ marginTop: 8 }}>
-              Only Forever Buddy's frames are drawn; Blizzard's own aren't here yet. Classes without a sample
+              Only Forever Buddy's frames are drawn. Blizzard's own aren't here yet, so with Blizzard's action bars
+              chosen in Forever Buddy's settings, no bars show. Icons are grey squares. Classes without a sample
               character show a stand-in.
             </p>
           </PanelBody>

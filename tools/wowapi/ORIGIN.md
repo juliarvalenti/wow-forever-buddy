@@ -96,6 +96,7 @@ HUD4:
 PV1, the app's live preview:
 
 - `host.lua` (new), and `toc.lua`, `compat.lua`, `sim.lua`, `render.lua`, `resources.lua`, `framexml.lua`, `docs.lua`, `assets.lua`: every read, folder listing, folder walk, write, `mkdir` and `pwd` goes through `wowapi.host`. From the command line that's `io` and the shell, as before. Embedded in the app, the Lua state has no `io`, `os` or shell, and the app's own functions (in the global `WOWAPI_HOST`) confine reads to the bundled tree and writes to the preview's scratch folder. This also makes WOWAPI run on Windows, where `ls`, `find`, `grep`, `pwd` and `mkdir -p` don't exist. (`docs.lua`'s event scan reads the files instead of calling `grep`.) The downloads, the browser screenshot and `signing`/`installer` stay command-line only.
+- `assets.lua`, `render.lua`: `render.svg(sim, { addonFonts = true })` embeds the loaded addons' own fonts without art, through a font-only store (`assets.addonFonts`) that never looks at the game's files, a cache or the environment.
 
 ## Updating
 

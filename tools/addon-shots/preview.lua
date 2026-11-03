@@ -39,7 +39,7 @@ function M.draw(opts)
         offline = true,
     })
     sim:Advance(1)
-    local svg = render.svg(sim, { art = opts.art == true, embed = true })
+    local svg = render.svg(sim, { art = opts.art == true, embed = true, addonFonts = true })
     return svg, #sim.errors, class
 end
 
