@@ -760,6 +760,9 @@ function M.install(sim, env)
     local out = {}
     if not x then return out end
     local harmful = filter and filter:find("HARMFUL")
+    -- WFB patch (HUD3): "MAW" asks for Torghast's anima powers; a unit
+    -- outside Torghast has none (Slice and Dice showed as one).
+    if filter and filter:upper():find("MAW") and not x.mawAuras then return out end
     for _, a in ipairs(x.auras or {}) do
       local helpful = a.isHelpful ~= false and not a.isHarmful
       if (harmful and not helpful) or (not harmful and helpful) then
@@ -777,7 +780,27 @@ function M.install(sim, env)
     end
     return out
   end
+  -- WFB patch (HUD3): the slot API Blizzard's own AuraUtil.ForEachAura walks
+  -- (GetAuraSlots, then GetAuraDataBySlot), and lookup by instance ID. A
+  -- slot is the aura's instance ID; the continuation token is nil, as when
+  -- the client has returned everything. Without these, Blizzard's buff frame
+  -- and every AuraUtil caller see no auras.
+  local function auraByInstance(unit, id)
+    for _, f in ipairs({ "HELPFUL", "HARMFUL" }) do
+      for _, a in ipairs(auraList(unit, f)) do if a.auraInstanceID == id then return a end end
+    end
+  end
   rawset(env, "C_UnitAuras", {
+    GetAuraSlots = function(unit, filter, maxCount, continuationToken)
+      local slots = {}
+      for _, a in ipairs(auraList(unit, filter)) do
+        if maxCount and #slots >= maxCount then break end
+        slots[#slots + 1] = a.auraInstanceID
+      end
+      return nil, unpack(slots)
+    end,
+    GetAuraDataBySlot = auraByInstance,
+    GetAuraDataByAuraInstanceID = auraByInstance,
     GetAuraDataByIndex = function(unit, i, filter) return auraList(unit, filter)[i] end,
     GetBuffDataByIndex = function(unit, i, filter) return auraList(unit, "HELPFUL")[i] end,
     GetDebuffDataByIndex = function(unit, i, filter) return auraList(unit, "HARMFUL")[i] end,

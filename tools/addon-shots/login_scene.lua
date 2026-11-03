@@ -253,6 +253,42 @@ function M.boot(opts)
     sim:Mock("C_PetJournal.GetNumPetsNeedingFanfare", function()
         return 0
     end)
+    -- No temporary weapon enchants (the buff frame lists them with the
+    -- auras, and stops on a nil list).
+    sim:Mock("C_Item.GetWeaponEnchantInfo", function()
+        return {}
+    end)
+    -- Not in a scenario (C_Scenario isn't in Forever's API docs, and the
+    -- objective tracker's scenario module goes first, so it stopping kept
+    -- the quests from drawing).
+    sim:Mock("C_Scenario.IsInScenario", function()
+        return false
+    end)
+    sim:Mock("C_Scenario.ShouldShowCriteria", function()
+        return false
+    end)
+    sim:Mock("C_Scenario.GetInfo", function()
+        return "", 0, 0, 0, false, false, false, 0, 0, 0, false, nil, 0
+    end)
+    sim:Mock("C_Scenario.GetStepInfo", function()
+        return "", "", 0, false, false, false, false, 0, {}, 0, 0, 0
+    end)
+    sim:Mock("C_Scenario.GetBonusSteps", function()
+        return {}
+    end)
+    sim:Mock("C_Scenario.GetProvingGroundsInfo", function()
+        return 0, 0, 0, 0
+    end)
+    sim:Mock("C_Scenario.GetSupersededObjectives", function()
+        return {}
+    end)
+    -- No bonus objectives (world tasks) in progress, no quest pop-ups.
+    sim:Mock("GetTasksTable", function()
+        return {}
+    end)
+    sim:Mock("GetNumAutoQuestPopUps", function()
+        return 0
+    end)
     -- Not in a pet battle (the action bar controller asks before paging).
     sim:Mock("C_PetBattles.IsInBattle", function()
         return false

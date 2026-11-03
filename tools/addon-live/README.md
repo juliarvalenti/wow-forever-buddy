@@ -31,6 +31,8 @@ luajit tools/addon-live/live.lua stop
   combat off
   ```
 
+  The scene has auras (Slice and Dice on the rogue, Rupture and Expose Armor on the target) and two watched quests. **`aura <unit> <spell> [seconds] [stacks] [harmful]`** and **`unaura`** add and remove auras (`UNIT_AURA`). **`cast <spell> [seconds]`** starts a cast and leaves the cast bar up until `advance` passes its end. **`quest`** lists the quests, and **`quest <id or "title"> <objective> <n | +n>`** moves one along. Spell names with spaces go in quotes: `aura target "Kidney Shot" 6 harmful`.
+
   A full-screen shot with the game's art is tens of MB of SVG. QuickLook can't take that, so without `rsvg-convert` or a headless Chrome it stays an SVG.
 - **`bags`** puts up a backpack and the bank with junk, gear of each quality, a shirt and stacks, for the Bags module (P4d). WOWAPI draws no bag frames, so these are stand-ins with what the addon reads from Blizzard's: item buttons that know their bag and slot, and a `BankPanel`. `screenshot <name> bags` crops to them. Run `bags` again after a `set` to redraw them without the window on top.
 

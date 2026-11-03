@@ -521,6 +521,10 @@ health <unit> <v>        set health (640, 50%, -120, +30) and fire UNIT_HEALTH
 power <unit> <v> [type]  set power (energy, mana, combo...) and fire UNIT_POWER_UPDATE/_FREQUENT
 combo <n>                the player's combo points on the target (+1, -1 work too)
 target none|(blank)      clear the target, or bring back the scene's; fires PLAYER_TARGET_CHANGED
+aura <unit> <spell> [s] [stacks] [harmful]   put an aura on (UNIT_AURA); "quote" names with spaces
+unaura <unit> <spell>    take it off
+cast <spell> [seconds]   start casting (the cast bar); `advance` past the end finishes it
+quest [<id|"title"> <objective> <n>]  list the scene's quests, or move an objective (+1 works)
 state [path]             SavedVariables: ForeverBuddyDB, ForeverBuddySettings, or a path into them
 chat [n]                 the last n chat lines (10)
 errors                   every Lua error this session
@@ -751,6 +755,146 @@ function COMMANDS.combo(rest)
     local out = setPower("player", 4, rest)
     S.sim:FireEvent("UNIT_POWER_POINT_CHARGE", "player")
     return out
+end
+
+-- A spell by ID or name (the scene's fixture registers its class's spells).
+local function spellRef(text)
+    local sim = need()
+    local id = tonumber(text)
+    local s = sim.spells[id or text]
+    if not s then
+        for _, v in pairs(sim.spells) do
+            if type(v) == "table" and v.name and v.name:lower() == text:lower() then
+                s = v
+            end
+        end
+    end
+    if not s then
+        error("no spell " .. text .. " (an ID, or a name the scene knows)", 0)
+    end
+    return s
+end
+
+-- `aura <unit> <spell> [seconds] [stacks] [harmful]`, with the spell's name
+-- in quotes if it has spaces: UNIT_AURA with the aura added.
+function COMMANDS.aura(rest)
+    local unit, spell, tail = rest:match('^(%S+)%s+"([^"]+)"%s*(.*)$')
+    if not unit then
+        unit, spell, tail = rest:match("^(%S+)%s+(%S+)%s*(.*)$")
+    end
+    if not unit then
+        error('aura <unit> <spell | "spell name"> [seconds] [stacks] [harmful]', 0)
+    end
+    unitOf(unit)
+    local s = spellRef(spell)
+    local seconds, stacks, harmful
+    for w in tail:gmatch("%S+") do
+        if w == "harmful" then
+            harmful = true
+        elseif tonumber(w) and not seconds then
+            seconds = tonumber(w)
+        elseif tonumber(w) then
+            stacks = tonumber(w)
+        else
+            error("aura: unknown " .. w, 0)
+        end
+    end
+    S.sim:AddAura(unit, s.id, { duration = seconds or 0, expirationTime = seconds and S.sim.time + seconds or 0,
+        stacks = stacks, harmful = harmful })
+    S.sim:Advance(0.1)
+    return ("%s on %s%s"):format(s.name, unit, seconds and (" for %gs"):format(seconds) or "")
+end
+
+function COMMANDS.unaura(rest)
+    local unit, spell = rest:match('^(%S+)%s+"?([^"]+)"?$')
+    if not unit then
+        error('unaura <unit> <spell | "spell name">', 0)
+    end
+    unitOf(unit)
+    local s = spellRef(spell)
+    S.sim:RemoveAura(unit, s.id)
+    S.sim:Advance(0.1)
+    return s.name .. " off " .. unit
+end
+
+-- `cast <spell> [seconds]`: the player starts casting, as the game shows
+-- it (UNIT_SPELLCAST_START, the cast bar), and it finishes once `advance`
+-- passes its end (UNIT_SPELLCAST_STOP, _SUCCEEDED). Without seconds, an
+-- instant cast.
+function COMMANDS.cast(rest)
+    local sim = need()
+    local spell, seconds = rest:match('^"([^"]+)"%s*(%S*)$')
+    if not spell then
+        spell, seconds = rest:match("^(%S+)%s*(%S*)$")
+    end
+    if not spell then
+        error('cast <spell | "spell name"> [seconds]', 0)
+    end
+    local s = spellRef(spell)
+    local t = tonumber(seconds) or 0
+    sim.castSeq = (sim.castSeq or 0) + 1
+    local guid = ("Cast-3-1-2-3-%d-%08d"):format(s.id, sim.castSeq)
+    local function done()
+        sim.player.casting = nil
+        if t > 0 then
+            sim:FireEvent("UNIT_SPELLCAST_STOP", "player", guid, s.id)
+        end
+        sim:FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", guid, s.id)
+    end
+    sim:FireEvent("UNIT_SPELLCAST_SENT", "player", sim.units.target and sim.units.target.name or "", guid, s.id)
+    if t > 0 then
+        sim.player.casting = { spell = s, startTime = sim.time, endTime = sim.time + t, castGUID = guid }
+        sim:FireEvent("UNIT_SPELLCAST_START", "player", guid, s.id)
+        sim:_addTimer(t, done)
+        sim:Advance(0.1)
+        return ("casting %s (%gs)"):format(s.name, t)
+    end
+    done()
+    sim:Advance(0.1)
+    return "cast " .. s.name
+end
+
+-- `quest <quest ID or "title"> <objective> <count>`: progress on one of the
+-- scene's quests, announced as the game does (QUEST_LOG_UPDATE,
+-- UNIT_QUEST_LOG_CHANGED); the tracker redraws. `quest` alone lists them.
+function COMMANDS.quest(rest)
+    local sim = need()
+    local quests = sim.fixtureQuests
+    if not quests then
+        error("quest: only in a `scene`", 0)
+    end
+    if rest == "" then
+        local lines = {}
+        for _, q in ipairs(quests) do
+            lines[#lines + 1] = ("%d  [%d] %s"):format(q[1], q[3], q[2])
+            for k, o in ipairs(q[4]) do
+                lines[#lines + 1] = ("      %d. %s: %d/%d"):format(k, o[1], o[2], o[3])
+            end
+        end
+        return table.concat(lines, "\n")
+    end
+    local ref, k, n = rest:match('^"([^"]+)"%s+(%d+)%s+(%S+)$')
+    if not ref then
+        ref, k, n = rest:match("^(%S+)%s+(%d+)%s+(%S+)$")
+    end
+    if not ref then
+        error('quest <ID | "title"> <objective> <count | +n>', 0)
+    end
+    local q
+    for _, x in ipairs(quests) do
+        if tostring(x[1]) == ref or x[2]:lower() == ref:lower() then
+            q = x
+        end
+    end
+    local o = q and q[4][tonumber(k)]
+    if not o then
+        error("quest: no objective " .. k .. " on " .. ref .. " (`quest` lists them)", 0)
+    end
+    o[2] = math.max(0, math.min(o[3], amount(n, o[2], o[3]) or o[2]))
+    sim:FireEvent("QUEST_LOG_UPDATE")
+    sim:FireEvent("UNIT_QUEST_LOG_CHANGED", "player")
+    sim:Advance(0.2)
+    return ("%s: %s %d/%d"):format(q[2], o[1], o[2], o[3])
 end
 
 -- `target none` clears it; `target` alone brings back the scene's.

@@ -175,6 +175,17 @@ function M.docsFrom(dir)
       end
     end
   end
+  -- every documented constant by name (Type = "Constants" tables)
+  local constants = {}
+  for _, sys in ipairs(tables) do
+    for _, t in ipairs(sys.Tables or {}) do
+      if t.Type == "Constants" then
+        for _, v in ipairs(t.Values or {}) do
+          if v.Name and v.Value ~= nil then constants[v.Name] = v.Value end
+        end
+      end
+    end
+  end
   local events, functions = {}, {}
   for _, sys in ipairs(tables) do
     for _, e in ipairs(sys.Events or {}) do
@@ -190,8 +201,8 @@ function M.docsFrom(dir)
       end
     end
   end
-  docsCache[dir] = { enums, events, functions }
-  return enums, events, functions
+  docsCache[dir] = { enums, events, functions, constants }
+  return enums, events, functions, constants
 end
 
 function M.install(sim, env)
@@ -278,8 +289,25 @@ function M.install(sim, env)
   -- missing from the environment answers each documented return with an
   -- empty default: 0 for numbers and enums, false, "" for strings.
   if sim.opts.apiDocsDir then
-    local enums, events, functions = M.docsFrom(sim.opts.apiDocsDir)
+    local enums, events, functions, constants = M.docsFrom(sim.opts.apiDocsDir)
     for name in pairs(events) do known[name] = true end
+    -- WFB patch (HUD3): the documented constants. The docs' group names
+    -- don't always match the Lua ones (QuestInfoLuaConsts is read as
+    -- Constants.QuestConsts), but each constant's name is unique, so a group
+    -- the environment lacks answers from all of them. Without it, the quest
+    -- tracker stops on Constants.QuestConsts.
+    local C = rawget(env, "Constants")
+    if C == nil then C = {}; rawset(env, "Constants", C) end
+    if type(C) == "table" and next(constants or {}) then
+      local mt = getmetatable(C) or {}
+      local old = mt.__index
+      mt.__index = function(t, k)
+        local v = type(old) == "function" and old(t, k) or (type(old) == "table" and old[k]) or nil
+        if v ~= nil then return v end
+        return constants
+      end
+      setmetatable(C, mt)
+    end
     -- Events Blizzard's own UI (the folder the docs sit in) registers exist
     -- in that client even when undocumented (TRIAL_STATUS_UPDATE): the
     -- micro menu's OnLoad stops on one otherwise.

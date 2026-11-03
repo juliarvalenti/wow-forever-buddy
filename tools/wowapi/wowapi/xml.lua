@@ -426,11 +426,40 @@ local function buildRegion(ctx, node, parent, layer, sublevel, existing)
   return obj
 end
 
+-- WFB patch (HUD3): an AnimationGroup's XML templates (inherits=, a
+-- virtual top-level <AnimationGroup>) come first, then its own node: their
+-- mixins, looping and animations all apply, as in the client. Without this,
+-- BuffFrame's WarningFader has no Animation and no Init, and BuffFrame
+-- never draws an aura.
+local function animGroupNodes(sim, gn, out, seen)
+  out, seen = out or {}, seen or {}
+  for _, name in ipairs(require("wowapi.templates").split(gn.attrs.inherits or "")) do
+    local t = sim.templates[name]
+    if t and t.xml and t.type == "AnimationGroup" and not seen[name] then
+      seen[name] = true
+      animGroupNodes(sim, t.node, out, seen)
+    end
+  end
+  out[#out + 1] = gn
+  return out
+end
+
 function M.buildAnimations(ctx, region, node)
   local sim = ctx.sim
-  for _, gn in ipairs(kids(node, "AnimationGroup")) do
-    local g = region:CreateAnimationGroup(resolveName(gn.attrs.name, region, sim), gn.attrs.inherits)
-    attachKey(g, region, gn)
+  for _, own in ipairs(kids(node, "AnimationGroup")) do
+    local g = region:CreateAnimationGroup(resolveName(own.attrs.name, region, sim))
+    attachKey(g, region, own)
+    for _, gn in ipairs(animGroupNodes(sim, own)) do
+    if gn.attrs.mixin then
+      for _, m in ipairs(require("wowapi.templates").split(gn.attrs.mixin)) do
+        local mt = sim:Get(m)
+        if type(mt) == "table" then
+          for k, v in pairs(mt) do g[k] = v end
+        else
+          sim:_error(string.format("%s:%d: mixin '%s' is not defined", ctx.file, gn.line or 0, m))
+        end
+      end
+    end
     if gn.attrs.looping then g:SetLooping(gn.attrs.looping) end
     if gn.attrs.setToFinalAlpha then g:SetToFinalAlpha(bool(gn.attrs.setToFinalAlpha)) end
     for _, an in ipairs(gn.children) do
@@ -474,6 +503,7 @@ function M.buildAnimations(ctx, region, node)
     local sc = kid(gn, "Scripts")
     if sc then setScripts(ctx, g, sc) end
     applyKeyValues(ctx, g, gn)
+    end
   end
 end
 
@@ -753,6 +783,11 @@ function M.loadFile(sim, path, addon, runLua)
       elseif f then M.loadFile(sim, f, addon, runLua) end
     elseif node.tag == "Font" then
       buildFont(ctx, node)
+    elseif node.tag == "AnimationGroup" then
+      -- WFB patch (HUD3): a virtual AnimationGroup is a template for others
+      if bool(node.attrs.virtual) and node.attrs.name then
+        sim.templates[node.attrs.name] = { xml = true, node = node, type = "AnimationGroup", file = path }
+      end
     elseif REGION_TAGS[node.tag] then
       if bool(node.attrs.virtual) and node.attrs.name then
         sim.templates[node.attrs.name] = { xml = true, node = node, type = node.tag, file = path }

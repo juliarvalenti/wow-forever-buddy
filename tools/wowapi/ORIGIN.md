@@ -82,6 +82,9 @@ HUD3, scene data for the live HUD:
 - `render.lua`: `THICKOUTLINE` strokes twice as heavy as `OUTLINE`, with round joins, as in the game (both drew the same).
 - `secure.lua`, `docs.lua`: a protected call in combat isn't blocked when only Blizzard's own UI addons (`Blizzard_*`) are on the call stack, as the client's taint works. Blizzard's TargetFrame shows and hides itself in combat; an addon anywhere on the path is still blocked.
 - `render.lua`: a button's shown state textures go into the draw order in a fixed order (they went through `pairs`).
+- `api.lua`: `C_UnitAuras.GetAuraSlots`, `GetAuraDataBySlot` and `GetAuraDataByAuraInstanceID`, which Blizzard's own `AuraUtil.ForEachAura` walks (a slot is the aura's instance ID). Without them, Blizzard's buff frame and every `AuraUtil` caller see no auras. A `MAW` filter (Torghast's anima powers) finds none.
+- `xml.lua`: an AnimationGroup's XML templates apply (a virtual top-level `<AnimationGroup>` is registered as one, and `inherits=` and `mixin=` work on groups). Without this, BuffFrame's warning fader has no `Animation` and no `Init`, and BuffFrame draws no aura.
+- `docs.lua`: the client docs' constants. Their group names don't always match the Lua ones (`QuestInfoLuaConsts` is read as `Constants.QuestConsts`), but each constant's name is unique, so a `Constants` group the environment lacks answers from all of them. Without it, the quest tracker stops.
 
 ## Updating
 
