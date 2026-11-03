@@ -5,16 +5,13 @@ import { errorText } from "@/lib/format";
 
 /** PV1: the live preview. Opening it asks for a frame, and from then on the
  *  app redraws whenever a setting changes; `preview-changed` says when.
- *  The frame is an SVG shown through a blob URL in an <img>, so nothing in
- *  it can run. */
+ *  The frame is an SVG as a data: URL (the one kind the CSP lets an <img>
+ *  load; BUG-PREVIEW-IMG), shown in an <img>, so nothing in it can run. */
 export function usePreview() {
   const [status, setStatus] = useState<PreviewStatus | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
-  // Only the backdrop: none of Forever Buddy's frames are on at login.
-  const [blank, setBlank] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shown = useRef(-1);
-  const url = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -22,11 +19,7 @@ export function usePreview() {
       setStatus(s);
       if (s.generation !== shown.current) {
         shown.current = s.generation;
-        const svg = await commands.previewFrame();
-        if (url.current) URL.revokeObjectURL(url.current);
-        url.current = svg ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) : null;
-        setFrame(url.current);
-        setBlank(svg != null && svg.length < 1024);
+        setFrame(await commands.previewFrame());
       }
     } catch (e) {
       setError(errorText(e));
@@ -36,9 +29,6 @@ export function usePreview() {
   useEffect(() => {
     commands.previewOpen().catch((e) => setError(errorText(e)));
     load();
-    return () => {
-      if (url.current) URL.revokeObjectURL(url.current);
-    };
   }, [load]);
   useEvent(events.previewChanged, load);
 
@@ -47,5 +37,5 @@ export function usePreview() {
     commands.previewDownload().catch((e) => setError(errorText(e)));
   }, []);
 
-  return { status, frame, blank, error, download };
+  return { status, frame, blank: status?.blank ?? false, error, download };
 }

@@ -62,6 +62,19 @@ pub struct PreviewStatus {
     pub class: Option<String>,
     /// The last draw failed; the tab shows this under the last good frame.
     pub draw_error: Option<String>,
+    /// The frame is only the backdrop: none of our frames are on at login.
+    pub blank: bool,
+}
+
+/// The frame as the tab shows it: a `data:` URL, which the app's CSP lets an
+/// `<img>` load (BUG-PREVIEW-IMG: a `blob:` URL was refused). An SVG shown
+/// as an image runs no script.
+pub fn frame_url(svg: &str) -> String {
+    use base64::Engine;
+    format!(
+        "data:image/svg+xml;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(svg)
+    )
 }
 
 /// What a draw needs from the app.
@@ -128,6 +141,7 @@ impl Preview {
                 lua_errors: 0,
                 class: None,
                 draw_error: None,
+                blank: false,
             }),
             frame: Mutex::new(None),
             notify: Mutex::new(None),
@@ -318,9 +332,11 @@ impl Worker {
                         }
                     ),
                 );
+                let blank = drawn.svg.len() < 1024;
                 *self.shared.frame.lock().expect("preview frame lock") = Some(drawn.svg);
                 self.shared.update(|s| {
                     s.drawing = false;
+                    s.blank = blank;
                     s.generation += 1;
                     s.drew_ms = Some(ms);
                     s.lua_errors = drawn.lua_errors;
@@ -416,6 +432,28 @@ mod tests {
     use std::sync::mpsc;
 
     const FLAVOR: &str = "_classic_beta_";
+
+    /// BUG-PREVIEW-IMG: the tab showed a broken image because its `blob:`
+    /// URL isn't in the CSP's img-src. The URL the tab gets must be.
+    #[test]
+    fn the_frame_url_is_one_the_csp_lets_an_image_load() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().expect("a CSP");
+        let img_src: Vec<&str> = csp
+            .split(';')
+            .map(str::trim)
+            .find_map(|d| d.strip_prefix("img-src "))
+            .expect("an img-src")
+            .split_whitespace()
+            .collect();
+        let url = frame_url("<svg xmlns='http://www.w3.org/2000/svg'/>");
+        let scheme = format!("{}:", url.split(':').next().unwrap());
+        assert!(
+            img_src.contains(&scheme.as_str()),
+            "the tab's frame is a {scheme} URL, which img-src ({img_src:?}) refuses"
+        );
+    }
 
     /// A preview whose data folder already holds WOWAPI's data (as a player's
     /// would after the download), and a way to wait for its next frame.

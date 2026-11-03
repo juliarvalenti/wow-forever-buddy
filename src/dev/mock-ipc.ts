@@ -1518,10 +1518,14 @@ export function installMockIpc(): void {
       lua_errors: 0,
       class: "rogue",
       draw_error: null,
+      blank: false,
     }),
     preview_frame: () =>
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>' +
-      '<rect x="660" y="960" width="600" height="56" rx="6" fill="#2a3338"/></svg>',
+      "data:image/svg+xml;charset=utf-8," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>' +
+          '<rect x="660" y="960" width="600" height="56" rx="6" fill="#2a3338"/></svg>',
+      ),
     preview_open: () => null,
     preview_download: () => null,
     preview_remove_data: () => null,
