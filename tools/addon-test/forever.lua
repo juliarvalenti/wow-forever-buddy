@@ -77,6 +77,29 @@ return {
     RepairAllItems = row(NONE, { from = "assumed" }),
     ["C_Container.UseContainerItem"] = row(NONE, { from = "assumed" }),
     ["C_Container.GetContainerItemQuestInfo"] = row(NONE, { from = "assumed" }),
+    -- M3: the Quest helper's, called only inside a quest or gossip window
+    -- the player opened, so only ever live.
+    GetQuestID = row(NOT_UP, { from = "assumed" }),
+    GetNumQuestChoices = row(NOT_UP, { from = "assumed" }),
+    GetQuestMoneyToGet = row(NOT_UP, { from = "assumed" }),
+    IsQuestCompletable = row(NONE, { from = "assumed" }),
+    QuestGetAutoAccept = row(NONE, { from = "assumed" }),
+    QuestIsFromAreaTrigger = row(NONE, { from = "assumed" }),
+    ["C_QuestLog.IsRepeatableQuest"] = row(NONE, { from = "assumed" }),
+    AcceptQuest = row(NONE, { from = "assumed" }),
+    CompleteQuest = row(NONE, { from = "assumed" }),
+    GetQuestReward = row(NONE, { from = "assumed" }),
+    ["C_GossipInfo.GetAvailableQuests"] = row(NONE, { from = "assumed" }),
+    ["C_GossipInfo.GetActiveQuests"] = row(NONE, { from = "assumed" }),
+    ["C_GossipInfo.SelectAvailableQuest"] = row(NONE, { from = "assumed" }),
+    ["C_GossipInfo.SelectActiveQuest"] = row(NONE, { from = "assumed" }),
+    GetNumAvailableQuests = row(NOT_UP, { from = "assumed" }),
+    GetAvailableQuestInfo = row(NONE, { from = "assumed" }),
+    SelectAvailableQuest = row(NONE, { from = "assumed" }),
+    GetNumActiveQuests = row(NOT_UP, { from = "assumed" }),
+    GetActiveTitle = row(NONE, { from = "assumed" }),
+    GetActiveQuestID = row(NONE, { from = "assumed" }),
+    SelectActiveQuest = row(NONE, { from = "assumed" }),
 
     -- Who and where: the same in every phase as far as anyone has seen. The
     -- addon re-reads identity on the first live look anyway (S.startEarly).
