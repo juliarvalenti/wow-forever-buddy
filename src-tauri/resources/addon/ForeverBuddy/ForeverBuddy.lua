@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.12.0"
+local VERSION = "0.13.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -3982,9 +3982,131 @@ do
         end
     end
 
+    -- M3b: dialog keys, as DialogKey does them. While an NPC's chat or a
+    -- quest window of Blizzard's is on screen, Space takes its first choice
+    -- and 1 to 9 the others, in the order the window lists them. Only on the
+    -- player's own keypress, with no modifier held and nothing being typed.
+    -- Never in combat: the key frame hides as combat starts, so no key is
+    -- ever held back then. A reward choice, a quest that costs gold and every
+    -- popup stay with the mouse.
+    local page -- "gossip", "greeting", "detail", "progress", "complete" or nil
+    local keys = CreateFrame("Frame", "ForeverBuddyDialogKeys", UIParent)
+    keys:Hide()
+
+    local function blizzardShown()
+        local f = rawget(_G, page == "gossip" and "GossipFrame" or "QuestFrame")
+        return type(f) == "table" and type(f.IsShown) == "function" and f:IsShown() == true
+    end
+
+    local function list(t)
+        return type(t) == "table" and t or {}
+    end
+
+    -- The open page's choices, in the window's order: what each key does.
+    -- (Each call is spelled out, so the harness sees every API it uses.)
+    local function choices()
+        local out = {}
+        local function add(fn)
+            out[#out + 1] = fn
+        end
+        if page == "gossip" then
+            -- Forever's GossipFrame: available quests, active quests, then
+            -- the options by their order.
+            for _, q in ipairs(list(read("C_GossipInfo.GetAvailableQuests"))) do
+                if type(q) == "table" and type(q.questID) == "number" then
+                    add(function()
+                        read("C_GossipInfo.SelectAvailableQuest", q.questID)
+                    end)
+                end
+            end
+            for _, q in ipairs(list(read("C_GossipInfo.GetActiveQuests"))) do
+                if type(q) == "table" and type(q.questID) == "number" then
+                    add(function()
+                        read("C_GossipInfo.SelectActiveQuest", q.questID)
+                    end)
+                end
+            end
+            local options = {}
+            for _, o in ipairs(list(read("C_GossipInfo.GetOptions"))) do
+                if type(o) == "table" and type(o.orderIndex) == "number" then
+                    options[#options + 1] = o
+                end
+            end
+            table.sort(options, function(a, b)
+                return a.orderIndex < b.orderIndex
+            end)
+            for _, o in ipairs(options) do
+                add(function()
+                    read("C_GossipInfo.SelectOptionByIndex", o.orderIndex)
+                end)
+            end
+        elseif page == "greeting" then
+            -- The older list: active quests first, then available ones.
+            for i = 1, num(read("GetNumActiveQuests")) do
+                add(function()
+                    read("SelectActiveQuest", i)
+                end)
+            end
+            for i = 1, num(read("GetNumAvailableQuests")) do
+                add(function()
+                    read("SelectAvailableQuest", i)
+                end)
+            end
+        elseif page == "detail" then
+            if read("QuestGetAutoAccept") ~= true then
+                add(function()
+                    read("AcceptQuest")
+                end)
+            end
+        elseif page == "progress" then
+            if read("IsQuestCompletable") == true then
+                add(function()
+                    read("CompleteQuest")
+                end)
+            end
+        elseif page == "complete" then
+            local n, money = read("GetNumQuestChoices"), read("GetQuestMoneyToGet")
+            if type(n) == "number" and n <= 1 and money == 0 then
+                add(function()
+                    read("GetQuestReward", n)
+                end)
+            end
+        end
+        return out
+    end
+
+    keys:SetScript("OnKeyDown", function(self, key)
+        local n = key == "SPACE" and 1 or (type(key) == "string" and tonumber(key:match("^[1-9]$")))
+        local act
+        if n and page and on("questDialogKeys") and U.mods.on("questhelp") and not read("InCombatLockdown")
+            and read("IsModifierKeyDown") ~= true and not read("GetCurrentKeyBoardFocus") and blizzardShown() then
+            act = choices()[n]
+        end
+        if act then
+            pcall(act)
+        end
+        -- Last, after anything the choice set off: the key goes on to the
+        -- game (and your binds) unless it was used here.
+        if not read("InCombatLockdown") then
+            self:SetPropagateKeyboardInput(not act)
+        end
+    end)
+
+    -- A window opened (its page) or closed (nil), or combat started (nil).
+    function C.dialogKeys(p)
+        page = p
+        if p and on("questDialogKeys") and U.mods.on("questhelp") and not read("InCombatLockdown") then
+            keys:EnableKeyboard(true)
+            keys:SetPropagateKeyboardInput(true)
+            keys:Show()
+        else
+            keys:Hide()
+        end
+    end
+
     -- W1: the Quest helper module. Every window it acts on asks manual()
     -- first, which checks the module, so turning it off or on needs nothing
-    -- else.
+    -- else. Dialog keys check it on each key.
     U.mods.register({ id = "questhelp", enable = function() end, disable = function() end })
 end
 
@@ -5385,6 +5507,7 @@ do
         ["questhelp.accept"] = C.actsOption("questAccept"),
         ["questhelp.turnIn"] = C.actsOption("questTurnIn"),
         ["questhelp.repeatable"] = C.actsOption("questRepeatable"),
+        ["questhelp.dialogKeys"] = C.actsOption("questDialogKeys"),
         -- TH3: our own action bars (secure buttons; changes wait out combat).
         ["actionbars.enabled"] = U.mods.option("actionbars"),
         ["actionbars.ours"] = U.bars.option(),
@@ -7025,11 +7148,13 @@ handlers.PLAYER_XP_UPDATE = function()
     S.guarded(S.countXp)
 end
 
--- Combat: the coach stands still (and hides, if asked).
+-- Combat: the coach stands still (and hides, if asked), and dialog keys stop
+-- (M3b).
 handlers.PLAYER_REGEN_DISABLED = function()
     if S.hidesInCombat() then
         S.hideCoach()
     end
+    guarded(C.dialogKeys, nil)
 end
 
 handlers.PLAYER_REGEN_ENABLED = function()
@@ -7132,25 +7257,39 @@ handlers.QUEST_LOG_UPDATE = function()
     end
 end
 
--- M3: the Quest helper's windows (it does nothing while its options are off).
+-- M3: the Quest helper's windows (it does nothing while its options are off),
+-- and M3b's dialog keys for the page that's open.
 handlers.QUEST_DETAIL = function()
+    guarded(C.dialogKeys, "detail")
     guarded(C.questDetail)
 end
 
 handlers.QUEST_PROGRESS = function()
+    guarded(C.dialogKeys, "progress")
     guarded(C.questProgress)
 end
 
 handlers.QUEST_COMPLETE = function()
+    guarded(C.dialogKeys, "complete")
     guarded(C.questComplete)
 end
 
 handlers.GOSSIP_SHOW = function()
+    guarded(C.dialogKeys, "gossip")
     guarded(C.questGossip)
 end
 
 handlers.QUEST_GREETING = function()
+    guarded(C.dialogKeys, "greeting")
     guarded(C.questGreeting)
+end
+
+handlers.GOSSIP_CLOSED = function()
+    guarded(C.dialogKeys, nil)
+end
+
+handlers.QUEST_FINISHED = function()
+    guarded(C.dialogKeys, nil)
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xp, money)

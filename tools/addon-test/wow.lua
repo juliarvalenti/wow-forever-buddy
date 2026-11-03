@@ -598,6 +598,21 @@ function M.new(opts)
         ["C_GossipInfo.SelectActiveQuest"] = function(id)
             table.insert(world.quest_actions, "gossip-active:" .. id)
         end,
+        -- M3b: the chat's other options ({ name, orderIndex }), any order.
+        ["C_GossipInfo.GetOptions"] = function()
+            return world.gossip.options or {}
+        end,
+        ["C_GossipInfo.SelectOptionByIndex"] = function(i)
+            table.insert(world.quest_actions, "gossip-option:" .. i)
+        end,
+        -- M3b: a modifier held (world.shift counts), and a text box with
+        -- the keyboard (world.typing: chat open, say).
+        IsModifierKeyDown = function()
+            return world.shift == true or world.modifier == true
+        end,
+        GetCurrentKeyBoardFocus = function()
+            return world.typing and state.env.ChatFrame1EditBox or nil
+        end,
         GetNumAvailableQuests = function()
             return #world.greeting.available
         end,
@@ -1225,6 +1240,8 @@ function M.new(opts)
         "SetTexCoord", "SetShadowOffset",
         -- TH3: an action button's cooldown.
         "SetHideCountdownNumbers", "SetDrawEdge",
+        -- M3b: a frame that hears keys.
+        "EnableKeyboard",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -1456,6 +1473,14 @@ function M.new(opts)
     end
     function Frame:SetCooldown(start, duration)
         self.cooldownAt = { start, duration }
+    end
+    -- M3b: whether a key this frame hears goes on to the game. Refused in
+    -- combat, as the client refuses it there.
+    function Frame:SetPropagateKeyboardInput(on)
+        if client.blocked("SetPropagateKeyboardInput") then
+            return
+        end
+        self.propagate = on and true or false
     end
 
     local function environment()
@@ -1752,6 +1777,13 @@ function M.new(opts)
         -- TH3: an action's tooltip.
         env.GameTooltip.SetAction = function(self, slot)
             self.action = slot
+        end
+        -- M3b: Blizzard's NPC chat and quest windows (shown while
+        -- client.openDialog has one open), and the chat's text box.
+        for _, name in ipairs({ "GossipFrame", "QuestFrame", "ChatFrame1EditBox" }) do
+            env[name] = newWidget(env.UIParent)
+            env[name].name = name
+            env[name].shown = false
         end
         -- The secure state driver (TH3): a "[bonusbar:N] v; ...; default"
         -- macro condition, evaluated now and on client.bonusbar.
@@ -2393,6 +2425,58 @@ function M.new(opts)
         world.npc = { name = "Marshal Dughan" }
         client.fire("QUEST_GREETING")
         world.npc = nil
+    end
+
+    -- M3b: a window that stays open until client.closeDialog, for keys.
+    -- `page`: "gossip" ({ available, active, options }), "greeting"
+    -- ({ available, active }), or a quest page ("detail", "progress",
+    -- "complete", with world.dialog's fields). Blizzard's GossipFrame or
+    -- QuestFrame shows while it's open, unless `hidden` (another addon's
+    -- window in its place).
+    local DIALOG_EVENTS = { gossip = "GOSSIP_SHOW", greeting = "QUEST_GREETING", detail = "QUEST_DETAIL",
+        progress = "QUEST_PROGRESS", complete = "QUEST_COMPLETE" }
+    function client.openDialog(page, data, hidden)
+        world.npc = { name = "Marshal Dughan" }
+        if page == "gossip" then
+            world.gossip = { available = data.available or {}, active = data.active or {}, options = data.options or {} }
+        elseif page == "greeting" then
+            world.greeting = { available = data.available or {}, active = data.active or {} }
+        else
+            world.dialog = data
+        end
+        world.open = page
+        state.env[page == "gossip" and "GossipFrame" or "QuestFrame"].shown = not hidden
+        client.fire(DIALOG_EVENTS[page])
+    end
+
+    function client.closeDialog()
+        local page = world.open
+        state.env.GossipFrame.shown, state.env.QuestFrame.shown = false, false
+        world.open, world.dialog, world.npc = nil, nil, nil
+        client.fire(page == "gossip" and "GOSSIP_CLOSED" or "QUEST_FINISHED")
+    end
+
+    -- M3b: a key pressed. Each shown frame that hears keys gets OnKeyDown;
+    -- returns "game" if the key went on to the game (and the player's
+    -- binds), "addon" if a frame kept it.
+    function client.key(key)
+        local kept = false
+        for _, f in ipairs(state.frames) do
+            local visible, w = true, f
+            while w do
+                visible = visible and w.shown
+                w = w.parent
+            end
+            local hears = f.layout.EnableKeyboard and f.layout.EnableKeyboard[1]
+            if visible and hears and f.scripts.OnKeyDown then
+                local ok, err = pcall(f.scripts.OnKeyDown, f, key)
+                if not ok then
+                    table.insert(client.errors, "OnKeyDown: " .. tostring(err))
+                end
+                kept = kept or rawget(f, "propagate") == false
+            end
+        end
+        return kept and "addon" or "game"
     end
 
     -- `items`: the ids the vendor sells (B2's highlights), none if not given.

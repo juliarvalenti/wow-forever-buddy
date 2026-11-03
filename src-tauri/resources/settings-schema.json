@@ -363,6 +363,18 @@
       "showHelp": true
     },
     {
+      "id": "questhelp.dialogKeys",
+      "module": "questhelp",
+      "section": "Quest helper",
+      "type": "bool",
+      "default": false,
+      "label": "Dialog keys",
+      "help": "In an NPC's chat or a quest window, Space takes the first choice and 1 to 9 the others. Not in combat, and never a reward choice.",
+      "parent": "questhelp.enabled",
+      "acts": true,
+      "showHelp": true
+    },
+    {
       "id": "hud.enabled",
       "module": "hud",
       "section": "HUD",

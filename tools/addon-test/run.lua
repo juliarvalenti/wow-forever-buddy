@@ -2221,6 +2221,125 @@ scenario("action_bars", function()
     file(c.logout())
 end)
 
+-- M3b: dialog keys. Off by default; on, Space and 1 to 9 pick from the open
+-- NPC chat or quest window in the window's own order, only on the player's
+-- keypress. Never with a modifier, while typing, with Blizzard's window
+-- hidden, or in combat (where setting a key's propagation is refused, which
+-- fails the scenario); never a reward choice or a quest that costs gold.
+scenario("dialog_keys", function()
+    local c = client()
+    c.login(nil)
+    c.advance(5)
+    local acts = c.world.quest_actions
+    local function did()
+        local s = table.concat(acts, ",")
+        for i = #acts, 1, -1 do
+            acts[i] = nil
+        end
+        return s
+    end
+    local CHAT = {
+        available = { { questID = 176, repeatable = false, frequency = 0 } },
+        active = { { questID = 178, isComplete = false, repeatable = false, frequency = 0 } },
+        -- the client's order is orderIndex, not this list's
+        options = { { name = "Train me", orderIndex = 1 }, { name = "Make this inn your home", orderIndex = 0 } },
+    }
+
+    -- Off (the default): keys go to the game.
+    c.openDialog("gossip", CHAT)
+    eq(c.key("1"), "game", "off: 1 is the game's")
+    eq(did(), "", "and does nothing")
+    c.closeDialog()
+
+    c.click(setting(c, "Dialog keys"))
+    c.openDialog("gossip", CHAT)
+    eq(c.key("SPACE"), "addon", "Space is ours with a chat open")
+    eq(did(), "gossip-available:176", "and takes the first choice: the available quest")
+    eq(c.key("2"), "addon", "2")
+    eq(did(), "gossip-active:178", "then the active quest")
+    eq(c.key("3"), "addon", "3")
+    eq(c.key("4"), "addon", "4")
+    eq(did(), "gossip-option:0,gossip-option:1", "then the options, in the client's order")
+    eq(c.key("5"), "game", "a number past the list")
+    eq(c.key("W"), "game", "and any other key go to the game")
+    eq(did(), "", "doing nothing")
+    c.world.modifier = true
+    eq(c.key("1"), "game", "a modifier held: your bind")
+    c.world.modifier = false
+    c.world.typing = true
+    eq(c.key("1"), "game", "typing in chat: the letter")
+    c.world.typing = false
+    eq(did(), "", "nothing picked")
+    c.closeDialog()
+    eq(c.key("SPACE"), "game", "closed: Space jumps")
+
+    -- Another addon's window in place of Blizzard's: no keys, since you
+    -- can't see what they'd pick.
+    c.openDialog("gossip", CHAT, true)
+    eq(c.key("1"), "game", "Blizzard's window hidden: no keys")
+    c.closeDialog()
+
+    -- Combat: the key frame steps away; nothing is held back or refused.
+    c.openDialog("gossip", CHAT)
+    c.combat(true)
+    eq(c.key("1"), "game", "in combat: the game's")
+    eq(did(), "", "and nothing picked")
+    c.combat(false)
+    c.closeDialog()
+
+    -- The older quest list: active quests first, then available ones.
+    c.openDialog("greeting", { active = { { questID = 176, complete = true } }, available = { { questID = 182 } } })
+    c.key("1")
+    c.key("2")
+    eq(did(), "greeting-active:176,greeting-available:182", "the older list, in its order")
+    c.closeDialog()
+
+    -- Quest pages: Space is the window's button.
+    c.openDialog("detail", { questID = 176 })
+    eq(c.key("SPACE"), "addon", "a quest's page")
+    eq(did(), "accept:176", "Space accepts")
+    c.closeDialog()
+    c.openDialog("detail", { questID = 176, autoAccept = true })
+    eq(c.key("SPACE"), "game", "not the game's own auto-accept")
+    c.closeDialog()
+    c.openDialog("progress", { questID = 176 })
+    c.key("SPACE")
+    eq(did(), "complete:176", "Space hands the items over")
+    c.closeDialog()
+    c.openDialog("progress", { questID = 176, completable = false })
+    eq(c.key("SPACE"), "game", "not before it's done")
+    c.closeDialog()
+    c.openDialog("complete", { questID = 176, choices = 0 })
+    c.key("SPACE")
+    c.closeDialog()
+    c.openDialog("complete", { questID = 177, choices = 1 })
+    c.key("SPACE")
+    c.closeDialog()
+    eq(did(), "reward:176:0,reward:177:1", "no choice, or one: Space finishes")
+    c.openDialog("complete", { questID = 176, choices = 3 })
+    eq(c.key("SPACE"), "game", "a reward choice is yours")
+    eq(c.key("2"), "game", "numbers too")
+    c.closeDialog()
+    c.openDialog("complete", { questID = 176, choices = 0, money = 500 })
+    eq(c.key("SPACE"), "game", "and a quest that costs gold")
+    c.closeDialog()
+    eq(did(), "", "none of those")
+
+    -- W1: the module off stops the keys, the option still on.
+    local w = c.global("ForeverBuddyWindow")
+    c.click(w.mods.questhelp)
+    c.click(w.modSwitch)
+    c.openDialog("gossip", CHAT)
+    eq(c.key("1"), "game", "module off: the game's")
+    c.closeDialog()
+    c.click(w.modSwitch)
+    c.openDialog("gossip", CHAT)
+    eq(c.key("1"), "addon", "back on: ours")
+    c.closeDialog()
+    eq(did(), "gossip-available:176", "only once back on")
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2598,7 +2717,7 @@ scenario("window", function()
         .. "[Tooltips], Tooltips, Your alts on item tooltips, "
         .. "[Coach], Coach, Session coach, Hide the coach in combat, "
         .. "[Merchant], Merchant, Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
-        .. "[Quest helper], Quest helper, Accept quests, Hand in quests, Daily and repeatable quests too, "
+        .. "[Quest helper], Quest helper, Accept quests, Hand in quests, Daily and repeatable quests too, Dialog keys, "
         .. "[HUD], HUD, [Action bars], Action bars, Our action bars, "
         .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
@@ -4664,7 +4783,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 37, "with every toggle")
+    eq(#options.frame.checks, 38, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)
