@@ -519,6 +519,7 @@ buttons                  what's clickable on screen: name, text, centre
 advance <seconds>        let time pass (timers, OnUpdate)
 reload                   /reload (SavedVariables kept)
 combat on|off            enter or leave combat
+event <NAME> [args]      fire a game event (numbers stay numbers): event SPELL_ACTIVATION_OVERLAY_GLOW_SHOW 1752
 state [path]             SavedVariables: ForeverBuddyDB, ForeverBuddySettings, or a path into them
 chat [n]                 the last n chat lines (10)
 errors                   every Lua error this session
@@ -608,6 +609,19 @@ function COMMANDS.combat(rest)
     end
     S.sim:Advance(0.2)
     return "combat " .. rest
+end
+
+function COMMANDS.event(rest)
+    local args = {}
+    for word in rest:gmatch("%S+") do
+        args[#args + 1] = tonumber(word) or word
+    end
+    if not args[1] then
+        error("event <NAME> [args]", 0)
+    end
+    need():FireEvent(unpack(args))
+    S.sim:Advance(0.2)
+    return "fired " .. rest
 end
 
 function COMMANDS.state(rest)

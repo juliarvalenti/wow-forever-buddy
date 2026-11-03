@@ -641,7 +641,7 @@ function U.bars.keyText(key)
     end
     key = key:gsub("SHIFT%-", "s"):gsub("CTRL%-", "c"):gsub("ALT%-", "a")
     key = key:gsub("BUTTON(%d)", "M%1"):gsub("MOUSEWHEELUP", "MwU"):gsub("MOUSEWHEELDOWN", "MwD")
-    key = key:gsub("NUMPAD", "N")
+    key = key:gsub("NUMPAD", "N"):gsub("`", "~")
     return key
 end
 
@@ -741,11 +741,31 @@ function U.bars.build()
         b.active:SetAllPoints()
         b.active:SetColorTexture(1, 1, 1, 0.18)
         b.active:Hide()
-        b.glow = b:CreateTexture(nil, "OVERLAY")
-        b.glow:SetTexture(B.MEDIA .. "Glow")
-        b.glow:SetPoint("TOPLEFT", -P(6), P(6))
-        b.glow:SetPoint("BOTTOMRIGHT", P(6), -P(6))
-        b.glow:SetVertexColor(1, 0.96, 0.41)
+        -- The proc, as round 4 draws it: a 2px gold inner border and a soft
+        -- glow half again the icon's size. On a plain child frame above the
+        -- grid, so the glow lies over the neighbours and shows or hides in
+        -- combat (it isn't protected).
+        b.glow = CreateFrame("Frame", nil, b)
+        b.glow:SetAllPoints()
+        b.glow:SetFrameLevel(b:GetFrameLevel() + 5)
+        local soft = b.glow:CreateTexture(nil, "OVERLAY")
+        soft:SetTexture(B.MEDIA .. "Glow")
+        soft:SetBlendMode("ADD")
+        soft:SetVertexColor(1, 0.824, 0.235, 0.55) -- #ffd23c
+        soft:SetPoint("CENTER")
+        soft:SetSize(P(B.ICON * 1.5), P(B.ICON * 1.5))
+        for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
+            { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+            local edge = b.glow:CreateTexture(nil, "OVERLAY")
+            edge:SetColorTexture(1, 0.824, 0.235, 1)
+            edge:SetPoint(e[1])
+            edge:SetPoint(e[2])
+            if e[3] then
+                edge:SetHeight(P(2))
+            else
+                edge:SetWidth(P(2))
+            end
+        end
         b.glow:Hide()
         b.cooldown = CreateFrame("Cooldown", name .. "Cooldown", b, "CooldownFrameTemplate")
         b.cooldown:SetAllPoints()

@@ -14,7 +14,7 @@ luajit tools/addon-live/live.lua upload lists     # to the mycelium room; prints
 luajit tools/addon-live/live.lua stop
 ```
 
-`help` lists every command: `login [filled|empty]`, `slash`, `click`, `set`, `buttons`, `bags`, `advance`, `reload`, `combat on|off`, `state [path]`, `chat`, `errors`, `lua`, `screenshot <name> [full|bags]`, `upload`. Each answer ends with the chat lines and Lua errors the command caused.
+`help` lists every command: `login [filled|empty]`, `slash`, `click`, `set`, `buttons`, `bags`, `advance`, `reload`, `combat on|off`, `event <NAME> [args]`, `state [path]`, `chat`, `errors`, `lua`, `screenshot <name> [full|bags]`, `upload`. Each answer ends with the chat lines and Lua errors the command caused.
 
 - **`bags`** puts up a backpack and the bank with junk, gear of each quality, a shirt and stacks, for the Bags module (P4d). WOWAPI draws no bag frames, so these are stand-ins with what the addon reads from Blizzard's: item buttons that know their bag and slot, and a `BankPanel`. `screenshot <name> bags` crops to them. Run `bags` again after a `set` to redraw them without the window on top.
 
