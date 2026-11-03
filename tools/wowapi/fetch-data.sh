@@ -12,8 +12,13 @@ dest="$here/wowapi/data"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 git -C "$tmp" init -q
+# Byte for byte as WOWAPI has them: the app pins these files by SHA-256
+# (PV1), and Windows git would otherwise check them out with CRLF.
+git -C "$tmp" config core.autocrlf false
 git -C "$tmp" fetch -q --depth 1 --filter=blob:none https://github.com/Reece01-Dock/WOWAPI.git "$COMMIT"
-git -C "$tmp" sparse-checkout set --no-cone /wowapi/data/
+# No leading slash: Git Bash on Windows would rewrite "/wowapi/..." into a
+# Windows path.
+git -C "$tmp" sparse-checkout set --no-cone wowapi/data/
 git -C "$tmp" checkout -q FETCH_HEAD
 rm -rf "$dest"
 cp -R "$tmp/wowapi/data" "$dest"

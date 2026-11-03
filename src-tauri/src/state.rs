@@ -27,6 +27,8 @@ pub struct AppCore {
     pub game: Arc<GameWatcher>,
     /// Item icons from the game's data, for `icon://` (F8).
     pub icons: Icons,
+    /// The Preview tab's live screen (PV1). Idle until the tab opens.
+    pub preview: crate::preview::Preview,
     /// Opened on demand (see `backups()`), so a backup drive that isn't
     /// plugged in never stops the app from starting.
     backups: Mutex<Option<Arc<BackupService>>>,
@@ -76,6 +78,10 @@ impl AppCore {
         let settings = SettingsStore::load(paths.settings_file())?;
         let db = Db::open(&paths.db_file())?;
         let icons = Icons::start(paths.icon_cache_dir(), paths.log_dir.clone());
+        let preview = crate::preview::Preview::start(
+            crate::preview::dir(&paths.local_data_dir),
+            paths.log_dir.clone(),
+        );
         let core = Self {
             paths,
             settings,
@@ -83,6 +89,7 @@ impl AppCore {
             secrets,
             game: Arc::new(GameWatcher::new(probe)),
             icons,
+            preview,
             backups: Mutex::new(None),
             jobs: Mutex::new(()),
             send_waiting: std::sync::atomic::AtomicBool::new(false),
@@ -254,6 +261,28 @@ impl AppCore {
             return None;
         }
         self.flavor_dir()
+    }
+
+    /// What the Preview tab draws (PV1): the addon with every slot the app
+    /// would send the game now (so the settings profile is the newest one
+    /// approved), and the last-played character's class. With no install
+    /// yet, the addon as shipped and the generic character.
+    pub fn preview_inputs(&self) -> AppResult<crate::preview::Inputs> {
+        let Ok(game) = self.active_game() else {
+            return Ok(crate::preview::Inputs {
+                slots: Default::default(),
+                class: None,
+                extract: None,
+            });
+        };
+        crate::preview::inputs(&self.db, &game.flavor, chrono::Utc::now().timestamp())
+    }
+
+    /// Something the game gets changed: the preview redraws, if it's open.
+    pub fn preview_changed(&self) {
+        if let Ok(inputs) = self.preview_inputs() {
+            self.preview.changed(inputs);
+        }
     }
 
     pub fn active_game(&self) -> AppResult<ActiveGame> {

@@ -76,11 +76,21 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      # PV1: the preview tests draw the scene, which needs WOWAPI's data/.
+      - name: Fetch WOWAPI data
+        shell: bash
+        run: sh tools/wowapi/fetch-data.sh
+
       # --locked: a Cargo.lock that drifted from Cargo.toml fails instead of
       # being silently re-resolved (matters with the exact RC pins).
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked
+
+      # PV1: the preview's first-frame and redraw times, in the log.
+      - name: Preview frame times
+        working-directory: src-tauri
+        run: cargo test --locked preview::tests::an_approved_setting_redraws_the_preview -- --nocapture
 
       # cargo test regenerates src/lib/bindings.ts; fail if it wasn't committed.
       - name: bindings up to date

@@ -21,6 +21,7 @@ pub mod lists;
 pub mod macros;
 pub mod notes;
 pub mod plans;
+pub mod preview;
 pub mod restore;
 pub mod secrets;
 pub mod sessions;
