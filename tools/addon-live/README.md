@@ -14,7 +14,7 @@ luajit tools/addon-live/live.lua upload lists     # to the mycelium room; prints
 luajit tools/addon-live/live.lua stop
 ```
 
-`help` lists every command: `login [filled|empty]`, `slash`, `click`, `set`, `buttons`, `bags`, `advance`, `reload`, `combat on|off`, `state [path]`, `chat`, `errors`, `lua`, `screenshot <name> [full|bags]`, `upload`. Each answer ends with the chat lines and Lua errors the command caused.
+`help` lists every command: `login [filled|empty]`, `slash`, `click`, `set`, `buttons`, `bags`, `advance`, `reload`, `combat on|off`, `event <NAME> [args]`, `state [path]`, `chat`, `errors`, `lua`, `screenshot <name> [full|bags]`, `upload`. Each answer ends with the chat lines and Lua errors the command caused.
 
 - **`scene <class> [level] [stealth] [layout=<name|file>]`** logs in to the full logged-in screen instead: Blizzard's own UI from the CASC extract (it needs `WOWAPI_ART`, as `tools/addon-shots/hud.lua` does), a fixture character from `tools/addon-shots/fixtures.lua` with its target, and ForeverBuddy. Then **`health`**, **`power`**, **`combo`** and **`target`** change it as the game does, firing `UNIT_HEALTH`, `UNIT_POWER_UPDATE`/`UNIT_POWER_FREQUENT` and `PLAYER_TARGET_CHANGED`, and `combat on|off` and `advance` work as usual. A script plays a fight over time:
 

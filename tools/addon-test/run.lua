@@ -2076,6 +2076,151 @@ scenario("quest_helper", function()
     file(c.logout())
 end)
 
+-- TH3: our own action bars, on SecureActionButtonTemplate. Off by default;
+-- on, the player's binds press our buttons, which use the same slots, page
+-- with stealth, drag and drop, and show cooldowns and procs. Nothing secure
+-- is touched in combat (wow.lua refuses it, failing the scenario), and
+-- Blizzard's bars are only faded.
+scenario("action_bars", function()
+    local c = client()
+    local w = c.world
+    w.actions[1] = { texture = 132282, id = 1752 } -- Sinister Strike
+    w.actions[2] = { texture = 132292, id = 2098, usable = false } -- Eviscerate, no combo points
+    w.actions[3] = { texture = 132307, id = 1784, current = true } -- Stealth, on
+    w.actions[4] = { texture = 136205, id = 5277, cooldown = { 100, 120 } } -- Evasion
+    w.actions[5] = { texture = 134830, kind = "item", id = 858, count = 7 } -- potions
+    w.actions[61] = { texture = 132219, id = 1766 } -- Kick
+    w.actions[73] = { texture = 132090, id = 8676 } -- Ambush, on the stealth page
+    c.login(nil)
+    c.advance(5)
+    -- Blizzard's bar behind the P4f-1 guard: anything but SetAlpha fails.
+    local main = c.protected.MainActionBar
+    local function used()
+        local s = {}
+        for i, v in ipairs(w.used) do
+            s[i] = tostring(v)
+        end
+        for i = #w.used, 1, -1 do
+            w.used[i] = nil
+        end
+        return table.concat(s, ",")
+    end
+
+    -- Off (the default): nothing made, the keys are Blizzard's.
+    eq(c.global("ForeverBuddyBarHeader"), nil, "no bars while off")
+    eq(main.alpha, nil, "Blizzard's bar untouched")
+    c.press("1")
+    eq(used(), "blizzard", "a bind is Blizzard's")
+
+    -- On: sixteen secure action buttons on their slots, binds pointed at them.
+    c.click(setting(c, "Our action bars"))
+    local header = c.global("ForeverBuddyBarHeader")
+    eq(header.template, "SecureHandlerStateTemplate", "a secure header")
+    local b = {}
+    for i = 1, 16 do
+        b[i] = c.global("ForeverBuddyActionButton" .. i)
+        eq(b[i].template, "SecureActionButtonTemplate", "button " .. i .. " is secure")
+        eq(b[i]:GetAttribute("type"), "action", "button " .. i .. " is an action button")
+    end
+    eq(b[13]:GetAttribute("action"), 61, "the second bar's buttons on 61-64")
+    eq(main.alpha, 0, "Blizzard's bar faded, and only faded")
+    -- The click shields: a click on a faded bar's footprint, away from our
+    -- grid, lands on ours, which does nothing; our buttons sit above them.
+    eq(c.clickOnBar("MainActionBar"), "ForeverBuddyBarShieldMainActionBar", "the faded main bar: shielded")
+    eq(c.clickOnBar("MultiBarBottomLeft"), "ForeverBuddyBarShieldMultiBarBottomLeft", "and bar 2")
+    local shield = c.global("ForeverBuddyBarShieldMainActionBar")
+    eq(next(shield.scripts), nil, "a shield has no scripts: no tooltip, no click")
+    eq(#shield.children, 0, "and draws nothing")
+    eq(shield.parent, c.global("UIParent"), "it's ours, on UIParent, not Blizzard's bar's child")
+    eq(c.above(b[1], shield), true, "our buttons above the shield")
+    eq(c.above(b[16], shield), true, "all of them")
+    c.press("1")
+    c.press("SHIFT-4")
+    c.press("BUTTON4")
+    eq(used(), "1,4,61", "binds press our buttons, on the same slots")
+    eq(b[4].key.text, "4", "the first key bound")
+    w.bindings.ACTIONBUTTON4 = { "SHIFT-4" }
+    c.fire("UPDATE_BINDINGS")
+    eq(b[4].key.text, "s4", "the key, short")
+    eq(b[13].key.text, "M4", "a mouse button, short")
+
+    -- The look: icons, an empty slot's plate, tint, the on border,
+    -- cooldown and count.
+    eq(b[1].icon.texture, 132282, "the action's icon")
+    eq(b[6].icon.shown, false, "an empty slot hides its icon")
+    eq(b[6].plate.shown, true, "and shows its plate")
+    eq(b[2].icon.layout.SetVertexColor[1], 0.4, "not usable: dimmed")
+    eq(b[3].active.shown, true, "Stealth is on")
+    eq(b[4].cooldown.shown, true, "Evasion's cooldown")
+    eq(b[4].cooldown.cooldownAt[2], 120, "for its duration")
+    eq(b[5].count.text, "7", "a stack count")
+
+    -- Procs: the glow follows the client's overlay events.
+    c.fire("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", 1752)
+    eq(b[1].glow.shown, true, "a proc glows")
+    c.fire("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE", 1752)
+    eq(b[1].glow.shown, false, "and stops")
+
+    -- Stealth pages the main bar in combat, through the secure driver.
+    c.combat(true)
+    c.bonusbar(1)
+    eq(b[1]:GetAttribute("action"), 73, "stealth: the main bar on page 7")
+    eq(b[1].icon.texture, 132090, "showing Ambush")
+    eq(b[13]:GetAttribute("action"), 61, "the second bar doesn't page")
+    c.press("1")
+    eq(used(), "73", "the bind uses the stealth slot")
+    c.bonusbar(0)
+    eq(b[1]:GetAttribute("action"), 1, "out of stealth: page 1")
+
+    -- Combat: a bind changed mid-fight waits for the end of combat (the
+    -- window doesn't change settings in combat at all).
+    w.bindings.ACTIONBUTTON1 = { "Q" }
+    c.fire("UPDATE_BINDINGS")
+    c.press("Q")
+    eq(used(), "blizzard", "in combat: the new key isn't ours yet")
+    c.click(setting(c, "Our action bars"))
+    eq(header.shown, true, "and the switch waits too")
+    c.combat(false)
+    c.press("Q")
+    eq(used(), "1", "after combat: the new key presses ours")
+    eq(b[1].key.text, "Q", "and shows on it")
+    c.click(setting(c, "Our action bars"))
+    eq(header.shown, false, "off: gone")
+    eq(main.alpha, 1, "Blizzard's bar back")
+    eq(c.clickOnBar("MainActionBar"), "MainActionBar", "and its clicks its own")
+    c.press("Q")
+    eq(used(), "blizzard", "the bind Blizzard's again")
+    c.click(setting(c, "Our action bars"))
+
+    -- Drag and drop: locked bars need Shift; never in combat.
+    c.dragAction(b[1], b[6])
+    eq(w.actions[6], nil, "locked: no drag")
+    w.modified = true
+    c.dragAction(b[1], b[6])
+    eq(w.actions[6] and w.actions[6].id, 1752, "Shift-drag moves it")
+    eq(w.actions[1], nil, "out of its old slot")
+    eq(b[6].icon.texture, 132282, "and the buttons show it")
+    c.combat(true)
+    c.dragAction(b[6], b[1])
+    eq(w.actions[1], nil, "no drag in combat")
+    c.combat(false)
+    w.modified = false
+
+    -- W1: the module off puts Blizzard's back; on again, ours.
+    c.slash("/fb")
+    local win = c.global("ForeverBuddyWindow")
+    c.click(win.mods.actionbars)
+    c.click(win.modSwitch)
+    eq(header.shown, false, "module off: ours gone")
+    eq(main.alpha, 1, "Blizzard's back")
+    eq(c.clickOnBar("MainActionBar"), "MainActionBar", "module off: no shield")
+    c.click(win.modSwitch)
+    eq(header.shown, true, "back on: ours")
+    eq(c.clickOnBar("MainActionBar"), "ForeverBuddyBarShieldMainActionBar", "and the shield")
+    eq(table.concat(c.taint, ", "), "", "Blizzard's bars: only SetAlpha, all along")
+    file(c.logout())
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -2454,7 +2599,8 @@ scenario("window", function()
         .. "[Coach], Coach, Session coach, Hide the coach in combat, "
         .. "[Merchant], Merchant, Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
         .. "[Quest helper], Quest helper, Accept quests, Hand in quests, Daily and repeatable quests too, "
-        .. "[HUD], HUD, [This window], Minimap button, [Help fix bugs], Record my next session",
+        .. "[HUD], HUD, [Action bars], Action bars, Our action bars, "
+        .. "[This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
         for _, init in ipairs(options.layout.inits) do
@@ -4518,7 +4664,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 35, "with every toggle")
+    eq(#options.frame.checks, 37, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

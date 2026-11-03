@@ -374,6 +374,29 @@
       "moduleSwitch": true
     },
     {
+      "id": "actionbars.enabled",
+      "module": "actionbars",
+      "section": "Action bars",
+      "type": "bool",
+      "default": true,
+      "label": "Action bars",
+      "help": "Your action bars in a clean grid, in place of Blizzard's.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
+      "id": "actionbars.ours",
+      "module": "actionbars",
+      "section": "Action bars",
+      "type": "bool",
+      "default": false,
+      "label": "Our action bars",
+      "help": "Your first two bars in our look. Same spells, binds and drag and drop; Blizzard's bars fade out. Changes wait until you leave combat.",
+      "parent": "actionbars.enabled",
+      "acts": false,
+      "showHelp": true
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",
@@ -438,6 +461,8 @@
       "id": "quiet",
       "label": "Quiet",
       "values": {
+        "actionbars.enabled": true,
+        "actionbars.ours": false,
         "bags.enabled": true,
         "bags.itemLevel": false,
         "bags.junk": false,
@@ -469,6 +494,8 @@
       "id": "helpful",
       "label": "Helpful",
       "values": {
+        "actionbars.enabled": true,
+        "actionbars.ours": false,
         "bags.enabled": true,
         "bags.itemLevel": true,
         "bags.junk": true,
@@ -500,6 +527,8 @@
       "id": "everything",
       "label": "Everything",
       "values": {
+        "actionbars.enabled": true,
+        "actionbars.ours": false,
         "bags.enabled": true,
         "bags.itemLevel": true,
         "bags.junk": true,

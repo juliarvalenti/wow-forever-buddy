@@ -302,6 +302,18 @@ function M.new(opts)
         -- B4: the client refuses addon reloads, firing ADDON_ACTION_BLOCKED.
         reloadBlocked = false,
         combat = false, -- InCombatLockdown
+        -- TH3: the action bars. slot -> { texture, kind, id, count, usable,
+        -- noMana, current, cooldown = { start, duration, enabled } }.
+        actions = {},
+        -- A binding's keys (GetBindingKey), and the overrides an addon set
+        -- (key -> { owner, button name, mouse button }).
+        bindings = { ACTIONBUTTON1 = { "1" }, ACTIONBUTTON2 = { "2" }, ACTIONBUTTON3 = { "3" },
+            ACTIONBUTTON4 = { "4", "SHIFT-4" }, MULTIACTIONBAR1BUTTON1 = { "BUTTON4" } },
+        overrides = {},
+        cvars = { ActionButtonUseKeyDown = "1", lockActionBars = "1" },
+        modified = false, -- IsModifiedClick("PICKUPACTION") (shift held)
+        held = nil, -- the action on the cursor (PickupAction)
+        used = {}, -- action slots a secure click used, in order
         moving = false, -- IsPlayerMoving (P4c)
         mapCursor = nil, -- { x, y } over the world map, 0..1 (P4c)
         shift = false, -- IsShiftKeyDown
@@ -659,6 +671,85 @@ function M.new(opts)
         end,
         InCombatLockdown = function()
             return world.combat
+        end,
+        -- TH3: the action bars, as the client reports them.
+        HasAction = function(slot)
+            return world.actions[slot] ~= nil
+        end,
+        GetActionTexture = function(slot)
+            local a = world.actions[slot]
+            return a and a.texture
+        end,
+        GetActionInfo = function(slot)
+            local a = world.actions[slot]
+            if a then
+                return a.kind or "spell", a.id
+            end
+        end,
+        GetActionCooldown = function(slot)
+            local c = world.actions[slot] and world.actions[slot].cooldown
+            if c then
+                return c[1], c[2], c[3] or 1
+            end
+            return 0, 0, 1
+        end,
+        GetActionCount = function(slot)
+            local a = world.actions[slot]
+            return a and a.count or 0
+        end,
+        IsUsableAction = function(slot)
+            local a = world.actions[slot]
+            if not a then
+                return false, false
+            end
+            return a.usable ~= false, a.noMana == true
+        end,
+        IsCurrentAction = function(slot)
+            local a = world.actions[slot]
+            return a ~= nil and a.current == true
+        end,
+        IsAutoRepeatAction = function()
+            return false
+        end,
+        GetBindingKey = function(binding)
+            return unpack(world.bindings[binding] or {})
+        end,
+        GetCVar = function(name)
+            return world.cvars[name]
+        end,
+        GetCVarBool = function(name)
+            local v = world.cvars[name]
+            return v == "1" or v == true
+        end,
+        IsModifiedClick = function(action)
+            return action == "PICKUPACTION" and world.modified
+        end,
+        -- The cursor holds what was picked up; placing swaps it in.
+        PickupAction = function(slot)
+            world.held, world.actions[slot] = world.actions[slot], world.held
+            client.fire("ACTIONBAR_SLOT_CHANGED", slot)
+        end,
+        PlaceAction = function(slot)
+            world.held, world.actions[slot] = world.actions[slot], world.held
+            client.fire("ACTIONBAR_SLOT_CHANGED", slot)
+        end,
+        -- Protected: refused in combat, as the client does
+        -- (ADDON_ACTION_BLOCKED), and noted on client.errors.
+        SetOverrideBindingClick = function(owner, _, key, button, mouse)
+            if client.blocked("SetOverrideBindingClick") then
+                return
+            end
+            world.overrides[key] = { owner, button, mouse or "LeftButton" }
+        end,
+        ClearOverrideBindings = function(owner)
+            if client.blocked("ClearOverrideBindings") then
+                return
+            end
+            for key, o in pairs(world.overrides) do
+                if o[1] == owner then
+                    world.overrides[key] = nil
+                end
+            end
         end,
         IsPlayerMoving = function()
             return world.moving
@@ -1132,6 +1223,8 @@ function M.new(opts)
         "SetFont", "SetGradient", "SetThumbTexture", "SetOrientation", "EnableMouseWheel", "SetRotation",
         -- W1b: its art.
         "SetTexCoord", "SetShadowOffset",
+        -- TH3: an action button's cooldown.
+        "SetHideCountdownNumbers", "SetDrawEdge",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -1314,6 +1407,57 @@ function M.new(opts)
         self.scripts[kind] = fn
     end
 
+    -- TH3: secure frames. A frame made from a Secure template is protected:
+    -- in combat, outside a restricted snippet, showing, hiding, moving it or
+    -- setting an attribute is refused, as the client refuses it
+    -- (client.blocked). Its textures, text and plain child frames aren't.
+    -- A frame anchored to a protected one (one of Blizzard's bars, P4f-1)
+    -- is protected too, as the client makes it.
+    local protectedProxy = setmetatable({}, { __mode = "k" })
+    local function isProtected(w)
+        if rawget(w, "secure") then
+            return true
+        end
+        for _, a in ipairs(rawget(w, "points") or {}) do
+            if a[2] ~= nil and protectedProxy[a[2]] then
+                return true
+            end
+        end
+        return false
+    end
+    local function guard(w, what)
+        return isProtected(w) and client.blocked(what)
+    end
+    for _, method in ipairs({ "Show", "Hide", "SetShown", "SetPoint", "ClearAllPoints", "SetAllPoints", "SetSize" }) do
+        local plain = Frame[method]
+        Frame[method] = function(self, ...)
+            if guard(self, method) then
+                return
+            end
+            return plain(self, ...)
+        end
+    end
+    function Frame:SetAttribute(k, v)
+        if guard(self, "SetAttribute") then
+            return
+        end
+        self.attributes = rawget(self, "attributes") or {}
+        self.attributes[k] = v
+    end
+    function Frame:GetAttribute(k)
+        local a = rawget(self, "attributes")
+        return a and a[k]
+    end
+    function Frame:SetFrameRef(label, f)
+        self:SetAttribute("frameref-" .. label, f)
+    end
+    function Frame:GetName()
+        return rawget(self, "name")
+    end
+    function Frame:SetCooldown(start, duration)
+        self.cooldownAt = { start, duration }
+    end
+
     local function environment()
         local env = {}
         for _, k in ipairs(LUA) do
@@ -1342,6 +1486,9 @@ function M.new(opts)
         env.CreateFrame = function(kind, name, parent, template)
             local f = newWidget(parent, kind)
             f.name = name
+            f.template = template
+            -- TH3: Secure templates make protected frames (see guard).
+            f.secure = type(template) == "string" and template:find("Secure") ~= nil or nil
             table.insert(state.frames, f)
             if name then
                 env[name] = f
@@ -1500,6 +1647,7 @@ function M.new(opts)
                     return name
                 end,
             })
+            protectedProxy[env[name]] = true
         end
         env.UISpecialFrames = {}
         env.Settings = {
@@ -1600,6 +1748,20 @@ function M.new(opts)
         end
         env.GameTooltip.AddLine = function(self, text)
             table.insert(self.lines, text)
+        end
+        -- TH3: an action's tooltip.
+        env.GameTooltip.SetAction = function(self, slot)
+            self.action = slot
+        end
+        -- The secure state driver (TH3): a "[bonusbar:N] v; ...; default"
+        -- macro condition, evaluated now and on client.bonusbar.
+        env.RegisterStateDriver = function(frame, stateName, cond)
+            if client.blocked("RegisterStateDriver") then
+                return
+            end
+            state.drivers = state.drivers or {}
+            table.insert(state.drivers, { frame = frame, state = stateName, cond = cond })
+            client.drive()
         end
         -- Blizzard's backpack frame (B3): sixteen item buttons, bag 0.
         local backpack = newWidget(env.UIParent)
@@ -1998,6 +2160,186 @@ function M.new(opts)
     function client.buffs(list)
         world.auras = list
         client.fire("UNIT_AURA", "player")
+    end
+
+    -- TH3: whether a protected call is refused now: in combat, outside a
+    -- restricted snippet. A refusal fires ADDON_ACTION_BLOCKED and goes on
+    -- client.errors, so a scenario that hits one fails.
+    local restricted = false
+    function client.blocked(what)
+        if world.combat and not restricted then
+            table.insert(client.errors, "blocked in combat: " .. what)
+            client.fire("ADDON_ACTION_BLOCKED", "ForeverBuddy", what)
+            return true
+        end
+        return false
+    end
+
+    -- A restricted snippet (an _onstate- attribute): run with `self` a
+    -- handle that reaches the frame refs and attributes, allowed in combat.
+    local function runSnippet(frame, body, ...)
+        local handle = {}
+        function handle:GetFrameRef(label)
+            local f = frame:GetAttribute("frameref-" .. label)
+            if f then
+                return {
+                    SetAttribute = function(_, k, v)
+                        f:SetAttribute(k, v)
+                    end,
+                    GetAttribute = function(_, k)
+                        return f:GetAttribute(k)
+                    end,
+                }
+            end
+        end
+        function handle:SetAttribute(k, v)
+            frame:SetAttribute(k, v)
+        end
+        function handle:GetAttribute(k)
+            return frame:GetAttribute(k)
+        end
+        local fn = assert(loadstring("local self, stateid, newstate = ...\n" .. body, "snippet"))
+        setfenv(fn, { tonumber = tonumber, tostring = tostring, type = type, math = math, string = string })
+        restricted = true
+        local ok, err = pcall(fn, handle, ...)
+        restricted = false
+        if not ok then
+            table.insert(client.errors, "snippet: " .. tostring(err))
+        end
+    end
+
+    -- Evaluates each state driver's condition and runs its _onstate-
+    -- snippet when the state changes. Only [bonusbar:N] is modelled.
+    function client.drive()
+        for _, d in ipairs(state.drivers or {}) do
+            local value
+            for clause in (d.cond .. ";"):gmatch("([^;]*);") do
+                local cond, v = clause:match("^%s*%[(.-)%]%s*(.-)%s*$")
+                if cond then
+                    local n = cond:match("^bonusbar:(%d+)$")
+                    assert(n, "state driver condition not modelled: " .. cond)
+                    if tonumber(n) == world.bonusbar then
+                        value = v
+                        break
+                    end
+                elseif clause:match("%S") then
+                    value = clause:match("^%s*(.-)%s*$")
+                    break
+                end
+            end
+            if value ~= d.value then
+                d.value = value
+                local body = d.frame:GetAttribute("_onstate-" .. d.state)
+                if body then
+                    runSnippet(d.frame, body, d.state, value)
+                end
+            end
+        end
+    end
+
+    -- The bonus bar changing (a rogue entering stealth is 1): the driver
+    -- pages, in combat too, then the client says so.
+    function client.bonusbar(n)
+        world.bonusbar = n
+        client.drive()
+        client.fire("UPDATE_BONUS_ACTIONBAR")
+    end
+
+    -- A secure click on a SecureActionButtonTemplate button: type
+    -- "action" uses the slot in its "action" attribute (world.used).
+    function client.secureClick(button)
+        if button:GetAttribute("type") == "action" then
+            table.insert(world.used, button:GetAttribute("action"))
+        end
+    end
+
+    -- A key pressed: an addon's override binding clicks its button; else
+    -- the default binding, which Blizzard's own button would take
+    -- ("blizzard" goes on world.used).
+    function client.press(key)
+        local o = world.overrides[key]
+        if o then
+            local b = state.env[o[2]]
+            assert(b, "override binding to a missing button " .. tostring(o[2]))
+            client.secureClick(b)
+            return
+        end
+        for _, keys in pairs(world.bindings) do
+            for _, k in ipairs(keys) do
+                if k == key then
+                    table.insert(world.used, "blizzard")
+                    return
+                end
+            end
+        end
+    end
+
+    -- Which of two frames the mouse meets first where they overlap: the
+    -- higher strata, then the higher frame level (a frame without its own
+    -- takes its parent's, plus one), as the client orders them.
+    local STRATA = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+        FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+    local function strataOf(f)
+        while f do
+            local s = f.layout.SetFrameStrata
+            if s then
+                return STRATA[s[1]]
+            end
+            f = f.parent
+        end
+        return STRATA.MEDIUM
+    end
+    local function levelOf(f)
+        if not f then
+            return 0
+        end
+        local l = f.layout.SetFrameLevel
+        return l and l[1] or levelOf(f.parent) + 1
+    end
+    function client.above(a, b)
+        local sa, sb = strataOf(a), strataOf(b)
+        if sa ~= sb then
+            return sa > sb
+        end
+        return levelOf(a) > levelOf(b)
+    end
+
+    -- TH3: a click on Blizzard's bar `name` (MEDIUM, as in the client),
+    -- away from anything else: the name of the topmost shown, mouse-taking
+    -- frame of the addon's that covers it (SetAllPoints on it), or `name`,
+    -- the bar's own (faded) button taking it.
+    function client.clickOnBar(name)
+        local bar = state.env[name]
+        local best
+        for _, f in ipairs(state.frames) do
+            local p = f.points
+            local covers = #p == 2 and p[1][2] == bar and p[2][2] == bar
+            local visible = true
+            local w = f
+            while w do
+                visible = visible and w.shown
+                w = w.parent
+            end
+            if covers and visible and f:IsMouseEnabled() and strataOf(f) > STRATA.MEDIUM
+                and (not best or client.above(f, best)) then
+                best = f
+            end
+        end
+        return best and best.name or name
+    end
+
+    -- Drag and drop between buttons: the drag start on one, the drop on
+    -- another, as the client calls their scripts.
+    function client.dragAction(from, to)
+        for _, step in ipairs({ { from, "OnDragStart" }, { to, "OnReceiveDrag" } }) do
+            local fn = step[1].scripts[step[2]]
+            if fn then
+                local ok, err = pcall(fn, step[1], "LeftButton")
+                if not ok then
+                    table.insert(client.errors, step[2] .. ": " .. tostring(err))
+                end
+            end
+        end
     end
 
     function client.die(durabilityCost)

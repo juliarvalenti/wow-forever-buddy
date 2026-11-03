@@ -613,6 +613,356 @@ function U.mods.option(id)
     }
 end
 
+-- The Action bars module (TH3) -----------------------------------------------------------
+--
+-- Our own action buttons in round 4's grid (design/ingame/rogue/specs/
+-- round4.lua): two rows of eight, slots 1-8, then 9-12 and 61-64. Built the
+-- way Bartender and EllesmereUI build theirs, on Blizzard's
+-- SecureActionButtonTemplate, so a click or a key casts exactly as
+-- Blizzard's own button would:
+-- - every button is made at load, out of combat, type "action" on its slot;
+-- - the main bar's slots page with the bonus bar (a rogue's stealth bar) in a
+--   restricted snippet, which runs in combat as Blizzard's paging does;
+-- - the keys bound to ACTIONBUTTON1-12 and MULTIACTIONBAR1BUTTON1-4 are
+--   pointed at ours with SetOverrideBindingClick, only out of combat;
+-- - nothing here casts, writes an action or a macro, or touches a binding's
+--   key: every cast is the player's own click or keypress;
+-- - Blizzard's bars underneath are only faded (alpha), never moved, hidden
+--   or reparented (P4f-1's guard rails).
+-- Off until "Our action bars" is turned on. Anything that would touch a
+-- secure frame in combat waits for PLAYER_REGEN_ENABLED.
+U.bars = {
+    ICON = 46, GAP = 1, Y0 = 200, -- screen pixels at 1080p (round 4)
+    PX = 768 / 1080,
+    -- Each button: its action slot and the binding whose keys press it.
+    -- The first twelve page with the bonus bar; 61-64 don't.
+    SLOTS = {
+        { 1, "ACTIONBUTTON1" }, { 2, "ACTIONBUTTON2" }, { 3, "ACTIONBUTTON3" }, { 4, "ACTIONBUTTON4" },
+        { 5, "ACTIONBUTTON5" }, { 6, "ACTIONBUTTON6" }, { 7, "ACTIONBUTTON7" }, { 8, "ACTIONBUTTON8" },
+        { 9, "ACTIONBUTTON9" }, { 10, "ACTIONBUTTON10" }, { 11, "ACTIONBUTTON11" }, { 12, "ACTIONBUTTON12" },
+        { 61, "MULTIACTIONBAR1BUTTON1" }, { 62, "MULTIACTIONBAR1BUTTON2" },
+        { 63, "MULTIACTIONBAR1BUTTON3" }, { 64, "MULTIACTIONBAR1BUTTON4" },
+    },
+    -- Blizzard's bars ours stand in for: faded while ours are on.
+    BLIZZARD = { "MainActionBar", "MainMenuBar", "MultiBarBottomLeft" },
+    MEDIA = "Interface\\AddOns\\ForeverBuddy\\Media\\",
+    buttons = {},
+    pending = false, -- secure work waiting for the end of combat
+}
+
+function U.bars.wanted()
+    return U.mods.on("actionbars") and type(ForeverBuddySettings) == "table"
+        and ForeverBuddySettings.ourBars == true
+end
+
+-- A key, short, as round 4 shows it: SHIFT-E as sE, CTRL-1 as c1, a mouse
+-- button as M4.
+function U.bars.keyText(key)
+    if type(key) ~= "string" then
+        return ""
+    end
+    key = key:gsub("SHIFT%-", "s"):gsub("CTRL%-", "c"):gsub("ALT%-", "a")
+    key = key:gsub("BUTTON(%d)", "M%1"):gsub("MOUSEWHEELUP", "MwU"):gsub("MOUSEWHEELDOWN", "MwD")
+    key = key:gsub("NUMPAD", "N"):gsub("`", "~")
+    return key
+end
+
+-- One button's look from its slot now: icon, cooldown, count, usable tint,
+-- keybind, the "on" border (stealth, auto attack) and the proc glow.
+function U.bars.paint(b)
+    local slot = b:GetAttribute("action")
+    local has = type(slot) == "number" and read("HasAction", slot) == true
+    local icon = has and read("GetActionTexture", slot)
+    if icon then
+        b.icon:SetTexture(icon)
+        b.icon:Show()
+        b.plate:Hide()
+    else
+        b.icon:Hide()
+        b.plate:Show()
+    end
+    local start, duration, enabled = nil, nil, nil
+    if has then
+        start, duration, enabled = read("GetActionCooldown", slot)
+    end
+    if type(start) == "number" and type(duration) == "number" and duration > 1.5 and enabled ~= 0 then
+        b.cooldown:SetCooldown(start, duration)
+        b.cooldown:Show()
+    else
+        b.cooldown:Hide()
+    end
+    local count = has and read("GetActionCount", slot)
+    b.count:SetText(type(count) == "number" and count > 1 and tostring(count) or "")
+    local usable, noMana = nil, nil
+    if has then
+        usable, noMana = read("IsUsableAction", slot)
+    end
+    if not has or usable == true then
+        b.icon:SetVertexColor(1, 1, 1)
+    elseif noMana == true then
+        b.icon:SetVertexColor(0.45, 0.5, 1)
+    else
+        b.icon:SetVertexColor(0.4, 0.4, 0.4)
+    end
+    b.active:SetShown(has and (read("IsCurrentAction", slot) == true or read("IsAutoRepeatAction", slot) == true))
+    b.key:SetText(U.bars.keyText(read("GetBindingKey", b.binding)))
+    local kind, id = nil, nil
+    if has then
+        kind, id = read("GetActionInfo", slot)
+    end
+    b.glow:SetShown(kind == "spell" and type(id) == "number" and U.bars.procs[id] == true)
+end
+
+U.bars.procs = {} -- spell id -> its proc glow is showing
+
+function U.bars.paintAll()
+    for _, b in ipairs(U.bars.buttons) do
+        pcall(U.bars.paint, b)
+    end
+end
+
+-- The grid, made once, out of combat: a secure header that pages the main
+-- bar, a black box whose 1px gaps read as lines, and the sixteen buttons.
+function U.bars.build()
+    local B = U.bars
+    if B.header then
+        return true
+    end
+    if read("InCombatLockdown") then
+        return false
+    end
+    local function P(n)
+        return n * B.PX
+    end
+    local header = CreateFrame("Frame", "ForeverBuddyBarHeader", UIParent, "SecureHandlerStateTemplate")
+    header:SetFrameStrata("HIGH")
+    header:SetFrameLevel(10) -- above the click shields
+    header:SetSize(P(8 * B.ICON + 7 * B.GAP + 2), P(2 * B.ICON + B.GAP + 2))
+    header:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, P(B.Y0))
+    local box = header:CreateTexture(nil, "BACKGROUND")
+    box:SetAllPoints()
+    box:SetColorTexture(0, 0, 0, 1)
+    local useDown = read("GetCVarBool", "ActionButtonUseKeyDown") == true
+    for i, s in ipairs(B.SLOTS) do
+        local name = "ForeverBuddyActionButton" .. i
+        local b = CreateFrame("CheckButton", name, header, "SecureActionButtonTemplate")
+        local col, row = (i - 1) % 8, i <= 8 and 1 or 0
+        b:SetSize(P(B.ICON), P(B.ICON))
+        b:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", P(1 + col * (B.ICON + B.GAP)), P(1 + row * (B.ICON + B.GAP)))
+        b:SetAttribute("type", "action")
+        b:SetAttribute("action", s[1])
+        b:RegisterForClicks(useDown and "AnyDown" or "AnyUp")
+        b:RegisterForDrag("LeftButton", "RightButton")
+        b.binding, b.base = s[2], s[1]
+        b.plate = b:CreateTexture(nil, "BACKGROUND")
+        b.plate:SetAllPoints()
+        b.plate:SetColorTexture(0.078, 0.078, 0.086, 1)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetAllPoints()
+        b.icon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+        b.active = b:CreateTexture(nil, "OVERLAY")
+        b.active:SetAllPoints()
+        b.active:SetColorTexture(1, 1, 1, 0.18)
+        b.active:Hide()
+        -- The proc, as round 4 draws it: a 2px gold inner border and a soft
+        -- glow half again the icon's size. On a plain child frame above the
+        -- grid, so the glow lies over the neighbours and shows or hides in
+        -- combat (it isn't protected).
+        b.glow = CreateFrame("Frame", nil, b)
+        b.glow:SetAllPoints()
+        b.glow:SetFrameLevel(b:GetFrameLevel() + 5)
+        local soft = b.glow:CreateTexture(nil, "OVERLAY")
+        soft:SetTexture(B.MEDIA .. "Glow")
+        soft:SetBlendMode("ADD")
+        soft:SetVertexColor(1, 0.824, 0.235, 0.55) -- #ffd23c
+        soft:SetPoint("CENTER")
+        soft:SetSize(P(B.ICON * 1.5), P(B.ICON * 1.5))
+        for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
+            { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+            local edge = b.glow:CreateTexture(nil, "OVERLAY")
+            edge:SetColorTexture(1, 0.824, 0.235, 1)
+            edge:SetPoint(e[1])
+            edge:SetPoint(e[2])
+            if e[3] then
+                edge:SetHeight(P(2))
+            else
+                edge:SetWidth(P(2))
+            end
+        end
+        b.glow:Hide()
+        b.cooldown = CreateFrame("Cooldown", name .. "Cooldown", b, "CooldownFrameTemplate")
+        b.cooldown:SetAllPoints()
+        b.cooldown:SetHideCountdownNumbers(false)
+        b.cooldown:SetDrawEdge(false)
+        -- Round 4's text: Barlow Semi Condensed Bold, a thick black stroke;
+        -- stacks 16px, keybinds 12px.
+        b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        b.count:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(16), "THICKOUTLINE")
+        b.count:SetPoint("BOTTOMRIGHT", -P(3), P(3))
+        b.key = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        b.key:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(12), "THICKOUTLINE")
+        b.key:SetPoint("TOPRIGHT", -P(3), -P(3))
+        -- Drag and drop as Blizzard's buttons: out of combat, and with the
+        -- bars locked only with the pick-up modifier held.
+        b:SetScript("OnDragStart", function(self)
+            if read("InCombatLockdown") then
+                return
+            end
+            if read("GetCVar", "lockActionBars") == "1" and read("IsModifiedClick", "PICKUPACTION") ~= true then
+                return
+            end
+            read("PickupAction", self:GetAttribute("action"))
+            U.bars.paintAll()
+        end)
+        b:SetScript("OnReceiveDrag", function(self)
+            if read("InCombatLockdown") then
+                return
+            end
+            read("PlaceAction", self:GetAttribute("action"))
+            U.bars.paintAll()
+        end)
+        b:SetScript("OnEnter", function(self)
+            if GameTooltip and GameTooltip.SetAction then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                pcall(GameTooltip.SetAction, GameTooltip, self:GetAttribute("action"))
+                GameTooltip:Show()
+            end
+        end)
+        b:SetScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
+        if i <= 12 then
+            header:SetFrameRef("main" .. i, b)
+        end
+        B.buttons[i] = b
+    end
+    -- The main bar's page: 1 normally, the bonus bar's (7 to 10) in stealth,
+    -- a form or a stance. Set in the restricted environment, so it changes in
+    -- combat exactly as Blizzard's bar does.
+    header:SetAttribute("_onstate-page", [[
+        local offset = ((tonumber(newstate) or 1) - 1) * 12
+        for i = 1, 12 do
+            local b = self:GetFrameRef("main" .. i)
+            if b then
+                b:SetAttribute("action", offset + i)
+            end
+        end
+    ]])
+    RegisterStateDriver(header, "page",
+        "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; 1")
+    B.header = header
+    -- The click shields: Blizzard's faded buttons still take clicks, so a
+    -- click on their footprint would cast from a bar you can't see. One
+    -- plain frame of ours over each bar takes those clicks and does
+    -- nothing: no scripts, no tooltip, nothing drawn. Ours are anchored to
+    -- theirs (no call on theirs), which makes ours protected too, so they
+    -- show and hide only out of combat, with the header.
+    B.shields = {}
+    for _, name in ipairs(B.BLIZZARD) do
+        local bar = rawget(_G, name)
+        if type(bar) == "table" then
+            local s = CreateFrame("Frame", "ForeverBuddyBarShield" .. name, UIParent)
+            s:SetAllPoints(bar)
+            s:SetFrameStrata("HIGH")
+            s:SetFrameLevel(1)
+            s:EnableMouse(true)
+            s:Hide()
+            B.shields[#B.shields + 1] = s
+        end
+    end
+    return true
+end
+
+-- Ours on or off, Blizzard's faded to match, and the keys pointed at ours.
+-- Secure work waits for the end of combat; the look updates any time.
+function U.bars.apply()
+    local B = U.bars
+    local want = B.wanted()
+    if read("InCombatLockdown") then
+        B.pending = true
+        return
+    end
+    B.pending = false
+    if want and not B.build() then
+        B.pending = true
+        return
+    end
+    if B.header then
+        B.header:SetShown(want)
+        for _, s in ipairs(B.shields) do
+            s:SetShown(want)
+        end
+        read("ClearOverrideBindings", B.header)
+        if want then
+            for _, b in ipairs(B.buttons) do
+                for _, key in ipairs({ read("GetBindingKey", b.binding) }) do
+                    if type(key) == "string" then
+                        read("SetOverrideBindingClick", B.header, false, key, b:GetName(), "LeftButton")
+                    end
+                end
+            end
+        end
+    end
+    -- Back to 1 only if we faded them: another addon's fade stays its own.
+    if want or B.faded then
+        for _, name in ipairs(B.BLIZZARD) do
+            local f = rawget(_G, name)
+            if type(f) == "table" and type(f.SetAlpha) == "function" then
+                f:SetAlpha(want and 0 or 1)
+            end
+        end
+        B.faded = want
+    end
+    if want then
+        B.paintAll()
+    end
+end
+
+-- The game's news about actions, cooldowns and procs: repaint. The end of
+-- combat runs any secure work that waited.
+U.bars.events = CreateFrame("Frame")
+for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UPDATE_COOLDOWN",
+    "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_STATE", "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR",
+    "UPDATE_BINDINGS", "SPELL_UPDATE_CHARGES", "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW",
+    "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE", "PLAYER_REGEN_ENABLED" }) do
+    pcall(U.bars.events.RegisterEvent, U.bars.events, e)
+end
+U.bars.events:SetScript("OnEvent", function(_, event, a)
+    local B = U.bars
+    if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+        if type(a) == "number" and not isSecret(a) then
+            B.procs[a] = event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or nil
+        end
+    end
+    if event == "PLAYER_REGEN_ENABLED" and B.pending then
+        pcall(B.apply)
+    elseif event == "UPDATE_BINDINGS" or event == "PLAYER_ENTERING_WORLD" then
+        pcall(B.apply)
+    elseif B.header and B.wanted() then
+        B.paintAll()
+    end
+end)
+
+-- The Settings tab's get and set for "Our action bars".
+function U.bars.option()
+    return {
+        get = function()
+            return type(ForeverBuddySettings) == "table" and ForeverBuddySettings.ourBars == true
+        end,
+        set = function(on)
+            if type(ForeverBuddySettings) ~= "table" then
+                ForeverBuddySettings = {}
+            end
+            ForeverBuddySettings.ourBars = on and true or nil
+            U.bars.apply()
+        end,
+    }
+end
+
+U.mods.register({ id = "actionbars", enable = U.bars.apply, disable = U.bars.apply })
+
 -- The Map module (P4c) ------------------------------------------------------------------
 --
 -- Display only: coordinates on the world map and under the minimap, and the
@@ -5035,6 +5385,9 @@ do
         ["questhelp.accept"] = C.actsOption("questAccept"),
         ["questhelp.turnIn"] = C.actsOption("questTurnIn"),
         ["questhelp.repeatable"] = C.actsOption("questRepeatable"),
+        -- TH3: our own action bars (secure buttons; changes wait out combat).
+        ["actionbars.enabled"] = U.mods.option("actionbars"),
+        ["actionbars.ours"] = U.bars.option(),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")

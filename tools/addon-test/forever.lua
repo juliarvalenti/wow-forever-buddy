@@ -180,4 +180,22 @@ return {
     ["C_TradeSkillUI.IsNPCCrafting"] = { from = "assumed" },
     ["C_TradeSkillUI.IsTradeSkillGuild"] = { from = "assumed" },
     ["C_TradeSkillUI.IsTradeSkillLinked"] = { from = "assumed" },
+    -- TH3: the action bars. Read only once you're in the world (the buttons
+    -- paint from PLAYER_ENTERING_WORLD on), so "as live" for now.
+    HasAction = { from = "assumed" },
+    GetActionTexture = { from = "assumed" },
+    GetActionInfo = { from = "assumed" },
+    GetActionCooldown = { from = "assumed" },
+    GetActionCount = { from = "assumed" },
+    IsUsableAction = { from = "assumed" },
+    IsCurrentAction = { from = "assumed" },
+    IsAutoRepeatAction = { from = "assumed" },
+    GetBindingKey = { from = "assumed" },
+    GetCVar = { from = "assumed" },
+    GetCVarBool = { from = "assumed" },
+    IsModifiedClick = { from = "assumed" },
+    PickupAction = { from = "assumed" },
+    PlaceAction = { from = "assumed" },
+    SetOverrideBindingClick = { from = "assumed" },
+    ClearOverrideBindings = { from = "assumed" },
 }

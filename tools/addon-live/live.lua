@@ -526,6 +526,7 @@ buttons                  what's clickable on screen: name, text, centre
 advance <seconds>        let time pass (timers, OnUpdate)
 reload                   /reload (SavedVariables kept)
 combat on|off            enter or leave combat
+event <NAME> [args]      fire a game event (numbers stay numbers): event SPELL_ACTIVATION_OVERLAY_GLOW_SHOW 1752
 scene <class> [level] [stealth] [layout=<name|file>]
                          Blizzard's own UI (needs WOWAPI_ART) with a fixture character and ForeverBuddy
 health <unit> <v>        set health (640, 50%, -120, +30) and fire UNIT_HEALTH
@@ -625,6 +626,19 @@ function COMMANDS.combat(rest)
     end
     S.sim:Advance(0.2)
     return "combat " .. rest
+end
+
+function COMMANDS.event(rest)
+    local args = {}
+    for word in rest:gmatch("%S+") do
+        args[#args + 1] = tonumber(word) or word
+    end
+    if not args[1] then
+        error("event <NAME> [args]", 0)
+    end
+    need():FireEvent(unpack(args))
+    S.sim:Advance(0.2)
+    return "fired " .. rest
 end
 
 -- The logged-in scene (HUD2/HUD3) -------------------------------------------------
