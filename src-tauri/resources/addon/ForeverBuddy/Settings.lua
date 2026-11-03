@@ -27,11 +27,12 @@
 -- values = { ... } and a "string"'s maxLength (200 if unset).
 --
 -- modules: the window's Modules (W1), in rail order. Each has its label,
--- the line under its page title, and its options: those whose module is its
+-- the line under its page title, optionally a note shown on its page (for
+-- one with no options yet), and its options: those whose module is its
 -- id, plus any it lists (the Coach's were declared before modules were).
 -- Its switch is "<id>.enabled", on by default so turning modules into
--- modules switched nobody's choices off; each option at the top of a module
--- hangs off it.
+-- modules switched nobody's choices off (a new module may default off, as
+-- the HUD does); each option at the top of a module hangs off it.
 --
 -- lints: known poor combinations (P4 §1, layer 4), each with the values it
 -- fires on ({ min, max } for a number, else the value itself) and the line
@@ -64,6 +65,12 @@ ns.settings = {
             id = "questhelp",
             label = "Quest helper",
             sub = "Accepts and hands in quests you open with an NPC. Each option is off until you turn it on.",
+        },
+        {
+            id = "hud",
+            label = "HUD",
+            sub = "Health, power and combo points under your character. Display only.",
+            note = "Turn it on to replace your player and target frames. Blizzard's come back when it's off.",
         },
         {
             id = "actionbars",
@@ -447,6 +454,20 @@ ns.settings = {
             showHelp = true,
             acts = true,
         },
+        -- TH2: the HUD module, the one module that's off until you turn it
+        -- on (it takes over where your health shows).
+        {
+            id = "hud.enabled",
+            module = "hud",
+            section = "HUD",
+            type = "bool",
+            default = false,
+            label = "HUD",
+            help = "Your health and your target's, power, combo points and Slice and Dice, under your character. "
+                .. "Blizzard's player and target frames turn see-through while it's on. Display only.",
+            moduleSwitch = true,
+            acts = false,
+        },
         -- TH3: our own action bars, secure buttons in the round 4 grid. Off
         -- until turned on (the launch-week HUD ships behind this), and no
         -- preset turns it on.
@@ -520,8 +541,9 @@ ns.settings = {
     presets = {
         -- The designer's three (P4c), a row for every option except "Record
         -- my next session", which no preset touches. Every module stays on
-        -- (W1): a preset picks what each one shows. Our action bars (TH3)
-        -- stay off in all three: they replace Blizzard's, so you choose them.
+        -- (W1): a preset picks what each one shows. The HUD (TH2) and our
+        -- action bars (TH3) stay off: they take over Blizzard's, so they're
+        -- only ever your own choice.
         {
             id = "quiet",
             label = "Quiet",
@@ -536,6 +558,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
                 ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },
@@ -553,6 +576,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
                 ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },
@@ -570,6 +594,7 @@ ns.settings = {
                 ["bags.enabled"] = true, ["map.enabled"] = true, ["quest.enabled"] = true,
                 ["tooltips.enabled"] = true, ["coach.enabled"] = true, ["merchant.enabled"] = true,
                 ["questhelp.enabled"] = true,
+                ["hud.enabled"] = false,
                 ["actionbars.enabled"] = true, ["actionbars.ours"] = false,
             },
         },

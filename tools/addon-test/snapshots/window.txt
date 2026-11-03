@@ -23,52 +23,56 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
-    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x28
+    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab1:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab1:BOTTOMRIGHT(8,0)
       FontString LEFT>ForeverBuddyWindowTab1:LEFT(18,0) "Plan"
       FontString RIGHT>ForeverBuddyWindowTab1:RIGHT(-16,0) "4"
-    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-116) 148x28
+    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-109) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab2:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab2:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab2:LEFT(18,0) "Lists"
       FontString RIGHT>ForeverBuddyWindowTab2:RIGHT(-16,0) "2"
-    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-144) 148x28
+    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-130) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab3:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab3:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab3:LEFT(18,0) "Errands"
       FontString RIGHT>ForeverBuddyWindowTab3:RIGHT(-16,0) "3"
-    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-172) 148x28
+    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-151) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab4:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab4:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab4:LEFT(18,0) "Cleanup"
       FontString RIGHT>ForeverBuddyWindowTab4:RIGHT(-16,0) "2"
-    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-212) "Modules"
-    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-230) 148x28
+    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-184) "Modules"
+    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-202) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_bags:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_bags:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_bags:LEFT(18,0) "Bags"
       Texture RIGHT>ForeverBuddyWindowModule_bags:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-258) 148x28
+    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-223) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_map:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_map:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_map:LEFT(18,0) "Map"
       Texture RIGHT>ForeverBuddyWindowModule_map:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x28
+    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-244) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_quest:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_quest:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_quest:LEFT(18,0) "Quests"
       Texture RIGHT>ForeverBuddyWindowModule_quest:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-314) 148x28
+    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-265) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_tooltips:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_tooltips:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_tooltips:LEFT(18,0) "Tooltips"
       Texture RIGHT>ForeverBuddyWindowModule_tooltips:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-342) 148x28
+    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_coach:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_coach:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_coach:LEFT(18,0) "Coach"
       Texture RIGHT>ForeverBuddyWindowModule_coach:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x28
+    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-307) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-328) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
       Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-426) 148x28
+    Button ForeverBuddyWindowModule_hud TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-349) 148x21
+      Texture TOPLEFT>ForeverBuddyWindowModule_hud:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_hud:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_hud:LEFT(18,0) "HUD"
+      Texture RIGHT>ForeverBuddyWindowModule_hud:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_actionbars:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_actionbars:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_actionbars:LEFT(18,0) "Action bars"
       Texture RIGHT>ForeverBuddyWindowModule_actionbars:RIGHT(-18,0) 6x6
@@ -78,7 +82,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Tonight's plan"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -284,52 +288,56 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
-    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x28
+    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab1:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab1:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab1:LEFT(18,0) "Plan"
       FontString RIGHT>ForeverBuddyWindowTab1:RIGHT(-16,0) "4"
-    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-116) 148x28
+    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-109) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab2:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab2:BOTTOMRIGHT(8,0)
       FontString LEFT>ForeverBuddyWindowTab2:LEFT(18,0) "Lists"
       FontString RIGHT>ForeverBuddyWindowTab2:RIGHT(-16,0) "2"
-    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-144) 148x28
+    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-130) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab3:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab3:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab3:LEFT(18,0) "Errands"
       FontString RIGHT>ForeverBuddyWindowTab3:RIGHT(-16,0) "3"
-    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-172) 148x28
+    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-151) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab4:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab4:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab4:LEFT(18,0) "Cleanup"
       FontString RIGHT>ForeverBuddyWindowTab4:RIGHT(-16,0) "2"
-    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-212) "Modules"
-    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-230) 148x28
+    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-184) "Modules"
+    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-202) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_bags:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_bags:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_bags:LEFT(18,0) "Bags"
       Texture RIGHT>ForeverBuddyWindowModule_bags:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-258) 148x28
+    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-223) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_map:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_map:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_map:LEFT(18,0) "Map"
       Texture RIGHT>ForeverBuddyWindowModule_map:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x28
+    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-244) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_quest:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_quest:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_quest:LEFT(18,0) "Quests"
       Texture RIGHT>ForeverBuddyWindowModule_quest:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-314) 148x28
+    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-265) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_tooltips:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_tooltips:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_tooltips:LEFT(18,0) "Tooltips"
       Texture RIGHT>ForeverBuddyWindowModule_tooltips:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-342) 148x28
+    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_coach:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_coach:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_coach:LEFT(18,0) "Coach"
       Texture RIGHT>ForeverBuddyWindowModule_coach:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x28
+    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-307) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-328) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
       Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-426) 148x28
+    Button ForeverBuddyWindowModule_hud TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-349) 148x21
+      Texture TOPLEFT>ForeverBuddyWindowModule_hud:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_hud:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_hud:LEFT(18,0) "HUD"
+      Texture RIGHT>ForeverBuddyWindowModule_hud:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_actionbars:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_actionbars:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_actionbars:LEFT(18,0) "Action bars"
       Texture RIGHT>ForeverBuddyWindowModule_actionbars:RIGHT(-18,0) 6x6
@@ -339,7 +347,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Lists"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -561,52 +569,56 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
-    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x28
+    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab1:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab1:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab1:LEFT(18,0) "Plan"
       FontString RIGHT>ForeverBuddyWindowTab1:RIGHT(-16,0) "4"
-    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-116) 148x28
+    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-109) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab2:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab2:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab2:LEFT(18,0) "Lists"
       FontString RIGHT>ForeverBuddyWindowTab2:RIGHT(-16,0) "2"
-    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-144) 148x28
+    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-130) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab3:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab3:BOTTOMRIGHT(8,0)
       FontString LEFT>ForeverBuddyWindowTab3:LEFT(18,0) "Errands"
       FontString RIGHT>ForeverBuddyWindowTab3:RIGHT(-16,0) "3"
-    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-172) 148x28
+    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-151) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab4:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab4:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab4:LEFT(18,0) "Cleanup"
       FontString RIGHT>ForeverBuddyWindowTab4:RIGHT(-16,0) "2"
-    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-212) "Modules"
-    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-230) 148x28
+    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-184) "Modules"
+    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-202) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_bags:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_bags:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_bags:LEFT(18,0) "Bags"
       Texture RIGHT>ForeverBuddyWindowModule_bags:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-258) 148x28
+    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-223) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_map:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_map:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_map:LEFT(18,0) "Map"
       Texture RIGHT>ForeverBuddyWindowModule_map:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x28
+    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-244) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_quest:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_quest:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_quest:LEFT(18,0) "Quests"
       Texture RIGHT>ForeverBuddyWindowModule_quest:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-314) 148x28
+    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-265) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_tooltips:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_tooltips:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_tooltips:LEFT(18,0) "Tooltips"
       Texture RIGHT>ForeverBuddyWindowModule_tooltips:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-342) 148x28
+    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_coach:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_coach:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_coach:LEFT(18,0) "Coach"
       Texture RIGHT>ForeverBuddyWindowModule_coach:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x28
+    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-307) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-328) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
       Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-426) 148x28
+    Button ForeverBuddyWindowModule_hud TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-349) 148x21
+      Texture TOPLEFT>ForeverBuddyWindowModule_hud:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_hud:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_hud:LEFT(18,0) "HUD"
+      Texture RIGHT>ForeverBuddyWindowModule_hud:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_actionbars:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_actionbars:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_actionbars:LEFT(18,0) "Action bars"
       Texture RIGHT>ForeverBuddyWindowModule_actionbars:RIGHT(-18,0) 6x6
@@ -616,7 +628,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Errands"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24
@@ -853,52 +865,56 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
     FontString TOPLEFT>ForeverBuddyWindow.9.7:TOPRIGHT(7,-2) "Forever Buddy"
     FontString TOPLEFT>ForeverBuddyWindow.9.8:BOTTOMLEFT(0,-3) "Thrandor, level 12"
     FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-70) "Tonight"
-    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x28
+    Button ForeverBuddyWindowTab1 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-88) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab1:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab1:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab1:LEFT(18,0) "Plan"
       FontString RIGHT>ForeverBuddyWindowTab1:RIGHT(-16,0) "4"
-    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-116) 148x28
+    Button ForeverBuddyWindowTab2 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-109) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab2:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab2:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab2:LEFT(18,0) "Lists"
       FontString RIGHT>ForeverBuddyWindowTab2:RIGHT(-16,0) "2"
-    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-144) 148x28
+    Button ForeverBuddyWindowTab3 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-130) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab3:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab3:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab3:LEFT(18,0) "Errands"
       FontString RIGHT>ForeverBuddyWindowTab3:RIGHT(-16,0) "3"
-    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-172) 148x28
+    Button ForeverBuddyWindowTab4 TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-151) 148x21
       Texture TOPLEFT>ForeverBuddyWindowTab4:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab4:BOTTOMRIGHT(8,0)
       FontString LEFT>ForeverBuddyWindowTab4:LEFT(18,0) "Cleanup"
       FontString RIGHT>ForeverBuddyWindowTab4:RIGHT(-16,0) "2"
-    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-212) "Modules"
-    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-230) 148x28
+    FontString TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(16,-184) "Modules"
+    Button ForeverBuddyWindowModule_bags TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-202) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_bags:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_bags:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_bags:LEFT(18,0) "Bags"
       Texture RIGHT>ForeverBuddyWindowModule_bags:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-258) 148x28
+    Button ForeverBuddyWindowModule_map TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-223) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_map:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_map:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_map:LEFT(18,0) "Map"
       Texture RIGHT>ForeverBuddyWindowModule_map:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x28
+    Button ForeverBuddyWindowModule_quest TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-244) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_quest:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_quest:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_quest:LEFT(18,0) "Quests"
       Texture RIGHT>ForeverBuddyWindowModule_quest:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-314) 148x28
+    Button ForeverBuddyWindowModule_tooltips TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-265) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_tooltips:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_tooltips:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_tooltips:LEFT(18,0) "Tooltips"
       Texture RIGHT>ForeverBuddyWindowModule_tooltips:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-342) 148x28
+    Button ForeverBuddyWindowModule_coach TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-286) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_coach:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_coach:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_coach:LEFT(18,0) "Coach"
       Texture RIGHT>ForeverBuddyWindowModule_coach:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x28
+    Button ForeverBuddyWindowModule_merchant TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-307) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_merchant:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_merchant:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_merchant:LEFT(18,0) "Merchant"
       Texture RIGHT>ForeverBuddyWindowModule_merchant:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-398) 148x28
+    Button ForeverBuddyWindowModule_questhelp TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-328) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_questhelp:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_questhelp:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_questhelp:LEFT(18,0) "Quest helper"
       Texture RIGHT>ForeverBuddyWindowModule_questhelp:RIGHT(-18,0) 6x6
-    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-426) 148x28
+    Button ForeverBuddyWindowModule_hud TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-349) 148x21
+      Texture TOPLEFT>ForeverBuddyWindowModule_hud:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_hud:BOTTOMRIGHT(8,0) hidden
+      FontString LEFT>ForeverBuddyWindowModule_hud:LEFT(18,0) "HUD"
+      Texture RIGHT>ForeverBuddyWindowModule_hud:RIGHT(-18,0) 6x6
+    Button ForeverBuddyWindowModule_actionbars TOPLEFT>ForeverBuddyWindow.9:TOPLEFT(0,-370) 148x21
       Texture TOPLEFT>ForeverBuddyWindowModule_actionbars:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowModule_actionbars:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowModule_actionbars:LEFT(18,0) "Action bars"
       Texture RIGHT>ForeverBuddyWindowModule_actionbars:RIGHT(-18,0) 6x6
@@ -908,7 +924,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
       Texture TOPLEFT>ForeverBuddyWindowTab5:TOPLEFT(-4,0) BOTTOMRIGHT>ForeverBuddyWindowTab5:BOTTOMRIGHT(8,0) hidden
       FontString LEFT>ForeverBuddyWindowTab5:LEFT(18,0) "Settings"
   FontString TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-20) "Cleanup"
-  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) "From Forever Buddy · 16:53"
+  FontString TOPLEFT>ForeverBuddyWindow.10:BOTTOMLEFT(0,-6) 424x? "From Forever Buddy · 16:53"
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-70) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-70) ?x1
   Texture TOPLEFT>ForeverBuddyWindow:TOPLEFT(176,-71) TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-20,-71) ?x1
   Button TOPRIGHT>ForeverBuddyWindow:TOPRIGHT(-14,-18) 24x24

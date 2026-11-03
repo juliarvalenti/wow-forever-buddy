@@ -82,12 +82,12 @@ const FILES: [(&str, &[u8]); 24] = [
         "Media/Geist-OFL.txt",
         include_bytes!("../resources/addon/ForeverBuddy/Media/Geist-OFL.txt"),
     ),
-    // The action bars (TH3): round 4's proc glow, and Barlow (OFL) for their
-    // counts and keys.
+    // The action bars' proc glow (TH3, round 4).
     (
         "Media/Glow.tga",
         include_bytes!("../resources/addon/ForeverBuddy/Media/Glow.tga"),
     ),
+    // The HUD's numbers (TH2): Barlow Semi Condensed Bold, OFL.
     (
         "Media/BarlowSCB.ttf",
         include_bytes!("../resources/addon/ForeverBuddy/Media/BarlowSCB.ttf"),

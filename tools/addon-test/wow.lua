@@ -347,6 +347,16 @@ function M.new(opts)
         quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
+        -- TH2: the HUD's units. Each is { name, health, healthMax, power,
+        -- powerMax, powerType, hostile }; target is nil with nothing
+        -- targeted. combo is the player's combo points; auras the player's
+        -- buffs, { spellId, name, icon, duration, expirationTime }.
+        class = { "Warrior", "WARRIOR", 1 },
+        units = {
+            player = { health = 1200, healthMax = 1200, power = 100, powerMax = 100, powerType = 1 },
+        },
+        combo = 0,
+        auras = {},
     }
     client.world = world
 
@@ -415,6 +425,8 @@ function M.new(opts)
                 return char.name, char.surname
             elseif unit == "npc" and world.npc then
                 return world.npc.name
+            elseif unit == "target" and world.units.target then
+                return world.units.target.name
             end
         end,
         UnitIsPlayer = function(unit)
@@ -969,8 +981,46 @@ function M.new(opts)
         end,
         UnitClass = function(unit)
             if unit == "player" then
-                return "Warrior", "WARRIOR", 1
+                return world.class[1], world.class[2], world.class[3]
             end
+        end,
+        -- TH2: the HUD's reads (world.units).
+        UnitExists = function(unit)
+            return world.units[unit] ~= nil
+        end,
+        UnitHealth = function(unit)
+            return world.units[unit] and world.units[unit].health or 0
+        end,
+        UnitHealthMax = function(unit)
+            return world.units[unit] and world.units[unit].healthMax or 0
+        end,
+        -- Enum.PowerType: 0 mana, 1 rage, 3 energy, 4 combo points.
+        UnitPower = function(unit, kind)
+            if kind == 4 then
+                return unit == "player" and world.combo or 0
+            end
+            return world.units[unit] and world.units[unit].power or 0
+        end,
+        UnitPowerMax = function(unit, kind)
+            if kind == 4 then
+                return 5
+            end
+            return world.units[unit] and world.units[unit].powerMax or 0
+        end,
+        UnitPowerType = function(unit)
+            local u = world.units[unit]
+            return u and u.powerType or 0, u and ({ [0] = "MANA", [1] = "RAGE", [3] = "ENERGY" })[u.powerType]
+        end,
+        UnitCanAttack = function(_, unit)
+            return world.units[unit] ~= nil and world.units[unit].hostile == true
+        end,
+        ["C_UnitAuras.GetAuraDataByIndex"] = function(unit, i, filter)
+            if unit == "player" and filter == "HELPFUL" then
+                return world.auras[i]
+            end
+        end,
+        ["C_Spell.GetSpellName"] = function(id)
+            return ({ [5171] = "Slice and Dice", [6774] = "Slice and Dice" })[id]
         end,
         UnitRace = function(unit)
             if unit == "player" then
@@ -1361,8 +1411,22 @@ function M.new(opts)
     -- in combat, outside a restricted snippet, showing, hiding, moving it or
     -- setting an attribute is refused, as the client refuses it
     -- (client.blocked). Its textures, text and plain child frames aren't.
+    -- A frame anchored to a protected one (one of Blizzard's bars, P4f-1)
+    -- is protected too, as the client makes it.
+    local protectedProxy = setmetatable({}, { __mode = "k" })
+    local function isProtected(w)
+        if rawget(w, "secure") then
+            return true
+        end
+        for _, a in ipairs(rawget(w, "points") or {}) do
+            if a[2] ~= nil and protectedProxy[a[2]] then
+                return true
+            end
+        end
+        return false
+    end
     local function guard(w, what)
-        return rawget(w, "secure") and client.blocked(what)
+        return isProtected(w) and client.blocked(what)
     end
     for _, method in ipairs({ "Show", "Hide", "SetShown", "SetPoint", "ClearAllPoints", "SetAllPoints", "SetSize" }) do
         local plain = Frame[method]
@@ -1583,6 +1647,7 @@ function M.new(opts)
                     return name
                 end,
             })
+            protectedProxy[env[name]] = true
         end
         env.UISpecialFrames = {}
         env.Settings = {
@@ -2063,6 +2128,40 @@ function M.new(opts)
         client.fire(on and "PLAYER_REGEN_DISABLED" or "PLAYER_REGEN_ENABLED")
     end
 
+    -- TH2: the HUD's world. A new target (or nil for none).
+    function client.target(t)
+        world.units.target = t
+        client.fire("PLAYER_TARGET_CHANGED")
+    end
+
+    -- A unit's health or power changed: fields of world.units[unit].
+    function client.unit(unit, fields)
+        local u = world.units[unit]
+        for k, v in pairs(fields) do
+            u[k] = v
+        end
+        if fields.health or fields.healthMax then
+            client.fire("UNIT_HEALTH", unit)
+        end
+        if fields.power or fields.powerMax then
+            client.fire("UNIT_POWER_FREQUENT", unit, ({ [0] = "MANA", [1] = "RAGE", [3] = "ENERGY" })[u.powerType])
+        end
+        if fields.powerType then
+            client.fire("UNIT_DISPLAYPOWER", unit)
+        end
+    end
+
+    function client.comboPoints(n)
+        world.combo = n
+        client.fire("UNIT_POWER_UPDATE", "player", "COMBO_POINTS")
+    end
+
+    -- The player's buffs, in the client's order.
+    function client.buffs(list)
+        world.auras = list
+        client.fire("UNIT_AURA", "player")
+    end
+
     -- TH3: whether a protected call is refused now: in combat, outside a
     -- restricted snippet. A refusal fires ADDON_ACTION_BLOCKED and goes on
     -- client.errors, so a scenario that hits one fails.
@@ -2173,6 +2272,60 @@ function M.new(opts)
                 end
             end
         end
+    end
+
+    -- Which of two frames the mouse meets first where they overlap: the
+    -- higher strata, then the higher frame level (a frame without its own
+    -- takes its parent's, plus one), as the client orders them.
+    local STRATA = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+        FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+    local function strataOf(f)
+        while f do
+            local s = f.layout.SetFrameStrata
+            if s then
+                return STRATA[s[1]]
+            end
+            f = f.parent
+        end
+        return STRATA.MEDIUM
+    end
+    local function levelOf(f)
+        if not f then
+            return 0
+        end
+        local l = f.layout.SetFrameLevel
+        return l and l[1] or levelOf(f.parent) + 1
+    end
+    function client.above(a, b)
+        local sa, sb = strataOf(a), strataOf(b)
+        if sa ~= sb then
+            return sa > sb
+        end
+        return levelOf(a) > levelOf(b)
+    end
+
+    -- TH3: a click on Blizzard's bar `name` (MEDIUM, as in the client),
+    -- away from anything else: the name of the topmost shown, mouse-taking
+    -- frame of the addon's that covers it (SetAllPoints on it), or `name`,
+    -- the bar's own (faded) button taking it.
+    function client.clickOnBar(name)
+        local bar = state.env[name]
+        local best
+        for _, f in ipairs(state.frames) do
+            local p = f.points
+            local covers = #p == 2 and p[1][2] == bar and p[2][2] == bar
+            local visible = true
+            local w = f
+            while w do
+                visible = visible and w.shown
+                w = w.parent
+            end
+            if covers and visible and f:IsMouseEnabled() and strataOf(f) > STRATA.MEDIUM
+                and (not best or client.above(f, best)) then
+                best = f
+            end
+        end
+        return best and best.name or name
     end
 
     -- Drag and drop between buttons: the drag start on one, the drop on

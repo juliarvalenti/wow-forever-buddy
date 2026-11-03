@@ -550,9 +550,30 @@ end
 
 U.mods = { list = {}, byId = {}, declared = select(2, ...).settings }
 
+-- "<id>.enabled"'s declared default: on, except for a module declared off
+-- until you turn it on (the HUD).
+function U.mods.default(id)
+    if not U.mods.defaults then
+        U.mods.defaults = {}
+        for _, o in ipairs(U.mods.declared and U.mods.declared.options or {}) do
+            if o.moduleSwitch then
+                U.mods.defaults[o.module] = o.default ~= false
+            end
+        end
+    end
+    return U.mods.defaults[id] ~= false
+end
+
 function U.mods.on(id)
     local m = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.modules
-    return not (type(m) == "table" and m[id] == false)
+    local v
+    if type(m) == "table" then
+        v = m[id]
+    end
+    if v == nil then
+        return U.mods.default(id)
+    end
+    return v ~= false
 end
 
 function U.mods.register(m)
@@ -567,10 +588,11 @@ function U.mods.set(id, on)
     if type(ForeverBuddySettings.modules) ~= "table" then
         ForeverBuddySettings.modules = {}
     end
-    if on then
+    -- Saved only where it differs from the default.
+    if (on and true or false) == U.mods.default(id) then
         ForeverBuddySettings.modules[id] = nil
     else
-        ForeverBuddySettings.modules[id] = false
+        ForeverBuddySettings.modules[id] = on and true or false
     end
     local m = U.mods.byId[id]
     local fn = m and (on and m.enable or m.disable)
@@ -714,6 +736,7 @@ function U.bars.build()
     end
     local header = CreateFrame("Frame", "ForeverBuddyBarHeader", UIParent, "SecureHandlerStateTemplate")
     header:SetFrameStrata("HIGH")
+    header:SetFrameLevel(10) -- above the click shields
     header:SetSize(P(8 * B.ICON + 7 * B.GAP + 2), P(2 * B.ICON + B.GAP + 2))
     header:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, P(B.Y0))
     local box = header:CreateTexture(nil, "BACKGROUND")
@@ -830,6 +853,25 @@ function U.bars.build()
     RegisterStateDriver(header, "page",
         "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; 1")
     B.header = header
+    -- The click shields: Blizzard's faded buttons still take clicks, so a
+    -- click on their footprint would cast from a bar you can't see. One
+    -- plain frame of ours over each bar takes those clicks and does
+    -- nothing: no scripts, no tooltip, nothing drawn. Ours are anchored to
+    -- theirs (no call on theirs), which makes ours protected too, so they
+    -- show and hide only out of combat, with the header.
+    B.shields = {}
+    for _, name in ipairs(B.BLIZZARD) do
+        local bar = rawget(_G, name)
+        if type(bar) == "table" then
+            local s = CreateFrame("Frame", "ForeverBuddyBarShield" .. name, UIParent)
+            s:SetAllPoints(bar)
+            s:SetFrameStrata("HIGH")
+            s:SetFrameLevel(1)
+            s:EnableMouse(true)
+            s:Hide()
+            B.shields[#B.shields + 1] = s
+        end
+    end
     return true
 end
 
@@ -849,6 +891,9 @@ function U.bars.apply()
     end
     if B.header then
         B.header:SetShown(want)
+        for _, s in ipairs(B.shields) do
+            s:SetShown(want)
+        end
         read("ClearOverrideBindings", B.header)
         if want then
             for _, b in ipairs(B.buttons) do
@@ -1098,6 +1143,386 @@ function U.map.apply()
     end
 end
 U.mods.register({ id = "map", enable = U.map.apply, disable = U.map.apply })
+
+-- The HUD module (TH2) ------------------------------------------------------------------
+--
+-- The designer's round 4 cluster (TH1): your frame and your target's either
+-- side of the screen's bottom centre, each a green (or, on an enemy, red)
+-- health bar with its numbers as the biggest text and power under it, a
+-- combo strip between them, and Slice and Dice big above. Display only: our
+-- own frames with the mouse off. Blizzard's PlayerFrame and TargetFrame stay
+-- where they are at alpha 0 (P4f: alpha only, never shown, hidden or moved,
+-- and our own note of the alpha we set, never GetAlpha).
+-- Off until you turn it on; while off there's no frame and no event. It
+-- updates from events. A value the client keeps secret leaves its bar as it
+-- was and its number blank.
+
+U.hud = {
+    -- Round 4's sizes are 1080p screen pixels; one in UI units.
+    P = 768 / 1080,
+    FONT = "Interface\\AddOns\\ForeverBuddy\\Media\\BarlowSCB.ttf",
+    COLORS = {
+        back = "#141416",
+        health = "#4fd99a",
+        hostile = "#d24a3a",
+        combo = "#fff569",
+        comboOff = "#2a2a2e",
+        -- by power type: mana, rage and energy, softened (th1-class-tuned)
+        power = { [0] = "#4a7fdc", [1] = "#d64541", [3] = "#f0c94a" },
+    },
+    SND = { [5171] = true, [6774] = true }, -- Slice and Dice, both ranks
+    EVENTS = {
+        "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_FREQUENT", "UNIT_POWER_UPDATE", "UNIT_MAXPOWER",
+        "UNIT_DISPLAYPOWER", "UNIT_AURA", "PLAYER_TARGET_CHANGED",
+    },
+}
+
+-- Stroked, bold and condensed: Barlow, with the game's font under it in case
+-- ours isn't found.
+function U.hud.text(parent, size, justify)
+    local s = parent:CreateFontString(nil, "OVERLAY")
+    s:SetFont("Fonts\\FRIZQT__.TTF", size, "THICKOUTLINE")
+    s:SetFont(U.hud.FONT, size, "THICKOUTLINE")
+    s:SetShadowOffset(0, 0)
+    s:SetTextColor(1, 1, 1, 1)
+    s:SetJustifyH(justify)
+    return s
+end
+
+-- A bar: a dark back and a fill from the left.
+function U.hud.bar(parent, w, h)
+    local b = CreateFrame("Frame", nil, parent)
+    b:SetSize(w, h)
+    b.w = w
+    U.ui.fill(b, U.ui.hex(U.hud.COLORS.back, 0.9)):SetAllPoints()
+    b.fill = b:CreateTexture(nil, "ARTWORK")
+    b.fill:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.fill:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+    b.fill:SetWidth(w)
+    return b
+end
+
+-- Its colour, lighter on the left and deeper on the right (round 4's
+-- gradient), set again only when it changes.
+function U.hud.paint(b, hex)
+    if b.color == hex then
+        return
+    end
+    b.color = hex
+    local c = U.ui.hex(hex)
+    local function shade(k)
+        if k >= 0 then
+            return c[1] + (1 - c[1]) * k, c[2] + (1 - c[2]) * k, c[3] + (1 - c[3]) * k, 1
+        end
+        return c[1] * (1 + k), c[2] * (1 + k), c[3] * (1 + k), 1
+    end
+    b.fill:SetColorTexture(1, 1, 1, 1)
+    if not (type(CreateColor) == "function"
+            and pcall(b.fill.SetGradient, b.fill, "HORIZONTAL", CreateColor(shade(0.38)), CreateColor(shade(-0.18)))) then
+        b.fill:SetColorTexture(c[1], c[2], c[3], 1)
+    end
+end
+
+-- How full, 0..1, and the value; nil when the client keeps either secret.
+function U.hud.value(unit, what)
+    local cur, max
+    if what == "health" then
+        cur, max = read("UnitHealth", unit), read("UnitHealthMax", unit)
+    else
+        cur, max = read("UnitPower", unit), read("UnitPowerMax", unit)
+    end
+    if type(cur) ~= "number" or type(max) ~= "number" then
+        return nil
+    end
+    if max <= 0 then
+        return 0, cur
+    end
+    return math.max(0, math.min(1, cur / max)), cur
+end
+
+-- "1.2 K", "3.4 M", "690".
+function U.hud.short(v)
+    if v >= 1000000 then
+        return string.format("%.1f M", v / 1000000)
+    elseif v >= 1000 then
+        return string.format("%.1f K", v / 1000)
+    end
+    return tostring(math.floor(v + 0.5))
+end
+
+-- A unit's frame: a 300x48 black box, health filling most of it, power a
+-- 5px line under it, and the numbers. The player's sits left of centre,
+-- the target's right, with the combo strip's width between them.
+function U.hud.unitFrame(unit)
+    local P = U.hud.P
+    local f = CreateFrame("Frame", unit == "player" and "ForeverBuddyHudPlayer" or "ForeverBuddyHudTarget", UIParent)
+    f:EnableMouse(false)
+    f:SetFrameStrata("MEDIUM")
+    f:SetSize(300 * P, 48 * P)
+    if unit == "player" then
+        f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOM", -188 * P, 247 * P)
+    else
+        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOM", 188 * P, 247 * P)
+    end
+    U.ui.fill(f, { 0, 0, 0, 1 }):SetAllPoints()
+    f.health = U.hud.bar(f, 298 * P, 39 * P)
+    f.health:SetPoint("TOPLEFT", f, "TOPLEFT", P, -P)
+    f.power = U.hud.bar(f, 298 * P, 5 * P)
+    f.power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", P, P)
+    if unit == "player" then
+        f.hp = U.hud.text(f.health, 22 * P, "RIGHT")
+        f.hp:SetPoint("RIGHT", f.health, "RIGHT", -8 * P, 0)
+        -- Your name on the left in your class's colour (th1-class-tuned).
+        f.name = U.hud.text(f.health, 18 * P, "LEFT")
+        f.name:SetPoint("LEFT", f.health, "LEFT", 8 * P, 0)
+        f.name:SetText((string.gsub(read("UnitName", "player") or "", "|", "||")))
+        local _, class = read(UnitClass, "player")
+        local c = type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[class or ""]
+        if type(c) == "table" and type(c.r) == "number" then
+            f.name:SetTextColor(c.r, c.g, c.b, 1)
+        end
+    else
+        f.name = U.hud.text(f.health, 16 * P, "LEFT")
+        f.name:SetPoint("TOPLEFT", f.health, "TOPLEFT", 7 * P, -P)
+        f.hp = U.hud.text(f.health, 20 * P, "RIGHT")
+        f.hp:SetPoint("BOTTOMRIGHT", f.health, "BOTTOMRIGHT", -7 * P, 0)
+    end
+    f.unit = unit
+    return f
+end
+
+-- Five segments across the top of where the action bars sit.
+function U.hud.comboStrip()
+    local P = U.hud.P
+    local f = CreateFrame("Frame", "ForeverBuddyHudCombo", UIParent)
+    f:EnableMouse(false)
+    f:SetFrameStrata("MEDIUM")
+    f:SetSize(376 * P, 8 * P)
+    f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 299 * P)
+    f.pips = {}
+    for i = 1, 5 do
+        local t = f:CreateTexture(nil, "ARTWORK")
+        t:SetSize((376 / 5 - 1) * P, 8 * P)
+        t:SetPoint("LEFT", f, "LEFT", (i - 1) * 376 / 5 * P, 0)
+        f.pips[i] = t
+    end
+    return f
+end
+
+-- Slice and Dice, big, with its seconds under it, counted down five times
+-- a second while it's up.
+function U.hud.buffFrame()
+    local P = U.hud.P
+    local f = CreateFrame("Frame", "ForeverBuddyHudBuff", UIParent)
+    f:EnableMouse(false)
+    f:SetFrameStrata("MEDIUM")
+    f:SetSize(40 * P, 40 * P)
+    f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 340 * P)
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.icon:SetAllPoints()
+    U.ui.border(f, { 0, 0, 0, 1 }, "OVERLAY")
+    f.time = U.hud.text(f, 32 * P, "CENTER")
+    f.time:SetPoint("TOP", f, "BOTTOM", 0, -2 * P)
+    local since = 1
+    f:SetScript("OnUpdate", function(_, elapsed)
+        since = since + (type(elapsed) == "number" and elapsed or 0)
+        if since >= 0.2 then
+            since = 0
+            if not pcall(U.hud.countdown) then
+                U.errors = U.errors + 1
+                f:SetScript("OnUpdate", nil)
+            end
+        end
+    end)
+    f:Hide()
+    return f
+end
+
+function U.hud.countdown()
+    local b = U.hud.buff
+    local left = b.ends and b.ends - (read(GetTime) or b.ends)
+    if not left then
+        b.time:SetText("")
+    elseif left <= 0 then
+        b:Hide()
+    else
+        b.time:SetText(tostring(math.ceil(left)))
+    end
+end
+
+function U.hud.build()
+    U.hud.player = U.hud.unitFrame("player")
+    U.hud.target = U.hud.unitFrame("target")
+    U.hud.combo = U.hud.comboStrip()
+    U.hud.buff = U.hud.buffFrame()
+    U.hud.events = CreateFrame("Frame")
+    U.hud.events:SetScript("OnEvent", function(_, event, unit, kind)
+        if not pcall(U.hud.on, event, unit, kind) then
+            U.errors = U.errors + 1
+        end
+    end)
+    U.hud.built = true
+end
+
+-- A unit's health: the bar, its colour, "1.2 K | 85%".
+function U.hud.health(f)
+    local frac, cur = U.hud.value(f.unit, "health")
+    local hostile = f.unit == "target" and read("UnitCanAttack", "player", "target")
+    U.hud.paint(f.health, hostile and U.hud.COLORS.hostile or U.hud.COLORS.health)
+    if not frac then
+        f.hp:SetText("")
+        return
+    end
+    f.health.fill:SetWidth(math.max(f.health.w * frac, 1))
+    f.hp:SetText(U.hud.short(cur) .. " | " .. math.floor(frac * 100 + 0.5) .. "%")
+end
+
+-- Its power, in its type's colour; nothing for a unit with none.
+function U.hud.power(f)
+    local frac = U.hud.value(f.unit, "power")
+    U.hud.paint(f.power, U.hud.COLORS.power[read("UnitPowerType", f.unit)] or U.hud.COLORS.power[3])
+    if frac then
+        f.power.fill:SetWidth(math.max(f.power.w * frac, 1))
+        f.power.fill:SetShown(frac > 0)
+    end
+end
+
+-- Combo points are a rogue's, and a druid's in cat form (on energy).
+function U.hud.combos()
+    local _, class = read(UnitClass, "player")
+    return class == "ROGUE" or (class == "DRUID" and read("UnitPowerType", "player") == 3)
+end
+
+function U.hud.comboPoints()
+    local shown = U.hud.combos()
+    U.hud.combo:SetShown(shown and true or false)
+    if not shown then
+        return
+    end
+    local n = read("UnitPower", "player", 4) or 0 -- Enum.PowerType.ComboPoints
+    for i, t in ipairs(U.hud.combo.pips) do
+        local c = U.ui.hex(i <= n and U.hud.COLORS.combo or U.hud.COLORS.comboOff)
+        t:SetColorTexture(c[1], c[2], c[3], 1)
+    end
+end
+
+-- Slice and Dice among your buffs: shown with its time left, or hidden.
+function U.hud.slice()
+    local b, found = U.hud.buff, nil
+    local _, class = read(UnitClass, "player")
+    if class == "ROGUE" then
+        local name = read("C_Spell.GetSpellName", 5171)
+        for i = 1, 40 do
+            local a = read("C_UnitAuras.GetAuraDataByIndex", "player", i, "HELPFUL")
+            if type(a) ~= "table" then
+                break
+            end
+            if U.hud.SND[a.spellId] or (name and a.name == name) then
+                found = a
+                break
+            end
+        end
+    end
+    if not found then
+        b.ends = nil
+        b:Hide()
+        return
+    end
+    b.icon:SetTexture(found.icon)
+    b.ends = type(found.expirationTime) == "number" and found.expirationTime > 0 and found.expirationTime or nil
+    b:Show()
+    U.hud.countdown()
+end
+
+-- The target's frame: shown while there's one, its name and bars.
+function U.hud.targetFrame()
+    local f = U.hud.target
+    local any = read("UnitExists", "target")
+    f:SetShown(any and true or false)
+    if any then
+        -- (Escaped as plain() does; that's defined further down.)
+        f.name:SetText((string.gsub(read("UnitName", "target") or "", "|", "||")))
+        U.hud.health(f)
+        U.hud.power(f)
+    end
+    -- (Blizzard's target frame may set its own alpha as it changes; ours
+    -- goes on again.)
+    if U.hud.faded and type(TargetFrame) == "table" then
+        TargetFrame:SetAlpha(0)
+    end
+end
+
+-- One event: only the parts it changes.
+function U.hud.on(event, unit, kind)
+    local f = (unit == "player" and U.hud.player) or (unit == "target" and U.hud.target) or nil
+    if event == "PLAYER_TARGET_CHANGED" then
+        U.hud.targetFrame()
+        U.hud.comboPoints()
+    elseif event == "UNIT_AURA" then
+        if unit == "player" then
+            U.hud.slice()
+        end
+    elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+        if f then
+            U.hud.health(f)
+        end
+    elseif unit == "player" and kind == "COMBO_POINTS" then
+        U.hud.comboPoints()
+    elseif f then
+        U.hud.power(f)
+        if event == "UNIT_DISPLAYPOWER" and unit == "player" then
+            U.hud.comboPoints()
+        end
+    end
+end
+
+-- Blizzard's player and target frames at alpha 0 while the HUD is on, back
+-- to whole when it's turned off. SetAlpha only (P4f).
+function U.hud.fade(on)
+    for _, name in ipairs({ "PlayerFrame", "TargetFrame" }) do
+        local b = _G[name]
+        if type(b) == "table" and type(b.SetAlpha) == "function" then
+            b:SetAlpha(on and 0 or 1)
+        end
+    end
+    U.hud.faded = on
+end
+
+-- Everything as the switch says: built the first time it's on; off, the
+-- frames hide, the events stop and Blizzard's frames come back.
+function U.hud.apply()
+    local on = U.mods.on("hud")
+    if on and not U.hud.built then
+        U.hud.build()
+    end
+    if not U.hud.built then
+        return
+    end
+    for _, e in ipairs(U.hud.EVENTS) do
+        if on then
+            pcall(U.hud.events.RegisterEvent, U.hud.events, e)
+        else
+            U.hud.events:UnregisterEvent(e)
+        end
+    end
+    if (U.hud.faded or false) ~= on then
+        U.hud.fade(on)
+    end
+    U.hud.player:SetShown(on)
+    if on then
+        U.hud.health(U.hud.player)
+        U.hud.power(U.hud.player)
+        U.hud.targetFrame()
+        U.hud.comboPoints()
+        U.hud.slice()
+    else
+        U.hud.target:Hide()
+        U.hud.combo:Hide()
+        U.hud.buff:Hide()
+    end
+end
+U.mods.register({ id = "hud", enable = U.hud.apply, disable = U.hud.apply })
 
 -- The Quest module (P4e) ----------------------------------------------------------------
 --
@@ -4910,6 +5335,7 @@ do
         ["tooltips.enabled"] = U.mods.option("tooltips"),
         ["coach.enabled"] = U.mods.option("coach"),
         ["merchant.enabled"] = U.mods.option("merchant"),
+        ["hud.enabled"] = U.mods.option("hud"),
         ["window.briefing"] = { get = briefingOn, set = setBriefing },
         ["window.lockouts"] = { get = L.on, set = L.set },
         ["window.coach"] = {
@@ -5738,6 +6164,14 @@ do
         p.checks = {}
         local card = U.ui.card(p, "Options")
         p.items[1] = { card = card }
+        -- A module with no options yet says what its switch does (TH2).
+        local m = U.ui.inModuleDecl(id)
+        if m and m.note then
+            p.note = U.ui.text(p, 12, U.STYLE.colors.text)
+            p.note:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -4)
+            p.note:SetWidth(U.LAYOUT.CONTENT - 3)
+            p.note:SetText(m.note)
+        end
         for _, o in ipairs(OPTIONS) do
             if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch then
                 p.items[#p.items + 1] = { cb = U.ui.optionRow(card, o, p.checks) }
@@ -5789,10 +6223,10 @@ do
     -- diamond, ember when on, and Settings at the foot. Each is a Button;
     -- the Tonight ones and Settings are win.Tabs[1..5], the modules
     -- win.mods[id]. Where you are has the red ribbon, past the rail's edge.
-    function U.ui.railButton(name, label, y, key)
+    function U.ui.railButton(name, label, y, key, h)
         local L = U.LAYOUT
         local b = CreateFrame("Button", name, win.rail)
-        b:SetSize(L.RAIL, 28)
+        b:SetSize(L.RAIL, h or 28)
         b:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 0, y)
         b.here = b:CreateTexture(nil, "ARTWORK")
         b.here:SetTexture(U.STYLE.art.dir .. U.STYLE.art.ribbon)
@@ -5861,6 +6295,7 @@ do
         win.heading:SetPoint("TOPLEFT", win, "TOPLEFT", L.X, -20)
         win.fresh = U.ui.text(win, 11, col.dim)
         win.fresh:SetPoint("TOPLEFT", win.heading, "BOTTOMLEFT", 0, -6)
+        win.fresh:SetWidth(L.CONTENT) -- a long line wraps rather than leaving the window
         U.ui.rule(win, -L.HEAD + 8, L.X, -20, { 0, 0, 0, 0.45 })
         U.ui.rule(win, -L.HEAD + 7, L.X, -20, col.line)
 
@@ -5902,6 +6337,13 @@ do
         -- The rail.
         win.Tabs, win.mods = {}, {}
         local y = -58
+        -- Rows are 28 high, closer together once there are too many modules
+        -- for that above the foot (TH2's HUD made seven).
+        local n = 4
+        for _, m in ipairs(U.mods.declared.modules or {}) do
+            n = n + (U.mods.byId[m.id] and 1 or 0)
+        end
+        local ROW = math.min(28, math.floor((L.RAILH - 46 - 4 + y - 60) / n))
         local function group(label)
             local g = U.ui.text(win.rail, 10, col.railDim)
             g:SetPoint("TOPLEFT", win.rail, "TOPLEFT", 16, y - 12)
@@ -5910,21 +6352,21 @@ do
         end
         group("Tonight")
         for i = 1, 4 do
-            local b = U.ui.railButton("ForeverBuddyWindowTab" .. i, TABS[i], y, i)
+            local b = U.ui.railButton("ForeverBuddyWindowTab" .. i, TABS[i], y, i, ROW)
             b.count = U.ui.text(b, 11, col.railMute, "RIGHT")
             b.count:SetPoint("RIGHT", b, "RIGHT", -16, 0)
             win.Tabs[i] = b
-            y = y - 28
+            y = y - ROW
         end
         group("Modules")
         for _, m in ipairs(U.mods.declared.modules or {}) do
             if U.mods.byId[m.id] then
-                local b = U.ui.railButton("ForeverBuddyWindowModule_" .. m.id, m.label, y, m.id)
+                local b = U.ui.railButton("ForeverBuddyWindowModule_" .. m.id, m.label, y, m.id, ROW)
                 b.dot = U.ui.diamond(b, col.ember, 6, "OVERLAY")
                 b.dot:SetPoint("RIGHT", b, "RIGHT", -18, 0)
                 b.module = m
                 win.mods[m.id] = b
-                y = y - 28
+                y = y - ROW
             end
         end
         U.ui.rule(win.rail, -(L.RAILH - 46), 10, -10, { 0, 0, 0, 0.35 })
@@ -6501,6 +6943,10 @@ handlers.PLAYER_LOGIN = function()
     end
     -- P4e: the quest module's parts that are on.
     if not pcall(U.quest.apply) then
+        U.errors = U.errors + 1
+    end
+    -- TH2: the HUD, if it's been turned on.
+    if not pcall(U.hud.apply) then
         U.errors = U.errors + 1
     end
     session = {
