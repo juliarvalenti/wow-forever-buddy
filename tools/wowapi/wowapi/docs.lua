@@ -152,17 +152,18 @@ function M.docsFrom(dir)
     __add = function() return 0 end, __sub = function() return 0 end, __unm = function() return 0 end })
   local env = setmetatable({ APIDocumentation = { AddDocumentationTable = function(_, t) tables[#tables + 1] = t end } },
     { __index = function() return anything end })
-  local p = io.popen("ls '" .. tostring(dir):gsub("'", "'\\''") .. "' 2>/dev/null")
-  if not p then return {} end
-  for name in p:lines() do
+  -- WFB patch (PV1): through wowapi.host
+  local host = require("wowapi.host")
+  local names = host.list(dir)
+  if not names then return {} end
+  table.sort(names)
+  for _, name in ipairs(names) do
     if name:lower():match("%.lua$") then
-      local f = io.open(dir .. "/" .. name, "rb")
-      local chunk = f and loadstring(f:read("*a"), "=" .. name)
-      if f then f:close() end
+      local src = host.read(dir .. "/" .. name)
+      local chunk = src and loadstring(src, "=" .. name)
       if chunk then setfenv(chunk, env); pcall(chunk) end
     end
   end
-  p:close()
   local enums = {}
   for _, sys in ipairs(tables) do
     for _, t in ipairs(sys.Tables or {}) do
@@ -312,14 +313,11 @@ function M.install(sim, env)
     -- in that client even when undocumented (TRIAL_STATUS_UPDATE): the
     -- micro menu's OnLoad stops on one otherwise.
     local addonsDir = sim.opts.apiDocsDir:match("^(.*)[/\\][^/\\]+[/\\]?$")
-    local p = addonsDir and io.popen("grep -rhoE 'Register(Unit)?Event\\(\"[A-Z0-9_]+\"' '"
-      .. addonsDir:gsub("'", "'\\''") .. "' 2>/dev/null")
-    if p then
-      for line in p:lines() do
-        local ev = line:match('"([A-Z0-9_]+)"')
-        if ev then known[ev] = true end
-      end
-      p:close()
+    -- (PV1: read through wowapi.host rather than grep, so it runs on Windows)
+    local host = require("wowapi.host")
+    for _, rel in ipairs(addonsDir and host.walk(addonsDir, { lua = true }) or {}) do
+      local src = host.read(addonsDir .. "/" .. rel:gsub("^%./", ""))
+      for ev in (src or ""):gmatch('Register[Unit]*Event%("([A-Z0-9_]+)"') do known[ev] = true end
     end
     local function default(t)
       if t == "bool" then return false end

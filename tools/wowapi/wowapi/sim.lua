@@ -2,6 +2,7 @@
 -- own global environment, frames, events, clock and SavedVariables.
 local compat = require("wowapi.compat")
 local toc = require("wowapi.toc")
+local host = require("wowapi.host") -- WFB patch (PV1): files and folders
 local serialize = require("wowapi.serialize")
 local widgets = require("wowapi.widgets")
 local api = require("wowapi.api")
@@ -355,13 +356,11 @@ function Sim:_installedAddons()
   for _, d in ipairs(self.addonPaths) do
     if not self._scanned[d] then
       local found = {}
-      local p = io.popen('ls -1 "' .. d .. '" 2>/dev/null')
-      if p then
-        for n in p:lines() do
-          local dir = toc.join(d, n)
-          if toc.findToc(dir) then found[#found + 1] = { name = n, dir = dir } end
-        end
-        p:close()
+      local names = host.list(d) or {}
+      table.sort(names)
+      for _, n in ipairs(names) do
+        local dir = toc.join(d, n)
+        if toc.findToc(dir) then found[#found + 1] = { name = n, dir = dir } end
       end
       self._scanned[d] = found
     end
@@ -437,7 +436,11 @@ end
 function Sim:LoadAddon(spec, _hintDir)
   local dir = self:_resolveAddon(spec, _hintDir)
   if not dir then
-    local other = toc.exists(spec) and io.popen('ls "' .. spec .. '"/*.toc 2>/dev/null'):read("*a") or ""
+    local tocs = {}
+    for _, n in ipairs(toc.exists(spec) and host.list(spec) or {}) do
+      if n:lower():match("%.toc$") then tocs[#tocs + 1] = n end
+    end
+    local other = table.concat(tocs, "\n")
     if other ~= "" then
       local flavors = {}
       for f in other:gmatch("_(%a+)%.toc") do flavors[#flavors + 1] = f end
@@ -519,9 +522,7 @@ end
 -- Every addon directory inside `dir`.
 function Sim:LoadAllAddons(dir)
   self:AddAddonPath(dir)
-  local p = io.popen('ls -1 "' .. dir .. '" 2>/dev/null')
-  local names = {}
-  if p then for n in p:lines() do names[#names + 1] = n end; p:close() end
+  local names = host.list(dir) or {}
   table.sort(names)
   for _, n in ipairs(names) do
     local d = toc.join(dir, n)
@@ -565,14 +566,12 @@ function Sim:_persist()
       self.store.account[name] = acct
       self.store.character[ck][name] = chr
       if self.savedVariablesDir then
-        os.execute('mkdir -p "' .. toc.join(self.savedVariablesDir, ck) .. '"')
+        host.mkdir(toc.join(self.savedVariablesDir, ck))
         if #addon.toc.savedVariables > 0 then
-          local f = io.open(toc.join(self.savedVariablesDir, name .. ".lua"), "w")
-          if f then f:write(serialize.file(acct)); f:close() end
+          host.write(toc.join(self.savedVariablesDir, name .. ".lua"), serialize.file(acct))
         end
         if #addon.toc.savedVariablesPerCharacter > 0 then
-          local f = io.open(toc.join(toc.join(self.savedVariablesDir, ck), name .. ".lua"), "w")
-          if f then f:write(serialize.file(chr)); f:close() end
+          host.write(toc.join(toc.join(self.savedVariablesDir, ck), name .. ".lua"), serialize.file(chr))
         end
       end
     end

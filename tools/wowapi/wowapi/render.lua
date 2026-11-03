@@ -62,7 +62,7 @@ function Ctx:id(prefix) self.seq = self.seq + 1; return prefix .. self.seq end
 local cwd
 local function absolute(p)
   if p:sub(1, 1) == "/" then return p end
-  if not cwd then local h = io.popen("pwd"); cwd = h:read("*l"); h:close() end
+  if not cwd then cwd = require("wowapi.host").cwd() end -- WFB patch (PV1)
   return (cwd .. "/" .. p):gsub("/%./", "/")
 end
 
