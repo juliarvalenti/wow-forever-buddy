@@ -76,6 +76,13 @@ function M.player(class, level)
     for k, v in pairs(c.player) do
         p[k] = v
     end
+    -- its own powers, so a session changing them leaves the fixture alone
+    if c.player.powers then
+        p.powers = {}
+        for t, v in pairs(c.player.powers) do
+            p.powers[t] = { v[1], v[2] }
+        end
+    end
     p.level = level or p.level
     return p
 end
@@ -138,8 +145,9 @@ function M.mock(sim, class, opts)
         end,
         -- Forever keeps combo points on the target (Camelot ComboFrame).
         GetComboPoints = function(unit, target)
-            local cp = c.player.powers and c.player.powers[4]
-            return (cp and unit == "player" and target == "target" and c.target) and cp[1] or 0
+            local me = sim.units.player or {}
+            local cp = me.powers and me.powers[4]
+            return (cp and unit == "player" and target == "target" and sim.units.target) and cp[1] or 0
         end,
         GetActionCount = function() return 0 end,
         GetActionCooldown = function() return 0, 0, 1, 1 end,

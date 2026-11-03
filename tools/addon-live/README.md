@@ -16,6 +16,22 @@ luajit tools/addon-live/live.lua stop
 
 `help` lists every command: `login [filled|empty]`, `slash`, `click`, `set`, `buttons`, `bags`, `advance`, `reload`, `combat on|off`, `state [path]`, `chat`, `errors`, `lua`, `screenshot <name> [full|bags]`, `upload`. Each answer ends with the chat lines and Lua errors the command caused.
 
+- **`scene <class> [level] [stealth] [layout=<name|file>]`** logs in to the full logged-in screen instead: Blizzard's own UI from the CASC extract (it needs `WOWAPI_ART`, as `tools/addon-shots/hud.lua` does), a fixture character from `tools/addon-shots/fixtures.lua` with its target, and ForeverBuddy. Then **`health`**, **`power`**, **`combo`** and **`target`** change it as the game does, firing `UNIT_HEALTH`, `UNIT_POWER_UPDATE`/`UNIT_POWER_FREQUENT` and `PLAYER_TARGET_CHANGED`, and `combat on|off` and `advance` work as usual. A script plays a fight over time:
+
+  ```
+  scene rogue layout=centered
+  combat on
+  power player -40      # Sinister Strike
+  combo +1
+  health target -15%
+  advance 2
+  power player +20      # an energy tick
+  health player 60%
+  target none           # it died
+  combat off
+  ```
+
+  A full-screen shot with the game's art is tens of MB of SVG. QuickLook can't take that, so without `rsvg-convert` or a headless Chrome it stays an SVG.
 - **`bags`** puts up a backpack and the bank with junk, gear of each quality, a shirt and stacks, for the Bags module (P4d). WOWAPI draws no bag frames, so these are stand-ins with what the addon reads from Blizzard's: item buttons that know their bag and slot, and a `BankPanel`. `screenshot <name> bags` crops to them. Run `bags` again after a `set` to redraw them without the window on top.
 
 - **The character** is Thrandor Vargur, level 12 in Elwynn, as in `tools/addon-shots`. `filled` (the default) has the slots the app writes (`src-tauri/tests/fixtures/bridge/`). `empty` has the slots the addon ships. The quest log is empty, so the same commands always give the same pictures.

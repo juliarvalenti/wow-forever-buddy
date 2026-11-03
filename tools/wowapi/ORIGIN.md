@@ -77,6 +77,12 @@ HUD2, for the logged-in scene (`hud.lua --class rogue`):
 - `input.lua`: `GetBindingText(key, 1)` abbreviates modifiers as the client does (`SHIFT-V` is `s-V`), for the action buttons' hotkeys.
 - `assets.lua`: `data/atlases-forever.txt` (`fetch-forever-atlases.sh`: Forever's UiTextureAtlas tables at its build, from wago.tools) replaces retail's atlases of the same name, keeping the c60 variants where an atlas has them. Forever's own UI names its c60 art directly (`INV_SideTab_Bank_c60`). Without it, Forever-only atlases (`ui-hud-minimap-header-button`) draw as placeholders. Local art runs only: CI renders `--no-art` and doesn't fetch it.
 
+HUD3, scene data for the live HUD:
+
+- `render.lua`: `THICKOUTLINE` strokes twice as heavy as `OUTLINE`, with round joins, as in the game (both drew the same).
+- `secure.lua`, `docs.lua`: a protected call in combat isn't blocked when only Blizzard's own UI addons (`Blizzard_*`) are on the call stack, as the client's taint works. Blizzard's TargetFrame shows and hides itself in combat; an addon anywhere on the path is still blocked.
+- `render.lua`: a button's shown state textures go into the draw order in a fixed order (they went through `pairs`).
+
 ## Updating
 
 To move to a new commit:

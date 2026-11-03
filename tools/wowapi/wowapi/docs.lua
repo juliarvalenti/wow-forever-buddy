@@ -442,7 +442,9 @@ function M.installWidgets(sim, classes, define, state)
             local err = check(label, args, { self, ... }, select("#", ...) + 1, true)
             if err then error(err, 2) end
           end
-          if protected and sim.lockdown and sim.secureDepth == 0 and secure.isProtected(sim, self) then
+          -- WFB patch (HUD3): Blizzard's own untainted code isn't blocked.
+          if protected and sim.lockdown and sim.secureDepth == 0 and secure.isProtected(sim, self)
+            and not secure.blizzardCall(sim) then
             secure.block(sim, (state[self] and state[self].name or label) .. ":" .. mname .. "()")
             return
           end

@@ -416,9 +416,9 @@ end
 -- An SVG to a PNG at 2x, without a window. QuickLook's thumbnails are
 -- square and filled, so the picture goes in the middle of a square canvas
 -- and sips crops the middle back out.
-local function png(svgPath, pngPath, svg, vx, vy, w, h)
+local function png(svgPath, pngPath, svg, vx, vy, w, h, big)
     local W, H = 2 * w, 2 * h
-    if has("qlmanage") and has("sips") then
+    if not big and has("qlmanage") and has("sips") then
         local side = math.max(w, h)
         local square = svg:gsub('viewBox="[^"]*" width="%d+" height="%d+"',
             ('viewBox="%g %g %d %d" width="%d" height="%d"'):format(vx - (side - w) / 2, vy - (side - h) / 2,
@@ -464,8 +464,15 @@ local function screenshot(name, what)
     local svgPath, pngPath = DIR .. "/shots/" .. name .. ".svg", DIR .. "/shots/" .. name .. ".png"
     writeAll(svgPath, svg)
     os.remove(pngPath)
-    if png(svgPath, pngPath, svg, vx, vy, w, h) and readAll(pngPath) then
+    -- A scene with the game's art embeds tens of MB of images, and QuickLook
+    -- stalls on it (minutes, or for good), so it isn't tried for those.
+    local big = #svg > 20 * 1024 * 1024
+    if png(svgPath, pngPath, svg, vx, vy, w, h, big) and readAll(pngPath) then
         return pngPath .. (" (%dx%d)"):format(2 * w, 2 * h)
+    end
+    if big then
+        return svgPath .. (" (%d MB of embedded art: no PNG without rsvg-convert or a headless Chrome; open the SVG in a browser)")
+            :format(math.floor(#svg / 1048576))
     end
     return svgPath .. " (no PNG: needs qlmanage, rsvg-convert or a headless Chrome)"
 end
@@ -508,6 +515,12 @@ buttons                  what's clickable on screen: name, text, centre
 advance <seconds>        let time pass (timers, OnUpdate)
 reload                   /reload (SavedVariables kept)
 combat on|off            enter or leave combat
+scene <class> [level] [stealth] [layout=<name|file>]
+                         Blizzard's own UI (needs WOWAPI_ART) with a fixture character and ForeverBuddy
+health <unit> <v>        set health (640, 50%, -120, +30) and fire UNIT_HEALTH
+power <unit> <v> [type]  set power (energy, mana, combo...) and fire UNIT_POWER_UPDATE/_FREQUENT
+combo <n>                the player's combo points on the target (+1, -1 work too)
+target none|(blank)      clear the target, or bring back the scene's; fires PLAYER_TARGET_CHANGED
 state [path]             SavedVariables: ForeverBuddyDB, ForeverBuddySettings, or a path into them
 chat [n]                 the last n chat lines (10)
 errors                   every Lua error this session
@@ -597,6 +610,166 @@ function COMMANDS.combat(rest)
     end
     S.sim:Advance(0.2)
     return "combat " .. rest
+end
+
+-- The logged-in scene (HUD2/HUD3) -------------------------------------------------
+
+-- `scene <class> [level] [stealth] [layout=<name or file>]`: Blizzard's own
+-- UI from the CASC extract ($WOWAPI_ART/interface/addons), a fixture
+-- character logged in with ForeverBuddy (the "filled" slots), as
+-- tools/addon-shots/hud.lua draws it. Then health, power, combo and target
+-- change it the way the game does, events and all.
+local function scene(rest)
+    local extract = os.getenv("WOWAPI_ART")
+    if not extract then
+        error("scene needs WOWAPI_ART set to the CASC extract (see tools/addon-shots/README.md)", 0)
+    end
+    local args = {}
+    for w in rest:gmatch("%S+") do
+        args[#args + 1] = w
+    end
+    local class = args[1] and args[1]:lower()
+    if not class then
+        error("scene <class> [level] [stealth] [layout=<name or file>]", 0)
+    end
+    local level, stealth, layout
+    for k = 2, #args do
+        local a = args[k]
+        if tonumber(a) then
+            level = tonumber(a)
+        elseif a == "stealth" then
+            stealth = true
+        elseif a:match("^layout=") then
+            layout = a:sub(8)
+        else
+            error("scene: unknown " .. a, 0)
+        end
+    end
+    package.path = ROOT .. "/tools/addon-shots/?.lua;" .. package.path
+    local boot = require("login_scene").boot
+    local sim, loaded = boot({ blizzard = extract .. "/interface/addons", extra = { addonCopy("filled") },
+        class = class, level = level, stealth = stealth, layout = layout, art = opts.art })
+    S.sim, S.profile, S.scene = sim, "scene", class
+    S.chatSeen, S.errorsSeen = #sim.chat, #sim.errors
+    return ("scene: %s, level %d, %d Blizzard addons and ForeverBuddy (%d Lua errors at login; `errors` lists them)")
+        :format(class, sim.player.level or 0, loaded, #sim.errors)
+end
+
+function COMMANDS.scene(rest)
+    return scene(rest)
+end
+
+-- Power types by token, as UnitPowerType and the UNIT_POWER events name them.
+local POWER = { mana = 0, rage = 1, focus = 2, energy = 3, combo_points = 4, combo = 4, runic_power = 6 }
+local POWER_TOKEN = { [0] = "MANA", [1] = "RAGE", [2] = "FOCUS", [3] = "ENERGY", [4] = "COMBO_POINTS", [6] = "RUNIC_POWER" }
+
+local function unitOf(name)
+    local sim = need()
+    local u = sim.units[name]
+    if not u then
+        error("no unit " .. name .. " (player, target, ...)", 0)
+    end
+    return u
+end
+
+-- "640", "50%", "-120", "+30" or "-15%": an absolute value, a share of max,
+-- or a change (by an amount, or by a share of max).
+local function amount(text, current, max)
+    local n = tonumber((text:gsub("%%$", "")))
+    if not n then
+        return nil
+    end
+    local share = text:match("%%$") and math.floor(max * math.abs(n) / 100 + 0.5)
+    if text:match("^[+-]") then
+        local by = share or math.abs(n)
+        return text:match("^%-") and current - by or current + by
+    end
+    return share or n
+end
+
+function COMMANDS.health(rest)
+    local name, value = rest:match("^(%S+)%s+(%S+)$")
+    if not name then
+        error("health <unit> <value | n% | +n | -n>", 0)
+    end
+    local u = unitOf(name)
+    local v = amount(value, u.health or 0, u.healthMax or 0)
+    if not v then
+        error("health <unit> <value | n% | +n | -n>", 0)
+    end
+    u.health = math.max(0, math.min(u.healthMax or v, v))
+    S.sim:FireEvent("UNIT_HEALTH", name)
+    S.sim:Advance(0.1)
+    return ("%s health %d / %d"):format(name, u.health, u.healthMax or 0)
+end
+
+local function setPower(name, ptype, value)
+    local u = unitOf(name)
+    ptype = ptype or u.powerType or 0
+    local cur, max
+    if ptype == (u.powerType or 0) then
+        cur, max = u.power or 0, u.powerMax or 0
+    else
+        local p = (u.powers or {})[ptype] or { 0, 0 }
+        cur, max = p[1], p[2]
+    end
+    local v = amount(value, cur, max)
+    if not v then
+        error("power <unit> <value | n% | +n | -n> [type]", 0)
+    end
+    v = math.max(0, math.min(max, v))
+    if ptype == (u.powerType or 0) then
+        u.power = v
+    else
+        u.powers = u.powers or {}
+        u.powers[ptype] = { v, max }
+    end
+    local token = POWER_TOKEN[ptype] or tostring(ptype)
+    S.sim:FireEvent("UNIT_POWER_UPDATE", name, token)
+    S.sim:FireEvent("UNIT_POWER_FREQUENT", name, token)
+    S.sim:Advance(0.1)
+    return ("%s %s %d / %d"):format(name, token:lower(), v, max)
+end
+
+function COMMANDS.power(rest)
+    local name, value, ptype = rest:match("^(%S+)%s+(%S+)%s*(%S*)$")
+    if not name then
+        error("power <unit> <value | n% | +n | -n> [mana|rage|focus|energy|combo]", 0)
+    end
+    local t = ptype ~= "" and (POWER[ptype:lower()] or tonumber(ptype)) or nil
+    if ptype ~= "" and not t then
+        error("power: no power type " .. ptype, 0)
+    end
+    return setPower(name, t, value)
+end
+
+-- Combo points are the player's, on the target in Forever (GetComboPoints).
+function COMMANDS.combo(rest)
+    if not tonumber(rest) and not rest:match("^[+-]%d+$") then
+        error("combo <n | +n | -n>", 0)
+    end
+    local out = setPower("player", 4, rest)
+    S.sim:FireEvent("UNIT_POWER_POINT_CHARGE", "player")
+    return out
+end
+
+-- `target none` clears it; `target` alone brings back the scene's.
+function COMMANDS.target(rest)
+    local sim = need()
+    if rest == "none" then
+        sim:SetUnit("target", nil)
+        sim:FireEvent("PLAYER_TARGET_CHANGED")
+        sim:Advance(0.1)
+        return "no target"
+    end
+    package.path = ROOT .. "/tools/addon-shots/?.lua;" .. package.path
+    local c = S.scene and require("fixtures").CLASSES[S.scene]
+    if not (rest == "" and c and c.target) then
+        error("target none | target (the scene's own)", 0)
+    end
+    sim:SetTarget(c.target)
+    sim:Advance(0.1)
+    return "target " .. c.target.name
 end
 
 function COMMANDS.state(rest)
