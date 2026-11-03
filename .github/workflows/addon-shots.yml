@@ -60,6 +60,11 @@ jobs:
       - name: WOWAPI combat lockdown
         run: lua5.1 tools/wowapi/tests/lockdown.lua
 
+      # HUD4: a header from Blizzard's SecureHandlerStateTemplate XML gets its
+      # handler methods from OnLoad (TH3's bars).
+      - name: WOWAPI secure handler template
+        run: lua5.1 tools/wowapi/tests/securehandler.lua
+
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
           cd "$OUT"
