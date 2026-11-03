@@ -28,7 +28,7 @@ const TOC: &str = "ForeverBuddy.toc";
 /// app replaces with generated data. `Media/` holds our own art (U1).
 /// `Settings.lua` declares the addon's settings (P4a); `Data/Settings.lua`
 /// is the slot that carries a profile approved in the app (P4b).
-const FILES: [(&str, &[u8]); 21] = [
+const FILES: [(&str, &[u8]); 23] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -81,6 +81,15 @@ const FILES: [(&str, &[u8]); 21] = [
     (
         "Media/Geist-OFL.txt",
         include_bytes!("../resources/addon/ForeverBuddy/Media/Geist-OFL.txt"),
+    ),
+    // The HUD's numbers (TH2): Barlow Semi Condensed Bold, OFL.
+    (
+        "Media/BarlowSCB.ttf",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/BarlowSCB.ttf"),
+    ),
+    (
+        "Media/Barlow-OFL.txt",
+        include_bytes!("../resources/addon/ForeverBuddy/Media/Barlow-OFL.txt"),
     ),
     (
         "Data/Tooltip1.lua",

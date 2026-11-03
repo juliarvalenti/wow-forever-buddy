@@ -2454,7 +2454,7 @@ scenario("window", function()
         .. "[Coach], Coach, Session coach, Hide the coach in combat, "
         .. "[Merchant], Merchant, Repair at vendors, Guild bank pays first, Sell grey items, Sell items you marked, "
         .. "[Quest helper], Quest helper, Accept quests, Hand in quests, Daily and repeatable quests too, "
-        .. "[This window], Minimap button, [Help fix bugs], Record my next session",
+        .. "[HUD], HUD, [This window], Minimap button, [Help fix bugs], Record my next session",
         "every row in order")
     local function row(name)
         for _, init in ipairs(options.layout.inits) do
@@ -3141,6 +3141,150 @@ scenario("guard_rails", function()
         end
     end
     eq(table.concat(found, ", "), "", "protected Blizzard frames touched in the source")
+end)
+
+-- TH2: the HUD module. Off until it's turned on; then our frames show the
+-- player's and the target's health and power, combo points and Slice and
+-- Dice from events, and Blizzard's player and target frames go to alpha 0
+-- (the guard rails above fail the run on anything but SetAlpha).
+scenario("hud", function()
+    local P = 768 / 1080
+    local function rogue(o)
+        local c = client(o)
+        c.world.class = { "Rogue", "ROGUE", 4 }
+        c.world.units.player = { health = 1020, healthMax = 1200, power = 100, powerMax = 100, powerType = 3 }
+        c.login(nil)
+        return c
+    end
+    local function turn(c)
+        c.slash("/fb")
+        local w = c.global("ForeverBuddyWindow")
+        c.click(w.mods.hud)
+        c.click(w.modSwitch)
+        w:Hide()
+    end
+
+    local c = rogue()
+    eq(c.global("ForeverBuddyHudPlayer"), nil, "off by default: nothing made")
+    eq(c.protected.PlayerFrame.alpha, nil, "and Blizzard's frames untouched")
+    turn(c)
+    eq(c.global("ForeverBuddySettings").modules.hud, true, "turned on, saved per account")
+    local me = c.global("ForeverBuddyHudPlayer")
+    eq(me.shown, true, "our player frame")
+    eq(me.hp.text, "1.0 K | 85%", "health as the biggest text")
+    eq(me.name.text .. " " .. table.concat(me.name.color, ","), "Thrandor 1,0.96,0.41,1", "your name in class colour")
+    eq(c.global("ForeverBuddyWindow").pages.hud.note.text:match("^Turn it on") ~= nil, true, "its page says what it does")
+    eq(me.health.fill.width, 298 * P * 0.85, "the bar")
+    eq(me.health.color, "#4fd99a", "green")
+    eq(me.power.color, "#f0c94a", "energy, warm yellow")
+    eq(c.protected.PlayerFrame.alpha, 0, "Blizzard's player frame at alpha 0")
+    eq(c.protected.TargetFrame.alpha, 0, "and its target frame")
+    local them = c.global("ForeverBuddyHudTarget")
+    eq(them.shown, false, "no target, no target frame")
+    local combo = c.global("ForeverBuddyHudCombo")
+    eq(combo.shown, true, "a rogue's combo strip")
+
+    -- A target: its frame, name and numbers, red on an enemy.
+    c.target({ name = "Syndicate Highwayman", health = 690, healthMax = 1150, power = 0, powerMax = 0,
+        powerType = 0, hostile = true })
+    eq(them.shown, true, "the target's frame")
+    eq(them.name.text .. " / " .. them.hp.text, "Syndicate Highwayman / 690 | 60%", "its name and health")
+    eq(them.health.color, "#d24a3a", "red on an enemy")
+    c.unit("target", { health = 230 })
+    eq(them.hp.text, "230 | 20%", "follows UNIT_HEALTH")
+    c.unit("player", { power = 40 })
+    eq(me.power.fill.width, 298 * P * 0.4, "energy follows")
+
+    -- Combo points light from the left.
+    c.comboPoints(3)
+    local lit = {}
+    for i, t in ipairs(combo.pips) do
+        lit[i] = hex(t.layout.SetColorTexture) == "#fff569" and "x" or "."
+    end
+    eq(table.concat(lit), "xxx..", "three combo points")
+
+    -- Slice and Dice: big, counting down; gone when it falls off.
+    local buff = c.global("ForeverBuddyHudBuff")
+    eq(buff.shown, false, "no Slice and Dice yet")
+    local t0 = c.now - wow.EPOCH + 5000
+    c.buffs({ { spellId = 1784, name = "Stealth", icon = 1 },
+        { spellId = 5171, name = "Slice and Dice", icon = 132306, duration = 21, expirationTime = t0 + 14 } })
+    eq(buff.shown, true, "Slice and Dice up")
+    eq(buff.icon.texture, 132306, "its icon")
+    eq(buff.time.text, "14", "its seconds")
+    c.advance(5)
+    c.update(buff, 0.2)
+    eq(buff.time.text, "9", "counting down")
+    c.buffs({})
+    eq(buff.shown, false, "gone")
+
+    -- In combat it carries on (alpha only, so nothing is blocked), and the
+    -- window's switch doesn't change anything until combat ends.
+    c.combat(true)
+    c.unit("player", { health = 600 })
+    eq(me.hp.text, "600 | 50%", "in combat")
+    c.slash("/fb")
+    local w = c.global("ForeverBuddyWindow")
+    c.click(w.mods.hud)
+    c.click(w.modSwitch)
+    eq(me.shown, true, "the switch waits for combat to end")
+    c.combat(false)
+
+    -- Off: our frames go, Blizzard's come back, and no event reaches it.
+    c.click(w.modSwitch)
+    eq(me.shown and them.shown and combo.shown, false, "off: our frames hide")
+    eq(c.protected.PlayerFrame.alpha .. "," .. c.protected.TargetFrame.alpha, "1,1", "Blizzard's frames whole")
+    c.unit("player", { health = 300 })
+    eq(me.hp.text, "600 | 50%", "and no event reaches it")
+    eq(c.global("ForeverBuddySettings").modules.hud, nil, "off is the default, so nothing saved")
+
+    -- Not a rogue: no combo strip, no Slice and Dice.
+    local war = client()
+    war.login(nil)
+    turn(war)
+    eq(war.global("ForeverBuddyHudCombo").shown, false, "a warrior has no combo strip")
+    eq(war.global("ForeverBuddyHudPlayer").power.color, "#d64541", "rage, softened red")
+
+    -- A health the client keeps secret: the bar stays, the numbers blank.
+    local hidden = rogue({ secret = { UnitHealth = true } })
+    turn(hidden)
+    eq(hidden.global("ForeverBuddyHudPlayer").hp.text, "", "secret health: no numbers")
+
+    -- Chaos (P4f spike b): seeded runs of combat, targets, damage, energy,
+    -- combo points, buffs and the switch in any order. The guard rails fail
+    -- the run on anything but SetAlpha; here, Blizzard's frames are at 0
+    -- exactly while the HUD is on.
+    for seed = 1, 3 do
+        math.randomseed(seed)
+        local k = rogue()
+        turn(k)
+        k.slash("/fb")
+        local kw = k.global("ForeverBuddyWindow")
+        k.click(kw.mods.hud)
+        for _ = 1, 150 do
+            local r = math.random(8)
+            if r == 1 then
+                k.combat(not k.world.combat)
+            elseif r == 2 then
+                k.target(math.random(2) == 1 and { name = "Kobold", health = 50, healthMax = 100, power = 0,
+                    powerMax = 0, powerType = 0, hostile = true } or nil)
+            elseif r == 3 then
+                k.unit("player", { health = math.random(0, 1200) })
+            elseif r == 4 then
+                k.unit("player", { power = math.random(0, 100) })
+            elseif r == 5 then
+                k.comboPoints(math.random(0, 5))
+            elseif r == 6 then
+                k.buffs(math.random(2) == 1 and { { spellId = 5171, icon = 1, expirationTime = 9e9 } } or {})
+            elseif r == 7 and k.world.units.target then
+                k.unit("target", { health = math.random(0, 100) })
+            else
+                k.click(kw.modSwitch)
+            end
+            local on = k.global("ForeverBuddySettings").modules.hud == true
+            eq(k.protected.PlayerFrame.alpha, on and 0 or 1, "seed " .. seed .. ": Blizzard's alpha follows the switch")
+        end
+    end
 end)
 
 -- SIM4: the fake is as strict as the client where a mistake would otherwise
@@ -4080,11 +4224,12 @@ scenario("modules", function()
         return n
     end
 
-    -- Every module on by default, so nobody's choices went dark on update.
+    -- Every module on by default, so nobody's choices went dark on update;
+    -- the HUD (TH2), new, is off until you turn it on.
     c.slash("/fb")
     w = c.global("ForeverBuddyWindow")
     for id, b in pairs(w.mods) do
-        eq(hex(b.dot.layout.SetVertexColor), "#ff7a2e", id .. " is on")
+        eq(hex(b.dot.layout.SetVertexColor), id == "hud" and "#7d6c58" or "#ff7a2e", id .. (id == "hud" and " is off" or " is on"))
     end
 
     -- Map: the minimap's coordinates go and come back.
@@ -4373,7 +4518,7 @@ scenario("settings_fallbacks", function()
     local options = c.global("Settings").categories[1]
     eq(options.name, "Forever Buddy", "still in Esc › Options › AddOns")
     eq(options.vertical, nil, "as the canvas")
-    eq(#options.frame.checks, 34, "with every toggle")
+    eq(#options.frame.checks, 35, "with every toggle")
     eq(options.frame.checks[4].shown, true, "combat hiding shows: the coach is on")
     file(c.logout())
 end)

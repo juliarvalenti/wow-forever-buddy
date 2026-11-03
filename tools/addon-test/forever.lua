@@ -101,6 +101,18 @@ return {
     GetActiveQuestID = row(NONE, { from = "assumed" }),
     SelectActiveQuest = row(NONE, { from = "assumed" }),
 
+    -- TH2, the HUD: health and power read 0 until the character is up, as
+    -- the other character reads do; a missing target or aura is nothing.
+    UnitExists = { from = "assumed" },
+    UnitHealth = row(NOT_UP, { from = "assumed" }),
+    UnitHealthMax = row(NOT_UP, { from = "assumed" }),
+    UnitPower = row(NOT_UP, { from = "assumed" }),
+    UnitPowerMax = row(NOT_UP, { from = "assumed" }),
+    UnitPowerType = { from = "assumed" },
+    UnitCanAttack = { from = "assumed" },
+    ["C_UnitAuras.GetAuraDataByIndex"] = row(NONE, { from = "assumed" }),
+    ["C_Spell.GetSpellName"] = { from = "assumed" },
+
     -- Who and where: the same in every phase as far as anyone has seen. The
     -- addon re-reads identity on the first live look anyway (S.startEarly).
     UnitName = { from = "report", seen = "probe run 1" },

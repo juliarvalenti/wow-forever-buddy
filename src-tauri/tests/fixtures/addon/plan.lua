@@ -128,6 +128,7 @@ ForeverBuddyDB = {
 			["bags.itemLevel"] = false,
 			["bags.junk"] = false,
 			["coach.enabled"] = true,
+			["hud.enabled"] = false,
 			["map.coords"] = false,
 			["map.enabled"] = true,
 			["map.fade"] = false,

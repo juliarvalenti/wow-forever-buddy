@@ -363,6 +363,17 @@
       "showHelp": true
     },
     {
+      "id": "hud.enabled",
+      "module": "hud",
+      "section": "HUD",
+      "type": "bool",
+      "default": false,
+      "label": "HUD",
+      "help": "Your health and your target's, power, combo points and Slice and Dice, under your character. Blizzard's player and target frames turn see-through while it's on. Display only.",
+      "acts": false,
+      "moduleSwitch": true
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",
@@ -431,6 +442,7 @@
         "bags.itemLevel": false,
         "bags.junk": false,
         "coach.enabled": true,
+        "hud.enabled": false,
         "map.coords": false,
         "map.enabled": true,
         "map.fade": false,
@@ -461,6 +473,7 @@
         "bags.itemLevel": true,
         "bags.junk": true,
         "coach.enabled": true,
+        "hud.enabled": false,
         "map.coords": true,
         "map.enabled": true,
         "map.fade": false,
@@ -491,6 +504,7 @@
         "bags.itemLevel": true,
         "bags.junk": true,
         "coach.enabled": true,
+        "hud.enabled": false,
         "map.coords": true,
         "map.enabled": true,
         "map.fade": true,
