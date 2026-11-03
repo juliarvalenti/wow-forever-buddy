@@ -19,11 +19,15 @@ pub fn preview_status(state: State<'_, AppState>) -> AppResult<PreviewStatus> {
     Ok(state.core.preview.status())
 }
 
-/// The last good frame as SVG, if there is one.
+/// The last good frame, if there is one, as a `data:` URL for an `<img>`.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn preview_frame(state: State<'_, AppState>) -> AppResult<Option<String>> {
-    Ok(state.core.preview.frame())
+    Ok(state
+        .core
+        .preview
+        .frame()
+        .map(|svg| crate::preview::frame_url(&svg)))
 }
 
 /// The tab opened: draw now, and redraw on every change from here on.

@@ -80,6 +80,9 @@ mlua = { version = "0.12", features = ["lua51", "vendored"] }
 # carries. Blocking HTTPS with rustls, no other network use.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 sha2 = "0.10"
+# The preview's frame reaches the tab as a data: URL (BUG-PREVIEW-IMG).
+# Already in the tree through Tauri.
+base64 = "0.22"
 
 [dev-dependencies]
 full_moon = "3"

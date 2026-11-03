@@ -368,7 +368,7 @@ export const commands = {
 	 */
 	planClear: (characterId: number) => __TAURI_INVOKE<Plan[]>("plan_clear", { characterId }),
 	previewStatus: () => __TAURI_INVOKE<PreviewStatus>("preview_status"),
-	/**  The last good frame as SVG, if there is one. */
+	/**  The last good frame, if there is one, as a `data:` URL for an `<img>`. */
 	previewFrame: () => __TAURI_INVOKE<string | null>("preview_frame"),
 	/**  The tab opened: draw now, and redraw on every change from here on. */
 	previewOpen: () => __TAURI_INVOKE<null>("preview_open"),
@@ -1957,6 +1957,8 @@ export type PreviewStatus = {
 	class: string | null,
 	/**  The last draw failed; the tab shows this under the last good frame. */
 	draw_error: string | null,
+	/**  The frame is only the backdrop: none of our frames are on at login. */
+	blank: boolean,
 };
 
 /**  Emitted after new prices were read. */
