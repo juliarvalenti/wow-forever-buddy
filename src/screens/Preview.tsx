@@ -19,7 +19,7 @@ function drewIn(ms: number): string {
 }
 
 export function Preview() {
-  const { status, frame, error, download } = usePreview();
+  const { status, frame, blank, error, download } = usePreview();
 
   if (!status) {
     return (
@@ -86,6 +86,11 @@ export function Preview() {
             {status.draw_error && (
               <Callout tone="bad">
                 The last redraw didn't work, so this is the one before it. {status.draw_error}
+              </Callout>
+            )}
+            {blank && !status.drawing && (
+              <Callout tone="stone">
+                Nothing of Forever Buddy's is on screen at login with your settings. Turn on the HUD to see it here.
               </Callout>
             )}
             {frame ? (

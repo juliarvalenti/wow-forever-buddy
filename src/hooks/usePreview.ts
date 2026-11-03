@@ -10,6 +10,8 @@ import { errorText } from "@/lib/format";
 export function usePreview() {
   const [status, setStatus] = useState<PreviewStatus | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
+  // Only the backdrop: none of Forever Buddy's frames are on at login.
+  const [blank, setBlank] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shown = useRef(-1);
   const url = useRef<string | null>(null);
@@ -24,6 +26,7 @@ export function usePreview() {
         if (url.current) URL.revokeObjectURL(url.current);
         url.current = svg ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) : null;
         setFrame(url.current);
+        setBlank(svg != null && svg.length < 1024);
       }
     } catch (e) {
       setError(errorText(e));
@@ -44,5 +47,5 @@ export function usePreview() {
     commands.previewDownload().catch((e) => setError(errorText(e)));
   }, []);
 
-  return { status, frame, error, download };
+  return { status, frame, blank, error, download };
 }
