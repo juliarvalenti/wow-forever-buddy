@@ -16,7 +16,9 @@ git -C "$tmp" init -q
 # (PV1), and Windows git would otherwise check them out with CRLF.
 git -C "$tmp" config core.autocrlf false
 git -C "$tmp" fetch -q --depth 1 --filter=blob:none https://github.com/Reece01-Dock/WOWAPI.git "$COMMIT"
-git -C "$tmp" sparse-checkout set --no-cone /wowapi/data/
+# No leading slash: Git Bash on Windows would rewrite "/wowapi/..." into a
+# Windows path.
+git -C "$tmp" sparse-checkout set --no-cone wowapi/data/
 git -C "$tmp" checkout -q FETCH_HEAD
 rm -rf "$dest"
 cp -R "$tmp/wowapi/data" "$dest"
