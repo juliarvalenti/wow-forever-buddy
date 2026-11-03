@@ -92,7 +92,13 @@ pub enum DataError {
 /// its hash matches; `progress` gets the bytes done so far.
 pub fn download(dir: &Path, mut progress: impl FnMut(u64)) -> Result<(), DataError> {
     download_from(dir, &mut progress, |file| {
+        // The pinned URL and nothing else: no redirects, https only.
         let mut resp = ureq::get(&url(file))
+            .config()
+            .max_redirects(0)
+            .https_only(true)
+            .timeout_global(Some(std::time::Duration::from_secs(120)))
+            .build()
             .call()
             .map_err(|e| DataError::Network {
                 file: file.name,
