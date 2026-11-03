@@ -23,8 +23,9 @@ M.CLASSES = {
             -- Enum.PowerType.ComboPoints = 4
             powers = { [4] = { 3, 5 } } },
         target = { name = "Syndicate Highwayman", level = 33, classification = "normal", creatureType = "Humanoid",
-            reaction = 2, health = 690, healthMax = 1150, class = "ROGUE", powerType = 3, power = 100, powerMax = 100,
-            guid = "Creature-0-0-0-0-2586-0" },
+            -- hostile is what WOWAPI's UnitCanAttack and UnitReaction read
+            reaction = 2, hostile = true, health = 690, healthMax = 1150, class = "ROGUE", powerType = 3,
+            power = 100, powerMax = 100, guid = "Creature-0-0-0-0-2586-0" },
         -- action slot -> { spell ID, icon }; bar 2 (MultiBarBottomLeft) is
         -- page 6, slots 61 to 72
         actions = {
@@ -75,6 +76,9 @@ M.CLASSES = {
                 { "Syndicate Conjuror slain", 4, 6 } } },
             { 658, "Hints of a New Plague?", 35, { { "Courier's Satchel", 0, 1 } } },
         },
+        -- action slot -> { seconds it lasts, seconds left at login }: round
+        -- 4's two, Gouge at 6 and Kidney Shot at 18
+        cooldowns = { [3] = { 10, 6 }, [10] = { 20, 18 } },
         -- the bars shown besides the main bar (IsMultibarVisible)
         multibars = { [1] = true },
         -- binding -> key
@@ -182,7 +186,24 @@ function M.mock(sim, class, opts)
             return (cp and unit == "player" and target == "target" and sim.units.target) and cp[1] or 0
         end,
         GetActionCount = function() return 0 end,
-        GetActionCooldown = function() return 0, 0, 1, 1 end,
+        -- the class's cooldowns (c.cooldowns), counted from M.apply
+        GetActionCooldown = function(slot)
+            local cd = (c.cooldowns or {})[slot]
+            local at = sim.fixtureCooldownsAt
+            if cd and at then
+                return at + cd[2] - cd[1], cd[1], 1, 1
+            end
+            return 0, 0, 1, 1
+        end,
+        -- (Blizzard's UI defines the global from this one as it loads)
+        ["C_ActionBar.GetActionCooldown"] = function(slot)
+            local cd = (c.cooldowns or {})[slot]
+            local at = sim.fixtureCooldownsAt
+            if cd and at then
+                return { startTime = at + cd[2] - cd[1], duration = cd[1], isEnabled = true, modRate = 1 }
+            end
+            return { startTime = 0, duration = 0, isEnabled = true, modRate = 1 }
+        end,
         IsUsableAction = function(slot) return has(slot), false end,
     }
     for name, fn in pairs(mocks) do
@@ -302,7 +323,10 @@ function M.apply(sim, class)
             end
         end
     end
+    -- the cooldowns count from now, as the auras do
+    sim.fixtureCooldownsAt = sim.time
     sim:FireEvent("ACTIONBAR_SLOT_CHANGED", 0)
+    sim:FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     sim:FireEvent("UPDATE_SHAPESHIFT_FORM")
     sim:FireEvent("UPDATE_BONUS_ACTIONBAR")
     sim:FireEvent("UPDATE_BINDINGS")

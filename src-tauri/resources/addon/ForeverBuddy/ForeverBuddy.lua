@@ -688,9 +688,13 @@ function U.bars.paint(b)
     if type(start) == "number" and type(duration) == "number" and duration > 1.5 and enabled ~= 0 then
         b.cooldown:SetCooldown(start, duration)
         b.cooldown:Show()
+        b.cdEnds = start + duration
+        U.bars.ticker:Show()
     else
         b.cooldown:Hide()
+        b.cdEnds = nil
     end
+    U.bars.seconds(b)
     local count = has and read("GetActionCount", slot)
     b.count:SetText(type(count) == "number" and count > 1 and tostring(count) or "")
     local usable, noMana = nil, nil
@@ -714,6 +718,46 @@ function U.bars.paint(b)
 end
 
 U.bars.procs = {} -- spell id -> its proc glow is showing
+
+-- A cooldown's seconds left on its button: "18", then "2m", "1h"; nothing
+-- once it's done (or under half a second).
+function U.bars.seconds(b)
+    local left = b.cdEnds and b.cdEnds - (read(GetTime) or b.cdEnds)
+    if not left or left < 0.5 then
+        b.cdEnds = nil
+        b.cd:SetText("")
+    elseif left >= 3600 then
+        b.cd:SetText(math.ceil(left / 3600) .. "h")
+    elseif left >= 60 then
+        b.cd:SetText(math.ceil(left / 60) .. "m")
+    else
+        b.cd:SetText(tostring(math.ceil(left)))
+    end
+end
+
+-- Counts them down five times a second, only while one is cooling.
+U.bars.ticker = CreateFrame("Frame")
+U.bars.ticker:Hide()
+U.bars.since = 0
+U.bars.ticker:SetScript("OnUpdate", function(self, elapsed)
+    U.bars.since = U.bars.since + (type(elapsed) == "number" and elapsed or 0)
+    if U.bars.since < 0.2 then
+        return
+    end
+    U.bars.since = 0
+    local any = false
+    for _, b in ipairs(U.bars.buttons) do
+        if b.cdEnds then
+            if not pcall(U.bars.seconds, b) then
+                b.cdEnds = nil
+            end
+            any = any or b.cdEnds ~= nil
+        end
+    end
+    if not any then
+        self:Hide()
+    end
+end)
 
 function U.bars.paintAll()
     for _, b in ipairs(U.bars.buttons) do
@@ -792,8 +836,20 @@ function U.bars.build()
         b.glow:Hide()
         b.cooldown = CreateFrame("Cooldown", name .. "Cooldown", b, "CooldownFrameTemplate")
         b.cooldown:SetAllPoints()
-        b.cooldown:SetHideCountdownNumbers(false)
+        -- Our own seconds instead of Blizzard's (which show only with a CVar
+        -- on, and in Blizzard's font): round 4's 22px stroked Barlow, in the
+        -- middle, on a frame above the swipe.
+        b.cooldown:SetHideCountdownNumbers(true)
         b.cooldown:SetDrawEdge(false)
+        b.over = CreateFrame("Frame", nil, b)
+        b.over:SetAllPoints()
+        b.over:SetFrameLevel(b:GetFrameLevel() + 4)
+        b.cd = b.over:CreateFontString(nil, "OVERLAY")
+        b.cd:SetFont("Fonts\\FRIZQT__.TTF", P(22), "THICKOUTLINE")
+        b.cd:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(22), "THICKOUTLINE")
+        b.cd:SetShadowOffset(0, 0)
+        b.cd:SetTextColor(1, 1, 1, 1)
+        b.cd:SetPoint("CENTER", b, "CENTER", 0, 0)
         -- Round 4's text: Barlow Semi Condensed Bold, a thick black stroke;
         -- stacks 16px, keybinds 12px.
         b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")

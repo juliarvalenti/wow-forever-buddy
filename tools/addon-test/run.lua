@@ -2153,7 +2153,19 @@ scenario("action_bars", function()
     eq(b[3].active.shown, true, "Stealth is on")
     eq(b[4].cooldown.shown, true, "Evasion's cooldown")
     eq(b[4].cooldown.cooldownAt[2], 120, "for its duration")
+    eq(b[4].cd.text, "", "long over: no seconds")
     eq(b[5].count.text, "7", "a stack count")
+    -- Our own seconds on a cooldown (round 4's big number), counting down.
+    local t = c.now - wow.EPOCH + 5000
+    w.actions[4].cooldown = { t - 2, 20 }
+    c.fire("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(b[4].cd.text, "18", "its seconds")
+    c.advance(10)
+    c.fire("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(b[4].cd.text, "8", "counting down")
+    w.actions[3].cooldown = { t - 100, 280 }
+    c.fire("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(b[3].cd.text, "3m", "minutes past one")
 
     -- Procs: the glow follows the client's overlay events.
     c.fire("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", 1752)

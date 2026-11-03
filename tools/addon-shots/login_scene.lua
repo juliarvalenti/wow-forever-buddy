@@ -308,7 +308,8 @@ function M.boot(opts)
         fixtures.apply(sim, class)
     else
         sim:SetTarget({ name = "Hogger", level = 11, classification = "elite", creatureType = "Humanoid",
-            reaction = 2, health = 520, healthMax = 666, class = "WARRIOR", guid = "Creature-0-0-0-0-448-0" })
+            reaction = 2, hostile = true, health = 520, healthMax = 666, class = "WARRIOR",
+            guid = "Creature-0-0-0-0-448-0" })
     end
     -- The client announces the layouts at login; Blizzard's Edit Mode places
     -- the HUD then. An error in it is the UI's, recorded like any other.
