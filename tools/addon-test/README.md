@@ -81,6 +81,17 @@ The fake is as strict as the client where a mistake would otherwise pass quietly
 
 The `strict_fake` scenario proves each of these holds.
 
+## Bars and frames guard rails (P4f-1)
+
+Blizzard's action bars and unit frames (`wow.PROTECTED`: PlayerFrame, TargetFrame, FocusFrame, MainActionBar, the MultiBars, StanceBar, PetActionBar) are protected in the fake. The addon may `SetAlpha` them and nothing else. Any of these is noted on `client.taint` and fails the scenario, even when the addon's `pcall` swallowed it:
+
+- a protected call: `Show`, `Hide`, `SetShown`, `SetScale`, `SetPoint`, `SetAllPoints`, `ClearAllPoints`, `SetParent`;
+- a read that can come back secret: `GetAlpha`, `GetScale`, `GetPoint` (keep your own record of the alpha you set);
+- a field written onto one;
+- `hooksecurefunc` on one of their methods (hook a global function instead).
+
+The alpha the addon set is on `client.protected[name].alpha`. The `guard_rails` scenario proves the fake catches each of these, and reads the same rules off `ForeverBuddy.lua`'s source, so code no scenario reaches is checked too.
+
 ## From the addon bible (R3a)
 
 Scenarios for rules in the addon bible (room memory `procedures/addon-bible/*`; "2.18" is rule 2.18):

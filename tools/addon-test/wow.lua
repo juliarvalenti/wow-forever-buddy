@@ -160,6 +160,20 @@ M.GEAR = {
 
 M.QUESTS = { [176] = "Wanted: Hogger" }
 
+-- P4f-1: Blizzard's frames the bars and frames work may fade but never
+-- move, show, hide or read back (the P4f spike: their buttons and the unit
+-- frames are protected, and these writes are recorded in Edit Mode's
+-- layout). Forever's names, from the client's own UI code.
+M.PROTECTED = {
+    "PlayerFrame", "TargetFrame", "FocusFrame", "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight",
+    "MultiBarLeft", "MultiBarRight", "MultiBar5", "MultiBar6", "MultiBar7", "StanceBar", "PetActionBar",
+}
+M.PROTECTED_CALLS = {}
+for _, k in ipairs({ "Show", "Hide", "SetShown", "SetScale", "SetPoint", "SetAllPoints", "ClearAllPoints",
+    "SetParent", "GetAlpha", "GetScale", "GetPoint" }) do
+    M.PROTECTED_CALLS[k] = true
+end
+
 function M.link(id)
     return "|cffffffff|Hitem:" .. id .. "::::::::12:::::|h[" .. (M.ITEMS[id] or "?") .. "]|h|r"
 end
@@ -207,6 +221,7 @@ function M.new(opts)
         now = M.EPOCH,
         errors = {}, -- errors that escaped the addon's own OnEvent
         unmodelled = {}, -- widget methods the addon called that the fake lacks
+        taint = {}, -- P4f-1: what the addon did to a protected Blizzard frame
         unknown = {},
         chat = {}, -- lines the addon added to the chat frame
         settings = nil, -- ForeverBuddySettings, the account-wide file
@@ -1315,6 +1330,13 @@ function M.new(opts)
             local holder, name, hook = env, a, b
             if type(a) == "table" then
                 holder, name, hook = a, b, c
+                -- P4f-1: never a method of a protected frame; hook globals.
+                for n in pairs(client.protected or {}) do
+                    if env[n] == a then
+                        table.insert(client.taint, "hooksecurefunc(" .. n .. ", " .. tostring(b) .. ")")
+                        return
+                    end
+                end
             end
             local original = holder[name]
             assert(type(original) == "function", "hooksecurefunc: no function " .. tostring(name))
@@ -1392,6 +1414,42 @@ function M.new(opts)
         env.ObjectiveTrackerFrame = newWidget(env.UIParent)
         env.ObjectiveTrackerFrame.IsMouseOver = function()
             return world.trackerMouse == true
+        end
+        -- P4f-1: Blizzard's action bars and unit frames, protected. The
+        -- addon may only SetAlpha them (and read nothing back); anything
+        -- else is noted on client.taint, which fails the scenario even when
+        -- the addon pcalled it: the protected calls (blocked in combat, and
+        -- they taint Edit Mode's layout out of it too), a field written
+        -- onto one, the reads that can come back secret (GetAlpha, GetScale,
+        -- GetPoint), and hooksecurefunc on one of their methods. The alpha
+        -- set is kept on client.protected[name].alpha for scenarios.
+        client.protected = {}
+        for _, name in ipairs(M.PROTECTED) do
+            local real = newWidget(env.UIParent)
+            real.name = name
+            client.protected[name] = real
+            env[name] = setmetatable({}, {
+                __index = function(_, k)
+                    if M.PROTECTED_CALLS[k] then
+                        return function()
+                            table.insert(client.taint, name .. ":" .. k .. "()")
+                        end
+                    end
+                    local v = real[k]
+                    if type(v) == "function" then
+                        return function(_, ...)
+                            return v(real, ...)
+                        end
+                    end
+                    return v
+                end,
+                __newindex = function(_, k)
+                    table.insert(client.taint, name .. "." .. tostring(k) .. " = (a field written onto it)")
+                end,
+                __tostring = function()
+                    return name
+                end,
+            })
         end
         env.UISpecialFrames = {}
         env.Settings = {
