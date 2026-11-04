@@ -536,6 +536,22 @@ mod tests {
         );
     }
 
+    /// propose_ui's check needs no WOWAPI data: its sandbox has none (the
+    /// host's `data` is `None`), yet the language's check runs through
+    /// `preview.check` and finds a broken document's problems.
+    #[test]
+    fn the_check_runs_without_wowapi_data() {
+        assert!(check(&example()).unwrap().is_empty(), "round 4 passes");
+        let mut doc = example();
+        doc["parts"][0]["kind"] = json!("hologram");
+        let problems = check(&doc).unwrap();
+        assert!(
+            problems.iter().any(|p| p.path == "/parts/0/kind"),
+            "{}",
+            problem_lines(&problems)
+        );
+    }
+
     #[test]
     fn without_data_it_says_where_to_get_it() {
         let tmp = tempfile::tempdir().unwrap();
