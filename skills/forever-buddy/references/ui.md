@@ -2,7 +2,7 @@
 
 A UI document is JSON that describes a whole in-game UI: unit frames, bars, numbers, combo points, action buttons, and which of Blizzard's frames step aside. Nothing in it runs: Forever Buddy's addon reads it and builds frames. Never send Lua.
 
-**What works today:** `render_ui` draws a document on the player's own screen (their class, the logged-in scene) and hands you back a picture, so you can see your work and fix it before the player looks. **What doesn't yet:** a document can't be sent to the game; that's next. To change what the player has in game today, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
+**What works today:** `render_ui` draws a document on a stand-in screen (Forever Buddy's test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) and hands you back a picture, so you can see your work and fix it before the player looks. **What doesn't yet:** a document can't be sent to the game; that's next. To change what the player has in game today, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
 
 ## The loop
 
@@ -56,4 +56,4 @@ Without the MCP, the app's command line draws the same picture: `<WoW Forever Bu
 
 Don't hand back round 4 in new colours. Use the layout: put things where the player looks, stack or split them, make the number the design, hide what doesn't matter out of combat. And don't make one: make two or three that differ clearly and let the player pick.
 
-The pictures draw the player's real action icons only with game art on; without it they're grey squares. Say so if the player asks.
+The pictures are the test rogue's, not the player's: the same bars, numbers and buttons a document would show anyone, with the action icons as grey squares. So don't tell a mage it's their screen; say it's how the layout looks, and that the numbers and icons will be theirs in game.
