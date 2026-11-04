@@ -1875,8 +1875,9 @@ end
 
 -- A part that's in effect: its setting on, and the module on (W1).
 function U.quest.on(key)
-    -- COMPAT1: Questie keeps its own tracker, so ours doesn't fade one.
-    if key == "trackerFade" and U.compat.yieldsTo("quest.trackerFade") then
+    -- COMPAT1: what Questie already does (its own tracker, levels on quest
+    -- titles, progress on item tooltips), ours leaves to it.
+    if U.compat.yieldsTo("quest." .. key) then
         return false
     end
     return U.mods.on("quest") and U.quest.get(key) and true or false
@@ -5018,11 +5019,12 @@ do
     -- Its buttons for other characters' bags have no bag, so get no mark.
     function C.baganator()
         local api = U.compat.loaded("Baganator") and type(rawget(_G, "Baganator")) == "table" and Baganator.API
-        if C.baganatorOn or type(api) ~= "table" or type(api.RegisterCornerWidget) ~= "function" then
+        if C.baganatorOn ~= nil or type(api) ~= "table" or type(api.RegisterCornerWidget) ~= "function" then
             return
         end
-        C.baganatorOn = api
-        api.RegisterCornerWidget("Forever Buddy marks", "ForeverBuddyMarks", function(t, details)
+        -- Another addon's API: in a pcall, so a change on its side can't stop
+        -- the rest of our login. Tried once either way.
+        local ok = pcall(api.RegisterCornerWidget, "Forever Buddy marks", "ForeverBuddyMarks", function(t, details)
             local button = C.baganatorOwner[t]
             if not C.opt("bagMarks") or not (button and type(button.GetBagID) == "function" and button:GetBagID()) then
                 return false
@@ -5040,6 +5042,7 @@ do
             C.baganatorOwner[t] = button
             return t
         end, { corner = "top_left", priority = 1 }, true)
+        C.baganatorOn = ok and api or false
     end
     C.baganatorOwner = setmetatable({}, { __mode = "k" })
 
@@ -6771,8 +6774,21 @@ do
             cb.yields = help ~= o.description
             -- A help line long enough to wrap takes a second line.
             cb.height = #(help or "") > 64 and 62 or 46
+            -- Yielding, the switch and its label are dimmed and the switch
+            -- does nothing; the line saying why stays at full strength.
+            if cb.yields then
+                cb:SetEnabled(false)
+                cb.track:SetAlpha(0.5)
+                cb.knob:SetAlpha(0.5)
+                cb.label:SetAlpha(0.5)
+            end
             cb:SetScript("OnClick", function(b)
-                -- Nothing changes in combat: the switch goes back.
+                -- Nothing changes while it yields, or in combat: the switch
+                -- goes back.
+                if b.yields then
+                    U.refresh()
+                    return
+                end
                 if not read("InCombatLockdown") and not pcall(o.set, b:GetChecked() and true or false) then
                     U.errors = U.errors + 1
                 end

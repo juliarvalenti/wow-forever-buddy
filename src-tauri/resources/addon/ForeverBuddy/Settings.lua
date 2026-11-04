@@ -244,6 +244,7 @@ ns.settings = {
             label = "Quest levels in the quest log",
             help = "Each quest's level before its title, like [23] Wanted: Hogger.",
             parent = "quest.enabled",
+            yields = { "Questie" },
             acts = false,
         },
         {
@@ -266,6 +267,7 @@ ns.settings = {
             label = "Quest progress on item tooltips",
             help = "When a quest in your log needs an item, its tooltip says which quest and how many you have.",
             parent = "quest.enabled",
+            yields = { "Questie" },
             acts = false,
         },
         {

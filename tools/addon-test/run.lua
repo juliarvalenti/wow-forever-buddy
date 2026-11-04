@@ -2502,7 +2502,13 @@ scenario("compat", function()
     -- Dialog keys: the row says DialogKey has it, and no key is taken.
     local keys = setting(c, "Dialog keys")
     eq(keys.sub.text, "DialogKey does this, so ours stays off.", "the row says why")
+    eq(keys.enabled, false, "its switch does nothing")
+    eq(keys.label.alpha, 0.5, "and it's dimmed")
+    eq(keys.sub.alpha, nil, "but the line saying why isn't")
     c.click(keys)
+    eq(keys.option.get(), false, "clicking it changes nothing")
+    -- Even turned on before DialogKey came (here, set directly).
+    keys.option.set(true)
     c.openDialog("gossip", { available = { { questID = 176, repeatable = false, frequency = 0 } } })
     eq(c.key("SPACE"), "game", "Space stays DialogKey's")
     eq(table.concat(c.world.quest_actions, ","), "", "and ours picks nothing")
@@ -2511,8 +2517,12 @@ scenario("compat", function()
     -- The tracker: Questie has its own, so ours fades nothing.
     local fade = setting(c, "See-through quest tracker")
     eq(fade.sub.text, "Questie does this, so ours stays off.", "the tracker row too")
-    c.click(fade)
+    fade.option.set(true)
     eq(#c.global("ObjectiveTrackerFrame").children, 0, "no fade frame on the tracker")
+    -- Questie also puts levels on quest titles and progress on tooltips.
+    eq(setting(c, "Quest levels in the quest log").sub.text, "Questie does this, so ours stays off.", "levels")
+    eq(setting(c, "Quest progress on item tooltips").sub.text, "Questie does this, so ours stays off.", "tooltips")
+    eq(setting(c, "Mark quests that are new in Forever").enabled, true, "the (New) tag stays ours")
 
     -- Bags: Baganator draws its own, so the Bags module draws nothing.
     c.click(setting(c, "Junk in your bags"))
@@ -2545,6 +2555,19 @@ scenario("compat", function()
 
     local db = file(c.logout())
     eq(table.concat(db.others, ","), "DialogKey,Baganator,Questie", "the logout file names those it knows")
+
+    -- Baganator's API is another addon's: if it throws, our login goes on.
+    local tried = 0
+    local broken = client({ globals = { Baganator = { API = { RegisterCornerWidget = function()
+        tried = tried + 1
+        error("Baganator changed")
+    end } } } })
+    broken.world.addons = { Baganator = true }
+    broken.login(nil)
+    broken.advance(5)
+    eq(tried, 1, "tried once")
+    eq(table.concat(broken.errors, " / "), "", "and nothing escaped")
+    eq(file(broken.logout()).others[1], "Baganator", "the rest of the session as usual")
 end)
 
 scenario("cleanup", function()
