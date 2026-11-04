@@ -123,6 +123,10 @@ pub struct Opt {
     /// Text's length in bytes (the addon counts bytes too); 200 if unset.
     #[serde(default)]
     pub max_length: Option<usize>,
+    /// Part of the HUD's or the bars' look (ED1): set by Claude, drawn
+    /// nowhere in game.
+    #[serde(default)]
+    pub look: bool,
 }
 
 /// Text's length when the declaration doesn't say.
@@ -159,6 +163,13 @@ pub(crate) fn fits(o: &Opt, v: &Value) -> bool {
         "string" => v.as_str().is_some_and(|s| {
             s.len() <= o.max_length.unwrap_or(MAX_TEXT) && !s.contains(|c: char| c.is_control())
         }),
+        // ED1: a look's colour, "#rrggbb", or empty for the look's own.
+        "color" => v.as_str().is_some_and(|s| {
+            s.is_empty()
+                || (s.len() == 7
+                    && s.starts_with('#')
+                    && s[1..].chars().all(|c| c.is_ascii_hexdigit()))
+        }),
         // Any other type: nothing is accepted until it has its check here.
         _ => false,
     }
@@ -178,6 +189,7 @@ pub(crate) fn allowed(o: &Opt) -> String {
             "text of at most {} bytes, on one line",
             o.max_length.unwrap_or(MAX_TEXT)
         ),
+        "color" => "a colour as \"#rrggbb\", or \"\" for the look's own".into(),
         _ => "a value this version can't set".into(),
     }
 }
@@ -332,6 +344,12 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
                 row["min"] = serde_json::json!(o.min);
                 row["max"] = serde_json::json!(o.max);
                 row["step"] = serde_json::json!(o.step);
+            }
+            if o.kind == "enum" {
+                row["values"] = serde_json::json!(o.values);
+            }
+            if o.look {
+                row["look"] = serde_json::json!(true);
             }
             row
         })
@@ -726,6 +744,8 @@ mod tests {
                     LuaValue::Bool(b) => json!(b),
                     LuaValue::Num(n) => json!(n),
                     LuaValue::Int(n) => json!(n),
+                    // ED1: the look's colours and choices.
+                    LuaValue::Str(s) => json!(String::from_utf8(s.to_vec()).unwrap()),
                     _ => panic!(),
                 };
                 (
@@ -841,6 +861,13 @@ mod tests {
             (&any_text, json!("x".repeat(200)), true),
             (&any_text, json!("x".repeat(201)), false),
             (&decl(json!({ "type": "color" })), json!("ff0000"), false),
+            (&decl(json!({ "type": "color" })), json!("#4fd99a"), true),
+            (&decl(json!({ "type": "color" })), json!("#4FD99A"), true),
+            (&decl(json!({ "type": "color" })), json!(""), true),
+            (&decl(json!({ "type": "color" })), json!("#4fd99"), false),
+            (&decl(json!({ "type": "color" })), json!("#4fd99g"), false),
+            (&decl(json!({ "type": "color" })), json!("red"), false),
+            (&decl(json!({ "type": "color" })), json!(1), false),
         ] {
             assert_eq!(fits(o, &v), want, "{} {v}", o.kind);
         }

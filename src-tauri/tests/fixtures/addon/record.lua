@@ -1,7 +1,7 @@
 -- Written by tools/addon-test/run.lua (scenario record). Don't edit: change the scenario and run it again.
 ForeverBuddyDB = {
 	["_meta"] = {
-		["addon"] = "0.13.0",
+		["addon"] = "0.14.0",
 		["build"] = "1.60.1.70009",
 		["counts"] = {
 			["bag_items"] = 3,
@@ -72,7 +72,7 @@ ForeverBuddyDB = {
 		},
 	},
 	["record"] = {
-		["addon"] = "0.13.0",
+		["addon"] = "0.14.0",
 		["counts"] = {
 			["ITEM_DATA_LOAD_RESULT"] = 50,
 		},
@@ -253,12 +253,22 @@ ForeverBuddyDB = {
 	["settings"] = {
 		["values"] = {
 			["actionbars.enabled"] = true,
+			["actionbars.iconSize"] = 46,
 			["actionbars.ours"] = false,
 			["bags.enabled"] = true,
 			["bags.itemLevel"] = false,
 			["bags.junk"] = false,
 			["coach.enabled"] = true,
+			["hud.accentColor"] = "#fff569",
 			["hud.enabled"] = false,
+			["hud.gradient"] = true,
+			["hud.healthColor"] = "#4fd99a",
+			["hud.height"] = 48,
+			["hud.layout"] = "side",
+			["hud.outline"] = "thick",
+			["hud.powerColor"] = "",
+			["hud.textSize"] = 22,
+			["hud.width"] = 300,
 			["map.coords"] = false,
 			["map.enabled"] = true,
 			["map.fade"] = false,
