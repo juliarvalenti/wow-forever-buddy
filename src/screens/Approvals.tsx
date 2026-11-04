@@ -202,7 +202,7 @@ function macroNext(v: MacroView) {
 const GAME: Record<string, string> = {
   waiting: "waiting for your click in game",
   applied: "applied in game",
-  declined: "Not this one, in game",
+  declined: "dropped in game (Not this one)",
   changed: "skipped in game: it changed there first",
   full: "no room in game yet",
 };
