@@ -222,7 +222,10 @@ function DRAW.plate(f, p, unit, on)
         t:SetVertexColor(1, 1, 1, 1)
         t:SetGradient(g[1], CreateColor(unpack(hex(g[2]))), CreateColor(unpack(hex(g[3]))))
     end
-    if p.border then
+    -- turned about its middle (a diamond, a slash); a turned plate has no border
+    if p.rotate then
+        t:SetRotation(-math.rad(p.rotate))
+    elseif p.border then
         border(f, hex(p.border), p.borderWidth)
     end
 end
@@ -266,24 +269,36 @@ function DRAW.bar(f, p, unit, on)
     end
 end
 
--- n marks lit up to the value: in a row, or around an arc (0 degrees is
--- up, clockwise).
+-- n marks lit up to the value: in a row, a column, or around an arc (0
+-- degrees is up, clockwise). Combo points light one each; health and power
+-- light their share of n, so 30 pips make a segmented gauge. `rotate` turns
+-- each mark (45 makes diamonds); on an arc, `orient` turns each to face out.
 function DRAW.pips(f, p, unit, on)
-    local _, cur = value(unit, p.value or "combo")
+    local what = p.value or "combo"
+    local frac, cur = value(unit, what)
     local n = p.count or 5
+    local lit = what == "combo" and (cur or 0) or math.floor((frac or 1) * n + 0.5)
     local w, h, gap = (p.w or 10) * PX, (p.h or 10) * PX, (p.gap or 4) * PX
-    local c = color(pick(p.color, on) or "#ffffff", unit)
     for i = 1, n do
-        local x, y = (i - (n + 1) / 2) * (w + gap), 0
-        if p.layout == "arc" then
-            local th = math.rad((p.from or 160) + ((p.to or 200) - (p.from or 160)) * (i - 1) / math.max(1, n - 1))
+        local x, y, rot = (i - (n + 1) / 2) * (w + gap), 0, math.rad(p.rotate or 0)
+        if p.layout == "column" then
+            x, y = 0, ((n + 1) / 2 - i) * (h + gap)
+        elseif p.layout == "arc" then
+            local deg = (p.from or 160) + ((p.to or 200) - (p.from or 160)) * (i - 1) / math.max(1, n - 1)
+            local th = math.rad(deg)
             x, y = (p.radius or 150) * PX * math.sin(th), (p.radius or 150) * PX * math.cos(th)
+            if p.orient then
+                rot = rot + th
+            end
         end
-        local lit = i <= (cur or 0)
-        local t = tex(f, "ARTWORK", lit and c or hex(p.emptyColor or "#2a2a2e", p.emptyAlpha or 1))
+        -- (colour stops by each pip's own place, so a gauge can run red to green)
+        local c = color(pick(p.color, on) or "#ffffff", unit, i / n)
+        local t = tex(f, "ARTWORK", i <= lit and c or hex(p.emptyColor or "#2a2a2e", p.emptyAlpha or 1))
         t:SetSize(w, h)
         t:SetPoint("CENTER", f, "CENTER", x, y)
-        if p.border then
+        if rot ~= 0 then
+            t:SetRotation(-rot)
+        elseif p.border then
             local b = CreateFrame("Frame", nil, f)
             b:SetSize(w, h)
             b:SetPoint("CENTER", f, "CENTER", x, y)
@@ -325,8 +340,14 @@ function DRAW.actionbar(f, p, unit, on)
     local n, sz, gap = #p.slots, (p.icon or 40) * PX, (p.gap or 1) * PX
     local cols = p.columns or n
     local rows = math.ceil(n / cols)
-    f:SetSize(cols * sz + (cols - 1) * gap, rows * sz + (rows - 1) * gap)
-    if p.back then
+    local arc = p.layout == "arc"
+    if arc then
+        -- around the frame's middle, like pips on an arc
+        f:SetSize(sz, sz)
+    else
+        f:SetSize(cols * sz + (cols - 1) * gap, rows * sz + (rows - 1) * gap)
+    end
+    if p.back and not arc then
         local b = tex(f, "BACKGROUND", hex(p.back))
         b:SetPoint("TOPLEFT", -PX, PX)
         b:SetPoint("BOTTOMRIGHT", PX, -PX)
@@ -335,7 +356,17 @@ function DRAW.actionbar(f, p, unit, on)
         local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
         local b = CreateFrame("Frame", nil, f)
         b:SetSize(sz, sz)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", col * (sz + gap), -row * (sz + gap))
+        if arc then
+            local th = math.rad((p.from or 120) + ((p.to or 240) - (p.from or 120)) * (i - 1) / math.max(1, n - 1))
+            b:SetPoint("CENTER", f, "CENTER", (p.radius or 200) * PX * math.sin(th), (p.radius or 200) * PX * math.cos(th))
+            if p.back then
+                local bk = tex(b, "BACKGROUND", hex(p.back))
+                bk:SetPoint("TOPLEFT", -PX, PX)
+                bk:SetPoint("BOTTOMRIGHT", PX, -PX)
+            end
+        else
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", col * (sz + gap), -row * (sz + gap))
+        end
         local icon = b:CreateTexture(nil, "ARTWORK")
         local file = GetActionTexture(slot)
         if file then

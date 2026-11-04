@@ -1,0 +1,33 @@
+{
+  "ui": 1,
+  "name": "Corners",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "kind": "plate", "color": "#ffffff", "alpha": 0.5, "rotate": 45,
+      "anchor": ["CENTER", "char", "CENTER", 0, 0], "size": [8, 8] },
+
+    { "name": "me", "kind": "bar", "value": "health", "vertical": true,
+      "color": [[0.35, "#ff6a3d"], [1, "#f4f1e8"]], "back": "#000000", "backAlpha": 0.55,
+      "anchor": ["BOTTOMLEFT", "screen", "BOTTOMLEFT", 48, 48], "size": [10, 300] },
+    { "kind": "bar", "value": "power", "vertical": true, "color": "power", "back": "#000000", "backAlpha": 0.55,
+      "anchor": ["BOTTOMLEFT", "me", "BOTTOMRIGHT", 6, 0], "size": [4, 300] },
+    { "kind": "text", "format": "{hp%}", "font": "Barlow", "fontSize": 96, "stroke": 3, "justify": "LEFT",
+      "color": { "always": "#f4f1e8", "low": "#ff6a3d" },
+      "anchor": ["BOTTOMLEFT", "me", "BOTTOMRIGHT", 30, -10], "size": [360, 100] },
+    { "kind": "text", "format": "{name}  ·  {power} energy  ·  {combo} combo", "font": "Geist", "fontSize": 16,
+      "outline": "thin", "justify": "LEFT", "color": "#c9c4b8",
+      "anchor": ["BOTTOMLEFT", "me", "BOTTOMRIGHT", 34, 96], "size": [500, 20] },
+
+    { "name": "them", "kind": "bar", "unit": "target", "value": "health", "vertical": true, "reverse": true,
+      "color": "reaction", "back": "#000000", "backAlpha": 0.55,
+      "anchor": ["TOPRIGHT", "screen", "TOPRIGHT", -48, -48], "size": [10, 300] },
+    { "kind": "text", "unit": "target", "format": "{hp%}", "font": "Barlow", "fontSize": 96, "stroke": 3,
+      "justify": "RIGHT", "anchor": ["TOPRIGHT", "them", "TOPLEFT", -26, 10], "size": [360, 100] },
+    { "kind": "text", "unit": "target", "format": "{name}", "font": "Marcellus", "fontSize": 22, "outline": "thin",
+      "justify": "RIGHT", "color": "reaction", "anchor": ["TOPRIGHT", "them", "TOPLEFT", -30, -96], "size": [500, 26] },
+
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "columns": 2, "icon": 46, "gap": 2,
+      "keySize": 12, "stroke": 1, "alpha": { "always": 0.35, "combat": 1 },
+      "anchor": ["RIGHT", "screen", "RIGHT", -48, -40] }
+  ]
+}
