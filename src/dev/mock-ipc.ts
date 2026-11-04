@@ -290,7 +290,8 @@ export function installMockIpc(): void {
         name: "Low and wide",
         why: "Your frames either side of the bars, numbers big, combo points across the top.",
         words: "make my rogue UI look clean",
-        active: false,
+        for: { characters: [], classes: [], specs: [] },
+      active: false,
       },
     }),
   ];

@@ -626,7 +626,12 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         None => None,
     };
     let ui_doc = match body::<uidoc::UiDocBody>(&s, UI_DOC) {
-        Some(b) => Some(uidoc::view(&b, uidoc::is_active(db, flavor, s.id)?)),
+        Some(b) => Some(uidoc::view(
+            db,
+            flavor,
+            &b,
+            uidoc::is_active(db, flavor, s.id)?,
+        )?),
         None => None,
     };
     Ok(Proposal {
@@ -765,6 +770,24 @@ fn set_status(db: &Db, id: i64, status: &str, now: i64) -> AppResult<()> {
         )?;
         Ok(())
     })
+}
+
+/// UI3: Use this for whom the player picked on the card (`decide`'s Approve
+/// uses whom the agent proposed).
+pub fn use_ui(db: &Db, flavor: &str, id: u32, pick: &uidoc::UiForPick, now: i64) -> AppResult<()> {
+    let s = stored(
+        db,
+        flavor,
+        "id = ? AND status = 'staged' AND kind = ?",
+        &[&id, &UI_DOC],
+    )?
+    .into_iter()
+    .next()
+    .ok_or_else(|| AppError::NotFound("that UI, or it was already decided".into()))?;
+    body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
+    let target = uidoc::from_pick(db, flavor, pick)?;
+    uidoc::use_for(db, flavor, s.id, &target, now)?;
+    set_status(db, s.id, "applied", now)
 }
 
 /// Approves or declines one waiting proposal. Approve applies the stored
@@ -1824,5 +1847,118 @@ mod tests {
         .unwrap();
         assert_eq!(uidoc::in_use(&db, FLAVOR).unwrap().len(), 7);
         assert!(!names(&db).contains(&"Velyra".to_string()));
+    }
+
+    /// UI3's card: what Use this and Stop using would do, character by
+    /// character, then Use this for whom the player picked.
+    #[test]
+    fn the_card_says_what_a_ui_does_to_each_character_then_uses_the_pick() {
+        let (tmp, db) = setup();
+        db.with_conn(|c| {
+            c.execute_batch(
+                "UPDATE characters SET guid = 'Player-1-' || name;
+                 UPDATE characters SET class = 'ROGUE' WHERE name = 'Coinpurse';
+                 UPDATE characters SET class = 'MAGE' WHERE name = 'Velyra';",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let doc: serde_json::Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let mut at = NOW;
+        let mut stage = |name: &str, target: serde_json::Value| -> u32 {
+            let mut ui = json!({ "name": name, "why": "w", "doc": doc });
+            if !target.is_null() {
+                ui["for"] = target;
+            }
+            drop_file(tmp.path(), UI_DOC, ui);
+            at += 1;
+            ingest(&db, tmp.path(), FLAVOR, true, at).unwrap();
+            list(&db, FLAVOR, at).unwrap().waiting[0].id
+        };
+        let plain = stage("Plain", serde_json::Value::Null);
+        decide(&db, FLAVOR, plain, Decision::Approve, NOW + 10).unwrap();
+        let timers = stage("Rogue timers", json!({ "classes": ["ROGUE"] }));
+        decide(&db, FLAVOR, timers, Decision::Approve, NOW + 11).unwrap();
+        let halo = stage("Halo", json!({ "characters": ["Coinpurse"] }));
+
+        let chars = uidoc::characters(&db, FLAVOR).unwrap();
+        let coinpurse = chars.iter().find(|c| c.name == "Coinpurse").unwrap().id;
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        let proposed = &a.waiting[0].ui_doc.as_ref().unwrap().target;
+        assert_eq!(
+            proposed.characters,
+            [coinpurse],
+            "the card starts from the agent's pick"
+        );
+
+        let line =
+            |e: Vec<uidoc::UiEffect>| -> Vec<(String, Option<String>, Option<String>, bool)> {
+                e.into_iter()
+                    .map(|e| (e.character.name, e.now, e.then, e.in_for))
+                    .collect()
+            };
+        let s = |x: &str| Some(x.to_string());
+        let pick = uidoc::UiForPick {
+            characters: vec![coinpurse],
+            ..Default::default()
+        };
+        let using = uidoc::UiChange::Use {
+            id: halo,
+            target: pick.clone(),
+        };
+        assert_eq!(
+            line(uidoc::effect(&db, FLAVOR, &using, NOW + 20).unwrap()),
+            [("Coinpurse".into(), s("Rogue timers"), s("Halo"), true)],
+            "Velyra keeps Plain, so isn't named"
+        );
+        let everyone = uidoc::UiChange::Use {
+            id: halo,
+            target: uidoc::UiForPick::default(),
+        };
+        let e = line(uidoc::effect(&db, FLAVOR, &everyone, NOW + 20).unwrap());
+        assert!(
+            e.contains(&("Velyra Duskmane".into(), s("Plain"), s("Halo"), true)),
+            "{e:?}"
+        );
+        assert!(
+            e.contains(&(
+                "Coinpurse".into(),
+                s("Rogue timers"),
+                s("Rogue timers"),
+                true
+            )),
+            "the rogue keeps its class UI: {e:?}"
+        );
+
+        // Use this for Velyra instead of whom the agent said.
+        let velyra = chars
+            .iter()
+            .find(|c| c.name == "Velyra Duskmane")
+            .unwrap()
+            .id;
+        let mine = uidoc::UiForPick {
+            characters: vec![velyra],
+            ..Default::default()
+        };
+        use_ui(&db, FLAVOR, halo, &mine, NOW + 30).unwrap();
+        let listed = uidoc::listed(&db, FLAVOR).unwrap();
+        let order: Vec<&str> = listed.iter().map(|u| u.name.as_str()).collect();
+        assert_eq!(order, ["Halo", "Rogue timers", "Plain"]);
+        assert_eq!(listed[0].target.characters, [velyra]);
+        assert!(
+            use_ui(&db, FLAVOR, halo, &mine, NOW + 31).is_err(),
+            "decided already"
+        );
+
+        // Stop using Rogue timers: Coinpurse goes to Plain.
+        let stop = uidoc::UiChange::Stop {
+            key: listed[1].key.clone(),
+        };
+        assert_eq!(
+            line(uidoc::effect(&db, FLAVOR, &stop, NOW + 40).unwrap()),
+            [("Coinpurse".into(), s("Rogue timers"), s("Plain"), true)]
+        );
+        uidoc::stop(&db, FLAVOR, &listed[1].key).unwrap();
+        assert_eq!(uidoc::listed(&db, FLAVOR).unwrap().len(), 2);
     }
 }

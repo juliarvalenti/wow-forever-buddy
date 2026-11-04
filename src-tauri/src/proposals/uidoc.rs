@@ -120,6 +120,10 @@ pub struct UiDocView {
     pub name: String,
     pub why: String,
     pub words: Option<String>,
+    /// UI3: whom the agent proposed it for, the card's For row to start
+    /// with (all empty: everyone).
+    #[serde(rename = "for")]
+    pub target: UiForPick,
     /// It's a UI in use now.
     pub active: bool,
 }
@@ -248,38 +252,44 @@ pub(crate) fn check(db: &Db, flavor: &str, p: &UiDocProposal) -> Result<UiDocBod
 pub(crate) struct InUse {
     pub id: i64,
     pub target: UiFor,
+    pub set_at: i64,
     pub body: UiDocBody,
 }
 
-/// The documents in use, in the slot's order: most specific first, the
-/// newest first within that. A row whose proposal no longer reads is left
-/// out.
+/// The slot's order: most specific first, the newest first within that.
+fn order(all: &mut [InUse]) {
+    all.sort_by(|a, b| (a.target.rank(), b.set_at, b.id).cmp(&(b.target.rank(), a.set_at, a.id)));
+}
+
+/// The documents in use, in the slot's order. A row whose proposal no
+/// longer reads is left out.
 pub(crate) fn in_use(db: &Db, flavor: &str) -> AppResult<Vec<InUse>> {
-    let rows: Vec<(String, i64, Option<String>)> = db.with_conn(|c| {
+    let rows: Vec<(String, i64, i64, Option<String>)> = db.with_conn(|c| {
         let mut stmt = c.prepare(
-            "SELECT u.target, u.proposal, p.body FROM ui_in_use u
+            "SELECT u.target, u.proposal, u.set_at, p.body FROM ui_in_use u
              JOIN proposals p ON p.id = u.proposal AND p.flavor = u.flavor
                               AND p.kind = ?2 AND p.status = 'applied'
-             WHERE u.flavor = ?1 ORDER BY u.set_at DESC, u.proposal DESC",
+             WHERE u.flavor = ?1",
         )?;
         let rows = stmt
             .query_map(params![flavor, super::UI_DOC], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })?;
     let mut all: Vec<InUse> = rows
         .into_iter()
-        .filter_map(|(target, id, body)| {
+        .filter_map(|(target, id, set_at, body)| {
             Some(InUse {
                 id,
                 target: serde_json::from_str(&target).ok()?,
+                set_at,
                 body: serde_json::from_str(body.as_deref()?).ok()?,
             })
         })
         .collect();
-    all.sort_by_key(|u| u.target.rank());
+    order(&mut all);
     Ok(all)
 }
 
@@ -295,7 +305,7 @@ pub(crate) fn use_for(db: &Db, flavor: &str, id: i64, target: &UiFor, now: i64) 
         )?;
         if same == 0 && count as usize >= MAX_IN_USE {
             return Err(AppError::InvalidSettings(format!(
-                "{MAX_IN_USE} UIs are in use already. Go back to the standard HUD for one of them first."
+                "{MAX_IN_USE} UIs are in use already. Stop using one of them first."
             )));
         }
         c.execute(
@@ -320,6 +330,231 @@ pub(crate) fn go_back(db: &Db, flavor: &str, target: Option<&UiFor>) -> AppResul
         };
         Ok(())
     })
+}
+
+/// A `for` as the app shows and picks it (the Approvals card's For row):
+/// characters by the app's own id.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct UiForPick {
+    pub characters: Vec<u32>,
+    pub classes: Vec<String>,
+    /// Kept from the agent's proposal; the card doesn't pick specs.
+    pub specs: Vec<u32>,
+}
+
+/// A character a UI can be for: one the addon has seen, so the game can
+/// tell it's them (by GUID).
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct UiCharacter {
+    pub id: u32,
+    pub name: String,
+    /// The class file token, `ROGUE`.
+    pub class: Option<String>,
+    #[serde(skip)]
+    guid: String,
+}
+
+/// The characters a UI can be for, by name.
+pub fn characters(db: &Db, flavor: &str) -> AppResult<Vec<UiCharacter>> {
+    db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT id, name, surname, class, guid FROM characters
+             WHERE flavor = ?1 AND guid IS NOT NULL AND guid <> '' AND hidden_at IS NULL
+             ORDER BY last_seen DESC, id",
+        )?;
+        let rows = stmt
+            .query_map([flavor], |r| {
+                let name: String = r.get(1)?;
+                let surname: Option<String> = r.get(2)?;
+                Ok(UiCharacter {
+                    id: r.get(0)?,
+                    name: match surname {
+                        Some(s) if !s.is_empty() => format!("{name} {s}"),
+                        _ => name,
+                    },
+                    class: r.get(3)?,
+                    guid: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+/// The card's pick as stored. A character the game can't tell apart, or an
+/// unknown class, is refused.
+pub fn from_pick(db: &Db, flavor: &str, p: &UiForPick) -> AppResult<UiFor> {
+    let known = characters(db, flavor)?;
+    let characters = p
+        .characters
+        .iter()
+        .map(|id| {
+            known
+                .iter()
+                .find(|c| c.id == *id)
+                .map(|c| c.guid.clone())
+                .ok_or_else(|| AppError::NotFound("that character".into()))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    resolve(
+        db,
+        flavor,
+        &UiForRequest {
+            characters: Vec::new(),
+            classes: p.classes.clone(),
+            specs: p.specs.clone(),
+        },
+    )
+    .map(|mut t| {
+        t.characters = characters;
+        t.characters.sort();
+        t.characters.dedup();
+        t
+    })
+    .map_err(AppError::InvalidSettings)
+}
+
+/// A stored `for` as the card shows it. A character no longer known is left
+/// out.
+pub fn to_pick(db: &Db, flavor: &str, t: &UiFor) -> AppResult<UiForPick> {
+    let known = characters(db, flavor)?;
+    Ok(UiForPick {
+        characters: t
+            .characters
+            .iter()
+            .filter_map(|g| known.iter().find(|c| &c.guid == g).map(|c| c.id))
+            .collect(),
+        classes: t.classes.clone(),
+        specs: t.specs.clone(),
+    })
+}
+
+/// One document in use as "Your UIs in the game" lists it, in the order
+/// the game picks from.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct UiInUse {
+    /// Which entry, for Stop using and its effect.
+    pub key: String,
+    /// The proposal: its picture is `ui_doc_picture`'s.
+    pub id: u32,
+    pub name: String,
+    #[serde(rename = "for")]
+    pub target: UiForPick,
+    pub since: String,
+}
+
+pub fn listed(db: &Db, flavor: &str) -> AppResult<Vec<UiInUse>> {
+    in_use(db, flavor)?
+        .into_iter()
+        .map(|u| {
+            Ok(UiInUse {
+                key: u.target.key(),
+                id: u.id as u32,
+                name: u.body.name,
+                target: to_pick(db, flavor, &u.target)?,
+                since: super::rfc3339(u.set_at),
+            })
+        })
+        .collect()
+}
+
+/// A change to what's in use, to see what it does before doing it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UiChange {
+    /// Use proposal `id` for `for`.
+    Use {
+        id: u32,
+        #[serde(rename = "for")]
+        target: UiForPick,
+    },
+    /// Stop using one in use, by its `key`.
+    Stop { key: String },
+}
+
+/// A `key` from `listed` back to its `for`.
+fn by_key(key: &str) -> AppResult<UiFor> {
+    serde_json::from_str(key).map_err(|_| AppError::NotFound("that UI in use".into()))
+}
+
+/// Stop using: the entry `key` from `listed`.
+pub fn stop(db: &Db, flavor: &str, key: &str) -> AppResult<()> {
+    go_back(db, flavor, Some(&by_key(key)?))
+}
+
+/// What a change does to one character: the UI it has at its next login
+/// now and after (`None` is the standard HUD), and whether the change's
+/// `for` takes it in (so "your rogues keep Rogue timers" can be said).
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct UiEffect {
+    pub character: UiCharacter,
+    pub now: Option<String>,
+    pub then: Option<String>,
+    pub in_for: bool,
+}
+
+/// Whether a `for` takes in a character. The app doesn't know a
+/// character's spec, so a `for` with specs takes in no one here (the game
+/// decides those).
+fn takes(t: &UiFor, c: &UiCharacter) -> bool {
+    t.specs.is_empty()
+        && (t.characters.is_empty() || t.characters.contains(&c.guid))
+        && (t.classes.is_empty() || c.class.as_ref().is_some_and(|k| t.classes.contains(k)))
+}
+
+/// The UI a character gets from `all`, as the addon picks: the first that
+/// takes it in.
+fn picks(all: &[InUse], c: &UiCharacter) -> Option<String> {
+    all.iter()
+        .find(|u| takes(&u.target, c))
+        .map(|u| u.body.name.clone())
+}
+
+/// Every character the change touches or whose `for` takes in, before and
+/// after, for the card's line in names.
+pub fn effect(db: &Db, flavor: &str, change: &UiChange, now: i64) -> AppResult<Vec<UiEffect>> {
+    let before = in_use(db, flavor)?;
+    let mut after = in_use(db, flavor)?;
+    let target = match change {
+        UiChange::Use { id, target } => {
+            let t = from_pick(db, flavor, target)?;
+            let body: UiDocBody = serde_json::from_str(&db.with_conn(|c| {
+                Ok(c.query_row(
+                    "SELECT body FROM proposals WHERE id = ?1 AND flavor = ?2 AND kind = ?3",
+                    params![id, flavor, super::UI_DOC],
+                    |r| r.get::<_, String>(0),
+                )?)
+            })?)
+            .map_err(|_| AppError::NotFound("that UI".into()))?;
+            after.retain(|u| u.target != t);
+            after.push(InUse {
+                id: i64::from(*id),
+                target: t.clone(),
+                set_at: now,
+                body,
+            });
+            t
+        }
+        UiChange::Stop { key } => {
+            let t = by_key(key)?;
+            after.retain(|u| u.target != t);
+            t
+        }
+    };
+    order(&mut after);
+    Ok(characters(db, flavor)?
+        .into_iter()
+        .filter_map(|c| {
+            let (was, will) = (picks(&before, &c), picks(&after, &c));
+            let in_for = takes(&target, &c);
+            (in_for || was != will).then_some(UiEffect {
+                now: was,
+                then: will,
+                in_for,
+                character: c,
+            })
+        })
+        .collect())
 }
 
 /// The document of `ui_doc` proposal `id`, whatever became of it, for its
@@ -430,13 +665,14 @@ pub fn history(db: &Db, flavor: &str, now: i64) -> AppResult<(Vec<Value>, Vec<Va
     Ok((in_use_now, recent))
 }
 
-pub(super) fn view(b: &UiDocBody, active: bool) -> UiDocView {
-    UiDocView {
+pub(super) fn view(db: &Db, flavor: &str, b: &UiDocBody, active: bool) -> AppResult<UiDocView> {
+    Ok(UiDocView {
         name: b.name.clone(),
         why: b.why.clone(),
         words: b.words.clone(),
+        target: to_pick(db, flavor, &b.target)?,
         active,
-    }
+    })
 }
 
 pub(super) fn is_active(db: &Db, flavor: &str, id: i64) -> AppResult<bool> {
