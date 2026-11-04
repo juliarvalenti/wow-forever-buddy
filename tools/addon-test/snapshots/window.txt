@@ -218,7 +218,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.13:RIGHT(12,0) "Lockouts at the entrance"
           FontString TOPLEFT>ForeverBuddyWindow.24.1.1.13.3:BOTTOMLEFT(0,-5) 320x? "When you enter a dungeon or raid, says which of your other characters are saved there."
-        CheckButton 28x46
+        CheckButton 28x62
           Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0)
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.14:RIGHT(12,0) "Session card at logout"
@@ -499,7 +499,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.13:RIGHT(12,0) "Lockouts at the entrance"
           FontString TOPLEFT>ForeverBuddyWindow.24.1.1.13.3:BOTTOMLEFT(0,-5) 320x? "When you enter a dungeon or raid, says which of your other characters are saved there."
-        CheckButton 28x46
+        CheckButton 28x62
           Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0)
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.14:RIGHT(12,0) "Session card at logout"
@@ -795,7 +795,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.13:RIGHT(12,0) "Lockouts at the entrance"
           FontString TOPLEFT>ForeverBuddyWindow.24.1.1.13.3:BOTTOMLEFT(0,-5) 320x? "When you enter a dungeon or raid, says which of your other characters are saved there."
-        CheckButton 28x46
+        CheckButton 28x62
           Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0)
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.14:RIGHT(12,0) "Session card at logout"
@@ -1099,7 +1099,7 @@ Frame ForeverBuddyWindow CENTER>UIParent:CENTER(0,40) 620x468
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.13:RIGHT(12,0) "Lockouts at the entrance"
           FontString TOPLEFT>ForeverBuddyWindow.24.1.1.13.3:BOTTOMLEFT(0,-5) 320x? "When you enter a dungeon or raid, says which of your other characters are saved there."
-        CheckButton 28x46
+        CheckButton 28x62
           Texture TOPLEFT>parent:TOPLEFT(0,0) BOTTOMRIGHT>parent:BOTTOMRIGHT(0,0)
           Texture 10x10
           FontString LEFT>ForeverBuddyWindow.24.1.1.14:RIGHT(12,0) "Session card at logout"
