@@ -404,7 +404,10 @@ mod tests {
             &p,
             &[
                 render(2, json!({ "doc": doc, "moment": "combat" })),
-                render(3, json!({ "doc": { "units": [{ "parts": [null] }] } })),
+                render(
+                    3,
+                    json!({ "doc": { "ui": 1, "parts": [{ "kind": "hologram" }] } }),
+                ),
                 render(4, json!({})),
             ],
         );
@@ -422,14 +425,17 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("Drawn combat (1280x720"));
+        // The language's check refuses it: its problems, by JSON pointer.
         assert_eq!(out[1]["result"]["isError"], true);
-        assert_eq!(
-            out[1]["result"]["content"][0]["text"],
-            "units[0].parts[0]: null isn't a value; leave the key out instead"
+        let refused = out[1]["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            refused.starts_with("Not drawn: the document has"),
+            "{refused}"
         );
+        assert!(refused.contains("/parts/0/kind"), "{refused}");
         // No document: the example, and its document to start from.
         let text = out[2]["result"]["content"][1]["text"].as_str().unwrap();
         assert!(text.contains("The round 4 example document"), "{text}");
-        assert!(text.contains("\"units\""), "{text}");
+        assert!(text.contains("\"parts\""), "{text}");
     }
 }

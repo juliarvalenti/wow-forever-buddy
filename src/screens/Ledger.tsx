@@ -11,6 +11,7 @@ import {
   Button,
   Callout,
   DataTable,
+  EmptyState,
   Meter,
   Page,
   PageHeader,
@@ -443,18 +444,13 @@ export function Ledger({
       {saved && <p className="d-dim">Saved to {saved}</p>}
 
       {empty ? (
-        <Record>
-          <PanelHeader title="Your ledger is blank" />
-          <PanelBody>
-            <p>
-              Gold is noted each time a character logs out with the ForeverBuddy addon. Install it from
-              the Dashboard, then log in and out once (or type <span className="d-mono">/reload</span>).
-            </p>
-            <p style={{ marginTop: 10 }}>
-              <Button onClick={onOpenDashboard}>Go to the Dashboard</Button>
-            </p>
-          </PanelBody>
-        </Record>
+        <EmptyState
+          title="Your ledger is blank"
+          action={<Button onClick={onOpenDashboard}>Go to the Dashboard</Button>}
+        >
+          Gold is noted each time a character logs out with the ForeverBuddy addon. Install it from the Dashboard,
+          then log in and out once (or type <span className="d-mono">/reload</span>).
+        </EmptyState>
       ) : (
         <>
           <section className="d-strip" style={{ gridTemplateColumns: `repeat(${worth ? 4 : 3}, minmax(0, 1fr))` }}>

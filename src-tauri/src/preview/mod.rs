@@ -431,7 +431,6 @@ impl Worker {
                 scratch: scratch.clone(),
                 extract: None,
                 slots: BTreeMap::new(),
-                ui: None,
             }))
         });
         {
@@ -444,7 +443,7 @@ impl Worker {
             class: inputs.class.clone(),
             art: inputs.extract.is_some(),
             moment: inputs.moment.as_str(),
-            ui: false,
+            ui: None,
         };
         let host = host.clone();
         SESSION.with(|s| {

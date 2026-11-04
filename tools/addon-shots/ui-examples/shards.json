@@ -1,0 +1,36 @@
+{
+  "ui": 1,
+  "name": "Shards",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "kind": "plate", "color": "#ff2d6f", "alpha": 0.55, "rotate": 28,
+      "anchor": ["CENTER", "char", "CENTER", -250, -170], "size": [6, 260] },
+    { "kind": "plate", "color": "#2df2ff", "alpha": 0.45, "rotate": 28,
+      "anchor": ["CENTER", "char", "CENTER", 250, -170], "size": [6, 260] },
+
+    { "name": "hp", "kind": "pips", "value": "health", "count": 12, "w": 20, "h": 52, "gap": 6, "rotate": 18,
+      "color": [[0.34, "#ff2d6f"], [1, "#2df2ff"]], "emptyColor": "#ffffff", "emptyAlpha": 0.07,
+      "anchor": ["CENTER", "char", "CENTER", -190, -230], "size": [1, 1] },
+    { "kind": "pips", "value": "power", "count": 12, "w": 20, "h": 10, "gap": 6, "rotate": 18, "color": "power",
+      "emptyColor": "#ffffff", "emptyAlpha": 0.07,
+      "anchor": ["CENTER", "hp", "CENTER", -14, -46], "size": [1, 1] },
+    { "kind": "text", "format": "{hp}", "font": "Barlow", "fontSize": 48, "stroke": 2, "justify": "RIGHT",
+      "anchor": ["RIGHT", "hp", "CENTER", -180, 8], "size": [200, 54] },
+
+    { "name": "thp", "kind": "pips", "unit": "target", "value": "health", "count": 12, "w": 20, "h": 52, "gap": 6,
+      "rotate": -18, "color": "reaction", "emptyColor": "#ffffff", "emptyAlpha": 0.07,
+      "anchor": ["CENTER", "char", "CENTER", 190, -230], "size": [1, 1] },
+    { "kind": "text", "unit": "target", "format": "{name}", "font": "Barlow", "fontSize": 22, "stroke": 2,
+      "justify": "LEFT", "color": "reaction", "anchor": ["LEFT", "thp", "CENTER", 180, 14], "size": [300, 26] },
+    { "kind": "text", "unit": "target", "format": "{hp%}", "font": "Barlow", "fontSize": 36, "stroke": 2,
+      "justify": "LEFT", "anchor": ["LEFT", "thp", "CENTER", 180, -18], "size": [200, 40] },
+
+    { "kind": "pips", "unit": "target", "value": "combo", "count": 5, "w": 26, "h": 26, "gap": 22, "rotate": 45,
+      "color": "#ffe14d", "emptyColor": "#ffffff", "emptyAlpha": 0.1,
+      "anchor": ["CENTER", "char", "CENTER", 0, -150], "size": [1, 1] },
+
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "columns": 6, "icon": 44, "gap": 6,
+      "back": "#0b0b10", "keySize": 12, "stroke": 1, "keyColor": "#2df2ff",
+      "anchor": ["BOTTOM", "screen", "BOTTOM", 0, 60] }
+  ]
+}

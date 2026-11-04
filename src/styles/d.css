@@ -159,6 +159,8 @@
 .d-record .d-panel-head .d-dim { color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
 .d-record .d-muted { color: var(--ink-2); }
 .d-record .d-dim { color: var(--ink-3); }
+/* UX-EMPTY: EmptyState's one action, under its line */
+.d-empty-action { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .d-record.ruled .d-panel-body {
   padding-left: 36px;
   background-image:

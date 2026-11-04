@@ -1,0 +1,37 @@
+{
+  "ui": 1,
+  "name": "Columns",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "name": "hpCol", "kind": "bar", "value": "health", "vertical": true,
+      "color": [[0.35, "#d24a3a"], [1, "#3fbf86"]], "gradient": [0.25, -0.2], "back": "#0c0d10", "backAlpha": 0.85,
+      "border": "#000000", "ticks": 4, "tickColor": "#000000",
+      "anchor": ["RIGHT", "char", "CENTER", -110, 20], "size": [14, 180] },
+    { "name": "enCol", "kind": "bar", "value": "power", "vertical": true, "color": "power", "back": "#0c0d10",
+      "backAlpha": 0.85, "border": "#000000",
+      "anchor": ["LEFT", "char", "CENTER", 110, 20], "size": [8, 180] },
+    { "kind": "text", "format": "{hp%}", "font": "Barlow", "fontSize": 26, "stroke": 2,
+      "anchor": ["TOP", "hpCol", "BOTTOM", 0, -6], "size": [80, 30] },
+    { "kind": "text", "format": "{power}", "font": "Barlow", "fontSize": 18, "stroke": 2, "color": "power",
+      "anchor": ["TOP", "enCol", "BOTTOM", 0, -6], "size": [80, 22] },
+    { "kind": "pips", "value": "combo", "count": 5, "w": 12, "h": 12, "layout": "arc", "radius": 150, "from": -40,
+      "to": 40, "color": "#ff7a4a", "emptyColor": "#ffffff", "emptyAlpha": 0.12, "border": "#000000",
+      "anchor": ["CENTER", "char", "CENTER", 0, -40], "size": [1, 1] },
+
+    { "name": "card", "kind": "plate", "unit": "target", "gradient": ["HORIZONTAL", "#1a1c22", "#0c0d10"],
+      "border": "#000000", "anchor": ["LEFT", "char", "CENTER", 240, 60], "size": [240, 64] },
+    { "kind": "text", "unit": "target", "format": "{name}", "font": "Marcellus", "fontSize": 18, "outline": "thin",
+      "justify": "LEFT", "color": "reaction", "level": 1,
+      "anchor": ["TOPLEFT", "card", "TOPLEFT", 10, -8], "size": [220, 22] },
+    { "kind": "bar", "unit": "target", "value": "health", "color": "reaction", "back": "#000000", "level": 1,
+      "anchor": ["BOTTOMLEFT", "card", "BOTTOMLEFT", 10, 12], "size": [220, 10] },
+    { "kind": "text", "unit": "target", "format": "{hp}", "font": "Barlow", "fontSize": 14, "stroke": 1,
+      "justify": "RIGHT", "level": 2, "anchor": ["BOTTOMRIGHT", "card", "BOTTOMRIGHT", -10, 24], "size": [100, 16] },
+
+    { "name": "bars", "kind": "plate", "color": "#000000", "alpha": 0.85,
+      "anchor": ["BOTTOMRIGHT", "screen", "BOTTOMRIGHT", -40, 40], "size": [254, 86] },
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "columns": 6, "icon": 40, "gap": 2,
+      "border": "#000000", "keySize": 11, "stroke": 1, "level": 1,
+      "anchor": ["TOPLEFT", "bars", "TOPLEFT", 3, -3] }
+  ]
+}

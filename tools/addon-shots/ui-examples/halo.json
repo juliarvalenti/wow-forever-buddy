@@ -1,0 +1,31 @@
+{
+  "ui": 1,
+  "name": "Halo",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "name": "ring", "kind": "pips", "value": "health", "count": 32, "layout": "arc", "orient": true,
+      "radius": 190, "from": -150, "to": 150, "w": 9, "h": 24,
+      "color": [[0.3, "#ff4a5a"], [0.6, "#ffb347"], [1, "#4ff0c0"]], "emptyColor": "#ffffff", "emptyAlpha": 0.08,
+      "anchor": ["CENTER", "char", "CENTER", 0, 20], "size": [1, 1] },
+    { "kind": "pips", "value": "power", "count": 20, "layout": "arc", "orient": true,
+      "radius": 158, "from": -110, "to": 110, "w": 5, "h": 12, "color": "power",
+      "emptyColor": "#ffffff", "emptyAlpha": 0.06,
+      "anchor": ["CENTER", "ring", "CENTER", 0, 0], "size": [1, 1] },
+    { "kind": "pips", "value": "combo", "count": 5, "w": 16, "h": 16, "gap": 14, "rotate": 45,
+      "color": "#ff4fd8", "emptyColor": "#ffffff", "emptyAlpha": 0.1,
+      "anchor": ["CENTER", "ring", "CENTER", 0, 232], "size": [1, 1] },
+    { "kind": "text", "format": "{hp%}", "font": "Barlow", "fontSize": 40, "stroke": 2,
+      "color": { "always": "#ffffff", "low": "#ff4a5a" },
+      "anchor": ["CENTER", "ring", "CENTER", 0, -150], "size": [160, 44] },
+    { "kind": "actionbar", "layout": "arc", "slots": [1, 2, 3, 4, 5, 6, 7, 8], "radius": 290, "from": 138,
+      "to": 222, "icon": 42, "back": "#000000", "keySize": 11, "stroke": 1,
+      "anchor": ["CENTER", "ring", "CENTER", 0, 0] },
+
+    { "kind": "text", "unit": "target", "format": "{name}", "font": "Marcellus", "fontSize": 30, "outline": "thin",
+      "color": "reaction", "anchor": ["TOP", "screen", "TOP", 0, -110], "size": [700, 36] },
+    { "name": "thp", "kind": "bar", "unit": "target", "value": "health", "color": "reaction", "back": "#ffffff",
+      "backAlpha": 0.1, "anchor": ["TOP", "screen", "TOP", 0, -152], "size": [620, 3] },
+    { "kind": "text", "unit": "target", "format": "{hp}  {hp%}", "font": "Geist", "fontSize": 14, "outline": "thin",
+      "color": "#e8ecf2", "anchor": ["TOP", "thp", "BOTTOM", 0, -6], "size": [300, 18] }
+  ]
+}
