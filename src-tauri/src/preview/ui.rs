@@ -1,7 +1,8 @@
 //! UI1's render_ui: a UI document drawn on the player's screen, as a PNG.
 //!
-//! The document is JSON in the UI language (`tools/addon-shots/FBUI` draws
-//! it, `uicheck.lua` checks it). Here it's held to size limits, handed to
+//! The document is JSON in the UI language (the addon's own `UI.lua` draws
+//! it, `tools/addon-shots/uicheck.lua` checks it). Here it's held to size
+//! limits, handed to
 //! the preview's sandbox as a Lua table built from the JSON (never source),
 //! and drawn over the logged-in scene at a moment (standing, combat,
 //! stealth, low health). A document the check refuses comes back as its
@@ -249,8 +250,15 @@ pub fn png(svg: &str, scale: f32) -> Result<(Vec<u8>, u32, u32), String> {
         }
     }
     let svg = embed_fonts(svg, &mut db);
+    // Images come from data: URLs only. An href naming a file (which usvg
+    // would otherwise read) draws nothing, so no change to the renderer can
+    // put a local file into a picture an agent gets back.
     let opt = usvg::Options {
         fontdb: Arc::new(db),
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+            resolve_string: Box::new(|_, _| None),
+        },
         ..Default::default()
     };
     let tree = usvg::Tree::from_str(&svg, &opt).map_err(|e| format!("the frame's SVG: {e}"))?;
@@ -516,6 +524,40 @@ mod tests {
         let none = tmp.path().join("none");
         let err = render(&request(&none, tmp.path(), &doc, Moment::Standing)).unwrap_err();
         assert_eq!(err, NO_DATA);
+    }
+
+    /// Security's line: an image named by a file path isn't read; one in a
+    /// data: URL still draws.
+    #[test]
+    fn only_data_urls_become_images() {
+        use base64::Engine;
+        let tmp = tempfile::tempdir().unwrap();
+        let mut red = resvg::tiny_skia::Pixmap::new(4, 4).unwrap();
+        red.fill(resvg::tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        let bytes = red.encode_png().unwrap();
+        let file = tmp.path().join("red.png");
+        std::fs::write(&file, &bytes).unwrap();
+        let svg = |href: &str| {
+            format!(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\">\
+                 <image href=\"{href}\" width=\"4\" height=\"4\"/></svg>"
+            )
+        };
+        let first_pixel = |svg: &str| {
+            let (png, _, _) = png(svg, 1.0).unwrap();
+            let img = resvg::tiny_skia::Pixmap::decode_png(&png).unwrap();
+            img.pixel(1, 1).unwrap().red()
+        };
+        assert_eq!(
+            first_pixel(&svg(&file.to_string_lossy())),
+            0,
+            "a file isn't read"
+        );
+        let data = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        );
+        assert_eq!(first_pixel(&svg(&data)), 255, "a data: URL draws");
     }
 
     #[test]
