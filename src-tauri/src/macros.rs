@@ -139,7 +139,13 @@ fn read_macros(dir: &Path) -> (Vec<Macro>, Option<String>) {
 
 /// Every account's and every character's macros in the flavor's WTF.
 pub fn list(flavor: &Flavor) -> MacrosList {
-    let wtf = flavor.dir.join("WTF");
+    list_in(&flavor.id, &flavor.dir)
+}
+
+/// The same, from the flavor folder `dir` (named `id`): MC1's proposal
+/// checks, which have the app's game root rather than a scanned `Flavor`.
+pub fn list_in(id: &str, dir: &Path) -> MacrosList {
+    let wtf = dir.join("WTF");
     let accounts_dir = wtf.join("Account");
     let mut accounts: Vec<String> = std::fs::read_dir(&accounts_dir)
         .into_iter()
@@ -150,7 +156,7 @@ pub fn list(flavor: &Flavor) -> MacrosList {
         .collect();
     accounts.sort();
     MacrosList {
-        flavor: flavor.id.clone(),
+        flavor: id.to_string(),
         accounts: accounts
             .into_iter()
             .map(|account| {

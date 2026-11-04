@@ -17,6 +17,7 @@ pub mod draft;
 pub mod goal;
 pub mod inbox;
 pub mod list;
+pub mod macros;
 pub mod plan;
 
 use std::path::Path;
@@ -48,6 +49,9 @@ pub const GOAL: &str = "goal";
 pub const SETTINGS: &str = "settings";
 /// ED1: a look for the HUD and the bars, shown on the Your UI tab.
 pub const UI_DRAFT: &str = "ui_draft";
+/// MC1: a new macro, an edit, or a copy; approved one by one, applied by
+/// the player's click in the game (`macros`).
+pub const MACRO: &str = "macro";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -112,6 +116,9 @@ pub struct Proposal {
     pub goal: Option<goal::GoalView>,
     /// One addon setting: "Session coach: off → on" (P4b).
     pub setting: Option<crate::addon_settings::SettingView>,
+    /// A macro, its text verbatim (and the old text, for an edit) (MC1).
+    /// Never part of Approve all.
+    pub macro_change: Option<macros::MacroView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -310,8 +317,23 @@ fn insert(db: &Db, flavor: &str, row: Row<'_>, now: i64) -> AppResult<bool> {
 /// Reads the agent inbox: every waiting file is stored, staged or rejected,
 /// and deleted. `access` is the Settings switch: while it's off each file
 /// is recorded as refused and nothing is staged. Returns how many were
-/// stored.
+/// stored. Without the game's folder, a macro proposal is refused (see
+/// `ingest_in`, which the app calls).
+#[cfg(test)]
 pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -> AppResult<usize> {
+    ingest_in(db, agent_dir, flavor, None, access, now)
+}
+
+/// `ingest`, with the flavor folder (`game`) a macro proposal is checked
+/// against: the player's macros as the game last saved them.
+pub fn ingest_in(
+    db: &Db,
+    agent_dir: &Path,
+    flavor: &str,
+    game: Option<&Path>,
+    access: bool,
+    now: i64,
+) -> AppResult<usize> {
     let mut stored = 0;
     for (name, path) in inbox::waiting(agent_dir).into_iter().take(inbox::MAX_FILES) {
         let file = inbox::read(&path);
@@ -405,6 +427,16 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                         return Err(format!("{} drafts were already waiting", draft::MAX_STAGED));
                     }
                     let body = draft::check(db, flavor, &p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
+                MACRO => {
+                    let p: macros::MacroProposal =
+                        serde_json::from_value(f.body.clone()).map_err(|_| {
+                            "the macro isn't in the form this version reads".to_string()
+                        })?;
+                    let dir = game.ok_or("the game folder isn't set up")?;
+                    let files = crate::macros::list_in(flavor, dir);
+                    let body = macros::check(db, flavor, &files, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
                 // In plain words, never the kind id (IMPLEMENTING §17).
@@ -576,6 +608,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
     // A setting this version no longer declares has no preview (and
     // Approve refuses it).
     let setting = body(&s, SETTINGS).and_then(|b| crate::addon_settings::view(db, flavor, &b).ok());
+    let macro_change = body::<macros::MacroBody>(&s, MACRO).map(|b| macros::view(&b));
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
@@ -591,6 +624,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         bags,
         goal,
         setting,
+        macro_change,
     })
 }
 
@@ -777,6 +811,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
             let b = body(&s, UI_DRAFT).ok_or_else(unreadable)?;
             draft::apply(db, flavor, &b, now)?;
         }
+        MACRO => {
+            let b = body(&s, MACRO).ok_or_else(unreadable)?;
+            macros::apply(db, flavor, s.id, &b, now)?;
+        }
         _ => {
             return Err(AppError::InvalidSettings(
                 "this kind of suggestion can't be applied by this version".into(),
@@ -830,6 +868,71 @@ mod tests {
 
     fn note(text: &str) -> serde_json::Value {
         json!({ "character": "coinpurse", "text": text })
+    }
+
+    /// MC1: a macro is checked against the game's files at pickup, shown
+    /// verbatim, and Approve queues it for the game; nothing writes the
+    /// game's macro file.
+    #[test]
+    fn a_macro_is_checked_at_pickup_and_approve_queues_it() {
+        let (tmp, db) = setup();
+        let game = tempfile::tempdir().unwrap();
+        let char_dir = game.path().join("WTF/Account/A/70/Coinpurse");
+        std::fs::create_dir_all(&char_dir).unwrap();
+        let file = char_dir.join("macros-cache.txt");
+        std::fs::write(
+            &file,
+            "VER 3 01 \"Mount\" \"I\"\n/cast Summon Warhorse\nEND\n",
+        )
+        .unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let body = json!({ "action": "new", "character": "Coinpurse", "name": "Evasion",
+                           "body": "#showtooltip\n/cast Evasion" });
+
+        // Without the game folder it can't be checked, so it isn't queued.
+        drop_file(tmp.path(), MACRO, body.clone());
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        assert!(a.waiting.is_empty());
+        assert_eq!(a.decided[0].status, "rejected");
+
+        // A /run line is refused at pickup too, whatever the tool said.
+        drop_file(
+            tmp.path(),
+            MACRO,
+            json!({ "action": "new", "character": "Coinpurse",
+                                             "name": "Code", "body": "/run DoThings()" }),
+        );
+        drop_file(tmp.path(), MACRO, body);
+        ingest_in(&db, tmp.path(), FLAVOR, Some(game.path()), true, NOW).unwrap();
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        assert_eq!(a.waiting.len(), 1, "{:?}", a.decided);
+        assert!(a.decided.iter().any(|p| p
+            .status_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("never code"))));
+        let m = a.waiting[0].macro_change.as_ref().unwrap();
+        assert_eq!(
+            (m.target.as_str(), m.name.as_str(), m.body.as_str()),
+            ("Coinpurse", "Evasion", "#showtooltip\n/cast Evasion")
+        );
+
+        decide(&db, FLAVOR, a.waiting[0].id, Decision::Approve, NOW).unwrap();
+        let queued: i64 = db
+            .with_conn(|c| {
+                Ok(c.query_row(
+                    "SELECT COUNT(*) FROM macro_queue WHERE done_at IS NULL",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(queued, 1);
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            before,
+            "the game's macro file is never written"
+        );
     }
 
     #[test]

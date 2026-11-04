@@ -1734,6 +1734,22 @@ export type Macro = {
 	length: number,
 };
 
+export type MacroAction = "new" | "edit" | 
+/**  Only in a proposal: a copy is stored and applied as a new macro. */
+"copy";
+
+/**  The Approvals preview: every field Apply uses, verbatim. */
+export type MacroView = {
+	action: MacroAction,
+	target: string,
+	name: string,
+	icon: string,
+	body: string,
+	length: number,
+	old_body: string | null,
+	copied_from: string | null,
+};
+
 export type MacrosList = {
 	/**  The flavor folder, e.g. `_classic_beta_`. */
 	flavor: string,
@@ -2019,6 +2035,11 @@ export type Proposal = {
 	goal: GoalView | null,
 	/**  One addon setting: "Session coach: off → on" (P4b). */
 	setting: SettingView | null,
+	/**
+	 *  A macro, its text verbatim (and the old text, for an edit) (MC1).
+	 *  Never part of Approve all.
+	 */
+	macro_change: MacroView | null,
 };
 
 /**  What a prune did. */

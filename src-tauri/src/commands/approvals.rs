@@ -18,9 +18,17 @@ pub fn ingest_inbox(core: &AppCore) -> AppResult<usize> {
     if proposals::inbox::waiting(&dir).is_empty() {
         return Ok(0);
     }
-    let flavor = core.active_game()?.flavor;
+    let game = core.active_game()?;
     let access = core.settings.get().agent_access;
-    proposals::ingest(&core.db, &dir, &flavor, access, now())
+    // A macro proposal is checked against the player's macros (MC1).
+    proposals::ingest_in(
+        &core.db,
+        &dir,
+        &game.flavor,
+        Some(&game.root.base),
+        access,
+        now(),
+    )
 }
 
 /// Approvals (IMPLEMENTING §17): what's waiting, and the last 30 days decided.
