@@ -90,6 +90,8 @@ pub struct PreviewStatus {
     pub blank: bool,
     /// The moment the last frame shows.
     pub moment: Moment,
+    /// The UI draft the last frame shows, or `None` for what's in game.
+    pub draft: Option<u32>,
 }
 
 /// The frame as the tab shows it: a `data:` URL, which the app's CSP lets an
@@ -115,6 +117,9 @@ pub struct Inputs {
     pub extract: Option<PathBuf>,
     /// The moment to draw; `Preview` sets it from the tab's choice.
     pub moment: Moment,
+    /// The UI draft (ED1) whose settings `slots` carry, instead of the
+    /// approved ones; `None` for what's in game.
+    pub draft: Option<u32>,
 }
 
 enum Job {
@@ -146,6 +151,8 @@ pub struct Preview {
     started: Mutex<bool>,
     /// The tab's moment: kept here so a setting change redraws the same one.
     moment: Mutex<Moment>,
+    /// The draft the tab picked (ED1), likewise; `None` for what's in game.
+    draft: Mutex<Option<u32>>,
 }
 
 impl Preview {
@@ -173,6 +180,7 @@ impl Preview {
                 draw_error: None,
                 blank: false,
                 moment: Moment::Standing,
+                draft: None,
             }),
             frame: Mutex::new(None),
             notify: Mutex::new(None),
@@ -195,7 +203,19 @@ impl Preview {
             shared,
             started: Mutex::new(false),
             moment: Mutex::new(Moment::Standing),
+            draft: Mutex::new(None),
         }
+    }
+
+    /// The draft the tab shows, for `AppCore::preview_inputs`.
+    pub fn draft(&self) -> Option<u32> {
+        *self.draft.lock().expect("preview draft lock")
+    }
+
+    /// The tab picked a draft, or what's in game (`None`). The caller then
+    /// opens the preview with inputs that carry it.
+    pub fn set_draft(&self, draft: Option<u32>) {
+        *self.draft.lock().expect("preview draft lock") = draft;
     }
 
     /// Called on each status change (the app emits `PreviewChanged`).
@@ -381,6 +401,7 @@ impl Worker {
                     s.lua_errors = drawn.lua_errors;
                     s.class = drawn.class;
                     s.moment = inputs.moment;
+                    s.draft = inputs.draft;
                     s.draw_error = None;
                 });
             }
@@ -440,12 +461,27 @@ pub fn dir(local_data: &Path) -> PathBuf {
 
 /// The addon with every slot the app would send the game now (so its
 /// settings profile is the newest one approved), and the last-played
-/// character's class.
-pub fn inputs(db: &crate::db::Db, flavor: &str, now: i64) -> crate::error::AppResult<Inputs> {
-    let built = crate::bridge::build(db, flavor, now, &crate::bridge::SLOTS)?;
+/// character's class. With a draft (ED1: its id and changes), the Settings
+/// slot is the one it would make instead: drawn here, never written.
+pub fn inputs(
+    db: &crate::db::Db,
+    flavor: &str,
+    now: i64,
+    draft: Option<(u32, Vec<crate::addon_settings::SettingBody>)>,
+) -> crate::error::AppResult<Inputs> {
+    let mut built = crate::bridge::build(db, flavor, now, &crate::bridge::SLOTS)?.slots;
+    let draft = match draft {
+        Some((id, changes)) => {
+            let entries = crate::addon_settings::draft_slot_entries(db, flavor, &changes)?;
+            let slot = crate::bridge::settings_slot(entries, now)?;
+            built.retain(|(s, _)| *s != slot.0);
+            built.push(slot);
+            Some(id)
+        }
+        None => None,
+    };
     let prefix = format!("{}/", crate::addon::FOLDER);
     let slots = built
-        .slots
         .into_iter()
         .filter_map(|(slot, bytes)| {
             let path = slot.path().as_string();
@@ -465,6 +501,7 @@ pub fn inputs(db: &crate::db::Db, flavor: &str, now: i64) -> crate::error::AppRe
         class,
         extract: None,
         moment: Moment::Standing,
+        draft,
     })
 }
 
@@ -548,10 +585,32 @@ mod tests {
 
         // Nothing changed yet: the settings slot is the shipped stub, and our
         // rogue HUD is off.
-        preview.open(rogue(inputs(&db, FLAVOR, 1).unwrap()), None);
+        preview.open(rogue(inputs(&db, FLAVOR, 1, None).unwrap()), None);
         let (first, before) = next_frame(&preview, &rx, 0);
         assert_eq!(first.class.as_deref(), Some("rogue"));
         assert!(!before.contains("Syndicate Highwayman"));
+
+        // ED1: a draft that turns the HUD on is drawn with it, and nothing
+        // is written: the slot the game would get still has no profile.
+        let draft = vec![crate::addon_settings::SettingBody {
+            option: "hud.enabled".into(),
+            value: serde_json::Value::Bool(true),
+        }];
+        let with = inputs(&db, FLAVOR, 1, Some((7, draft))).unwrap();
+        assert_eq!(with.draft, Some(7));
+        preview.open(rogue(with), None);
+        let (drafted, frame) = next_frame(&preview, &rx, first.generation);
+        assert_eq!(drafted.draft, Some(7));
+        assert!(
+            frame.contains("Syndicate Highwayman"),
+            "the draft's HUD is drawn"
+        );
+        assert!(crate::addon_settings::slot_entries(&db, FLAVOR)
+            .unwrap()
+            .is_empty());
+        preview.open(rogue(inputs(&db, FLAVOR, 1, None).unwrap()), None);
+        let (first, _) = next_frame(&preview, &rx, drafted.generation);
+        assert_eq!(first.draft, None);
 
         // Approving "hud.enabled" makes a profile the Settings slot carries;
         // the redraw has the HUD.
@@ -565,7 +624,7 @@ mod tests {
             2,
         )
         .unwrap();
-        preview.changed(rogue(inputs(&db, FLAVOR, 2).unwrap()));
+        preview.changed(rogue(inputs(&db, FLAVOR, 2, None).unwrap()));
         let (second, after) = next_frame(&preview, &rx, first.generation);
         assert!(
             after.contains("Syndicate Highwayman"),
@@ -595,6 +654,7 @@ mod tests {
                 class: None,
                 extract: None,
                 moment: Moment::Standing,
+                draft: None,
             },
             None,
         );

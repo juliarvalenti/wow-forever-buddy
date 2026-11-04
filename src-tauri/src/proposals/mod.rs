@@ -9,8 +9,11 @@
 //! kind's normal app code: `notes::add` for a login note, `plans::set_plan`
 //! for a quest plan (`plan`), `lists::create_list` and `add_item` for a
 //! list change (`list`), `addon_settings::approve` for one setting (P4b).
+//! UI drafts (ED1, `draft`) wait in the same table but aren't Approvals:
+//! the Your UI tab shows them, and its "Use this" is their approval.
 
 pub mod bags;
+pub mod draft;
 pub mod goal;
 pub mod inbox;
 pub mod list;
@@ -43,6 +46,8 @@ pub const GOAL: &str = "goal";
 /// P4b: changes to the addon's settings. One file can carry up to 50; each
 /// is stored as its own row, approved on its own.
 pub const SETTINGS: &str = "settings";
+/// ED1: a look for the HUD and the bars, shown on the Your UI tab.
+pub const UI_DRAFT: &str = "ui_draft";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -246,12 +251,23 @@ pub fn check_note(
 /// A login note proposal that passed `check_note`.
 pub struct NoteBodyChecked(NoteBody);
 
-/// Staged proposals waiting in `flavor`.
+/// Staged proposals waiting in `flavor`, UI drafts aside.
 pub fn waiting_count(db: &Db, flavor: &str) -> AppResult<i64> {
     db.with_conn(|c| {
         Ok(c.query_row(
-            "SELECT count(*) FROM proposals WHERE flavor = ?1 AND status = 'staged'",
-            [flavor],
+            "SELECT count(*) FROM proposals WHERE flavor = ?1 AND status = 'staged' AND kind != ?2",
+            [flavor, UI_DRAFT],
+            |r| r.get(0),
+        )?)
+    })
+}
+
+/// UI drafts waiting in `flavor`.
+pub fn drafts_count(db: &Db, flavor: &str) -> AppResult<i64> {
+    db.with_conn(|c| {
+        Ok(c.query_row(
+            "SELECT count(*) FROM proposals WHERE flavor = ?1 AND status = 'staged' AND kind = ?2",
+            [flavor, UI_DRAFT],
             |r| r.get(0),
         )?)
     })
@@ -378,6 +394,17 @@ pub fn ingest(db: &Db, agent_dir: &Path, flavor: &str, access: bool, now: i64) -
                             "the bag marks aren't in the form this version reads".to_string()
                         })?;
                     let body = bags::check(db, flavor, &p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
+                UI_DRAFT => {
+                    let p: draft::DraftProposal =
+                        serde_json::from_value(f.body.clone()).map_err(|_| {
+                            "the draft isn't in the form this version reads".to_string()
+                        })?;
+                    if drafts_count(db, flavor).map_err(|e| e.to_string())? >= draft::MAX_STAGED {
+                        return Err(format!("{} drafts were already waiting", draft::MAX_STAGED));
+                    }
+                    let body = draft::check(db, flavor, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
                 // In plain words, never the kind id (IMPLEMENTING §17).
@@ -570,15 +597,15 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
 /// What Approvals shows: everything waiting, and the last 30 days decided.
 pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Approvals> {
     let since = now - DECIDED_DAYS * 86_400;
-    let waiting = stored(db, flavor, "status = 'staged'", &[])?
+    let waiting = stored(db, flavor, "status = 'staged' AND kind != ?", &[&UI_DRAFT])?
         .into_iter()
         .map(|s| view(db, flavor, s, now))
         .collect::<AppResult<_>>()?;
     let decided = stored(
         db,
         flavor,
-        "status != 'staged' AND coalesce(decided_at, received_at) >= ?",
-        &[&since],
+        "status != 'staged' AND kind != ? AND coalesce(decided_at, received_at) >= ?",
+        &[&UI_DRAFT, &since],
     )?
     .into_iter()
     .map(|s| view(db, flavor, s, now))
@@ -589,6 +616,90 @@ pub fn list(db: &Db, flavor: &str, now: i64) -> AppResult<Approvals> {
         decided,
         trial,
     })
+}
+
+/// The Your UI tab's drafts (ED1): those waiting, newest first.
+pub fn drafts(db: &Db, flavor: &str) -> AppResult<Vec<draft::UiDraft>> {
+    Ok(
+        stored(db, flavor, "status = 'staged' AND kind = ?", &[&UI_DRAFT])?
+            .into_iter()
+            .filter_map(|s| {
+                let b: draft::DraftBody = body(&s, UI_DRAFT)?;
+                Some(draft::view(
+                    db,
+                    flavor,
+                    s.id as u32,
+                    &s.producer,
+                    rfc3339(s.created_at),
+                    &b,
+                ))
+            })
+            .collect(),
+    )
+}
+
+/// A waiting draft's changes, for the preview to draw; `None` once it's
+/// been used or thrown away.
+pub fn draft_changes(
+    db: &Db,
+    flavor: &str,
+    id: u32,
+) -> AppResult<Option<Vec<crate::addon_settings::SettingBody>>> {
+    Ok(stored(
+        db,
+        flavor,
+        "id = ? AND status = 'staged' AND kind = ?",
+        &[&id, &UI_DRAFT],
+    )?
+    .into_iter()
+    .next()
+    .and_then(|s| body::<draft::DraftBody>(&s, UI_DRAFT))
+    .map(|b| b.changes))
+}
+
+/// One of `list_ui_drafts`' rows (ED1).
+pub struct DraftRecord {
+    /// staged | applied | discarded | rejected
+    pub status: String,
+    /// Rejected: why, in plain words.
+    pub status_reason: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+    pub decided_at: Option<String>,
+    /// `None` for one that wasn't queued.
+    pub draft: Option<draft::UiDraft>,
+}
+
+/// The drafts waiting, and the last 30 days' decided or refused.
+pub fn draft_history(db: &Db, flavor: &str, now: i64) -> AppResult<Vec<DraftRecord>> {
+    let since = now - DECIDED_DAYS * 86_400;
+    Ok(stored(
+        db,
+        flavor,
+        "kind = ? AND (status = 'staged' OR coalesce(decided_at, received_at) >= ?)",
+        &[&UI_DRAFT, &since],
+    )?
+    .into_iter()
+    .map(|s| {
+        let draft = body::<draft::DraftBody>(&s, UI_DRAFT).map(|b| {
+            draft::view(
+                db,
+                flavor,
+                s.id as u32,
+                &s.producer,
+                rfc3339(s.created_at),
+                &b,
+            )
+        });
+        DraftRecord {
+            status: s.status,
+            status_reason: s.status_reason,
+            created_at: rfc3339(s.created_at),
+            decided_at: s.decided_at.map(rfc3339),
+            draft,
+        }
+    })
+    .collect())
 }
 
 fn set_status(db: &Db, id: i64, status: &str, now: i64) -> AppResult<()> {
@@ -661,6 +772,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
         SETTINGS => {
             let b = body(&s, SETTINGS).ok_or_else(unreadable)?;
             crate::addon_settings::approve(db, flavor, &b, now)?;
+        }
+        UI_DRAFT => {
+            let b = body(&s, UI_DRAFT).ok_or_else(unreadable)?;
+            draft::apply(db, flavor, &b, now)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -1244,5 +1359,157 @@ mod tests {
             "what was previewed is what was applied"
         );
         assert_eq!(goals[0].producer, "agent:Claude Desktop");
+    }
+
+    fn draft_reasons(db: &Db) -> Vec<String> {
+        draft_history(db, FLAVOR, NOW)
+            .unwrap()
+            .into_iter()
+            .filter_map(|r| r.status_reason)
+            .collect()
+    }
+
+    /// ED1: a draft may only change how the HUD and the action bars look:
+    /// hud.* and actionbars.* options that don't act. Everything else is
+    /// refused, in plain words.
+    #[test]
+    fn a_draft_refuses_settings_outside_the_hud_and_bars() {
+        let (tmp, db) = setup();
+        let draft = |settings: serde_json::Value| json!({ "name": "Stacked", "why": "Closer to your character", "settings": settings });
+        drop_file(tmp.path(), UI_DRAFT, draft(json!({ "map.coords": true })));
+        drop_file(
+            tmp.path(),
+            UI_DRAFT,
+            draft(json!({ "merchant.repair": true })),
+        );
+        drop_file(tmp.path(), UI_DRAFT, draft(json!({ "window.coach": true })));
+        drop_file(tmp.path(), UI_DRAFT, draft(json!({ "hud.enabled": "yes" })));
+        drop_file(tmp.path(), UI_DRAFT, draft(json!({ "hud.nope": true })));
+        drop_file(tmp.path(), UI_DRAFT, draft(json!({})));
+        drop_file(
+            tmp.path(),
+            UI_DRAFT,
+            json!({ "name": " ", "why": "x", "settings": { "hud.enabled": true } }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        assert!(drafts(&db, FLAVOR).unwrap().is_empty(), "none staged");
+        let r = draft_reasons(&db);
+        for want in [
+            "map.coords isn't part of the HUD or the action bars: a draft only changes how those look. propose_settings suggests the rest.",
+            "merchant.repair isn't part of the HUD or the action bars: a draft only changes how those look. propose_settings suggests the rest.",
+            "window.coach isn't part of the HUD or the action bars: a draft only changes how those look. propose_settings suggests the rest.",
+            "hud.enabled takes true or false",
+            "No setting called \"hud.nope\": get_settings lists them.",
+            "A draft changes 1 to 50 settings.",
+            "The draft's name is empty.",
+        ] {
+            assert!(r.iter().any(|x| x == want), "missing {want:?} in {r:?}");
+        }
+
+        // One that acts is refused even under hud.* or actionbars.*.
+        let acts: crate::addon_settings::Opt = serde_json::from_value(json!({
+            "id": "actionbars.castForYou", "module": "actionbars", "section": "Action bars",
+            "type": "bool", "default": false, "label": "L", "help": "H", "acts": true }))
+        .unwrap();
+        assert_eq!(
+            draft::in_draft(&acts).unwrap_err(),
+            "actionbars.castForYou lets the addon act in the game, so it can't be in a draft."
+        );
+        // Every hud.* and actionbars.* option declared today may be in one.
+        for o in &crate::addon_settings::schema().options {
+            if o.id.starts_with("hud.") || o.id.starts_with("actionbars.") {
+                assert!(!o.acts && draft::in_draft(o).is_ok(), "{}", o.id);
+            }
+        }
+    }
+
+    /// ED1: a draft is kept in the app and drawn on the Your UI tab, never
+    /// in Approvals and never sent to the game. Use this makes one profile
+    /// with every change; Throw away leaves the settings alone.
+    #[test]
+    fn a_draft_is_never_written_until_use_this() {
+        let (tmp, db) = setup();
+        let profiles = |db: &Db| -> i64 {
+            db.with_conn(|c| {
+                Ok(c.query_row("SELECT count(*) FROM addon_profiles", [], |r| r.get(0))?)
+            })
+            .unwrap()
+        };
+        drop_file(
+            tmp.path(),
+            UI_DRAFT,
+            json!({ "name": "HUD and bars", "why": "Both of ours, nothing else",
+                    "words": "make it cleaner", "settings": { "hud.enabled": true, "actionbars.ours": true } }),
+        );
+        drop_file(
+            tmp.path(),
+            UI_DRAFT,
+            json!({ "name": "Just the HUD", "why": "Keeps Blizzard's bars",
+                    "settings": { "hud.enabled": true } }),
+        );
+        ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap();
+        let d = drafts(&db, FLAVOR).unwrap();
+        assert_eq!(d.len(), 2);
+        let both = d.iter().find(|x| x.name == "HUD and bars").unwrap();
+        assert_eq!(both.words.as_deref(), Some("make it cleaner"));
+        assert_eq!(
+            both.changes
+                .iter()
+                .map(|c| format!("{}: {} → {}", c.label, c.from, c.to))
+                .collect::<Vec<_>>(),
+            ["HUD: off → on", "Our action bars: off → on"],
+            "our labels, in the schema's order"
+        );
+        let (both, hud) = (
+            both.id,
+            d.iter().find(|x| x.name == "Just the HUD").unwrap().id,
+        );
+        assert!(
+            list(&db, FLAVOR, NOW).unwrap().waiting.is_empty(),
+            "not in Approvals"
+        );
+        assert_eq!(waiting_count(&db, FLAVOR).unwrap(), 0, "nor its count");
+        assert_eq!(profiles(&db), 0, "nothing written");
+        assert!(crate::addon_settings::slot_entries(&db, FLAVOR)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            draft_changes(&db, FLAVOR, both).unwrap().map(|c| c.len()),
+            Some(2),
+            "the preview can draw it"
+        );
+
+        // Throw away: gone, nothing written.
+        decide(&db, FLAVOR, hud, Decision::Decline, NOW).unwrap();
+        assert_eq!(drafts(&db, FLAVOR).unwrap().len(), 1);
+        assert_eq!(draft_changes(&db, FLAVOR, hud).unwrap(), None);
+        assert_eq!(profiles(&db), 0);
+
+        // Use this: one profile with both, through the normal settings write.
+        decide(&db, FLAVOR, both, Decision::Approve, NOW).unwrap();
+        assert_eq!(profiles(&db), 1);
+        let now = crate::addon_settings::values_now(&db, FLAVOR).unwrap();
+        assert_eq!(
+            (&now["hud.enabled"], &now["actionbars.ours"]),
+            (&json!(true), &json!(true))
+        );
+        assert!(!crate::addon_settings::slot_entries(&db, FLAVOR)
+            .unwrap()
+            .is_empty());
+        assert!(drafts(&db, FLAVOR).unwrap().is_empty());
+        let statuses: Vec<String> = draft_history(&db, FLAVOR, NOW)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.status)
+            .collect();
+        assert_eq!(statuses.len(), 2);
+        assert!(
+            statuses.contains(&"applied".to_string())
+                && statuses.contains(&"discarded".to_string())
+        );
+        assert!(
+            list(&db, FLAVOR, NOW).unwrap().decided.is_empty(),
+            "not in Approvals' history either"
+        );
     }
 }

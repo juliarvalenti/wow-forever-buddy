@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::agent;
 use crate::error::AppResult;
+use crate::proposals::draft::UiDraft;
 use crate::proposals::{self, Approvals, Decision};
 use crate::state::{AppCore, AppState};
 
@@ -41,6 +42,16 @@ pub fn approvals_waiting(state: State<'_, AppState>) -> AppResult<u32> {
     }
     let _ = ingest_inbox(core);
     Ok(proposals::waiting_count(&core.db, &core.active_game()?.flavor)? as u32)
+}
+
+/// ED1: the UI drafts waiting for the Your UI tab, newest first. Its "Use
+/// this" and "Throw away" are `approvals_decide`'s Approve and Decline.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_drafts_list(state: State<'_, AppState>) -> AppResult<Vec<UiDraft>> {
+    let core = &state.core;
+    let _ = ingest_inbox(core);
+    proposals::drafts(&core.db, &core.active_game()?.flavor)
 }
 
 /// Approve, Decline, or (for a conflicting note) Use proposed. An applied
