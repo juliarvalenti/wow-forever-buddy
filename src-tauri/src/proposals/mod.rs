@@ -1023,7 +1023,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let ulid = || ulid::Ulid::generate().to_string();
         std::fs::write(dir.join(format!("{}.json", ulid())), "not json").unwrap();
-        std::fs::write(dir.join(format!("{}.json", ulid())), vec![b' '; 70_000]).unwrap();
+        std::fs::write(
+            dir.join(format!("{}.json", ulid())),
+            vec![b' '; inbox::MAX_FILE as usize + 1],
+        )
+        .unwrap();
         drop_file(tmp.path(), LOGIN_NOTE, note(""));
         drop_file(
             tmp.path(),
@@ -1058,7 +1062,7 @@ mod tests {
         assert_eq!(a.decided.len(), 8);
         for want in [
             "not read: it isn't a suggestion this version reads",
-            "not read: it was larger than 64 KB",
+            "not read: it was larger than 128 KB",
             "a note needs some text",
             "No character named \"Nobody\". Known: Coinpurse, Velyra Duskmane.",
             "the note isn't in the form this version reads",

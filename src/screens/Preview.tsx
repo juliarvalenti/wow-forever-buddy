@@ -26,6 +26,8 @@ const MOMENTS: { value: Moment; label: string }[] = [
   { value: "combat", label: "In combat" },
   { value: "stealth", label: "In stealth" },
   { value: "low_health", label: "Low health" },
+  { value: "no_target", label: "No target" },
+  { value: "hidden", label: "Values hidden" },
 ];
 
 const SKILL = "npx skills add juliarvalenti/wow-forever-buddy";

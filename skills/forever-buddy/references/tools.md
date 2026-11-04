@@ -19,11 +19,13 @@ All tools read the app's local database, read-only; the macro tools read the gam
 | `list_ui_drafts` | Your UI drafts: waiting, used, thrown away, or not queued (with the reason), each with its settings. |
 | `list_macros` | The account-wide macros and each character's own: name, icon, length against the game's 255. Takes an optional `character`. |
 | `get_macro` | A macro's full text by name: a character's own, then its account's; without a character, the account's. |
-| `render_ui` | A picture of a stand-in screen (a test level 34 rogue with a hostile target; none of the player's data) with a UI document (`doc`) drawn on it, in a `moment` (`standing`, `combat`, `stealth`, `low_health`). A document with problems draws nothing and returns each problem with its path. With no document, round 4 and its JSON to start from. See [ui](ui.md). |
+| `render_ui` | Pictures of a stand-in screen (a level 34 test character with a hostile target; none of the player's data) with a UI document (`doc`) drawn on it: one per moment in `moments` (`standing`, `combat`, `stealth`, `low_health`, `no_target`, `hidden`, or `["all"]`), for a test `class` (warrior, paladin, hunter, rogue, priest, shaman, mage, warlock or druid; rogue by default), at a `scale` from 0.25 to 1. A misspelt moment or an unknown class is refused with the right names. A document with problems draws nothing and returns each problem with its path. With no document, round 4 and its JSON to start from. See [ui](ui.md). |
+| `get_ui_spec` | The UI language's whole reference, as this version reads it. Read it before your first document. |
+| `get_ui` | The player's UI documents: the one in use (with its `doc`), the ones proposed in the last 30 days and what became of each, and any the app hasn't picked up yet. Revise one instead of starting over. |
 
 ## Propose (the player approves in the app)
 
-`propose_note`, `propose_quest_plan`, `propose_list_change`, `propose_bag_marks`, `propose_goal`, `propose_settings`, and `list_proposals` to see what's pending.
+`propose_note`, `propose_quest_plan`, `propose_list_change`, `propose_bag_marks`, `propose_goal`, `propose_settings`, and `list_proposals` to see what's pending (`waiting_for_the_app` names the ones the app hasn't picked up yet).
 
 `propose_macro` suggests one macro: `new`, `edit` (with `was`, the text as `get_macro` gave it) or `copy` (with `from`, and `body` only to adapt it). The player approves each macro on its own, then applies it in game with one click, out of combat; `list_proposals` shows what the game did with it (`in_game`: waiting, applied, declined, changed, full). It's checked before it's queued: 255 bytes, 16-character names, the 120 account and 18 character slots, and no `/run`, `/script`, `/console` or `/dump` lines.
 

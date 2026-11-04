@@ -7,14 +7,14 @@ A UI document is JSON that describes a whole in-game UI: unit frames, bars, numb
 ## The loop
 
 1. Read [design](design.md) for the house style, and ask what the player wants if it isn't clear.
-2. Write a document. Start from round 4: `render_ui` with no document returns round 4 and its JSON.
-3. `render_ui` it in each moment: `standing`, `combat`, `stealth`, `low_health`. Look at every picture.
+2. Read the language with `get_ui_spec`. If the player already has a UI, `get_ui` gives you its document to revise. Otherwise start from round 4: `render_ui` with no document returns round 4 and its JSON.
+3. `render_ui` it with `moments: ["all"]` (standing, combat, stealth, low_health, no_target, and hidden: combat with the values the game hides from addons hidden, as it really is in a fight) and the player's `class`. Look at every picture.
 4. If the document has problems, nothing is drawn and you get each one with its path (`/parts/3/anchor/1`) and how to fix it. Fix them and draw again.
 5. Fix what looks off: overlaps, text too small to read, things that should hide out of combat. Draw again.
 6. Show the player the pictures and the idea in a sentence.
 7. When they like it, `propose_ui` with a `name` they'll pick it by, `why` in a sentence, their `words`, and the `doc`. It's checked exactly as `render_ui` checks it, and a document with problems isn't queued. Tell them to open Approvals and pick **Use this**; it's live at their next login.
 
-Without the MCP, the app's command line draws the same picture: `<WoW Forever Buddy> render doc.json --moment combat --out shot.png`.
+Without the MCP, the app's command line draws the same picture: `<WoW Forever Buddy> render doc.json --moment all --class rogue --out shot.png` (one file per moment, `shot-combat.png` and so on); `render --help` lists every option.
 
 ## A first document
 

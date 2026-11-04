@@ -392,7 +392,7 @@ export const commands = {
 	 *  The tab opened, or picked a moment: draw now (that moment, or the one it
 	 *  last picked), and redraw on every change from here on.
 	 */
-	previewOpen: (moment: "standing" | "combat" | "stealth" | "low_health" | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
+	previewOpen: (moment: "standing" | "combat" | "stealth" | "low_health" | "no_target" | "hidden" | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
 	/**
 	 *  The tab picked a UI draft to see, or what's in game (none): draw it, and
 	 *  keep showing it through setting changes until the next pick.
@@ -1857,8 +1857,10 @@ export type Marker = {
 /**
  *  The moment the Your UI tab shows (ED1): the logged-in scene, or the same
  *  scene in combat, in stealth or at low health (`tools/addon-shots/preview.lua`).
+ *  UI3: with no target out of combat, and in combat with the values the game
+ *  hides from addons hidden.
  */
-export type Moment = "standing" | "combat" | "stealth" | "low_health";
+export type Moment = "standing" | "combat" | "stealth" | "low_health" | "no_target" | "hidden";
 
 export type MoneyPoint = {
 	at: string,

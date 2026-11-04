@@ -178,6 +178,49 @@ pub fn active_ui(db: &Db, flavor: &str) -> AppResult<Option<ActiveUi>> {
     }))
 }
 
+/// UI3's `get_ui`: the document in use (`id`, `name`, `why`, `doc`), and
+/// every UI proposed in the last 30 days, newest first, each with its
+/// status in the player's words and, when it was queued, its document.
+pub fn history(db: &Db, flavor: &str, now: i64) -> AppResult<(Value, Vec<Value>)> {
+    let in_use = match active(db, flavor)? {
+        Some((id, b)) => {
+            serde_json::json!({ "id": id, "name": b.name, "why": b.why, "doc": b.doc })
+        }
+        None => Value::Null,
+    };
+    let since = now - super::DECIDED_DAYS * 86_400;
+    let active_id = active_id(db, flavor)?;
+    let recent = super::stored(
+        db,
+        flavor,
+        "kind = ? AND (status = 'staged' OR coalesce(decided_at, received_at) >= ?)",
+        &[&super::UI_DOC, &since],
+    )?
+    .into_iter()
+    .take(20)
+    .map(|s| {
+        let b = super::body::<UiDocBody>(&s, super::UI_DOC);
+        serde_json::json!({
+            "id": s.id,
+            "status": match s.status.as_str() {
+                "staged" => "waiting",
+                "applied" if active_id == Some(s.id) => "in use",
+                "applied" => "used before",
+                "discarded" => "not this one",
+                _ => "not queued",
+            },
+            "why_not_queued": s.status_reason,
+            "proposed_at": super::rfc3339(s.created_at),
+            "decided_at": s.decided_at.map(super::rfc3339),
+            "name": b.as_ref().map(|b| b.name.clone()),
+            "why": b.as_ref().map(|b| b.why.clone()),
+            "doc": b.map(|b| b.doc),
+        })
+    })
+    .collect();
+    Ok((in_use, recent))
+}
+
 pub(super) fn view(b: &UiDocBody, active: bool) -> UiDocView {
     UiDocView {
         name: b.name.clone(),

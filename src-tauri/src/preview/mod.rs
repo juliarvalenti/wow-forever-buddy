@@ -30,6 +30,8 @@ use sandbox::{DrawOptions, Host, Session};
 
 /// The moment the Your UI tab shows (ED1): the logged-in scene, or the same
 /// scene in combat, in stealth or at low health (`tools/addon-shots/preview.lua`).
+/// UI3: with no target out of combat, and in combat with the values the game
+/// hides from addons hidden.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
@@ -38,9 +40,21 @@ pub enum Moment {
     Combat,
     Stealth,
     LowHealth,
+    NoTarget,
+    Hidden,
 }
 
 impl Moment {
+    /// In `preview.MOMENT_ORDER`'s order.
+    pub const ALL: [Moment; 6] = [
+        Moment::Standing,
+        Moment::Combat,
+        Moment::Stealth,
+        Moment::LowHealth,
+        Moment::NoTarget,
+        Moment::Hidden,
+    ];
+
     /// The name `preview.lua` knows it by.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -48,8 +62,54 @@ impl Moment {
             Moment::Combat => "combat",
             Moment::Stealth => "stealth",
             Moment::LowHealth => "low_health",
+            Moment::NoTarget => "no_target",
+            Moment::Hidden => "hidden",
         }
     }
+
+    /// A moment by name, forgiving of case, spaces, `-` and `_` ("lowhealth",
+    /// "Low health" and "low-health" are `low_health`). An unknown name says
+    /// which ones there are, and the nearest one when it's close (UI3).
+    pub fn parse(name: &str) -> Result<Moment, String> {
+        let squash = |s: &str| -> String {
+            s.chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .map(|c| c.to_ascii_lowercase())
+                .collect()
+        };
+        let want = squash(name);
+        if let Some(m) = Moment::ALL.into_iter().find(|m| squash(m.as_str()) == want) {
+            return Ok(m);
+        }
+        let names: Vec<&str> = Moment::ALL.iter().map(|m| m.as_str()).collect();
+        let near = Moment::ALL
+            .into_iter()
+            .map(|m| (edits(&want, &squash(m.as_str())), m))
+            .min_by_key(|(d, _)| *d)
+            .filter(|(d, _)| *d <= 3)
+            .map(|(_, m)| format!(" Did you mean {}?", m.as_str()))
+            .unwrap_or_default();
+        Err(format!(
+            "No moment \"{name}\": the moments are {}.{near}",
+            names.join(", ")
+        ))
+    }
+}
+
+/// Levenshtein distance, for "did you mean".
+fn edits(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
 }
 
 /// A draw that takes longer than this is stopped (a full-art screen with
