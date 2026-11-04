@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
-use crate::preview::PreviewStatus;
+use crate::preview::{Moment, PreviewStatus};
 use crate::state::AppState;
 
 /// The preview's state changed (a new frame, a draw started or failed, the
@@ -30,12 +30,13 @@ pub fn preview_frame(state: State<'_, AppState>) -> AppResult<Option<String>> {
         .map(|svg| crate::preview::frame_url(&svg)))
 }
 
-/// The tab opened: draw now, and redraw on every change from here on.
+/// The tab opened, or picked a moment: draw now (that moment, or the one it
+/// last picked), and redraw on every change from here on.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn preview_open(state: State<'_, AppState>) -> AppResult<()> {
+pub fn preview_open(state: State<'_, AppState>, moment: Option<Moment>) -> AppResult<()> {
     let core = &state.core;
-    core.preview.open(core.preview_inputs()?);
+    core.preview.open(core.preview_inputs()?, moment);
     Ok(())
 }
 

@@ -20,24 +20,44 @@ local fixtures = require("fixtures")
 
 local M = {}
 
+-- The moments the Your UI tab can show (ED1). Each is the logged-in scene
+-- plus what the game would do: combat enters combat (lockdown and its
+-- events, as in game), stealth shows the stealth bar, low health drops the
+-- player to a quarter of their health. Standing around is the scene as it
+-- logs in.
+M.MOMENTS = { standing = true, combat = true, stealth = true, low_health = true }
+
+local function enter(sim, moment)
+    if moment == "combat" then
+        sim:EnterCombat()
+    elseif moment == "low_health" then
+        local p = sim.units.player
+        sim:SetHealth("player", math.floor((p.healthMax or p.health or 100) * 0.25))
+    end
+end
+
 -- opts: addon (the ForeverBuddy folder), class (the player's class; one
 -- without a fixtures.lua character gets the generic one), blizzard (the
 -- extract's interface/addons, art on only), art (draw with the game's art),
--- layout (an Edit Mode layout). Returns the SVG, the number of Lua errors
--- the scene logged, and the class drawn (nil for the generic character).
+-- layout (an Edit Mode layout), moment (one of M.MOMENTS, standing by
+-- default). Returns the SVG, the number of Lua errors the scene logged, and
+-- the class drawn (nil for the generic character).
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
         class = nil
     end
+    local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
     local sim = scene.boot({
         blizzard = opts.blizzard,
         extra = { opts.addon },
         class = class,
         layout = opts.layout,
+        stealth = moment == "stealth",
         art = opts.art == true,
         offline = true,
     })
+    enter(sim, moment)
     sim:Advance(1)
     local svg = render.svg(sim, { art = opts.art == true, embed = true, addonFonts = true, labels = false })
     return svg, #sim.errors, class

@@ -156,13 +156,13 @@ function Shell() {
     ...(hasPrices ? [{ id: "ah", label: "Auction House", icon: Scale } as const] : []),
     // P2b: an ember count while agent proposals wait; none at 0 or while off.
     { id: "approvals", label: "Approvals", icon: CheckCheck, badge: approvalsWaiting },
+    // ED1 (was PV1's Preview): the player's in-game screen, and asking Claude to change it.
+    { id: "preview", label: "Your UI", icon: MonitorPlay },
     { group: "Game files" },
     { id: "backups", label: "Backups", icon: Archive, n: snapshots },
     { id: "game", label: "Game folder", icon: FolderOpen },
     { id: "addons", label: "Addons", icon: Puzzle },
     { id: "macros", label: "Macros", icon: SquareTerminal },
-    // PV1: the live preview of the player's screen.
-    { id: "preview", label: "Preview", icon: MonitorPlay },
   ];
   const folderOk = install.state.kind === "ok";
   // The saved folder went missing (drive unplugged, folder moved). Backups

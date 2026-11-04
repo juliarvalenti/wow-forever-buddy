@@ -1,130 +1,176 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Callout, Meter, Page, PageHeader, Panel, PanelBody, PanelHeader, PrimaryButton } from "@/components/d";
-import { commands, events, type PreviewStatus } from "@/lib/bindings";
+import {
+  Button,
+  Callout,
+  Meter,
+  Page,
+  PageHeader,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  PrimaryButton,
+  Segmented,
+} from "@/components/d";
+import { commands, events, type Moment, type PreviewStatus } from "@/lib/bindings";
 import { useEvent } from "@/hooks/useEvent";
 import { usePreview } from "@/hooks/usePreview";
 import { bytes, errorText } from "@/lib/format";
 
-// PV1: the player's screen as the game draws it with Forever Buddy and
-// their settings, redrawn when a setting changes (from Settings, an
-// approved proposal, or the agent). The look is a first cut for the
-// designer to take over.
+// ED1 (was PV1's Preview): Your UI. The player's own screen as the game
+// draws it with Forever Buddy and their settings, in a moment they pick, and
+// how to ask Claude to change it. No editing here: Claude makes the changes.
 
-const CLASS_NAMES: Record<string, string> = { rogue: "Rogue" };
+const MOMENTS: { value: Moment; label: string }[] = [
+  { value: "standing", label: "Standing around" },
+  { value: "combat", label: "In combat" },
+  { value: "stealth", label: "In stealth" },
+  { value: "low_health", label: "Low health" },
+];
 
-const LEDE = "Your screen as WoW draws it with Forever Buddy and your settings. It redraws when a setting changes.";
+const SKILL = "npx skills add juliarvalenti/wow-forever-buddy";
 
-function drewIn(ms: number): string {
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
-}
+const ASKS = [
+  "Turn on my HUD and the clean action bars.",
+  "Make my bars a bit smaller and closer to my character.",
+  "Show me two or three takes and I'll pick.",
+];
 
 export function Preview() {
-  const { status, frame, blank, error, download } = usePreview();
+  const { status, frame, blank, error, download, moment, show } = usePreview();
+  const [copied, setCopied] = useState(false);
 
-  if (!status) {
-    return (
-      <Page>
-        <PageHeader title="Preview" lede={LEDE} />
-        {error && <Callout tone="bad">{error}</Callout>}
-      </Page>
+  const copy = () => {
+    navigator.clipboard.writeText(SKILL).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => setCopied(false),
     );
-  }
+  };
 
-  const needsData = status.data === "missing" || status.data === "failed";
-  const total = status.download_bytes ?? 0;
+  const total = status?.download_bytes ?? 0;
   const size = bytes(total);
+  const needsData = status?.data === "missing" || status?.data === "failed";
+  const ready = status?.data === "ready";
+  const label = MOMENTS.find((m) => m.value === moment)?.label ?? "";
 
   return (
     <Page>
-      <PageHeader title="Preview" lede={LEDE} />
+      <PageHeader
+        title="Your UI"
+        lede="What your screen looks like in WoW: Forever with Forever Buddy. Claude makes the changes; you see them here."
+      />
       {error && <Callout tone="bad">{error}</Callout>}
 
-      {needsData && (
-        <Panel>
-          <PanelHeader title="One download first" />
-          <PanelBody>
-            <p className="d">
-              The preview runs a small World of Warcraft emulator, which needs its data files: the game's API lists
-              and interface strings, {size} from GitHub. Each file is checked against the copy this app was built
-              with, and anything that doesn't match is thrown away. Nothing is sent. You can remove it any time in
-              Settings.
-            </p>
-            {status.data === "failed" && status.data_error && (
-              <div style={{ marginTop: 8 }}>
-                <Callout tone="bad">The download didn't work: {status.data_error}</Callout>
-              </div>
-            )}
-            <div className="ctl" style={{ marginTop: 10 }}>
-              <PrimaryButton onClick={download}>
-                {status.data === "failed" ? `Try again (${size})` : `Download preview data (${size})`}
-              </PrimaryButton>
+      <div className="yu">
+        <div className="yu-main">
+          {ready && (
+            <div className="yu-tools">
+              <span className="d-dim">Show</span>
+              <Segmented options={MOMENTS} value={moment} onChange={show} />
             </div>
-          </PanelBody>
-        </Panel>
-      )}
+          )}
 
-      {status.data === "downloading" && (
-        <Panel>
-          <PanelHeader title="Downloading preview data" />
-          <PanelBody>
-            <Meter fraction={total ? (status.downloaded_bytes ?? 0) / total : 0} />
-            <p className="d-dim" style={{ marginTop: 6 }}>
-              {bytes(status.downloaded_bytes ?? 0)} of {size}
-            </p>
-          </PanelBody>
-        </Panel>
-      )}
+          {needsData && status && (
+            <Panel>
+              <PanelHeader title="One download first" />
+              <PanelBody>
+                <p className="d">
+                  To draw your screen, Forever Buddy needs a small set of files describing the game, {size} from
+                  GitHub. Each one is checked against the copy this app was built with, and nothing about you is sent.
+                  You can remove them any time in Settings.
+                </p>
+                {status.data === "failed" && status.data_error && (
+                  <div style={{ marginTop: 8 }}>
+                    <Callout tone="bad">The download didn't work: {status.data_error}</Callout>
+                  </div>
+                )}
+                <div className="ctl" style={{ marginTop: 10 }}>
+                  <PrimaryButton onClick={download}>
+                    {status.data === "failed" ? `Try again (${size})` : `Download (${size})`}
+                  </PrimaryButton>
+                </div>
+              </PanelBody>
+            </Panel>
+          )}
 
-      {status.data === "ready" && (
-        <Panel>
-          <PanelHeader title={status.class ? `${CLASS_NAMES[status.class] ?? status.class} at login` : "At login"}>
-            <span className="d-dim">
-              {status.drawing ? "Drawing…" : status.drew_ms != null ? `Drawn in ${drewIn(status.drew_ms)}` : ""}
-            </span>
-          </PanelHeader>
-          <PanelBody>
-            {status.draw_error && (
-              <Callout tone="bad">
-                The last redraw didn't work, so this is the one before it. {status.draw_error}
-              </Callout>
-            )}
-            {blank && !status.drawing && (
-              <Callout tone="stone">
-                Nothing of Forever Buddy's is on screen at login with your settings. Turn on the HUD to see it here.
-              </Callout>
-            )}
-            {frame ? (
-              <img
-                src={frame}
-                alt="Your screen with Forever Buddy, as the game would draw it"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  aspectRatio: "16 / 9",
-                  background: "#1b2226",
-                  borderRadius: 6,
-                  opacity: status.drawing ? 0.7 : 1,
-                }}
-              />
-            ) : (
-              <div className="d-dim" style={{ aspectRatio: "16 / 9", display: "grid", placeItems: "center" }}>
-                {status.drawing ? "Drawing your screen…" : "Nothing drawn yet."}
+          {status?.data === "downloading" && (
+            <Panel>
+              <PanelHeader title="Downloading" />
+              <PanelBody>
+                <Meter fraction={total ? (status.downloaded_bytes ?? 0) / total : 0} />
+                <p className="d-dim" style={{ marginTop: 6 }}>
+                  {bytes(status.downloaded_bytes ?? 0)} of {size}
+                </p>
+              </PanelBody>
+            </Panel>
+          )}
+
+          {ready && status && (
+            <>
+              <div className="yu-screen">
+                {frame && !blank ? (
+                  <img
+                    src={frame}
+                    alt={`Your screen ${label.toLowerCase()}, as the game would draw it`}
+                    style={{ opacity: status.drawing ? 0.6 : 1 }}
+                  />
+                ) : blank && !status.drawing ? (
+                  <div className="yu-empty">
+                    <h3>This is Blizzard's UI</h3>
+                    <p>
+                      Forever Buddy's look is off, so there's nothing of ours to show. Ask Claude to turn it on, or to
+                      make you a look, and it shows up here on your own screen.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="yu-empty">
+                    <p>Drawing your screen…</p>
+                  </div>
+                )}
+                {frame && !blank && <span className="yu-tag">{label}</span>}
               </div>
-            )}
-            <p className="d-dim" style={{ marginTop: 8 }}>
-              Only Forever Buddy's frames are drawn. Blizzard's own aren't here yet, so with Blizzard's action bars
-              chosen in Forever Buddy's settings, no bars show. Icons are grey squares. Classes without a sample
-              character show a stand-in.
-            </p>
-          </PanelBody>
-        </Panel>
-      )}
+              {status.draw_error && (
+                <Callout tone="bad">That one didn't draw, so this is the last one that did. {status.draw_error}</Callout>
+              )}
+              <p className="d-dim yu-note">
+                Only your UI is drawn here, not the world behind it. Icons show as grey squares.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="yu-side">
+          <Panel>
+            <PanelHeader title="Ask Claude" />
+            <PanelBody>
+              <p className="d">Once, in Claude Code:</p>
+              <div className="yu-cmd">
+                <code>{SKILL}</code>
+                <Button variant="ghost" onClick={copy}>
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+              <p className="d">Then say what you want, in your own words:</p>
+              <ul className="yu-asks">
+                {ASKS.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+              <p className="d-dim" style={{ marginTop: 10 }}>
+                Claude's changes wait in Approvals. Once you approve, you'll see them in game the next time you log in.
+              </p>
+            </PanelBody>
+          </Panel>
+        </div>
+      </div>
     </Page>
   );
 }
 
-/** Settings: the preview's downloaded data, and a way to remove it. Hidden
- *  until there is something to remove. */
+/** Settings: the downloaded files the Your UI tab draws with, and a way to
+ *  remove them. Hidden until there is something to remove. */
 export function PreviewDataRow() {
   const [status, setStatus] = useState<PreviewStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,7 +185,7 @@ export function PreviewDataRow() {
     setBusy(true);
     try {
       await commands.previewRemoveData();
-      setResult("Removed. The Preview tab offers the download again.");
+      setResult("Removed. The Your UI tab offers the download again.");
     } catch (e) {
       setResult(errorText(e));
     } finally {
@@ -151,14 +197,14 @@ export function PreviewDataRow() {
   if (!status || (status.data !== "ready" && !result)) return null;
   return (
     <div className="st-set full">
-      <div className="t">Preview data</div>
+      <div className="t">Your UI files</div>
       <div className="d">
-        The emulator's data files the Preview tab draws with, {bytes(status.download_bytes ?? 0)}.
+        The files the Your UI tab draws your screen with, {bytes(status.download_bytes ?? 0)}.
       </div>
       <div className="ctl" style={{ marginTop: 6 }}>
         {status.data === "ready" && (
           <Button variant="ghost" onClick={remove} disabled={busy}>
-            {busy ? "Removing…" : "Remove preview data"}
+            {busy ? "Removing…" : "Remove them"}
           </Button>
         )}
         {result && <span className="d-dim">{result}</span>}

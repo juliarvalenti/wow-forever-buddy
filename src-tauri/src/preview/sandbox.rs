@@ -274,6 +274,9 @@ pub struct DrawOptions {
     pub class: Option<String>,
     /// Blizzard's UI and art from `/extract` (the art switch).
     pub art: bool,
+    /// The moment to draw (`preview.lua`'s MOMENTS): "standing", "combat",
+    /// "stealth" or "low_health".
+    pub moment: &'static str,
 }
 
 /// A drawn frame.
@@ -520,6 +523,7 @@ impl Session {
             o.set("addon", format!("/{ADDON}"))?;
             o.set("class", opts.class.clone())?;
             o.set("art", opts.art)?;
+            o.set("moment", opts.moment)?;
             if opts.art {
                 o.set("blizzard", "/extract/interface/addons")?;
             }
@@ -645,6 +649,7 @@ pub(crate) mod tests {
         let opts = DrawOptions {
             class: Some("rogue".into()),
             art: false,
+            moment: "standing",
         };
         let started = Instant::now();
         let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
@@ -662,6 +667,27 @@ pub(crate) mod tests {
             drawn.lua_errors,
             drawn.svg.len()
         );
+    }
+
+    /// ED1: every moment the Your UI tab offers draws without a Lua error.
+    #[test]
+    fn every_moment_draws() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = Session::new(Arc::new(RwLock::new(host(Some(repo_data()), tmp.path())))).unwrap();
+        for moment in ["standing", "combat", "stealth", "low_health"] {
+            let opts = DrawOptions {
+                class: Some("rogue".into()),
+                art: false,
+                moment,
+            };
+            let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
+            assert!(
+                drawn.svg.starts_with("<svg"),
+                "{moment}: {}",
+                &drawn.svg[..drawn.svg.len().min(200)]
+            );
+            assert_eq!(drawn.lua_errors, 0, "{moment}");
+        }
     }
 
     #[test]
