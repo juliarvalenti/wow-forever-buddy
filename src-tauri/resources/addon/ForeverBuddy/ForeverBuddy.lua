@@ -550,6 +550,53 @@ end
 
 U.mods = { list = {}, byId = {}, declared = select(2, ...).settings }
 
+-- COMPAT1: the player's other addons that already do one of our jobs. An
+-- option names them (Settings.lua `yields`); while one is loaded, ours
+-- stays off and its row says why, so the two never fight over the same
+-- keys, frames or windows. Only these few names are ever looked for, and
+-- only they go back to the app (so its lints know), never the player's
+-- whole addon list.
+U.compat = { KNOWN = { "DialogueUI", "DialogKey", "Baganator", "Questie" } }
+
+function U.compat.loaded(name)
+    return read("C_AddOns.IsAddOnLoaded", name) == true
+end
+
+-- The loaded addon option `id` yields to, if any.
+function U.compat.yieldsTo(id)
+    if not U.compat.byId then
+        U.compat.byId = {}
+        for _, o in ipairs(U.mods.declared and U.mods.declared.options or {}) do
+            if type(o.yields) == "table" then
+                U.compat.byId[o.id] = o.yields
+            end
+        end
+    end
+    for _, name in ipairs(U.compat.byId[id] or {}) do
+        if U.compat.loaded(name) then
+            return name
+        end
+    end
+end
+
+-- The line its row shows instead of its help, while it yields.
+function U.compat.note(id)
+    local name = U.compat.yieldsTo(id)
+    return name and (name .. " does this, so ours stays off.") or nil
+end
+
+-- For the logout file: which of the known ones are loaded (an empty list
+-- when none is, so the app can tell that from an older addon's file).
+function U.compat.others()
+    local out = {}
+    for _, name in ipairs(U.compat.KNOWN) do
+        if U.compat.loaded(name) then
+            out[#out + 1] = name
+        end
+    end
+    return out
+end
+
 -- "<id>.enabled"'s declared default: on, except for a module declared off
 -- until you turn it on (the HUD).
 function U.mods.default(id)
@@ -1828,6 +1875,11 @@ end
 
 -- A part that's in effect: its setting on, and the module on (W1).
 function U.quest.on(key)
+    -- COMPAT1: what Questie already does (its own tracker, levels on quest
+    -- titles, progress on item tooltips), ours leaves to it.
+    if U.compat.yieldsTo("quest." .. key) then
+        return false
+    end
     return U.mods.on("quest") and U.quest.get(key) and true or false
 end
 
@@ -4348,7 +4400,9 @@ do
     -- A window opened (its page) or closed (nil), or combat started (nil).
     function C.dialogKeys(p)
         page = p
-        if p and on("questDialogKeys") and U.mods.on("questhelp") and not read("InCombatLockdown") then
+        -- COMPAT1: DialogueUI and DialogKey want the same keys and windows.
+        if p and on("questDialogKeys") and U.mods.on("questhelp") and not read("InCombatLockdown")
+            and not U.compat.yieldsTo("questhelp.dialogKeys") then
             keys:EnableKeyboard(true)
             keys:SetPropagateKeyboardInput(true)
             keys:Show()
@@ -4880,6 +4934,12 @@ do
     -- W1: the Bags module. Off, its marks come off the open bags and bank
     -- (the redraw below draws none), and nothing new is drawn.
     function C.bagShows(key)
+        -- COMPAT1: Baganator draws its own bags, with its own junk and item
+        -- levels.
+        local id = key == "bagJunk" and "bags.junk" or key == "bagLevel" and "bags.itemLevel"
+        if id and U.compat.yieldsTo(id) then
+            return false
+        end
         return U.mods.on("bags") and bagOn(key)
     end
     U.mods.register({
@@ -4950,6 +5010,41 @@ do
             x.level:Hide()
         end
     end
+
+    -- COMPAT1: with Baganator, which draws its own bags, our marks go on its
+    -- item buttons through its public API: a corner widget, top left as on
+    -- Blizzard's. (Its junk plugin isn't used: registering one takes over
+    -- Baganator's own junk choice.) Registered once, at login; it can't be
+    -- taken back, so it draws nothing while "Marks in your bags" is off.
+    -- Its buttons for other characters' bags have no bag, so get no mark.
+    function C.baganator()
+        local api = U.compat.loaded("Baganator") and type(rawget(_G, "Baganator")) == "table" and Baganator.API
+        if C.baganatorOn ~= nil or type(api) ~= "table" or type(api.RegisterCornerWidget) ~= "function" then
+            return
+        end
+        -- Another addon's API: in a pcall, so a change on its side can't stop
+        -- the rest of our login. Tried once either way.
+        local ok = pcall(api.RegisterCornerWidget, "Forever Buddy marks", "ForeverBuddyMarks", function(t, details)
+            local button = C.baganatorOwner[t]
+            if not C.opt("bagMarks") or not (button and type(button.GetBagID) == "function" and button:GetBagID()) then
+                return false
+            end
+            local id = type(details) == "table" and details.itemID
+            local mark = type(id) == "number" and not isSecret(id) and C.mine()[id]
+            if not mark then
+                return false
+            end
+            t:SetTexture(mark.sell and COIN or LETTER)
+            return true
+        end, function(button)
+            local t = button:CreateTexture(nil, "OVERLAY")
+            t:SetSize(12, 12)
+            C.baganatorOwner[t] = button
+            return t
+        end, { corner = "top_left", priority = 1 }, true)
+        C.baganatorOn = ok and api or false
+    end
+    C.baganatorOwner = setmetatable({}, { __mode = "k" })
 
     -- Every item button in Blizzard's bag frames (combined or separate),
     -- and the bank's while it's open.
@@ -5995,6 +6090,10 @@ do
             set = function(on)
                 C.setOpt("bagMarks", on)
                 pcall(C.tagBags)
+                -- COMPAT1: and Baganator's, which draw ours too.
+                if C.baganatorOn and type(C.baganatorOn.RequestItemButtonsRefresh) == "function" then
+                    pcall(C.baganatorOn.RequestItemButtonsRefresh)
+                end
             end,
         },
         ["tooltips.alts"] = {
@@ -6668,12 +6767,28 @@ do
             cb = U.ui.slider(parent, o)
             cb.height = 52
         else
-            cb = U.ui.switch(parent, o.label, o.description)
+            -- COMPAT1: while another addon does this, the line says so.
+            local help = U.compat.note(o.decl.id) or o.description
+            cb = U.ui.switch(parent, o.label, help)
             cb.option = o
+            cb.yields = help ~= o.description
             -- A help line long enough to wrap takes a second line.
-            cb.height = #(o.description or "") > 64 and 62 or 46
+            cb.height = #(help or "") > 64 and 62 or 46
+            -- Yielding, the switch and its label are dimmed and the switch
+            -- does nothing; the line saying why stays at full strength.
+            if cb.yields then
+                cb:SetEnabled(false)
+                cb.track:SetAlpha(0.5)
+                cb.knob:SetAlpha(0.5)
+                cb.label:SetAlpha(0.5)
+            end
             cb:SetScript("OnClick", function(b)
-                -- Nothing changes in combat: the switch goes back.
+                -- Nothing changes while it yields, or in combat: the switch
+                -- goes back.
+                if b.yields then
+                    U.refresh()
+                    return
+                end
                 if not read("InCombatLockdown") and not pcall(o.set, b:GetChecked() and true or false) then
                     U.errors = U.errors + 1
                 end
@@ -7854,6 +7969,8 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     end
     entered = true
     read(RequestRaidInfo)
+    -- COMPAT1: our bag marks in Baganator's bags, if it's there.
+    pcall(C.baganator)
     -- The login briefing, once per login (not after /reload), once the
     -- quest log has filled in.
     if not isReloadingUi then
@@ -8377,6 +8494,11 @@ handlers.PLAYER_LOGOUT = function()
         macros = (function()
             local ok, r = pcall(U.macros.receipts)
             return ok and r or nil
+        end)(),
+        -- COMPAT1: which of the few addons we yield to are loaded.
+        others = (function()
+            local ok, o = pcall(U.compat.others)
+            return ok and o or nil
         end)(),
     }
     local version, build = read(GetBuildInfo)

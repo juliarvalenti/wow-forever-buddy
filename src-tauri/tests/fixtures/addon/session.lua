@@ -89,6 +89,8 @@ ForeverBuddyDB = {
 			["subclass"] = 5,
 		},
 	},
+	["others"] = {
+	},
 	["sessions"] = {
 		{
 			["events"] = {

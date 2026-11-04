@@ -268,6 +268,9 @@ pub struct AddonFile {
     /// What the game did with approved macros (`macros = { [queue id] =
     /// outcome }`, MC1): applied, declined, changed or full.
     pub macros: Vec<(i64, String)>,
+    /// COMPAT1: of the few other addons ours yields to, those loaded
+    /// (`others`); `None` from an addon too old to say.
+    pub others: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -534,7 +537,22 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         plan,
         settings,
         macros: tbl(db, "macros").map(macro_receipts).unwrap_or_default(),
+        others: tbl(db, "others").map(others),
     })
+}
+
+/// `others = { "Questie", … }`: short names only, at most 20.
+fn others(t: &LuaTable) -> Vec<String> {
+    t.array
+        .iter()
+        .filter_map(|v| match v {
+            LuaValue::Str(s) => String::from_utf8(s.to_vec())
+                .ok()
+                .filter(|n| !n.is_empty() && n.len() <= 64),
+            _ => None,
+        })
+        .take(20)
+        .collect()
 }
 
 /// `macros = { [queue id] = outcome }`: positive ids, the outcomes the app

@@ -2476,6 +2476,100 @@ scenario("dialog_keys", function()
     file(c.logout())
 end)
 
+-- COMPAT1: Julia's other addons. With DialogKey loaded our dialog keys stay
+-- off, with Questie our tracker fade, with Baganator the Bags module's
+-- coin and item level; each row says why. Our bag marks go into Baganator's
+-- bags through its API. The logout file names only those known addons.
+scenario("compat", function()
+    local widget, refreshes = nil, 0
+    local c = client({
+        slots = { ["Data/Cleanup.lua"] = CLEANUP },
+        globals = { Baganator = { API = {
+            RegisterCornerWidget = function(label, id, onUpdate, onInit, corner, fast)
+                assert(widget == nil, "registered once")
+                widget = { label = label, id = id, update = onUpdate, init = onInit, corner = corner, fast = fast }
+            end,
+            RequestItemButtonsRefresh = function()
+                refreshes = refreshes + 1
+            end,
+        } } },
+    })
+    c.world.addons = { DialogKey = true, Questie = true, Baganator = true }
+    c.world.bags[0].slots[3] = { id = 2934, count = 1 } -- grey
+    c.login(nil)
+    c.advance(5)
+
+    -- Dialog keys: the row says DialogKey has it, and no key is taken.
+    local keys = setting(c, "Dialog keys")
+    eq(keys.sub.text, "DialogKey does this, so ours stays off.", "the row says why")
+    eq(keys.enabled, false, "its switch does nothing")
+    eq(keys.label.alpha, 0.5, "and it's dimmed")
+    eq(keys.sub.alpha, nil, "but the line saying why isn't")
+    c.click(keys)
+    eq(keys.option.get(), false, "clicking it changes nothing")
+    -- Even turned on before DialogKey came (here, set directly).
+    keys.option.set(true)
+    c.openDialog("gossip", { available = { { questID = 176, repeatable = false, frequency = 0 } } })
+    eq(c.key("SPACE"), "game", "Space stays DialogKey's")
+    eq(table.concat(c.world.quest_actions, ","), "", "and ours picks nothing")
+    c.closeDialog()
+
+    -- The tracker: Questie has its own, so ours fades nothing.
+    local fade = setting(c, "See-through quest tracker")
+    eq(fade.sub.text, "Questie does this, so ours stays off.", "the tracker row too")
+    fade.option.set(true)
+    eq(#c.global("ObjectiveTrackerFrame").children, 0, "no fade frame on the tracker")
+    -- Questie also puts levels on quest titles and progress on tooltips.
+    eq(setting(c, "Quest levels in the quest log").sub.text, "Questie does this, so ours stays off.", "levels")
+    eq(setting(c, "Quest progress on item tooltips").sub.text, "Questie does this, so ours stays off.", "tooltips")
+    eq(setting(c, "Mark quests that are new in Forever").enabled, true, "the (New) tag stays ours")
+
+    -- Bags: Baganator draws its own, so the Bags module draws nothing.
+    c.click(setting(c, "Junk in your bags"))
+    c.openBags()
+    c.advance(1)
+    eq(extrasOf(c.global("ContainerFrame1").buttons[3]).junk, nil, "no coin from us")
+
+    -- Our marks, in Baganator's bags, top left.
+    eq(widget and widget.id, "ForeverBuddyMarks", "a corner widget, registered at login")
+    eq(widget.corner.corner, "top_left", "top left, as in Blizzard's bags")
+    local painted
+    local button = {
+        GetBagID = function()
+            return 0
+        end,
+        CreateTexture = function()
+            painted = { SetSize = function() end, SetTexture = function(self, t) self.texture = t end }
+            return painted
+        end,
+    }
+    local mark = widget.init(button)
+    eq(widget.update(mark, { itemID = 10005 }), true, "the item marked to send")
+    eq(painted.texture, "Interface\\Minimap\\Tracking\\Mailbox", "a letter")
+    eq(widget.update(mark, { itemID = 117 }), false, "nothing on an unmarked one")
+    local elsewhere = widget.init({ CreateTexture = button.CreateTexture, GetBagID = function() end })
+    eq(widget.update(elsewhere, { itemID = 10005 }), false, "nor in another character's bags")
+    c.click(setting(c, "Marks in your bags"))
+    eq(refreshes, 1, "Marks off redraws Baganator's buttons")
+    eq(widget.update(mark, { itemID = 10005 }), false, "and they draw none")
+
+    local db = file(c.logout())
+    eq(table.concat(db.others, ","), "DialogKey,Baganator,Questie", "the logout file names those it knows")
+
+    -- Baganator's API is another addon's: if it throws, our login goes on.
+    local tried = 0
+    local broken = client({ globals = { Baganator = { API = { RegisterCornerWidget = function()
+        tried = tried + 1
+        error("Baganator changed")
+    end } } } })
+    broken.world.addons = { Baganator = true }
+    broken.login(nil)
+    broken.advance(5)
+    eq(tried, 1, "tried once")
+    eq(table.concat(broken.errors, " / "), "", "and nothing escaped")
+    eq(file(broken.logout()).others[1], "Baganator", "the rest of the session as usual")
+end)
+
 scenario("cleanup", function()
     local PREFIX = "|cffffd100Forever Buddy:|r "
     local SELA = "|cffffffffSela|r"
@@ -4105,6 +4199,8 @@ local SCHEMA_FIELDS = {
     "moduleSwitch",
     -- ED1: part of the look, set by Claude and drawn nowhere in game.
     "look",
+    -- COMPAT1: the other addons that already do this job.
+    "yields",
 }
 
 local function declared()
@@ -4254,7 +4350,10 @@ scenario("settings_schema", function()
                 eq(fits(byId[id], v), true, what .. ": " .. id .. " takes " .. tostring(v))
             end
         end
-        lints[#lints + 1] = { __order = { "id", "when", "say" }, id = l.id, when = ordered(l.when), say = l.say }
+        -- COMPAT1: a lint may hold only while another addon is loaded.
+        eq(l.addon == nil or type(l.addon) == "string", true, what .. ": its addon is a name")
+        lints[#lints + 1] = { __order = { "id", "when", "addon", "say" }, id = l.id, when = ordered(l.when),
+            addon = l.addon, say = l.say }
     end
     for i, p in ipairs(s.presets or {}) do
         local what = "preset " .. i .. " (" .. tostring(p.id) .. ")"

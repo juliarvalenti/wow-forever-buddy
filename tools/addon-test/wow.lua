@@ -345,6 +345,8 @@ function M.new(opts)
         greeting = { available = {}, active = {} }, -- QUEST_GREETING's lists
         repeatable = {}, -- quest id -> true
         quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
+        -- COMPAT1: the player's other addons that are loaded, name -> true.
+        addons = {},
         -- MC1: the game's macros, { name, icon, body }: the account's
         -- (indexes 1-120) and this character's (121-138); and each create
         -- or edit the addon made ("create:Mount", "edit:Opener").
@@ -725,6 +727,10 @@ function M.new(opts)
         end,
         InCombatLockdown = function()
             return world.combat
+        end,
+        -- COMPAT1: whether another addon is loaded (world.addons).
+        ["C_AddOns.IsAddOnLoaded"] = function(name)
+            return world.addons[name] == true
         end,
         -- TH3: the action bars, as the client reports them.
         HasAction = function(slot)

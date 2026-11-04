@@ -139,6 +139,8 @@ return {
     GetCursorPosition = { from = "assumed" },
     IsShiftKeyDown = { from = "assumed" },
     InCombatLockdown = { from = "assumed" },
+    -- COMPAT1: answered from the addon list, there from load on.
+    ["C_AddOns.IsAddOnLoaded"] = { from = "assumed" },
     IsPlayerMoving = { from = "assumed" },
     ["C_Timer.After"] = { from = "assumed" },
     ["Settings.NotifyUpdate"] = { from = "assumed" },

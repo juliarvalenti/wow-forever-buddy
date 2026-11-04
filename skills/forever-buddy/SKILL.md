@@ -23,7 +23,7 @@ Every tool refuses while agent access is off. Tools only read; the `propose_*` t
 |---|---|
 | "Where is my X?", "how much gold?" | `find_items`, `list_characters`, `get_gold_history` |
 | A plan for tonight | `get_recent_play`, `get_quests`, `get_lockouts`, then `propose_quest_plan` |
-| Their addon set up a certain way | `get_settings`, then `propose_settings` with a reason for each change |
+| Their addon set up a certain way | `get_settings`, then `propose_settings` with a reason for each change. Skip an option with `off_because`: another of their addons does that job, and ours stays off while it's loaded |
 | Their bags cleaned up | `get_bag_marks`, then `propose_bag_marks` |
 | "What macros does my rogue have?" | `list_macros` with the character, then `get_macro` for the text |
 | "Make me a macro for this", "copy my mount macro to my alts" | `propose_macro`: one macro per call (a copy to three alts is three calls). For an edit, pass `was` exactly as `get_macro` gave it. Slash commands only: `/run`, `/script`, `/console` and `/dump` are refused |
