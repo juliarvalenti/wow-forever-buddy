@@ -1,6 +1,6 @@
 # The Forever Buddy UI language (UI1)
 
-Status: version 1 draws today (`tools/addon-shots/FBUI/UI.lua`, checked by `uicheck.lua`, through `render_ui`). Issue #259. Written by @designer for Julia, coders and agents.
+Status: version 1 draws today (`src-tauri/resources/addon/ForeverBuddy/UI.lua`, the addon's own, checked by `tools/addon-shots/uicheck.lua`, through `render_ui`). Issue #259. Written by @designer for Julia, coders and agents.
 
 One document describes a whole UI. An agent writes it, `render_ui` shows it on the player's screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
 
@@ -118,7 +118,7 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 `render_ui` checks a document before drawing it, and draws nothing if it fails. Each problem has a path into the document (a JSON pointer, counting from 0), a code, and a sentence on how to fix it:
 
 ```
-/parts/0/anchor/1  unknown-anchor: anchors to hpBar, but no part before this one has that name. It can be "screen", "char" or grid, me.
+/parts/0/anchor/1  unknown-anchor: anchors to hpBar, but no part before this one has that name. It can be "screen", "char", or a part named before this one: grid, me.
 /parts/0/colour    unknown-key: a bar doesn't take colour. It takes: alpha, anchor, back, ...
 /parts/1/format    unknown-token: {mana} isn't a token. Tokens: {combo}, {hp}, {hp%}, {level}, {name}, {power}, {power%}.
 /parts/1/fontSize  out-of-range: fontSize is 200; it takes 6 to 72.
