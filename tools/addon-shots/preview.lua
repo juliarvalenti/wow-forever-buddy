@@ -40,8 +40,10 @@ end
 -- without a fixtures.lua character gets the generic one), blizzard (the
 -- extract's interface/addons, art on only), art (draw with the game's art),
 -- layout (an Edit Mode layout), moment (one of M.MOMENTS, standing by
--- default). Returns the SVG, the number of Lua errors the scene logged, and
--- the class drawn (nil for the generic character).
+-- default), ui (UI1's render_ui: the prototype interpreter's folder, whose
+-- Spec.lua is the document to draw). Returns the SVG, the number of Lua
+-- errors the scene logged, and the class drawn (nil for the generic
+-- character).
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
@@ -50,7 +52,7 @@ function M.draw(opts)
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
     local sim = scene.boot({
         blizzard = opts.blizzard,
-        extra = { opts.addon },
+        extra = { opts.addon, opts.ui },
         class = class,
         layout = opts.layout,
         stealth = moment == "stealth",

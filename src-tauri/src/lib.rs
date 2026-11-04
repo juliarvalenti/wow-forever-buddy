@@ -186,6 +186,12 @@ fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>) {
         .expect("failed to export TypeScript bindings");
 }
 
+/// `<app> render <doc.json> ...` (UI1): a UI document drawn to a PNG, with
+/// the preview data the app downloaded. Returns the exit code.
+pub fn render_cli(args: &[String]) -> i32 {
+    preview::ui::cli(args, agent::local_dir())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = specta_builder();
