@@ -16,6 +16,7 @@
 pub mod bundle;
 pub mod data;
 pub mod sandbox;
+pub mod ui;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -442,6 +443,7 @@ impl Worker {
             class: inputs.class.clone(),
             art: inputs.extract.is_some(),
             moment: inputs.moment.as_str(),
+            ui: None,
         };
         let host = host.clone();
         SESSION.with(|s| {

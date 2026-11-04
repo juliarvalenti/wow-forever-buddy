@@ -277,16 +277,65 @@ pub struct DrawOptions {
     /// The moment to draw (`preview.lua`'s MOMENTS): "standing", "combat",
     /// "stealth" or "low_health".
     pub moment: &'static str,
+    /// A UI document to check and draw over the scene (UI1's render_ui),
+    /// already within `ui::limits`. It reaches the Lua as a table built here
+    /// from the JSON, never as source.
+    pub ui: Option<serde_json::Value>,
 }
 
 /// A drawn frame.
 #[derive(Debug, Clone)]
 pub struct Drawn {
+    /// Empty when the document had problems (nothing is drawn then).
     pub svg: String,
     /// The Lua errors the scene logged (WOWAPI's gaps, or our addon's).
     pub lua_errors: u32,
     /// The fixture character drawn ("rogue"), or `None` for the generic one.
     pub class: Option<String>,
+    /// What the document's check (`uicheck.lua`) found wrong.
+    pub problems: Vec<Problem>,
+}
+
+/// One thing wrong with a UI document: where (a JSON pointer into it, as
+/// the agent wrote it), a code, and how to fix it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Problem {
+    pub path: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// A JSON value as Lua data: objects as tables with their own keys, lists
+/// as sequences. `ui::limits` has refused what doesn't fit (nulls, size,
+/// depth) before this runs; the depth guard here only keeps it finite.
+fn json_to_lua(lua: &Lua, v: &serde_json::Value, depth: usize) -> mlua::Result<Value> {
+    use serde_json::Value as J;
+    if depth > 64 {
+        return Err(mlua::Error::runtime("the document is nested too deep"));
+    }
+    Ok(match v {
+        J::Null => Value::Nil,
+        J::Bool(b) => Value::Boolean(*b),
+        J::Number(n) => match n.as_i64() {
+            Some(i) => Value::Integer(i),
+            None => Value::Number(n.as_f64().unwrap_or(0.0)),
+        },
+        J::String(s) => Value::String(lua.create_string(s)?),
+        J::Array(items) => {
+            let t = lua.create_table_with_capacity(items.len(), 0)?;
+            for (i, item) in items.iter().enumerate() {
+                t.raw_set(i + 1, json_to_lua(lua, item, depth + 1)?)?;
+            }
+            Value::Table(t)
+        }
+        J::Object(map) => {
+            let t = lua.create_table_with_capacity(0, map.len())?;
+            for (k, item) in map {
+                t.raw_set(k.as_str(), json_to_lua(lua, item, depth + 1)?)?;
+            }
+            Value::Table(t)
+        }
+    })
 }
 
 /// One Lua state, kept between draws (the modules stay loaded).
@@ -527,11 +576,31 @@ impl Session {
             if opts.art {
                 o.set("blizzard", "/extract/interface/addons")?;
             }
-            let (svg, errors, class): (LuaString, u32, Option<String>) = draw.call(o)?;
+            if let Some(doc) = &opts.ui {
+                o.set("ui", json_to_lua(&self.lua, doc, 0)?)?;
+            }
+            let (svg, errors, class, problems): (
+                Option<LuaString>,
+                u32,
+                Option<String>,
+                Option<Table>,
+            ) = draw.call(o)?;
+            let mut found = Vec::new();
+            if let Some(list) = problems {
+                for p in list.sequence_values::<Table>() {
+                    let p = p?;
+                    found.push(Problem {
+                        path: p.get::<Option<String>>("path")?.unwrap_or_default(),
+                        code: p.get::<Option<String>>("code")?.unwrap_or_default(),
+                        message: p.get::<Option<String>>("message")?.unwrap_or_default(),
+                    });
+                }
+            }
             Ok(Drawn {
-                svg: svg.to_string_lossy(),
+                svg: svg.map(|s| s.to_string_lossy()).unwrap_or_default(),
                 lua_errors: errors,
                 class,
+                problems: found,
             })
         })();
         self.deadline.set(None);
@@ -650,6 +719,7 @@ pub(crate) mod tests {
             class: Some("rogue".into()),
             art: false,
             moment: "standing",
+            ui: None,
         };
         let started = Instant::now();
         let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
@@ -679,6 +749,7 @@ pub(crate) mod tests {
                 class: Some("rogue".into()),
                 art: false,
                 moment,
+                ui: None,
             };
             let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
             assert!(

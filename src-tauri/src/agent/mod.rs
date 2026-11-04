@@ -13,6 +13,7 @@
 
 mod activity;
 mod propose;
+mod render;
 mod rpc;
 mod tools;
 
@@ -53,13 +54,20 @@ pub struct Paths {
     pub db: PathBuf,
     /// The agent's own folder: the activity list now, P2b's inbox later.
     pub dir: PathBuf,
+    /// The preview's WOWAPI data, as the app downloaded it (UI1's render_ui).
+    pub preview_data: PathBuf,
+}
+
+/// The app's local data folder (Tauri's `app_local_data_dir`), found
+/// without Tauri: for this process and the `render` command line.
+pub fn local_dir() -> Option<PathBuf> {
+    Some(dirs::data_local_dir()?.join(IDENTIFIER))
 }
 
 impl Paths {
     fn system() -> Option<Self> {
         let config = dirs::config_dir()?.join(IDENTIFIER);
-        let local = dirs::data_local_dir()?.join(IDENTIFIER);
-        Some(Self::new(&config, &local))
+        Some(Self::new(&config, &local_dir()?))
     }
 
     pub fn new(config_dir: &Path, local_data_dir: &Path) -> Self {
@@ -67,6 +75,7 @@ impl Paths {
             settings: config_dir.join("settings.json"),
             db: local_data_dir.join("buddy.db"),
             dir: local_data_dir.join("agent"),
+            preview_data: crate::preview::ui::data_dir(local_data_dir),
         }
     }
 }
