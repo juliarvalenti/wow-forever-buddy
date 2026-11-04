@@ -29,15 +29,15 @@ M.LIMITS = { parts = 300 }
 -- What each kind takes, besides what every part takes.
 local COMMON = { "name", "kind", "unit", "anchor", "size", "level", "alpha", "hidden" }
 local TAKES = {
-    plate = { "color", "gradient", "border", "borderWidth" },
+    plate = { "color", "gradient", "border", "borderWidth", "rotate" },
     bar = { "value", "color", "gradient", "back", "backAlpha", "border", "borderWidth", "vertical", "reverse",
         "ticks", "tickColor" },
     text = { "format", "font", "fontSize", "outline", "stroke", "justify", "color" },
     pips = { "value", "count", "w", "h", "gap", "layout", "from", "to", "radius", "color", "emptyColor", "emptyAlpha",
-        "border" },
+        "border", "rotate", "orient" },
     icon = { "slot", "aura", "zoom", "border", "borderWidth" },
     actionbar = { "slots", "icon", "gap", "columns", "zoom", "border", "back", "keys", "bind", "bindFrom", "keySize",
-        "keyColor", "font", "outline", "stroke" },
+        "keyColor", "font", "outline", "stroke", "layout", "radius", "from", "to" },
 }
 -- Properties that may differ by state.
 local STATEFUL = { size = true, alpha = true, hidden = true, color = true, gradient = true }
@@ -264,14 +264,14 @@ function M.check(doc)
                 end
             end
             for k, r in pairs({ borderWidth = { 1, 8 }, backAlpha = { 0, 1 }, emptyAlpha = { 0, 1 }, ticks = { 1, 20 },
-                count = { 1, 10 }, w = { 1, 300 }, h = { 1, 300 }, gap = { 0, 100 }, from = { -360, 360 },
-                to = { -360, 360 }, radius = { 0, 1000 }, zoom = { 0, 0.3 }, fontSize = { 6, 72 }, stroke = { 0, 3 },
+                count = { 1, 40 }, rotate = { -360, 360 }, w = { 1, 300 }, h = { 1, 300 }, gap = { 0, 100 }, from = { -360, 360 },
+                to = { -360, 360 }, radius = { 0, 1000 }, zoom = { 0, 0.3 }, fontSize = { 6, 120 }, stroke = { 0, 3 },
                 icon = { 8, 128 }, columns = { 1, 48 }, keySize = { 6, 40 }, bindFrom = { 1, 12 }, slot = { 1, 180 } }) do
                 if p[k] ~= nil then
                     number(at .. "/" .. k, p[k], r[1], r[2], k)
                 end
             end
-            for _, k in ipairs({ "vertical", "reverse", "keys" }) do
+            for _, k in ipairs({ "vertical", "reverse", "keys", "orient" }) do
                 if p[k] ~= nil and type(p[k]) ~= "boolean" then
                     bad(at .. "/" .. k, "not-true-or-false", k .. " is true or false.")
                 end
@@ -282,8 +282,12 @@ function M.check(doc)
             if p.value ~= nil then
                 oneOf(at .. "/value", p.value, M.VALUES, "value")
             end
-            if p.layout ~= nil and p.layout ~= "row" and p.layout ~= "arc" then
-                bad(at .. "/layout", "bad-layout", "pips are laid out in a \"row\" or an \"arc\".")
+            if p.layout ~= nil then
+                if p.kind == "actionbar" and p.layout ~= "grid" and p.layout ~= "arc" then
+                    bad(at .. "/layout", "bad-layout", "action buttons are laid out in a \"grid\" (rows of columns) or an \"arc\".")
+                elseif p.kind == "pips" and p.layout ~= "row" and p.layout ~= "column" and p.layout ~= "arc" then
+                    bad(at .. "/layout", "bad-layout", "pips are laid out in a \"row\", a \"column\" or an \"arc\".")
+                end
             end
             if p.font ~= nil then
                 oneOf(at .. "/font", p.font, M.FONTS, "font")

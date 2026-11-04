@@ -1,0 +1,35 @@
+{
+  "ui": 1,
+  "name": "Terminal",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "name": "box", "kind": "plate", "color": "#050806", "alpha": { "always": 0.88, "combat": 0.95 },
+      "border": "#3fff8f", "anchor": ["TOPLEFT", "screen", "TOPLEFT", 36, -36], "size": [460, 236] },
+    { "kind": "text", "format": "> {name}   lvl {level}", "font": "Geist", "fontSize": 20, "outline": "none",
+      "justify": "LEFT", "color": "#3fff8f", "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -16], "size": [420, 24] },
+    { "kind": "text", "format": "hp  {hp}  {hp%}", "font": "Geist", "fontSize": 18, "outline": "none",
+      "justify": "LEFT", "color": { "always": "#3fff8f", "low": "#ff5c5c" }, "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -56], "size": [420, 22] },
+    { "name": "hpbar", "kind": "bar", "value": "health", "color": { "always": "#3fff8f", "low": "#ff5c5c" },
+      "back": "#3fff8f", "backAlpha": 0.12, "ticks": 20, "tickColor": "#050806", "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -84], "size": [424, 16] },
+    { "kind": "text", "format": "en  {power}", "font": "Geist", "fontSize": 18, "outline": "none",
+      "justify": "LEFT", "color": "#ffcf3f", "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -112], "size": [420, 22] },
+    { "kind": "bar", "value": "power", "color": "#ffcf3f", "back": "#ffcf3f", "backAlpha": 0.12, "ticks": 20,
+      "tickColor": "#050806", "level": 1, "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -140], "size": [424, 10] },
+    { "kind": "text", "format": "cp", "font": "Geist", "fontSize": 18, "outline": "none", "justify": "LEFT",
+      "color": "#3fff8f", "level": 1, "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -164], "size": [40, 22] },
+    { "kind": "pips", "value": "combo", "count": 5, "w": 22, "h": 12, "gap": 6, "color": "#3fff8f",
+      "emptyColor": "#3fff8f", "emptyAlpha": 0.12, "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 136, -175], "size": [1, 1] },
+    { "kind": "text", "unit": "target", "format": "tgt {name}  {hp%}", "font": "Geist", "fontSize": 18,
+      "outline": "none", "justify": "LEFT", "color": "reaction", "level": 1,
+      "anchor": ["TOPLEFT", "box", "TOPLEFT", 18, -200], "size": [420, 22] },
+
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "columns": 1, "icon": 34, "gap": 3,
+      "border": "#3fff8f", "font": "Geist", "keySize": 12, "outline": "none", "keyColor": "#3fff8f",
+      "anchor": ["TOPLEFT", "box", "BOTTOMLEFT", 0, -14] }
+  ]
+}

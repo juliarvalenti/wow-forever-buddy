@@ -155,7 +155,7 @@ end
 if opts.examples then
     local out = assert(args[1], "usage: ui.lua --examples <out-dir>")
     local failed = 0
-    for _, name in ipairs({ "round4", "minimal", "columns" }) do
+    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners" }) do
         local doc = decode(read(here .. "/ui-examples/" .. name .. ".json"))
         local errors, problems = draw(doc, name, out, opts.class, MOMENTS)
         if not errors then
