@@ -56,8 +56,6 @@
 .ls-sent small { grid-column: 2 / -1; font-size: 11px; color: var(--soot); }
 .ls-sent .st { font-size: 11.5px; color: var(--ok); white-space: nowrap; }
 .ls-sent .st.wait { color: var(--ember-2); }
-
-.ls-empty { display: grid; justify-items: start; gap: 12px; padding: 8px 0; font-size: 13px; color: var(--ash); max-width: 52ch; }
 .ls-err { margin-top: 8px; }
 .ls-form { display: grid; gap: 12px; min-width: 340px; }
 .ls-form label { display: grid; gap: 4px; }

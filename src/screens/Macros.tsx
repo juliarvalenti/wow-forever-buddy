@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, FileText } from "lucide-react";
 import type { Macro } from "@/lib/bindings";
-import { Button, Callout, Page, PageHeader, Panel, PanelBody, PanelHeader, Segmented } from "@/components/d";
+import {
+  Button,
+  Callout,
+  EmptyState,
+  Page,
+  PageHeader,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  Segmented,
+} from "@/components/d";
 import { useCharacters } from "@/hooks/useCharacters";
 import { useMacros } from "@/hooks/useMacros";
 import { characterName } from "@/lib/format";
@@ -77,6 +87,8 @@ export function Macros() {
   // Account macros from every account folder (usually one).
   const accountMacros = (list?.accounts ?? []).flatMap((a) => a.macros);
   const accountModified = (list?.accounts ?? []).map((a) => a.modified).filter(Boolean).sort().pop() ?? null;
+  // UX-EMPTY: none anywhere yet, for the account or any character.
+  const none = accountMacros.length === 0 && chars.every((c) => c.macros.length === 0);
   const macros: Macro[] = scope === "account" ? accountMacros : (ch?.macros ?? []);
   const modified = scope === "account" ? accountModified : (ch?.modified ?? null);
   const current = macros[Math.min(selected, macros.length - 1)] ?? null;
@@ -103,7 +115,13 @@ export function Macros() {
         lede={list ? "From each character's macros-cache.txt, as of their last logout" : "Set the game folder first."}
       />
       {error && <Callout tone="bad">{error}</Callout>}
-      {list && (
+      {list && none && (
+        <EmptyState title="No macros yet">
+          WoW saves each character's macros when they log out. Make one in game (type{" "}
+          <span className="d-mono">/macro</span>), log out, and it shows up here.
+        </EmptyState>
+      )}
+      {list && !none && (
         <>
           <div className="mc-toolbar">
             <Segmented<Scope>

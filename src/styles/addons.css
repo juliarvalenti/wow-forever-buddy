@@ -11,7 +11,6 @@
 .ad-filter input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: inherit; font: inherit; }
 .ad-filter input::placeholder { color: var(--soot); }
 
-.ad-empty { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .ad-split { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; align-items: start; }
 .ad-tablewrap { overflow: auto; max-height: 560px; }
 .ad-table td, .ad-table th { padding-left: 10px; padding-right: 10px; }

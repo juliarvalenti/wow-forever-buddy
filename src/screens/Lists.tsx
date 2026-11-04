@@ -15,12 +15,12 @@ import {
   Button,
   Callout,
   Dialog,
+  EmptyState,
   ItemIcon,
   LiveDot,
   Page,
   PageHeader,
   Panel,
-  PanelBody,
   PanelHeader,
   PrimaryButton,
   StatusDot,
@@ -150,17 +150,10 @@ export function Lists({
         actions={all.length > 0 ? newList : undefined}
       />
       {all.length === 0 ? (
-        <Panel>
-          <PanelBody>
-            <div className="ls-empty">
-              <p>
-                No lists yet. Make one for anything you're gathering across characters: mats for a profession,
-                consumables for raid night.
-              </p>
-              {newList}
-            </div>
-          </PanelBody>
-        </Panel>
+        <EmptyState title="No lists yet" action={newList}>
+          Make one for anything you're gathering across characters: mats for a profession, consumables for raid
+          night. It shows in game at vendors, the auction house and the mailbox.
+        </EmptyState>
       ) : (
         <section className="ls-split">
           <Panel>
