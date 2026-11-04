@@ -18,6 +18,7 @@ Data/Briefing.lua
 Data/Lists.lua
 Data/Cleanup.lua
 Data/Settings.lua
+Data/Macros.lua
 Settings.lua
 ForeverBuddy.lua
 UI.lua

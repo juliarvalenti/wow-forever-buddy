@@ -24,6 +24,8 @@ All tools read the app's local database, read-only; the macro tools read the gam
 
 `propose_note`, `propose_quest_plan`, `propose_list_change`, `propose_bag_marks`, `propose_goal`, `propose_settings`, and `list_proposals` to see what's pending.
 
+`propose_macro` suggests one macro: `new`, `edit` (with `was`, the text as `get_macro` gave it) or `copy` (with `from`, and `body` only to adapt it). The player approves each macro on its own, then applies it in game with one click, out of combat; `list_proposals` shows what the game did with it (`in_game`: waiting, applied, declined, changed, full). It's checked before it's queued: 255 bytes, 16-character names, the 120 account and 18 character slots, and no `/run`, `/script`, `/console` or `/dump` lines.
+
 For `propose_settings`: give a short reason per change. Options marked as acting in the game are never proposed in bulk, and the player approves each one separately. Settings reach the game at the next /reload or login.
 
 ## Drafts (the player picks one in the app)

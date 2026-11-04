@@ -29,7 +29,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 9] = [
+const TOOLS: [Tool; 10] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -140,6 +140,29 @@ const TOOLS: [Tool; 9] = [
               "required": ["name", "why", "settings"], "additionalProperties": false })
         },
     },
+    // MC1: one macro, approved on its own, applied by the player in game.
+    Tool {
+        name: "propose_macro",
+        description: "Suggests one macro: a new one, a change to one (with was: its text as get_macro gave it), or a copy of one to another character (with from, and new text if you adapt it, such as Kick to Counterspell for a mage). Never a delete. The player reads the exact text and approves each macro on its own, then applies it in the game with one click, out of combat. Checked before anything is queued: the game's 255 bytes and 16-character names, the 120 account and 18 character slots, the character, and no /run, /script, /console or /dump lines: a macro you propose is slash commands the player presses, never code. One macro per call: to copy one to several characters, call once for each.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["new", "edit", "copy"] },
+                "character": { "type": "string", "description": "Whose macro: the name as list_characters gives it. Omit for an account-wide macro, shared by every character on the account." },
+                "account": { "type": "integer", "minimum": 1, "description": "For an account-wide macro when there's more than one account: list_macros' number." },
+                "name": { "type": "string", "maxLength": proposals::macros::MAX_NAME, "description": "The macro's name: for an edit, the one to change; for a copy, the name it gets." },
+                "body": { "type": "string", "maxLength": crate::macros::MACRO_MAX, "description": "The macro's text, lines joined with \\n. New and edit: required. Copy: only to adapt it." },
+                "icon": { "type": "string", "description": "A texture name like INV_Misc_QuestionMark or an icon file id. Optional: an edit or copy keeps its icon." },
+                "was": { "type": "string", "description": "Edit only: the macro's text now, exactly as get_macro gave it." },
+                "from": { "type": "object", "description": "Copy only: the macro to copy.", "properties": {
+                    "character": { "type": "string", "description": "Its character; omit for an account-wide macro." },
+                    "account": { "type": "integer", "minimum": 1 },
+                    "name": { "type": "string" } },
+                  "required": ["name"], "additionalProperties": false },
+                "reason": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "Why, in a sentence. Shown to the player." } },
+              "required": ["action", "name"], "additionalProperties": false })
+        },
+    },
     Tool {
         name: "list_ui_drafts",
         description: "The player's UI drafts: those waiting on the Your UI tab, and the last 30 days' used, thrown away, or not queued (with the reason), each with its settings.",
@@ -170,6 +193,20 @@ pub fn list() -> Vec<Value> {
 
 pub fn exists(name: &str) -> bool {
     TOOLS.iter().any(|t| t.name == name)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MacroArgs {
+    action: proposals::macros::MacroAction,
+    character: Option<String>,
+    account: Option<u32>,
+    name: String,
+    body: Option<String>,
+    icon: Option<String>,
+    was: Option<String>,
+    from: Option<proposals::macros::MacroSource>,
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -277,8 +314,21 @@ fn open(paths: &Paths) -> Result<Db, String> {
     Db::open_read_only(&paths.db).map_err(|e| format!("Forever Buddy couldn't read its data: {e}"))
 }
 
+#[cfg(test)]
 pub fn call(
     paths: &Paths,
+    flavor: &str,
+    client: &str,
+    name: &str,
+    raw: &Value,
+) -> Result<Value, String> {
+    call_in(paths, None, flavor, client, name, raw)
+}
+
+/// `call`, with the game folder (`game`) a macro is checked against (MC1).
+pub fn call_in(
+    paths: &Paths,
+    game: Option<&std::path::Path>,
     flavor: &str,
     client: &str,
     name: &str,
@@ -287,6 +337,24 @@ pub fn call(
     let db = open(paths)?;
     let now = chrono::Utc::now().timestamp();
     match name {
+        "propose_macro" => {
+            let a: MacroArgs = args(raw)?;
+            let p = proposals::macros::MacroProposal {
+                action: a.action,
+                character: a.character,
+                account: a.account,
+                name: a.name,
+                body: a.body,
+                icon: a.icon,
+                was: a.was,
+                from: a.from,
+            };
+            // The app checks again on pickup; this tells the agent now.
+            let files = super::tools::macro_files(game, flavor)?;
+            proposals::macros::check(&db, flavor, &files, &p)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::MACRO, a.reason, body)
+        }
         "propose_note" => {
             let a: NoteArgs = args(raw)?;
             let note = NoteProposal {
@@ -447,6 +515,8 @@ pub fn call(
                     "bag_marks_for": p.bags.as_ref().map(|b| b.character.clone()),
                     "goal_for": p.goal.as_ref().map(|g| g.character.clone().unwrap_or_else(|| "the account".into())),
                     "setting": p.setting.as_ref().map(|s| json!({ "option": s.option, "from": s.from, "to": s.to })),
+                    "macro": p.macro_change.as_ref().map(|m| json!({
+                        "action": m.action, "name": m.name, "for": m.target, "in_game": m.game })),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();
@@ -480,6 +550,47 @@ mod tests {
         })
         .unwrap();
         (tmp, paths)
+    }
+
+    /// MC1: a macro is checked against the game's own files at once; a good
+    /// one waits in the inbox for the app.
+    #[test]
+    fn propose_macro_checks_against_the_game_and_queues() {
+        let (_tmp, paths) = setup();
+        let game = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(game.path().join(FLAVOR).join("WTF/Account/A/70/Coinpurse"))
+            .unwrap();
+        let run = |a: Value| {
+            call_in(
+                &paths,
+                Some(game.path()),
+                FLAVOR,
+                "Claude Desktop",
+                "propose_macro",
+                &a,
+            )
+        };
+        let ok = run(
+            json!({ "action": "new", "character": "Coinpurse", "name": "Sit", "body": "/sit",
+                             "reason": "One key to rest" }),
+        )
+        .unwrap();
+        assert_eq!(ok["status"], WAITING);
+        assert_eq!(inbox::waiting(&paths.dir).len(), 1);
+        let e = run(json!({ "action": "new", "character": "Coinpurse", "name": "Code", "body": "/run x()" }))
+            .unwrap_err();
+        assert!(e.contains("never code"), "{e}");
+        let e = call_in(
+            &paths,
+            None,
+            FLAVOR,
+            "c",
+            "propose_macro",
+            &json!({ "action": "new", "name": "X", "body": "/sit" }),
+        )
+        .unwrap_err();
+        assert!(e.contains("game folder"), "{e}");
+        assert_eq!(inbox::waiting(&paths.dir).len(), 1, "nothing more queued");
     }
 
     #[test]

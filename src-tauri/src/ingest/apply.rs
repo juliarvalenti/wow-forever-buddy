@@ -93,6 +93,10 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     if let Some(s) = &file.settings {
         crate::addon_settings::record_seen(tx, &target.flavor, s.profile, &s.values, at)?;
     }
+    // MC1: what the game did with approved macros.
+    for (queue_id, outcome) in &file.macros {
+        crate::proposals::macros::record_in(tx, &target.flavor, *queue_id, outcome, at)?;
+    }
     // Notes the login briefing showed: once notes are archived.
     crate::notes::mark_shown(tx, id, &file.briefed)?;
     // G1: goals this file shows reached are done, as of when it was written.
