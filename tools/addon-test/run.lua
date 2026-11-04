@@ -2125,7 +2125,7 @@ scenario("ui_live", function()
     local P = 768 / 1080
     local function rogue(src, o)
         local c = client({ slots = uiSlots(src), secret = o and o.secret })
-        c.world.class = { "Rogue", "ROGUE", 4 }
+        c.world.class = o and o.class or { "Rogue", "ROGUE", 4 }
         c.world.units.player = { health = 1020, healthMax = 1200, power = 100, powerMax = 100, powerType = 3 }
         if o and o.combat then
             c.world.combat = true
@@ -2286,6 +2286,35 @@ scenario("ui_live", function()
     eq(bad.ns().uiActive, nil, "a bad document is ignored")
     eq(bad.ns().uiParts, nil, "nothing drawn")
     eq(bad.protected.PlayerFrame.alpha, nil, "Blizzard's frames untouched")
+
+    -- UI3 'for': the slot's docs, in the app's order; each character gets the
+    -- first that fits it, and with none the standard HUD.
+    local function plain(n)
+        return { ui = 1, parts = { { kind = "plate", anchor = { "CENTER", "screen", "CENTER", 0, n }, size = { 10, 10 } } } }
+    end
+    local function forSlot(docs)
+        return serialize("ForeverBuddyData_UI", { schema = 1, stamp = 1762300000, name = "Everyone", doc = plain(0),
+            docs = docs })
+    end
+    local entries = {
+        { name = "Someone else", ["for"] = { characters = { "Player-4613-FFFFFFFF" } }, doc = plain(1) },
+        { name = "From a newer app", ["for"] = { mounts = { "x" } }, doc = plain(2) },
+        { name = "Assassination", ["for"] = { specs = { 259 } }, doc = plain(3) },
+        { name = "Rogues", ["for"] = { classes = { "ROGUE" } }, doc = plain(4) },
+        { name = "Everyone", doc = plain(5) },
+    }
+    local mine = rogue(forSlot(entries))
+    eq(mine.ns().uiName, "Rogues", "a rogue gets the rogue UI: another character's, an unknown key's and a spec's (no "
+        .. "specs here) don't fit")
+    eq(#mine.ns().uiParts, 1, "and only that one is drawn")
+    local war = rogue(forSlot(entries), { class = { "Warrior", "WARRIOR", 1 } })
+    eq(war.ns().uiName, "Everyone", "a warrior gets the one for everyone")
+    entries[1]["for"].characters[1] = "Player-4613-0A1B2C3D"
+    eq(rogue(forSlot(entries)).ns().uiName, "Someone else", "one named for this character comes first")
+    local none = rogue(forSlot({ { name = "Mages", ["for"] = { classes = { "MAGE" } }, doc = plain(6) } }),
+        { class = { "Warrior", "WARRIOR", 1 } })
+    eq(none.ns().uiActive, nil, "none fits: the standard HUD")
+    eq(none.ns().uiParts, nil, "nothing drawn")
 end)
 
 scenario("action_bars", function()

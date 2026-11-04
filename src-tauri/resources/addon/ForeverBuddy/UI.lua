@@ -5,7 +5,8 @@
 -- what the game wouldn't draw: render_ui and the Your UI preview run this
 -- same file in the scene (tools/addon-shots/preview.lua), with the document
 -- in the global FBUISpec. In game the document is the one the player chose
--- with Use this, in the slot Data/UI.lua (ForeverBuddyData_UI.doc). Either
+-- with Use this for this character, in the slot Data/UI.lua
+-- (ForeverBuddyData_UI: UI3's `docs`, or one `doc` for everyone). Either
 -- way it's data only, and in game it's checked again here with the addon's
 -- own UICheck.lua (the folder is writable by anything on the machine): a
 -- missing or bad document draws nothing and the standard HUD stays.
@@ -32,14 +33,88 @@ local ns = select(2, ...)
 if type(ns) ~= "table" then
     ns = {}
 end
+
+-- UI3: a UI for some characters, a class or a spec. The slot's `docs` is a
+-- list of { name, for = { characters, classes, specs }, doc }, in the order
+-- the app put them (characters, then specs, then classes, then everyone):
+-- the first that fits this character wins, and none means the standard HUD.
+-- A `for` fits when each key it has lists this character's value
+-- (characters by GUID, classes by the class file token, specs by ID); no
+-- `for`, or one with no keys, fits everyone; a key this version doesn't
+-- know never fits. Without `docs` (an older app), the one `doc` is for
+-- everyone.
+local MAX_DOCS = 8
+local function readable(v)
+    if issecretvalue and issecretvalue(v) then
+        return nil
+    end
+    return v
+end
+-- This character, as a `for` names it. (A spec the game can't give, as on a
+-- client without specs, stays nil: an entry for specs then never fits.)
+local function me()
+    local okGuid, guid = pcall(UnitGUID, "player")
+    local okClass, _, class = pcall(UnitClass, "player")
+    local spec
+    pcall(function()
+        spec = (GetSpecializationInfo(GetSpecialization()))
+    end)
+    return { characters = okGuid and readable(guid) or nil, classes = okClass and readable(class) or nil,
+        specs = readable(spec) }
+end
+local function fits(want, mine)
+    if want == nil then
+        return true
+    end
+    if type(want) ~= "table" then
+        return false
+    end
+    for key, list in pairs(want) do
+        if not (key == "characters" or key == "classes" or key == "specs") or type(list) ~= "table" then
+            return false
+        end
+        local hit = false
+        if mine[key] ~= nil then
+            for _, v in ipairs(list) do
+                if v == mine[key] then
+                    hit = true
+                    break
+                end
+            end
+        end
+        if not hit then
+            return false
+        end
+    end
+    return true
+end
+-- The slot's entry for this character: its doc and name, or nil.
+local function chosen(slot)
+    if type(slot.docs) ~= "table" then
+        return type(slot.doc) == "table" and slot.doc or nil, slot.name
+    end
+    local mine = me()
+    for i = 1, math.min(#slot.docs, MAX_DOCS) do
+        local e = slot.docs[i]
+        if type(e) == "table" and type(e.doc) == "table" and fits(e["for"], mine) then
+            return e.doc, e.name
+        end
+    end
+end
+
 local SPEC, LIVE = rawget(_G, "FBUISpec"), false
 if type(SPEC) ~= "table" then
     SPEC = nil
     local slot, checker = rawget(_G, "ForeverBuddyData_UI"), ns.uicheck
-    if type(slot) == "table" and slot.schema == 1 and type(slot.doc) == "table" and type(checker) == "table" then
-        local ok, problems = pcall(checker.check, slot.doc)
-        if ok and type(problems) == "table" and #problems == 0 then
-            SPEC, LIVE = slot.doc, true
+    if type(slot) == "table" and slot.schema == 1 and type(checker) == "table" then
+        local ok, doc, name = pcall(chosen, slot)
+        if ok and doc then
+            -- (only the one picked is checked)
+            local checked, problems = pcall(checker.check, doc)
+            if checked and type(problems) == "table" and #problems == 0 then
+                SPEC, LIVE = doc, true
+                ns.uiName = type(name) == "string" and name or nil
+            end
         end
     end
 end
