@@ -120,7 +120,7 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 
 ## In game
 
-The player's chosen document lives in the slot `Data/UI.lua` (`ForeverBuddyData_UI = { schema = 1, stamp, doc }`), written by the app only when the player picks Use this. At login the addon checks it again with the same `UICheck.lua` (the folder can be edited by anything on the machine); a missing or failing document draws nothing and the standard HUD stays. A new document takes a `/reload`.
+The player's chosen document lives in the slot `Data/UI.lua` (`ForeverBuddyData_UI = { schema = 1, stamp, doc }`), written by the app only when the player picks Use this. At login the addon checks it again with the same `UICheck.lua` (the folder can be edited by anything on the machine); a missing or failing document draws nothing and the standard HUD stays. The app never writes a slot while WoW is running, so a new choice (or going back) reaches the game at the next login after WoW has been closed; a `/reload` loads the file as it was.
 
 While a document draws:
 
