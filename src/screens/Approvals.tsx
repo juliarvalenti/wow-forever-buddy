@@ -1,9 +1,7 @@
 import {
   AlertTriangle,
   Backpack,
-  Check,
   FileText,
-  Lock,
   Map as MapIcon,
   ShoppingBag,
   SlidersHorizontal,
@@ -22,7 +20,7 @@ import type {
   Trial,
 } from "@/lib/bindings";
 import { MarkTag } from "@/screens/BagCleanup";
-import { Button, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
+import { Button, EmptyState, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
 import { useApprovals } from "@/hooks/useApprovals";
 import { useSettings } from "@/hooks/useSettings";
 import { ago, plural } from "@/lib/format";
@@ -443,6 +441,22 @@ export function Approvals({
         </div>
       )}
       <section className="ap-split">
+        {settings && approvals && waiting.length === 0 ? (
+          // UX-EMPTY: the same empty state as every other screen.
+          on ? (
+            <EmptyState title="Nothing waiting">
+              When an agent suggests a quest plan, a login note, a list change or a setting, it waits here for you to
+              approve or decline. Nothing changes until you do.
+            </EmptyState>
+          ) : (
+            <EmptyState
+              title="Agent access is off"
+              action={<Button onClick={onOpenSettings}>Open Settings › Agents</Button>}
+            >
+              Agents can't read your characters or suggest anything until you turn it on.
+            </EmptyState>
+          )
+        ) : (
         <Panel>
           <PanelHeader title="Waiting for you">
             {waiting.length > 0 && <span className="d-dim">{waiting.length} · newest first</span>}
@@ -493,25 +507,9 @@ export function Approvals({
                 </div>
               )}
             </>
-          ) : on ? (
-            <div className="ap-blank">
-              <span className="ap-kind" aria-hidden>
-                <Check size={18} />
-              </span>
-              <span>
-                Nothing waiting. When an agent suggests a quest plan, a login note or a list change, it shows up here.
-              </span>
-            </div>
-          ) : (
-            <div className="ap-blank">
-              <span className="ap-kind" aria-hidden>
-                <Lock size={18} />
-              </span>
-              <span>Agent access is off, so agents can't read your characters or suggest anything.</span>
-              <Button onClick={onOpenSettings}>Open Settings › Agents</Button>
-            </div>
-          )}
+          ) : null}
         </Panel>
+        )}
         <div className="d-stack">
           <Panel>
             <PanelHeader title="Decided">

@@ -62,6 +62,21 @@ export function PanelBody({ children }: Children) {
   return <div className="d-panel-body">{children}</div>;
 }
 
+/** UX-EMPTY: a screen (or a section) with nothing in it yet, the same way
+ *  everywhere: a parchment card with what's missing as its title, a line
+ *  on how it fills up, and the one thing to do about it. */
+export function EmptyState({ title, children, action }: Children & { title: string; action?: ReactNode }) {
+  return (
+    <Record>
+      <PanelHeader title={title} />
+      <PanelBody>
+        <p>{children}</p>
+        {action && <div className="d-empty-action">{action}</div>}
+      </PanelBody>
+    </Record>
+  );
+}
+
 /** `icon://` for an icon's FileDataID (`http://icon.localhost/…` on
  *  Windows), or null outside the app (the mocks). */
 function iconUrl(id: number): string | null {

@@ -5,10 +5,9 @@ import {
   Button,
   Callout,
   DataTable,
+  EmptyState,
   Page,
   PageHeader,
-  PanelBody,
-  PanelHeader,
   Record,
   ItemIcon,
 } from "@/components/d";
@@ -286,18 +285,13 @@ export function Adventure({
     return (
       <Page>
         <PageHeader title="Adventures" lede="What happened in each session, written from your logins and logouts." />
-        <Record>
-          <PanelHeader title="No adventures yet" />
-          <PanelBody>
-            <p>
-              Each time a character logs out with the ForeverBuddy addon, the session is written up here. Install it
-              from the Dashboard, then play and log out (or type <span className="d-mono">/reload</span>).
-            </p>
-            <p style={{ marginTop: 10 }}>
-              <Button onClick={onOpenDashboard}>Go to the Dashboard</Button>
-            </p>
-          </PanelBody>
-        </Record>
+        <EmptyState
+          title="No adventures yet"
+          action={<Button onClick={onOpenDashboard}>Go to the Dashboard</Button>}
+        >
+          Each time a character logs out with the ForeverBuddy addon, the session is written up here. Install it from
+          the Dashboard, then play and log out (or type <span className="d-mono">/reload</span>).
+        </EmptyState>
       </Page>
     );
   }

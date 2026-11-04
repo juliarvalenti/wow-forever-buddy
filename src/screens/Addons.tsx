@@ -5,6 +5,7 @@ import { commands, type AddonChange, type AddonInfo, type AddonsList } from "@/l
 import {
   Button,
   Callout,
+  EmptyState,
   LiveDot,
   LockedAction,
   Page,
@@ -185,14 +186,9 @@ export function Addons() {
       {error && <Callout tone="bad">{error}</Callout>}
       {openError && <Callout tone="bad">{openError}</Callout>}
       {list && addons.length === 0 && (
-        <Panel>
-          <PanelBody>
-            <div className="ad-empty">
-              <p className="d-muted">No addons in {where} yet.</p>
-              {openButton}
-            </div>
-          </PanelBody>
-        </Panel>
+        <EmptyState title="No addons yet" action={openButton}>
+          Addons you put in {where} show up here, and you can turn each one on or off per character.
+        </EmptyState>
       )}
       {list && addons.length > 0 && (
         <>
