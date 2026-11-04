@@ -309,15 +309,25 @@ local function region(ctx, obj)
   local st = sim.widgetState
   local s = st[obj]
   -- WFB patch (HUD2): a status bar's texture is drawn by its bar, as the fill.
-  if s.barOf then return end
-  local l, b, w, h = layout.rect(sim, obj)
+  -- WFB patch (UI3): except a colour texture, which draws here in its own
+  -- layer (over the bar's BACKGROUND, as in the client), filled to the bar's
+  -- value across the bar.
+  local clip
+  if s.barOf then
+    if s.texture ~= "color" then return end
+    local bs = st[s.barOf]
+    local lo, hi = bs.min or 0, bs.max or 0
+    clip = hi > lo and math.max(0, math.min(1, ((bs.value or 0) - lo) / (hi - lo))) or 0
+    if clip <= 0 then return end
+  end
+  local l, b, w, h = layout.rect(sim, s.barOf or obj)
   if not l then return end
   local x, y = l, H - b - h
   local alpha = obj.GetEffectiveAlpha and obj:GetEffectiveAlpha() or 1
   if alpha <= 0 then return end
 
   if s.type == "Texture" or s.type == "Line" then
-    drawTexture(ctx, obj, s, x, y, w, h, alpha)
+    drawTexture(ctx, obj, s, x, y, w, h, alpha, clip)
   elseif s.type == "FontString" then
     if not s.text or s.text == "" then return end
     local fontFile, size, flags = layout.fontOf(sim, obj)
@@ -456,7 +466,11 @@ local function frameBody(ctx, obj)
     local frac = hi > lo and ((s.value or 0) - lo) / (hi - lo) or 0
     frac = math.max(0, math.min(1, frac))
     local bar = s.barTexture and st[s.barTexture]
-    if bar and (bar.texture or bar.atlas) and bar.texture ~= "color" then
+    -- (WFB patch, UI3: a colour texture as the fill draws with the regions,
+    -- in its layer: region())
+    if bar and bar.texture == "color" then
+      -- drawn there
+    elseif bar and (bar.texture or bar.atlas) then
       local tint = s.color or bar.color
       local saved = bar.color
       bar.color = tint

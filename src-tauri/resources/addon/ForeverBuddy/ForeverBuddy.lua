@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.16.0"
+local VERSION = "0.17.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 

@@ -101,6 +101,111 @@ M.CLASSES = {
     },
 }
 
+-- UI3: a level 34 of every other class, so a UI can be drawn for the classes
+-- it'll meet on the account: their power (mana, rage, energy), eight spells
+-- on the main bar with Julia's keys, a buff or two, and their own debuffs on
+-- the target. No stealth bar, quests or cooldowns: the rogue has those.
+-- Spell IDs and icons as in the game; anything here only has to look right.
+local function class(o)
+    local actions, names, spells = {}, {}, {}
+    for i, s in ipairs(o.spells) do
+        actions[i] = { s[1], icon(s[3]) }
+        names[s[1]] = s[2]
+    end
+    for _, s in ipairs(o.auraSpells or {}) do
+        spells[#spells + 1] = { s[1], icon(s[3]) }
+        names[s[1]] = s[2]
+    end
+    local player = { name = o.name, class = o.class, race = o.race, level = 34, zone = "Arathi Highlands",
+        subZone = "Northfold Manor", health = o.health, healthMax = o.healthMax, powerType = o.powerType,
+        power = o.power, powerMax = o.powerMax, powers = o.powers }
+    return {
+        player = player,
+        target = { name = o.target or "Syndicate Highwayman", level = 33, classification = "normal",
+            creatureType = "Humanoid", reaction = 2, hostile = true, health = 690, healthMax = 1150,
+            class = "ROGUE", powerType = 3, power = 100, powerMax = 100, guid = "Creature-0-0-0-0-2586-0" },
+        actions = actions,
+        names = names,
+        auraSpells = spells,
+        auras = o.auras,
+        forms = o.forms,
+        multibars = {},
+        keys = M.CLASSES.rogue.keys,
+    }
+end
+
+M.CLASSES.warrior = class({ name = "Brannoc", class = "WARRIOR", race = "Dwarf", health = 1720, healthMax = 1880,
+    powerType = 1, power = 35, powerMax = 100,
+    spells = { { 78, "Heroic Strike", "Ability_Rogue_Ambush" }, { 772, "Rend", "Ability_Gouge" },
+        { 7384, "Overpower", "Ability_MeleeDamage" }, { 5308, "Execute", "INV_Sword_48" },
+        { 7386, "Sunder Armor", "Ability_Warrior_Sunder" }, { 6343, "Thunder Clap", "Spell_Nature_ThunderClap" },
+        { 1715, "Hamstring", "Ability_ShockWave" }, { 100, "Charge", "Ability_Warrior_Charge" } },
+    auraSpells = { { 6673, "Battle Shout", "Ability_Warrior_BattleShout" } },
+    auras = { player = { { 6673, 120, 86 } }, target = { { 772, 15, 9, true }, { 7386, 30, 24, true } } } })
+
+M.CLASSES.paladin = class({ name = "Aldric", class = "PALADIN", race = "Human", health = 1560, healthMax = 1640,
+    powerType = 0, power = 1020, powerMax = 1350,
+    spells = { { 21084, "Seal of Righteousness", "Ability_ThunderBolt" },
+        { 20271, "Judgement", "Spell_Holy_RighteousFury" }, { 853, "Hammer of Justice", "Spell_Holy_SealOfMight" },
+        { 635, "Holy Light", "Spell_Holy_HolyBolt" }, { 19750, "Flash of Light", "Spell_Holy_FlashHeal" },
+        { 498, "Divine Protection", "Spell_Holy_Restoration" }, { 19740, "Blessing of Might", "Spell_Holy_FistOfJustice" },
+        { 465, "Devotion Aura", "Spell_Holy_DevotionAura" } },
+    auras = { player = { { 21084, 30, 22 }, { 19740, 300, 214 }, { 465, 0, 0 } } } })
+
+M.CLASSES.hunter = class({ name = "Tessarin", class = "HUNTER", race = "NightElf", health = 1290, healthMax = 1290,
+    powerType = 0, power = 880, powerMax = 1105,
+    spells = { { 75, "Auto Shot", "Ability_Whirlwind" }, { 3044, "Arcane Shot", "Ability_ImpalingBolt" },
+        { 1978, "Serpent Sting", "Ability_Hunter_Quickshot" }, { 1130, "Hunter's Mark", "Ability_Hunter_SniperShot" },
+        { 5116, "Concussive Shot", "Spell_Frost_Stun" }, { 2973, "Raptor Strike", "Ability_MeleeDamage" },
+        { 136, "Mend Pet", "Ability_Hunter_MendPet" }, { 13165, "Aspect of the Hawk", "Spell_Nature_RavenForm" } },
+    auras = { player = { { 13165, 0, 0 } }, target = { { 1978, 15, 9, true }, { 1130, 120, 101, true } } } })
+
+M.CLASSES.priest = class({ name = "Sela", class = "PRIEST", race = "Human", health = 980, healthMax = 1040,
+    powerType = 0, power = 1310, powerMax = 1520,
+    spells = { { 585, "Smite", "Spell_Holy_HolySmite" }, { 589, "Shadow Word: Pain", "Spell_Shadow_ShadowWordPain" },
+        { 8092, "Mind Blast", "Spell_Shadow_UnholyFrenzy" }, { 17, "Power Word: Shield", "Spell_Holy_PowerWordShield" },
+        { 139, "Renew", "Spell_Holy_Renew" }, { 2061, "Flash Heal", "Spell_Holy_FlashHeal" },
+        { 8122, "Psychic Scream", "Spell_Shadow_PsychicScream" }, { 1243, "Power Word: Fortitude", "Spell_Holy_WordFortitude" } },
+    auras = { player = { { 17, 30, 21 }, { 139, 15, 8 }, { 1243, 1800, 1544 } }, target = { { 589, 18, 12, true } } } })
+
+M.CLASSES.shaman = class({ name = "Torvek", class = "SHAMAN", race = "Orc", health = 1380, healthMax = 1450,
+    powerType = 0, power = 940, powerMax = 1230,
+    spells = { { 403, "Lightning Bolt", "Spell_Nature_Lightning" }, { 8042, "Earth Shock", "Spell_Nature_EarthShock" },
+        { 8050, "Flame Shock", "Spell_Fire_FlameShock" }, { 331, "Healing Wave", "Spell_Nature_MagicImmunity" },
+        { 324, "Lightning Shield", "Spell_Nature_LightningShield" }, { 8071, "Stoneskin Totem", "Spell_Nature_StoneSkinTotem" },
+        { 3599, "Searing Totem", "Spell_Fire_SearingTotem" }, { 8017, "Rockbiter Weapon", "Spell_Nature_RockBiter" } },
+    auras = { player = { { 324, 600, 422 } }, target = { { 8050, 12, 7, true } } } })
+
+M.CLASSES.mage = class({ name = "Ilyndra", class = "MAGE", race = "Gnome", health = 890, healthMax = 940,
+    powerType = 0, power = 1460, powerMax = 1710,
+    spells = { { 116, "Frostbolt", "Spell_Frost_FrostBolt02" }, { 133, "Fireball", "Spell_Fire_FlameBolt" },
+        { 5143, "Arcane Missiles", "Spell_Nature_StarFall" }, { 122, "Frost Nova", "Spell_Frost_FrostNova" },
+        { 1953, "Blink", "Spell_Arcane_Blink" }, { 118, "Polymorph", "Spell_Nature_Polymorph" },
+        { 1459, "Arcane Intellect", "Spell_Holy_MagicalSentry" }, { 168, "Frost Armor", "Spell_Frost_FrostArmor02" } },
+    auras = { player = { { 1459, 1800, 1312 }, { 168, 1800, 1650 } }, target = { { 116, 9, 6, true } } } })
+
+M.CLASSES.warlock = class({ name = "Morvaine", class = "WARLOCK", race = "Human", health = 1050, healthMax = 1120,
+    powerType = 0, power = 1180, powerMax = 1480,
+    spells = { { 686, "Shadow Bolt", "Spell_Shadow_ShadowBolt" }, { 172, "Corruption", "Spell_Shadow_AbominationExplosion" },
+        { 980, "Curse of Agony", "Spell_Shadow_CurseOfSargeras" }, { 348, "Immolate", "Spell_Fire_Immolation" },
+        { 689, "Drain Life", "Spell_Shadow_LifeDrain02" }, { 5782, "Fear", "Spell_Shadow_Possession" },
+        { 1454, "Life Tap", "Spell_Shadow_BurningSpirit" }, { 687, "Demon Skin", "Spell_Shadow_RagingScream" } },
+    auras = { player = { { 687, 1800, 1203 } },
+        target = { { 172, 18, 10, true }, { 980, 24, 14, true }, { 348, 15, 4, true } } } })
+
+-- In cat form: energy and combo points, like a rogue.
+M.CLASSES.druid = class({ name = "Velyra", class = "DRUID", race = "NightElf", health = 1310, healthMax = 1420,
+    powerType = 3, power = 60, powerMax = 100, powers = { [4] = { 2, 5 } },
+    spells = { { 1082, "Claw", "Ability_Druid_Rake" }, { 1822, "Rake", "Ability_Druid_Disembowel" },
+        { 1079, "Rip", "Ability_GhoulFrenzy" }, { 22568, "Ferocious Bite", "Ability_Druid_FerociousBite" },
+        { 5217, "Tiger's Fury", "Ability_Mount_JungleTiger" }, { 5215, "Prowl", "Ability_Ambush" },
+        { 768, "Cat Form", "Ability_Druid_CatForm" }, { 1126, "Mark of the Wild", "Spell_Nature_Regeneration" } },
+    auras = { player = { { 768, 0, 0 }, { 1126, 1800, 1420 }, { 5217, 6, 4 } },
+        target = { { 1822, 9, 6, true }, { 1079, 12, 8, true } } } })
+
+-- Every class, in the game's order: what render_ui can draw.
+M.ORDER = { "warrior", "paladin", "hunter", "rogue", "priest", "shaman", "mage", "warlock", "druid" }
+
 -- The player options for WoW.new, or nil for an unknown class.
 function M.player(class, level)
     local c = M.CLASSES[class]
@@ -328,7 +433,9 @@ function M.apply(sim, class)
     for _, unit in ipairs({ "player", "target" }) do
         for _, a in ipairs((c.auras or {})[unit] or {}) do
             if sim.units[unit] then
-                sim:AddAura(unit, a[1], { duration = a[2], expirationTime = sim.time + a[3], harmful = a[4] })
+                -- (one that doesn't run out, an aura or a form, has 0 for both)
+                sim:AddAura(unit, a[1], { duration = a[2], expirationTime = a[2] > 0 and sim.time + a[3] or 0,
+                    harmful = a[4] })
             end
         end
     end
