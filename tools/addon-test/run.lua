@@ -2257,7 +2257,13 @@ end
 
 scenario("macros", function()
     local ME = { { "Thrandor", "Vargur" } }
-    local c = client({ slots = { ["Data/Macros.lua"] = macroSlot({
+    -- The client's own aliases of /run: a localized one (SLASH_SCRIPT3) and
+    -- one another addon pointed at the same handler.
+    local run = function() end
+    local c = client({ globals = {
+        SLASH_SCRIPT1 = "/run", SLASH_SCRIPT2 = "/script", SLASH_SCRIPT3 = "/lauf",
+        SlashCmdList = { SCRIPT = run }, hash_SlashCmdList = { ["/EXEC"] = run },
+    }, slots = { ["Data/Macros.lua"] = macroSlot({
         { id = 1, action = "edit", name = "Opener", body = "/cast [stealth,harm] Cheap Shot\n/startattack",
           old = "/cast Cheap Shot", label = "Thrandor Vargur", on = ME },
         { id = 2, action = "new", name = "Mount", body = "/cast [flyable] Swift Gryphon; Brown Horse",
@@ -2268,6 +2274,8 @@ scenario("macros", function()
         { id = 5, action = "new", name = "Second", body = "/sit", label = "Thrandor Vargur", on = ME },
         { id = 6, action = "edit", name = "Taunt", body = "/cast Taunt", old = "/cast Taunt\n/say Over here",
           label = "Thrandor Vargur", on = ME },
+        { id = 7, action = "new", name = "Lauf", body = "/sit\n/lauf DoSomething()", label = "Thrandor Vargur", on = ME },
+        { id = 8, action = "new", name = "Exec", body = "  /Exec DoSomething()", label = "Thrandor Vargur", on = ME },
     }) } })
     local w = c.world
     w.macros.character = {
@@ -2293,6 +2301,8 @@ scenario("macros", function()
         end
     end
     eq(card("Sneaky"), nil, "a row with /run never shows")
+    eq(card("Lauf"), nil, "nor a localized alias of it")
+    eq(card("Exec"), nil, "nor one another addon pointed at the same handler")
     local opener = card("Opener")
     eq(opener.tag.text, "Change", "an edit")
     eq(opener.boxes[1].text.text .. " => " .. opener.boxes[2].text.text,

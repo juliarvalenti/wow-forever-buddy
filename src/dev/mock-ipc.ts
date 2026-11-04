@@ -9,6 +9,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   Approvals,
   LoginNote,
+  MacroView,
   NoteView,
   Proposal,
   AddonChange,
@@ -96,6 +97,7 @@ export const SCENARIOS = [
   "lists-empty", // B2: no lists yet (the Lists screen has three in every other scenario)
   "lists-proposal", // P2: an agent's change to Tailoring 300, in place (lists.html?state=proposal)
   "approvals", // P2b: a new note, a conflict, and the Decided list
+  "approvals-macros", // MC1: a change, a new account macro and a copy (macros-approve.html)
   "approvals-empty", // agent access on, nothing waiting
   "approvals-off", // agent access off
   "settings-trial", // P4b: the game picked up new settings; the top strip asks keep or go back
@@ -205,9 +207,82 @@ export function installMockIpc(): void {
     progress_at: iso(60 * 20),
     delivery: { state: "synced", since: iso(60 * 25) },
   };
+  // MC1 (design/mocks/round-3/macros-approve.html): each macro on its own.
+  const macro = (m: Partial<MacroView>): MacroView => ({
+    action: "new",
+    target: "Thrandor",
+    target_class: "rogue",
+    account_wide: false,
+    name: "",
+    icon: "INV_Misc_QuestionMark",
+    body: "",
+    length: 0,
+    max: 255,
+    old_body: null,
+    copied: null,
+    slots_used: 1,
+    slots_max: 18,
+    game: null,
+    ...m,
+  });
+  const macroWaiting: Proposal[] = [
+    proposal(31, 2, "Claude Code", {
+      kind: "macro",
+      reason: "Only opens with Cheap Shot on something you can attack, and starts your auto attack.",
+      macro_change: macro({
+        action: "edit",
+        name: "Opener",
+        old_body: "#showtooltip Cheap Shot\n/cast [stealth] Cheap Shot; Sinister Strike",
+        body: "#showtooltip\n/cast [stealth,harm] Cheap Shot; [nostealth] Sinister Strike\n/startattack",
+        length: 92,
+        slots_used: 9,
+      }),
+    }),
+    proposal(32, 2, "Claude Code", {
+      kind: "macro",
+      reason: "One button for your mount on every alt: flies where it can, rides where it can't.",
+      macro_change: macro({
+        target: "Every character on the account",
+        target_class: null,
+        account_wide: true,
+        name: "Mount",
+        body: "#showtooltip\n/cast [flyable] Swift Gryphon; Brown Horse\n/dismount [mounted]",
+        length: 81,
+        slots_used: 31,
+        slots_max: 120,
+      }),
+    }),
+    proposal(33, 2, "Claude Code", {
+      kind: "macro",
+      reason: "Adapted for a mage: Kick became Counterspell.",
+      macro_change: macro({
+        action: "copy",
+        target: "Kaelor",
+        target_class: "mage",
+        name: "Kick focus",
+        body: "#showtooltip Counterspell\n/cast [@focus,harm,nodead][] Counterspell",
+        length: 44,
+        slots_used: 6,
+        copied: { from: "Thrandor", from_class: "rogue", name: "Kick focus", adapted: true },
+      }),
+    }),
+  ];
+  const macroDecided: Proposal[] = [
+    proposal(34, 60 * 3, "Claude Code", {
+      kind: "macro",
+      status: "rejected",
+      status_reason: "/run lines aren't allowed: a macro from an agent is slash commands the player presses, never code.",
+    }),
+    proposal(35, 60 * 30, "Claude Code", {
+      kind: "macro",
+      status: "applied",
+      decided_at: iso(60 * 30),
+      macro_change: macro({ name: "Sprint", body: "/cast Sprint", length: 12, game: "applied" }),
+    }),
+  ];
   const approvals: Approvals = {
     // "lists-proposal": only the list change, shown in place on Lists (§15).
-    waiting: (s === "approvals" || s === "lists-proposal"
+    waiting: s === "approvals-macros" ? macroWaiting : (s === "approvals" || s === "lists-proposal"
       ? [
             proposal(3, 4, "Claude Desktop", {
               kind: "quest_plan",
@@ -322,7 +397,7 @@ export function installMockIpc(): void {
           ]
       : []
     ).filter((p) => s !== "lists-proposal" || p.kind === "list"),
-    decided:
+    decided: s === "approvals-macros" ? macroDecided :
       s === "approvals"
         ? [
             proposal(1, 60 * 20, "Claude Desktop", {
@@ -931,7 +1006,7 @@ export function installMockIpc(): void {
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
-    agent_access: ["settings-agents", "approvals", "approvals-empty", "lists-proposal"].includes(s),
+    agent_access: ["settings-agents", "approvals", "approvals-macros", "approvals-empty", "lists-proposal"].includes(s),
     ui: (setup ? { "onboarding.step": setup === "addon-running" ? "addon" : setup } : {}) as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([

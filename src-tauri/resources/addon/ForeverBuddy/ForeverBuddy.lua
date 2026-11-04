@@ -4377,8 +4377,44 @@ do
     local M = U.macros
     -- The game's slots: account macros are 1-120, a character's own 121-138.
     local MAX_ACCOUNT, MAX_CHARACTER = 120, 18
-    local REFUSED = { ["/run"] = true, ["/script"] = true, ["/console"] = true, ["/dump"] = true }
     local FINAL = { applied = true, declined = true, changed = true }
+
+    -- The commands that run code: /run, /script, /console and /dump, and
+    -- whatever the client maps to the same handlers, so a localized alias
+    -- (SLASH_SCRIPT3) or one another addon added can't slip by. Worked out
+    -- once, the first time it's needed (aliases are registered at load).
+    local refused
+    local function code()
+        if refused then
+            return refused
+        end
+        refused = { ["/run"] = true, ["/script"] = true, ["/console"] = true, ["/dump"] = true }
+        local KEYS = { "SCRIPT", "CONSOLE", "DUMP" }
+        for _, key in ipairs(KEYS) do
+            for i = 1, 20 do
+                local alias = rawget(_G, "SLASH_" .. key .. i)
+                if type(alias) ~= "string" then
+                    break
+                end
+                refused[alias:lower()] = true
+            end
+        end
+        local list, hash = rawget(_G, "SlashCmdList"), rawget(_G, "hash_SlashCmdList")
+        if type(list) == "table" and type(hash) == "table" then
+            local handlers = {}
+            for _, key in ipairs(KEYS) do
+                if list[key] ~= nil then
+                    handlers[list[key]] = true
+                end
+            end
+            for cmd, fn in pairs(hash) do
+                if type(cmd) == "string" and handlers[fn] then
+                    refused[cmd:lower()] = true
+                end
+            end
+        end
+        return refused
+    end
 
     -- `{ [queue id] = outcome }`, account-wide.
     local function done()
@@ -4406,8 +4442,9 @@ do
         if m.name == "" or #m.name > 64 or m.body == "" or #m.body > 255 then
             return false
         end
+        local refuse = code()
         for line in (m.body .. "\n"):gmatch("([^\n]*)\n") do
-            if REFUSED[(line:match("^%s*(%S+)") or ""):lower()] then
+            if refuse[(line:match("^%s*(%S+)") or ""):lower()] then
                 return false
             end
         end
