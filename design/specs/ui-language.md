@@ -2,7 +2,7 @@
 
 Status: version 1 draws today (`src-tauri/resources/addon/ForeverBuddy/UI.lua`, the addon's own, checked by `tools/addon-shots/uicheck.lua`, through `render_ui`). Issue #259. Written by @designer for Julia, coders and agents.
 
-One document describes a whole UI. An agent writes it, `render_ui` shows it on the player's screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
+One document describes a whole UI. An agent writes it, `render_ui` shows it on a stand-in screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
 
 The format grew from the TH1 prototype that drew round 4 from a spec. Nothing in a document runs: it's JSON, the app turns it into a Lua table, and the interpreter builds frames from it. An agent never sends Lua.
 
@@ -131,7 +131,7 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 
 ## 9. Seeing it
 
-`render_ui` draws the document on the player's screen (their class, our fixture character, the logged-in scene) in a moment: standing around, in combat, in stealth, or at low health, with a target. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir>` draws all four from the command line.
+`render_ui` draws the document on a stand-in screen (our test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) in a moment: standing around, in combat, in stealth, or at low health, with a target. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir>` draws all four from the command line.
 
 ## 10. Rules that stay
 
