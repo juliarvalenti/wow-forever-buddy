@@ -146,8 +146,8 @@ function UiDocPreview({ id, v }: { id: number; v: UiDocView }) {
         <UiShot id={id} moment="combat" />
       </div>
       <div className="ap-next">
-        Use this and it's live in the game at your next login, in place of the standard HUD, for every character. You
-        can go back any time.
+        Use this and it's in the game from your next login or /reload, in place of the standard HUD, on every
+        character. You can go back any time.
       </div>
     </>
   );
@@ -173,7 +173,7 @@ function ActiveUiBar({ approvals }: { approvals: ApprovalsData | null }) {
   return (
     <div className="ap-bar" style={{ marginBottom: 16 }}>
       <span className="grow">
-        <b>Your UI in the game: "{active.name}".</b> {err ?? "Going back takes effect at your next login."}
+        <b>Your UI in the game: "{active.name}".</b> {err ?? "Going back takes effect at your next login or /reload."}
       </span>
       <Button variant="ghost" onClick={back}>
         Go back to the standard HUD
@@ -681,8 +681,8 @@ export function Approvals({
           // UX-EMPTY: the same empty state as every other screen.
           on ? (
             <EmptyState title="Nothing waiting">
-              When an agent suggests a quest plan, a login note, a list change or a setting, it waits here for you to
-              approve or decline. Nothing changes until you do.
+              When an agent suggests a quest plan, a login note, a list change, a setting or a UI, it waits here for you
+              to approve or decline. Nothing changes until you do.
             </EmptyState>
           ) : (
             <EmptyState
