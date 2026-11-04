@@ -7,5 +7,11 @@ fn main() {
     if wow_forever_buddy_lib::agent::is_agent_start(std::env::args().nth(1).as_deref()) {
         std::process::exit(wow_forever_buddy_lib::agent::serve_stdio());
     }
+    // UI1: `render <doc.json> ...` draws a UI document to a PNG and exits,
+    // the same render the agent connection's render_ui makes.
+    if std::env::args().nth(1).as_deref() == Some("render") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(wow_forever_buddy_lib::render_cli(&args));
+    }
     wow_forever_buddy_lib::run()
 }

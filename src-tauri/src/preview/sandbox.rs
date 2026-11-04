@@ -44,10 +44,17 @@ pub struct Host {
     /// Addon files that replace the bundled ones ("Data/Settings.lua"): the
     /// slots the app would send the game.
     pub slots: BTreeMap<String, Vec<u8>>,
+    /// A UI document to draw (UI1's render_ui), as the prototype
+    /// interpreter's `Spec.lua` (`ui::spec_lua`); `None` draws without it.
+    pub ui: Option<Vec<u8>>,
 }
 
 const ADDON: &str = "addon/ForeverBuddy";
 const DATA: &str = "tools/wowapi/wowapi/data";
+/// The prototype interpreter (UI1), bundled from `tools/ui-proto`. Its
+/// `Spec.lua` is the document being drawn and its font is the addon's own.
+pub const PROTO: &str = "tools/ui-proto/FBUnitProto";
+const PROTO_FONT: &str = "Media/BarlowSCB.ttf";
 
 /// Where a path lands.
 enum At {
@@ -110,9 +117,36 @@ impl Host {
         Some(At::Virtual(joined))
     }
 
+    /// The prototype's files that aren't in the bundle: the document, while
+    /// there is one, and the font, from the addon's own media.
+    fn proto_extra(&self, rest: &str) -> Option<Vec<u8>> {
+        match rest {
+            "Spec.lua" => self.ui.clone(),
+            PROTO_FONT => crate::addon::bundled_files()
+                .iter()
+                .find(|(f, _)| *f == PROTO_FONT)
+                .map(|(_, b)| b.to_vec()),
+            _ => None,
+        }
+    }
+
+    /// Those files' paths, for listing the tree.
+    fn proto_extra_paths(&self) -> Vec<String> {
+        let mut out = vec![format!("{PROTO}/{PROTO_FONT}")];
+        if self.ui.is_some() {
+            out.push(format!("{PROTO}/Spec.lua"));
+        }
+        out
+    }
+
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
         match self.at(path)? {
-            At::Tool(p) => bundle::tool(&p).map(<[u8]>::to_vec),
+            At::Tool(p) => match p.strip_prefix(&format!("{PROTO}/")) {
+                Some(rest) => self
+                    .proto_extra(rest)
+                    .or_else(|| bundle::tool(&p).map(<[u8]>::to_vec)),
+                None => bundle::tool(&p).map(<[u8]>::to_vec),
+            },
             At::Addon(p) => self.slots.get(&p).cloned().or_else(|| {
                 crate::addon::bundled_files()
                     .iter()
@@ -165,9 +199,11 @@ impl Host {
                 }
             }
             At::Tool(dir) | At::Virtual(dir) => {
+                let extra = self.proto_extra_paths();
                 let mut keys = bundle::TOOLS
                     .iter()
                     .map(|(p, _)| *p)
+                    .chain(extra.iter().map(String::as_str))
                     .chain(std::iter::once(ADDON))
                     .chain(["scratch"])
                     .chain(self.extract.as_ref().map(|_| "extract"))
@@ -218,9 +254,12 @@ impl Host {
                 } else {
                     format!("{d}/")
                 };
+                let extra = self.proto_extra_paths();
                 bundle::TOOLS
                     .iter()
-                    .filter_map(|(p, _)| p.strip_prefix(&prefix))
+                    .map(|(p, _)| *p)
+                    .chain(extra.iter().map(String::as_str))
+                    .filter_map(|p| p.strip_prefix(&prefix))
                     .filter(|rel| wanted(rel))
                     .map(|rel| format!("./{rel}"))
                     .collect()
@@ -277,6 +316,8 @@ pub struct DrawOptions {
     /// The moment to draw (`preview.lua`'s MOMENTS): "standing", "combat",
     /// "stealth" or "low_health".
     pub moment: &'static str,
+    /// Also load the prototype interpreter with `Host::ui` (UI1).
+    pub ui: bool,
 }
 
 /// A drawn frame.
@@ -524,6 +565,9 @@ impl Session {
             o.set("class", opts.class.clone())?;
             o.set("art", opts.art)?;
             o.set("moment", opts.moment)?;
+            if opts.ui {
+                o.set("ui", format!("/{PROTO}"))?;
+            }
             if opts.art {
                 o.set("blizzard", "/extract/interface/addons")?;
             }
@@ -551,6 +595,7 @@ pub(crate) mod tests {
             scratch: scratch.to_path_buf(),
             extract: None,
             slots: BTreeMap::new(),
+            ui: None,
         }
     }
 
@@ -650,6 +695,7 @@ pub(crate) mod tests {
             class: Some("rogue".into()),
             art: false,
             moment: "standing",
+            ui: false,
         };
         let started = Instant::now();
         let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
@@ -679,6 +725,7 @@ pub(crate) mod tests {
                 class: Some("rogue".into()),
                 art: false,
                 moment,
+                ui: false,
             };
             let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
             assert!(

@@ -83,6 +83,9 @@ sha2 = "0.10"
 # The preview's frame reaches the tab as a data: URL (BUG-PREVIEW-IMG).
 # Already in the tree through Tauri.
 base64 = "0.22"
+# UI1's render_ui: the preview's SVG as a PNG, for an agent (MCP image
+# content) and the `render` command line.
+resvg = "0.49"
 
 [dev-dependencies]
 full_moon = "3"

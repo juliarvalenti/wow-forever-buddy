@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::activity::{self, AgentCall};
-use super::{access, propose, tools, Paths};
+use super::{access, propose, render, tools, Paths};
 
 /// Protocol versions this server speaks, newest first. A client asking for
 /// one of these gets it back; any other gets the newest.
@@ -95,13 +95,31 @@ fn error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-/// A tool's answer: its JSON as text, or a refusal the agent can read.
-fn tool_result(outcome: Result<Value, String>) -> Value {
+/// What a tool hands back: JSON, or (render_ui) a picture and a line about it.
+enum Reply {
+    Json(Value),
+    Png(Vec<u8>, String),
+}
+
+/// A tool's answer: its JSON as text, a PNG as image content, or a refusal
+/// the agent can read.
+fn tool_result(outcome: Result<Reply, String>) -> Value {
     match outcome {
-        Ok(v) => json!({
+        Ok(Reply::Json(v)) => json!({
             "content": [{ "type": "text", "text": serde_json::to_string_pretty(&v).unwrap_or_default() }],
             "isError": false,
         }),
+        Ok(Reply::Png(png, text)) => {
+            use base64::Engine;
+            json!({
+                "content": [
+                    { "type": "image", "data": base64::engine::general_purpose::STANDARD.encode(png),
+                      "mimeType": "image/png" },
+                    { "type": "text", "text": text },
+                ],
+                "isError": false,
+            })
+        }
         Err(message) => json!({
             "content": [{ "type": "text", "text": message }],
             "isError": true,
@@ -153,12 +171,16 @@ impl Session<'_> {
             }
             "ping" => result(id, json!({})),
             "tools/list" => {
-                let all: Vec<Value> = tools::list().into_iter().chain(propose::list()).collect();
+                let all: Vec<Value> = tools::list()
+                    .into_iter()
+                    .chain(propose::list())
+                    .chain(render::list())
+                    .collect();
                 result(id, json!({ "tools": all }))
             }
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-                if !tools::exists(name) && !propose::exists(name) {
+                if !tools::exists(name) && !propose::exists(name) && !render::exists(name) {
                     return Some(error(id, -32602, &format!("Unknown tool: {name}")));
                 }
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
@@ -178,7 +200,7 @@ impl Session<'_> {
         })
     }
 
-    fn call(&mut self, name: &str, args: &Value) -> Result<Value, String> {
+    fn call(&mut self, name: &str, args: &Value) -> Result<Reply, String> {
         let now = Instant::now();
         while self
             .calls
@@ -196,11 +218,16 @@ impl Session<'_> {
         if !access.on {
             return Err(OFF.into());
         }
+        // Drawing a document needs the preview's data, not the game folder.
+        if render::exists(name) {
+            let (png, text) = render::call(self.paths, args)?;
+            return Ok(Reply::Png(png, text));
+        }
         let flavor = access.flavor.ok_or_else(|| NOT_SET_UP.to_string())?;
         if propose::exists(name) {
-            propose::call(self.paths, &flavor, &self.client, name, args)
+            propose::call(self.paths, &flavor, &self.client, name, args).map(Reply::Json)
         } else {
-            tools::call(&self.paths.db, &flavor, name, args)
+            tools::call(&self.paths.db, &flavor, name, args).map(Reply::Json)
         }
     }
 }
@@ -311,6 +338,7 @@ mod tests {
         let mut lines: Vec<Value> = tools::list()
             .iter()
             .chain(propose::list().iter())
+            .chain(render::list().iter())
             .enumerate()
             .map(|(i, t)| call(i as u32, t["name"].as_str().unwrap()))
             .collect();
@@ -343,5 +371,64 @@ mod tests {
         let out = run(&p, &lines);
         assert_eq!(out[0]["result"]["content"][0]["text"], NOT_SET_UP);
         assert_eq!(out[RATE]["result"]["content"][0]["text"], TOO_FAST);
+    }
+
+    /// UI1: render_ui hands back a PNG as image content, with or without the
+    /// game folder set up; a document that isn't data is refused at its
+    /// path, and without the preview data the agent is told where to get it.
+    #[test]
+    fn render_ui_returns_a_picture() {
+        use base64::Engine;
+        let (_dir, p) = paths();
+        std::fs::create_dir_all(p.settings.parent().unwrap()).unwrap();
+        std::fs::write(&p.settings, r#"{"agent_access": true}"#).unwrap();
+        let render = |id: u32, args: Value| {
+            json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call",
+                    "params": { "name": "render_ui", "arguments": args } })
+        };
+
+        let out = run(&p, &[render(1, json!({}))]);
+        assert_eq!(
+            out[0]["result"]["content"][0]["text"],
+            crate::preview::ui::NO_DATA
+        );
+
+        std::fs::create_dir_all(&p.preview_data).unwrap();
+        let repo = crate::preview::sandbox::tests::repo_data();
+        for f in &crate::preview::data::FILES {
+            std::fs::copy(repo.join(f.name), p.preview_data.join(f.name)).unwrap();
+        }
+        let doc: Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let out = run(
+            &p,
+            &[
+                render(2, json!({ "doc": doc, "moment": "combat" })),
+                render(3, json!({ "doc": { "units": [{ "parts": [null] }] } })),
+                render(4, json!({})),
+            ],
+        );
+        let content = &out[0]["result"]["content"];
+        assert_eq!(out[0]["result"]["isError"], false, "{}", out[0]);
+        assert_eq!(
+            (&content[0]["type"], &content[0]["mimeType"]),
+            (&json!("image"), &json!("image/png"))
+        );
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(content[0]["data"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+        assert!(content[1]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Drawn combat (1280x720"));
+        assert_eq!(out[1]["result"]["isError"], true);
+        assert_eq!(
+            out[1]["result"]["content"][0]["text"],
+            "units[0].parts[0]: null isn't a value; leave the key out instead"
+        );
+        // No document: the example, and its document to start from.
+        let text = out[2]["result"]["content"][1]["text"].as_str().unwrap();
+        assert!(text.contains("The round 4 example document"), "{text}");
+        assert!(text.contains("\"units\""), "{text}");
     }
 }

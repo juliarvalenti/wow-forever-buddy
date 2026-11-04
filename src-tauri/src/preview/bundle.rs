@@ -56,6 +56,9 @@ pub const TOOLS: &[File] = files![
     "tools/addon-shots/login_scene.lua",
     "tools/addon-shots/preview.lua",
     "tools/addon-shots/layouts/centered.lua",
+    // UI1: the prototype interpreter render_ui draws a document with.
+    "tools/ui-proto/FBUnitProto/FBUnitProto.toc",
+    "tools/ui-proto/FBUnitProto/UF.lua",
 ];
 
 /// A bundled tool file by its path from the repo root.
