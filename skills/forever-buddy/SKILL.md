@@ -27,6 +27,7 @@ Every tool refuses while agent access is off. Tools only read; the `propose_*` t
 | Their bags cleaned up | `get_bag_marks`, then `propose_bag_marks` |
 | "What macros does my rogue have?" | `list_macros` with the character, then `get_macro` for the text. Changing macros isn't there yet: write the macro in chat for the player to paste. |
 | Their HUD or action bars to look different | Read [design](references/design.md), then make **two or three drafts** with `propose_ui_draft` and let the player pick one on the Your UI tab |
+| A whole new UI, their own layout | Write a UI document and see it with `render_ui` in every moment before showing anyone: [ui](references/ui.md). It can't be sent to the game yet. |
 
 ## Rules that never bend
 
