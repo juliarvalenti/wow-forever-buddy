@@ -15,13 +15,14 @@
 //! and no lines that run code (`/run`, `/script`, `/console`, `/dump`): a
 //! macro from an agent is slash commands the player presses.
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::characters;
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::macros::{Macro, MacrosList, MACRO_MAX};
+use crate::sv::{LuaTable, LuaValue};
 
 /// The game's slots: account-wide macros, and each character's own.
 pub const MAX_ACCOUNT_MACROS: usize = 120;
@@ -92,6 +93,22 @@ pub struct Target {
     pub on: Vec<(String, Option<String>)>,
     /// "Velyra Duskmane", or "Every character on the account".
     pub label: String,
+    /// The character's class file token, lowercase, for its colour.
+    pub class: Option<String>,
+}
+
+/// A copy's source, for the card's "Copy "Kick focus" from Thrandor to
+/// Kaelor".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct Copied {
+    /// "Thrandor", or "the account".
+    pub from: String,
+    pub from_class: Option<String>,
+    /// The source macro's name.
+    pub name: String,
+    /// The agent changed the text for this character (Kick to Counterspell).
+    pub adapted: bool,
 }
 
 /// A checked macro proposal: what's stored, approved and sent to the game.
@@ -107,33 +124,57 @@ pub struct MacroBody {
     /// An edit: the text it replaces. The addon applies the edit only if
     /// the game still has this.
     pub old_body: Option<String>,
-    /// A copy: where it came from, "Velyra Duskmane's Mount".
-    pub copied_from: Option<String>,
+    /// A copy: where it came from.
+    pub copied: Option<Copied>,
+    /// The target's macros once this one is in, and the game's limit, as
+    /// of the game's last save: "Kaelor's macros 6 of 18".
+    pub slots: (u32, u32),
 }
 
 /// The Approvals preview: every field Apply uses, verbatim.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct MacroView {
+    /// `Copy` for a copy, else as stored.
     pub action: MacroAction,
     pub target: String,
+    pub target_class: Option<String>,
+    /// An account-wide macro, for every character on the account.
+    pub account_wide: bool,
     pub name: String,
     pub icon: String,
     pub body: String,
     pub length: u32,
+    pub max: u32,
     pub old_body: Option<String>,
-    pub copied_from: Option<String>,
+    pub copied: Option<Copied>,
+    pub slots_used: u32,
+    pub slots_max: u32,
+    /// After approval, what the game did: "waiting", "applied", "declined"
+    /// (Not this one), "changed" (skipped: changed in game since) or
+    /// "full" (no room yet). `None` before approval.
+    pub game: Option<String>,
 }
 
-pub fn view(b: &MacroBody) -> MacroView {
+pub fn view(b: &MacroBody, game: Option<String>) -> MacroView {
     MacroView {
-        action: b.action,
+        action: if b.copied.is_some() {
+            MacroAction::Copy
+        } else {
+            b.action
+        },
         target: b.target.label.clone(),
+        target_class: b.target.class.clone(),
+        account_wide: b.target.character_id.is_none(),
         name: b.name.clone(),
         icon: b.icon.clone(),
         body: b.body.clone(),
         length: u32::try_from(b.body.len()).unwrap_or(u32::MAX),
+        max: MACRO_MAX,
         old_body: b.old_body.clone(),
-        copied_from: b.copied_from.clone(),
+        copied: b.copied.clone(),
+        slots_used: b.slots.0,
+        slots_max: b.slots.1,
+        game,
     }
 }
 
@@ -144,12 +185,13 @@ struct Known {
     account: String,
     group: String,
     dir: String,
+    class: Option<String>,
 }
 
 fn known(db: &Db, flavor: &str) -> Result<Vec<Known>, String> {
     db.with_conn(|c| {
         let mut stmt = c.prepare(
-            "SELECT id, name, surname, account, group_dir, char_dir FROM visible_characters
+            "SELECT id, name, surname, account, group_dir, char_dir, class FROM visible_characters
              WHERE flavor = ?1 ORDER BY name, surname",
         )?;
         let rows = stmt
@@ -161,6 +203,9 @@ fn known(db: &Db, flavor: &str) -> Result<Vec<Known>, String> {
                     account: r.get(3)?,
                     group: r.get(4)?,
                     dir: r.get(5)?,
+                    class: r
+                        .get::<_, Option<String>>(6)?
+                        .map(|c| c.to_ascii_lowercase()),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -209,6 +254,7 @@ fn scope<'a>(
                 character_id: Some(k.id),
                 on: vec![(k.name.clone(), k.surname.clone())],
                 label: full(k),
+                class: k.class.clone(),
             },
             now,
         ));
@@ -243,6 +289,7 @@ fn scope<'a>(
             character_id: None,
             on,
             label: "Every character on the account".into(),
+            class: None,
         },
         &acc.macros,
     ))
@@ -323,17 +370,28 @@ fn queued(db: &Db, flavor: &str, t: &Target) -> Result<usize, String> {
         .count())
 }
 
-fn room(db: &Db, flavor: &str, t: &Target, now: &[Macro]) -> Result<(), String> {
-    let (max, whose) = match t.character_id {
-        Some(_) => (MAX_CHARACTER_MACROS, "That character"),
-        None => (MAX_ACCOUNT_MACROS, "The account"),
+fn max_for(t: &Target) -> usize {
+    match t.character_id {
+        Some(_) => MAX_CHARACTER_MACROS,
+        None => MAX_ACCOUNT_MACROS,
+    }
+}
+
+/// A free slot for one more: the target's macros with it (counting ones
+/// already approved), and the limit.
+fn room(db: &Db, flavor: &str, t: &Target, now: &[Macro]) -> Result<(u32, u32), String> {
+    let max = max_for(t);
+    let whose = match t.character_id {
+        Some(_) => "That character",
+        None => "The account",
     };
-    if now.len() + queued(db, flavor, t)? >= max {
+    let used = now.len() + queued(db, flavor, t)?;
+    if used >= max {
         return Err(format!(
             "{whose} has no free macro slot: the game allows {max}, counting ones already approved."
         ));
     }
-    Ok(())
+    Ok((used as u32 + 1, max as u32))
 }
 
 fn one<'a>(macros: &'a [Macro], name: &str) -> Result<Option<&'a Macro>, String> {
@@ -373,7 +431,7 @@ pub fn check(
                     "There's already a macro with that name there: propose an edit instead.".into(),
                 );
             }
-            room(db, flavor, &target, now)?;
+            let slots = room(db, flavor, &target, now)?;
             Ok(MacroBody {
                 action: MacroAction::New,
                 target,
@@ -381,7 +439,8 @@ pub fn check(
                 icon: p.icon.clone().unwrap_or_else(|| DEFAULT_ICON.into()),
                 body: body.to_string(),
                 old_body: None,
-                copied_from: None,
+                copied: None,
+                slots,
             })
         }
         MacroAction::Edit => {
@@ -403,6 +462,7 @@ pub fn check(
             if m.body == body && p.icon.as_ref().is_none_or(|i| *i == m.icon) {
                 return Err("That's the macro as it is now.".into());
             }
+            let slots = (now.len() as u32, max_for(&target) as u32);
             Ok(MacroBody {
                 action: MacroAction::Edit,
                 target,
@@ -410,12 +470,13 @@ pub fn check(
                 icon: p.icon.clone().unwrap_or_else(|| m.icon.clone()),
                 body: body.to_string(),
                 old_body: Some(m.body.clone()),
-                copied_from: None,
+                copied: None,
+                slots,
             })
         }
         MacroAction::Copy => {
-            if p.body.is_some() || p.was.is_some() {
-                return Err("A copy takes from, not text or was.".into());
+            if p.was.is_some() {
+                return Err("A copy takes from (and, to adapt it, new text), not was.".into());
             }
             let from = p
                 .from
@@ -435,25 +496,34 @@ pub fn check(
                 );
             }
             let m = one(there, &from.name)?.ok_or("There's no macro with that name to copy.")?;
-            check_body(&m.body)?;
+            // The text as it is, or adapted for the new character (Kick to
+            // Counterspell), checked the same way.
+            let body = p.body.as_deref().unwrap_or(&m.body);
+            check_body(body)?;
             if existing.is_some() {
                 return Err(
                     "There's already a macro with that name there: pick another name.".into(),
                 );
             }
-            room(db, flavor, &target, now)?;
-            let whose = match source.character_id {
-                Some(_) => format!("{}'s {}", source.label, m.name),
-                None => format!("the account's {}", m.name),
+            let slots = room(db, flavor, &target, now)?;
+            let copied = Copied {
+                from: match source.character_id {
+                    Some(_) => source.label.clone(),
+                    None => "the account".into(),
+                },
+                from_class: source.class.clone(),
+                name: m.name.clone(),
+                adapted: body != m.body,
             };
             Ok(MacroBody {
                 action: MacroAction::New,
                 target,
                 name: p.name.clone(),
                 icon: p.icon.clone().unwrap_or_else(|| m.icon.clone()),
-                body: m.body.clone(),
+                body: body.to_string(),
                 old_body: None,
-                copied_from: Some(whose),
+                copied: Some(copied),
+                slots,
             })
         }
     }
@@ -470,6 +540,148 @@ pub fn apply(db: &Db, flavor: &str, proposal: i64, b: &MacroBody, now: i64) -> A
         )?;
         Ok(())
     })
+}
+
+/// What the game did with an approved macro, as its receipt said. Applied,
+/// Not this one and changed-since close it; no room leaves it waiting (the
+/// player can delete one in /macro and Apply again).
+pub const OUTCOMES: [&str; 4] = ["applied", "declined", "changed", "full"];
+
+fn is_final(outcome: &str) -> bool {
+    outcome != "full"
+}
+
+/// One approved macro still waiting for the game: the Macros slot's rows.
+pub struct Waiting {
+    pub id: i64,
+    pub body: MacroBody,
+}
+
+pub fn waiting(db: &Db, flavor: &str) -> AppResult<Vec<Waiting>> {
+    let rows: Vec<(i64, String)> = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT id, body FROM macro_queue WHERE flavor = ?1 AND done_at IS NULL ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map(params![flavor], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, b)| {
+            Some(Waiting {
+                id,
+                body: serde_json::from_str(&b).ok()?,
+            })
+        })
+        .collect())
+}
+
+/// The Macros slot's body: `macros = { … }`, every approved macro the game
+/// hasn't applied yet. Plain data only: the addon shows the text through
+/// `plain()` and checks it again before it offers Apply. `on` lists who may
+/// apply it, `{ name, surname }`; the addon offers Apply only on them.
+pub fn slot_entries(db: &Db, flavor: &str) -> AppResult<Vec<(LuaValue, LuaValue)>> {
+    fn key(k: &str) -> LuaValue {
+        LuaValue::str(k)
+    }
+    fn table(array: Vec<LuaValue>, hash: Vec<(LuaValue, LuaValue)>) -> LuaValue {
+        LuaValue::Table(Box::new(LuaTable { array, hash }))
+    }
+    let rows = waiting(db, flavor)?
+        .into_iter()
+        .map(|w| {
+            let b = &w.body;
+            let mut h = vec![
+                (key("id"), LuaValue::Int(w.id)),
+                (
+                    key("action"),
+                    key(match b.action {
+                        MacroAction::Edit => "edit",
+                        _ => "new",
+                    }),
+                ),
+                (key("name"), key(&b.name)),
+                (key("icon"), key(&b.icon)),
+                (key("body"), key(&b.body)),
+                (key("label"), key(&b.target.label)),
+                (
+                    key("account"),
+                    LuaValue::Bool(b.target.character_id.is_none()),
+                ),
+                (
+                    key("on"),
+                    table(
+                        b.target
+                            .on
+                            .iter()
+                            .map(|(n, s)| {
+                                table(
+                                    Vec::new(),
+                                    vec![
+                                        (key("name"), key(n)),
+                                        (key("surname"), key(s.as_deref().unwrap_or(""))),
+                                    ],
+                                )
+                            })
+                            .collect(),
+                        Vec::new(),
+                    ),
+                ),
+            ];
+            if let Some(old) = &b.old_body {
+                h.push((key("old"), key(old)));
+            }
+            if b.copied.is_some() {
+                h.push((key("copy"), LuaValue::Bool(true)));
+            }
+            table(Vec::new(), h)
+        })
+        .collect();
+    Ok(vec![(key("macros"), table(rows, Vec::new()))])
+}
+
+/// An approved proposal's state in the game: "waiting" until a receipt,
+/// then its outcome. `None` if it was never approved.
+pub fn game_state(db: &Db, proposal: i64) -> AppResult<Option<String>> {
+    db.with_conn(|c| {
+        Ok(c.query_row(
+            "SELECT result FROM macro_queue WHERE proposal_id = ?1 ORDER BY id DESC LIMIT 1",
+            params![proposal],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .map(|r| r.unwrap_or_else(|| "waiting".into())))
+    })
+}
+
+/// A receipt from the game: queue row `id`'s outcome. Unknown outcomes and
+/// rows already closed are ignored (a receipt can arrive from several
+/// characters' files).
+#[cfg(test)]
+pub fn record(db: &Db, flavor: &str, id: i64, outcome: &str, now: i64) -> AppResult<()> {
+    db.with_conn(|c| record_in(c, flavor, id, outcome, now))
+}
+
+/// `record`, inside ingest's transaction.
+pub fn record_in(
+    c: &rusqlite::Connection,
+    flavor: &str,
+    id: i64,
+    outcome: &str,
+    now: i64,
+) -> AppResult<()> {
+    if !OUTCOMES.contains(&outcome) {
+        return Ok(());
+    }
+    let done = is_final(outcome).then_some(now);
+    c.execute(
+        "UPDATE macro_queue SET result = ?3, done_at = ?4
+         WHERE id = ?1 AND flavor = ?2 AND done_at IS NULL",
+        params![id, flavor, outcome, done],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -663,7 +875,21 @@ mod tests {
         let b = check(&db, FLAVOR, &files, &p).unwrap();
         assert_eq!(b.action, MacroAction::New);
         assert_eq!(b.body, "/cast Summon Warhorse");
-        assert_eq!(b.copied_from.as_deref(), Some("Velyra Duskmane's Mount"));
+        let c = b.copied.as_ref().unwrap();
+        assert_eq!(
+            (c.from.as_str(), c.name.as_str(), c.adapted),
+            ("Velyra Duskmane", "Mount", false)
+        );
+        assert_eq!(b.slots, (1, 18), "Coinpurse's macros with it");
+        assert_eq!(view(&b, None).action, MacroAction::Copy);
+        // Adapted for the new character: its own text, checked the same way.
+        let mut adapted = p.clone();
+        adapted.body = Some("/cast Summon Felsteed".into());
+        let b = check(&db, FLAVOR, &files, &adapted).unwrap();
+        assert!(b.copied.unwrap().adapted);
+        assert_eq!(b.body, "/cast Summon Felsteed");
+        adapted.body = Some("/run x()".into());
+        assert!(check(&db, FLAVOR, &files, &adapted).is_err());
         let mut same = p.clone();
         same.character = Some("Velyra".into());
         assert!(check(&db, FLAVOR, &files, &same)
@@ -688,5 +914,19 @@ mod tests {
         apply(&db, FLAVOR, 1, &b, 0).unwrap();
         let e = check(&db, FLAVOR, &files, &new(Some("Coinpurse"), "Over", "/sit")).unwrap_err();
         assert!(e.contains("no free macro slot"), "{e}");
+
+        // The game's receipts: no room leaves it waiting, applied closes it,
+        // and a later receipt (another character's file) changes nothing.
+        let id = waiting(&db, FLAVOR).unwrap()[0].id;
+        assert_eq!(game_state(&db, 1).unwrap().as_deref(), Some("waiting"));
+        record(&db, FLAVOR, id, "full", 5).unwrap();
+        assert_eq!(game_state(&db, 1).unwrap().as_deref(), Some("full"));
+        assert_eq!(waiting(&db, FLAVOR).unwrap().len(), 1, "still waiting");
+        record(&db, FLAVOR, id, "applied", 6).unwrap();
+        record(&db, FLAVOR, id, "declined", 7).unwrap();
+        record(&db, FLAVOR, id, "nonsense", 8).unwrap();
+        assert_eq!(game_state(&db, 1).unwrap().as_deref(), Some("applied"));
+        assert!(waiting(&db, FLAVOR).unwrap().is_empty());
+        assert_eq!(game_state(&db, 2).unwrap(), None, "never approved");
     }
 }

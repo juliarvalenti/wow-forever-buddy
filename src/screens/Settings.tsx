@@ -506,6 +506,7 @@ const TOOL_WORDS: Record<string, string> = {
   propose_quest_plan: "suggested a quest plan",
   propose_list_change: "suggested a list change",
   propose_bag_marks: "suggested bag marks",
+  propose_macro: "suggested a macro",
   list_proposals: "checked its suggestions",
 };
 

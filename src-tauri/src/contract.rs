@@ -101,6 +101,41 @@ fn seeded() -> Db {
         STAMP,
     )
     .unwrap();
+    // MC1: an approved macro for Thrandor, so the Macros slot carries one
+    // (queue id 1, which the addon's receipt names).
+    use crate::proposals::macros::{self, MacroAction, MacroBody, Target};
+    db.with_conn(|c| {
+        c.execute(
+            "INSERT INTO proposals (id, flavor, file, kind, producer, created_at, received_at, status)
+             VALUES (1, ?1, 'contract', 'macro', 'agent:test', ?2, ?2, 'applied')",
+            rusqlite::params![FLAVOR, STAMP],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    macros::apply(
+        &db,
+        FLAVOR,
+        1,
+        &MacroBody {
+            action: MacroAction::New,
+            target: Target {
+                account: "ACCOUNT1".into(),
+                character_id: Some(me),
+                on: vec![("Thrandor".into(), Some("Vargur".into()))],
+                label: "Thrandor Vargur".into(),
+                class: Some("paladin".into()),
+            },
+            name: "Bubble".into(),
+            icon: "Spell_Holy_DivineShield".into(),
+            body: "#showtooltip\n/cast Divine Shield".into(),
+            old_body: None,
+            copied: None,
+            slots: (1, 18),
+        },
+        STAMP,
+    )
+    .unwrap();
     db
 }
 

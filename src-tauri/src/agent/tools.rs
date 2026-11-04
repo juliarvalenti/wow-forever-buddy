@@ -702,8 +702,8 @@ fn get_bag_marks(db: &Db, flavor: &str, key: &str) -> Result<Value, String> {
 }
 
 /// MC1: the macro files the Macros screen reads, in the game folder the app
-/// is set up for.
-fn macro_files(game: Option<&Path>, flavor: &str) -> Result<macros::MacrosList, String> {
+/// is set up for (also `propose_macro`'s check).
+pub(super) fn macro_files(game: Option<&Path>, flavor: &str) -> Result<macros::MacrosList, String> {
     let root =
         game.ok_or("Forever Buddy isn't set up yet: choose the game folder in the app first.")?;
     let install = crate::install::validate::scan(root).map_err(|_| {

@@ -225,7 +225,8 @@ impl Session<'_> {
         }
         let flavor = access.flavor.ok_or_else(|| NOT_SET_UP.to_string())?;
         if propose::exists(name) {
-            propose::call(self.paths, &flavor, &self.client, name, args).map(Reply::Json)
+            let game = access.root.as_deref();
+            propose::call_in(self.paths, game, &flavor, &self.client, name, args).map(Reply::Json)
         } else {
             tools::call(&self.paths.db, access.root.as_deref(), &flavor, name, args)
                 .map(Reply::Json)

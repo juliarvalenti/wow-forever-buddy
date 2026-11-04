@@ -112,7 +112,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings", "Macros" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 
@@ -4363,6 +4363,233 @@ do
     U.mods.register({ id = "questhelp", enable = function() end, disable = function() end })
 end
 
+-- MC1: macros the player approved in the app, one by one, waiting in the
+-- Macros slot. Each is applied only by the player's own click on its Apply,
+-- out of combat, with the game's own macro calls (the app never writes the
+-- game's macro file). Before it offers Apply the addon checks each again:
+-- plain data, the game's limits, no line that runs code, the character it's
+-- for, and for an edit that the game still has the text that was approved.
+-- What happened to each (applied, Not this one, changed in game since, no
+-- room) is kept account-wide, so it isn't offered twice, and goes back to
+-- the app in the logout file.
+do
+    U.macros = {}
+    local M = U.macros
+    -- The game's slots: account macros are 1-120, a character's own 121-138.
+    local MAX_ACCOUNT, MAX_CHARACTER = 120, 18
+    local REFUSED = { ["/run"] = true, ["/script"] = true, ["/console"] = true, ["/dump"] = true }
+    local FINAL = { applied = true, declined = true, changed = true }
+
+    -- `{ [queue id] = outcome }`, account-wide.
+    local function done()
+        if type(ForeverBuddySettings) ~= "table" then
+            ForeverBuddySettings = {}
+        end
+        if type(ForeverBuddySettings.macroDone) ~= "table" then
+            ForeverBuddySettings.macroDone = {}
+        end
+        return ForeverBuddySettings.macroDone
+    end
+
+    -- A slot row checked again, whatever the app said.
+    local function safe(m)
+        if type(m) ~= "table" or type(m.id) ~= "number" or type(m.name) ~= "string" or type(m.icon) ~= "string"
+            or type(m.body) ~= "string" or type(m.on) ~= "table" then
+            return false
+        end
+        if m.action ~= "new" and m.action ~= "edit" then
+            return false
+        end
+        if m.action == "edit" and type(m.old) ~= "string" then
+            return false
+        end
+        if m.name == "" or #m.name > 64 or m.body == "" or #m.body > 255 then
+            return false
+        end
+        for line in (m.body .. "\n"):gmatch("([^\n]*)\n") do
+            if REFUSED[(line:match("^%s*(%S+)") or ""):lower()] then
+                return false
+            end
+        end
+        return true
+    end
+
+    -- Whether this character may apply it.
+    local function mine(m)
+        if not character then
+            return false
+        end
+        for _, c in ipairs(m.on) do
+            if type(c) == "table" and c.name == character.name and (c.surname or "") == (character.surname or "") then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- The game's macros now, read once: how many of each kind, and by
+    -- name, where (account 1-120, this character's 121-138) and their text.
+    -- (The game keeps them packed, so only as far as it has any.)
+    local function game()
+        local account, own = read("GetNumMacros")
+        local g = { account = num(account), own = num(own), byName = { account = {}, own = {} } }
+        local function scan(first, last, into)
+            for i = first, last do
+                local name, _, body = read("GetMacroInfo", i)
+                if type(name) == "string" and into[name] == nil then
+                    into[name] = { i = i, body = body }
+                end
+            end
+        end
+        scan(1, math.min(g.account, MAX_ACCOUNT), g.byName.account)
+        scan(MAX_ACCOUNT + 1, MAX_ACCOUNT + math.min(g.own, MAX_CHARACTER), g.byName.own)
+        return g
+    end
+
+    -- The game's macro with this row's name, where the row's macro lives.
+    local function find(m, g)
+        local hit = (m.account and g.byName.account or g.byName.own)[m.name]
+        if hit then
+            return hit.i, hit.body
+        end
+    end
+
+    -- Where the row stands now: "ready" (Apply), "elsewhere" (another
+    -- character's), "combat", "full", or an outcome already known.
+    function M.state(m, g)
+        local d = done()[m.id]
+        if FINAL[d] then
+            return d
+        end
+        if not mine(m) then
+            return "elsewhere"
+        end
+        if read("InCombatLockdown") then
+            return "combat"
+        end
+        g = g or game()
+        local i, body = find(m, g)
+        if m.action == "edit" then
+            if body == m.body then
+                return "applied"
+            elseif not i or body ~= m.old then
+                return "changed"
+            end
+        elseif i then
+            -- One of that name is already there: this one, or another.
+            return body == m.body and "applied" or "changed"
+        elseif (m.account and g.account >= MAX_ACCOUNT) or (not m.account and g.own >= MAX_CHARACTER) then
+            return "full"
+        end
+        return "ready"
+    end
+
+    -- Every row the slot carries, checked, with its state; an outcome the
+    -- game shows (applied, changed, no room) is noted for the app.
+    -- (Worked out once per refresh of the window: U.refresh clears it, and
+    -- so do Apply and Not this one.)
+    function M.rows()
+        if M.cache then
+            return M.cache
+        end
+        local out = {}
+        M.cache = out
+        local s = slots.Macros
+        if type(s) ~= "table" or type(s.macros) ~= "table" then
+            return out
+        end
+        local g
+        for _, m in ipairs(s.macros) do
+            if safe(m) then
+                -- The game's macros, read once, and only once one is mine.
+                if not g and mine(m) and not FINAL[done()[m.id]] then
+                    g = game()
+                end
+                local st = M.state(m, g)
+                if st == "applied" or st == "changed" or st == "full" then
+                    done()[m.id] = st
+                end
+                out[#out + 1] = { m = m, state = st }
+            end
+        end
+        return out
+    end
+
+    -- How many wait for this character's click.
+    function M.ready()
+        local n = 0
+        for _, r in ipairs(M.rows()) do
+            if r.state == "ready" or r.state == "full" or r.state == "combat" then
+                n = n + 1
+            end
+        end
+        return n
+    end
+
+    -- Whether the window shows the Macros page at all.
+    function M.any()
+        local s = slots.Macros
+        return type(s) == "table" and type(s.macros) == "table" and #s.macros > 0
+    end
+
+    -- Apply, on the player's click: the row again from the start, then the
+    -- game's own call, then a look at what the game has.
+    function M.apply(m)
+        M.cache = nil
+        local g = game()
+        if not safe(m) or M.state(m, g) ~= "ready" then
+            return
+        end
+        local icon = tonumber(m.icon) or m.icon
+        if m.action == "edit" then
+            local i = find(m, g)
+            read("EditMacro", i, m.name, icon, m.body)
+        else
+            read("CreateMacro", m.name, icon, m.body, not m.account)
+        end
+        local _, body = find(m, game())
+        if body == m.body then
+            done()[m.id] = "applied"
+        end
+    end
+
+    -- Not this one: dropped here, and the app is told.
+    function M.decline(m)
+        M.cache = nil
+        if safe(m) and not FINAL[done()[m.id]] then
+            done()[m.id] = "declined"
+        end
+    end
+
+    -- At login, one line when some wait for this character.
+    function M.announce()
+        local n = M.ready()
+        if n == 1 then
+            say(GOLD_PREFIX .. "1 macro you approved is ready. Type /fb, then Macros, to apply it.")
+        elseif n > 1 then
+            say(GOLD_PREFIX .. n .. " macros you approved are ready. Type /fb, then Macros, to apply them.")
+        end
+    end
+
+    -- For the logout file: the outcomes of the rows the slot still carries
+    -- (the app drops a row once it has read its outcome, so older ones go).
+    function M.receipts()
+        local s = slots.Macros
+        local d, out = done(), {}
+        for _, m in ipairs(type(s) == "table" and type(s.macros) == "table" and s.macros or {}) do
+            if type(m) == "table" and type(m.id) == "number" and d[m.id] then
+                out[m.id] = d[m.id]
+            end
+        end
+        for id in pairs(d) do
+            if out[id] == nil then
+                d[id] = nil
+            end
+        end
+        return next(out) and out or nil
+    end
+end
+
 -- The AH's browse results: which listed items show there.
 local function auctionBrowse()
     here = {}
@@ -6602,6 +6829,177 @@ do
         return p
     end
 
+    -- MC1: the Macros page, when the app has sent approved macros. Each
+    -- row: its icon, name, who it's for and what it is (New, Change, Copy),
+    -- the exact text (Now and After for a change), then Apply and Not this
+    -- one, or where it stands. No Apply all: each click applies one.
+    function U.ui.macrosPage()
+        local p = U.ui.page("macros")
+        p.cards = {}
+        p.footer = U.ui.text(p, 11, U.STYLE.colors.dim)
+        p.footer:SetWidth(U.LAYOUT.CONTENT - 3)
+        p.footer:SetText("Not this one drops it from the list and tells the app. Nothing is ever applied without your click.")
+        return p
+    end
+
+    local MACRO_TAG = { new = "New", edit = "Change", copy = "Copy" }
+
+    -- One text box, "Now" or "After" over the lines; returns its height.
+    local function macroBox(card, i, title, text, x, w, y, hi)
+        local col = U.STYLE.colors
+        card.boxes[i] = card.boxes[i] or {}
+        local b = card.boxes[i]
+        if not b.bg then
+            b.bg = U.ui.fill(card, { 0, 0, 0, 0.35 }, "ARTWORK")
+            b.title = U.ui.text(card, 10, col.dim)
+            b.text = U.ui.text(card, 11, col.textHi)
+        end
+        local lines = 1
+        for _ in text:gmatch("\n") do
+            lines = lines + 1
+        end
+        local h = 22 + lines * 14
+        b.bg:ClearAllPoints()
+        b.bg:SetPoint("TOPLEFT", card, "TOPLEFT", x, y)
+        b.bg:SetSize(w, h)
+        b.title:ClearAllPoints()
+        b.title:SetPoint("TOPLEFT", card, "TOPLEFT", x + 8, y - 5)
+        b.title:SetText(title)
+        b.title:SetTextColor(U.ui.rgba(hi and col.border or col.dim))
+        b.text:ClearAllPoints()
+        b.text:SetPoint("TOPLEFT", card, "TOPLEFT", x + 8, y - 19)
+        b.text:SetWidth(w - 16)
+        b.text:SetText(plain(text))
+        for _, part in pairs(b) do
+            part:Show()
+        end
+        return h
+    end
+
+    -- What a row says instead of its buttons.
+    local function macroLine(r)
+        local m, who = r.m, character and character.name or "this character"
+        if r.state == "applied" then
+            return m.account and "Applied. It's in /macro, on the General tab."
+                or "Applied. It's in /macro, on " .. who .. "'s tab."
+        elseif r.state == "elsewhere" then
+            local first = m.on[1]
+            if not m.account and type(first) == "table" and type(first.name) == "string" then
+                return "Log in on " .. plain(first.name) .. " to apply it. It waits here until then."
+            end
+            return "Log in on a character on that account to apply it. It waits here until then."
+        elseif r.state == "changed" then
+            if m.action == "edit" then
+                return '"' .. plain(m.name) .. '" changed in game after you approved it, so it wasn\'t replaced. Ask for it again in the app.'
+            end
+            return 'There\'s already a macro called "' .. plain(m.name) .. '", so this one wasn\'t added. Ask for it again in the app.'
+        elseif r.state == "full" then
+            return m.account and "Your account macros are full (120 of 120). Delete one in /macro, then Apply."
+                or who .. "'s macros are full (18 of 18). Delete one in /macro, then Apply."
+        end
+    end
+
+    function U.ui.renderMacros(p)
+        local col = U.STYLE.colors
+        local W = U.LAYOUT.CONTENT - 3
+        for _, card in ipairs(p.cards) do
+            card:Hide()
+        end
+        local y, n = 0, 0
+        for _, r in ipairs(U.macros.rows()) do
+            if r.state ~= "declined" then
+                n = n + 1
+                local m = r.m
+                local card = p.cards[n]
+                if not card then
+                    card = CreateFrame("Frame", nil, p)
+                    U.ui.fill(card, { 0, 0, 0, 0.25 }):SetAllPoints()
+                    U.ui.border(card, U.ui.tint(col.borderHi, 0.18))
+                    card.icon = card:CreateTexture(nil, "ARTWORK")
+                    card.icon:SetSize(26, 26)
+                    card.icon:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
+                    card.name = U.ui.text(card, 13, col.textHi)
+                    card.name:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 10, -1)
+                    card.who = U.ui.text(card, 11, col.dim)
+                    card.who:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -3)
+                    card.tag = U.ui.text(card, 11, col.dim, "RIGHT")
+                    card.tag:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -12)
+                    card.line = U.ui.text(card, 11, col.text)
+                    card.line:SetWidth(W - 24)
+                    card.boxes = {}
+                    p.cards[n] = card
+                end
+                card.icon:SetTexture(tonumber(m.icon) or ("Interface\\Icons\\" .. m.icon))
+                card.name:SetText(plain(m.name))
+                card.who:SetText(m.account and "for every character on this account"
+                    or ("for " .. plain(m.label) .. (r.state ~= "elsewhere" and " (you)" or "")))
+                card.tag:SetText(MACRO_TAG[m.copy and "copy" or m.action])
+                for _, b in pairs(card.boxes) do
+                    for _, part in pairs(b) do
+                        part:Hide()
+                    end
+                end
+                local cy = -48
+                if m.action == "edit" then
+                    local half = (W - 24 - 8) / 2
+                    local h1 = macroBox(card, 1, "Now", m.old, 12, half, cy)
+                    local h2 = macroBox(card, 2, "After", m.body, 12 + half + 8, half, cy, true)
+                    cy = cy - math.max(h1, h2) - 10
+                else
+                    cy = cy - macroBox(card, 1, m.copy and "Copy" or "Text", m.body, 12, W - 24, cy, true) - 10
+                end
+                local line = macroLine(r)
+                local canApply = r.state == "ready" or r.state == "full" or r.state == "combat"
+                -- The buttons, made the first time a card needs them.
+                if canApply and not card.apply then
+                    card.apply = U.ui.button(card, "Apply", 84, true)
+                    card.skip = U.ui.button(card, "Not this one", 100)
+                end
+                if card.apply then
+                    card.apply:SetShown(canApply)
+                    card.skip:SetShown(canApply)
+                end
+                card.line:SetShown(line ~= nil)
+                if line then
+                    card.line:ClearAllPoints()
+                    card.line:SetPoint("TOPLEFT", card, "TOPLEFT", 12, cy)
+                    card.line:SetText(line)
+                    card.line:SetTextColor(U.ui.rgba((r.state == "applied" and col.textHi)
+                        or ((r.state == "changed" or r.state == "full") and col.border) or col.dim))
+                    cy = cy - 28
+                end
+                if canApply then
+                    card.apply:ClearAllPoints()
+                    card.apply:SetPoint("TOPLEFT", card, "TOPLEFT", 12, cy)
+                    card.apply:SetEnabled(r.state ~= "combat")
+                    card.apply.label:SetText(r.state == "combat" and "Apply after combat" or "Apply")
+                    card.apply:SetWidth(r.state == "combat" and 150 or 84)
+                    card.skip:ClearAllPoints()
+                    card.skip:SetPoint("LEFT", card.apply, "RIGHT", 8, 0)
+                    card.apply:SetScript("OnClick", function()
+                        if not pcall(U.macros.apply, m) then
+                            U.errors = U.errors + 1
+                        end
+                        U.refresh()
+                    end)
+                    card.skip:SetScript("OnClick", function()
+                        pcall(U.macros.decline, m)
+                        U.refresh()
+                    end)
+                    cy = cy - 36
+                end
+                card:ClearAllPoints()
+                card:SetPoint("TOPLEFT", p, "TOPLEFT", 0, y)
+                card:SetSize(W, -cy + 4)
+                card:Show()
+                y = y + cy - 4 - 10
+            end
+        end
+        p.footer:ClearAllPoints()
+        p.footer:SetPoint("TOPLEFT", p, "TOPLEFT", 0, y - 4)
+        p:SetHeight(-y + 30)
+    end
+
     -- Whether an option belongs to module `id` (or, with no id, to any):
     -- by its module, or listed by the module (Settings.lua `modules`).
     function U.ui.inModule(o, id)
@@ -6746,6 +7144,9 @@ do
         for _, m in ipairs(U.mods.declared.modules or {}) do
             n = n + (U.mods.byId[m.id] and 1 or 0)
         end
+        -- MC1: Macros under Tonight, only while the app has sent some.
+        local macros = U.macros.any()
+        n = n + (macros and 1 or 0)
         local ROW = math.min(28, math.floor((L.RAILH - 46 - 4 + y - 60) / n))
         local function group(label)
             local g = U.ui.text(win.rail, 10, col.railDim)
@@ -6759,6 +7160,14 @@ do
             b.count = U.ui.text(b, 11, col.railMute, "RIGHT")
             b.count:SetPoint("RIGHT", b, "RIGHT", -16, 0)
             win.Tabs[i] = b
+            y = y - ROW
+        end
+        if macros then
+            local b = U.ui.railButton("ForeverBuddyWindowMacros", "Macros", y, "macros", ROW)
+            b.count = U.ui.text(b, 11, col.railMute, "RIGHT")
+            b.count:SetPoint("RIGHT", b, "RIGHT", -16, 0)
+            win.Tabs.macros = b
+            U.ui.macrosPage()
             y = y - ROW
         end
         group("Modules")
@@ -6865,6 +7274,10 @@ do
             local n = counts[i]
             win.Tabs[i].count:SetText(n and n > 0 and tostring(n) or "")
         end
+        if win.Tabs.macros then
+            local n = U.macros.ready()
+            win.Tabs.macros.count:SetText(n > 0 and tostring(n) or "")
+        end
     end
 
     -- Tonight's page titles; the Settings page's.
@@ -6874,6 +7287,7 @@ do
     -- Nothing changes in combat (INGAME §4): the settings only show their
     -- values again (a switch flipped in combat goes back).
     function U.refresh()
+        U.macros.cache = nil
         local page = win and win.current and win.pages[win.current]
         if read("InCombatLockdown") then
             if optionChecks then
@@ -6885,6 +7299,10 @@ do
             if win and U.mods.byId[win.current] then
                 win.modSwitch:SetChecked(U.mods.on(win.current))
                 win.modSwitch.Refresh()
+            end
+            -- MC1: the Macros page says Apply waits for the end of combat.
+            if page and win.current == "macros" and win:IsShown() then
+                pcall(U.ui.renderMacros, page)
             end
             return
         end
@@ -6905,6 +7323,12 @@ do
             end
             win.heading:SetText(U.TITLES[key])
             win.fresh:SetText(U.fresh(newest(SOURCES[key])))
+        elseif key == "macros" then
+            if not pcall(U.ui.renderMacros, page) then
+                U.errors = U.errors + 1
+            end
+            win.heading:SetText("Macros to apply")
+            win.fresh:SetText("You approved these in the app. Each one is applied only when you click it.")
         else
             U.ui.layout(page)
             win.heading:SetText(m and m.label or U.TITLES[5])
@@ -6942,6 +7366,7 @@ do
         end
         local function known(k)
             return (type(k) == "number" and TABS[k] ~= nil) or (type(k) == "string" and U.mods.byId[k] ~= nil)
+                or (k == "macros" and win.pages.macros ~= nil)
         end
         key = known(key) and key or (known(cfg().tab) and cfg().tab) or 1
         cfg().tab = key
@@ -7237,9 +7662,10 @@ end
 -- /fb ------------------------------------------------------------------------------
 --
 -- /fb opens the window (U1) on its last tab; /fb plan, list, errands and
--- cleanup on that tab. /fb brief repeats this login's briefing in full;
--- /fb brief off|on, coach, card and minimap toggle; /fb sync says how.
-local TAB = { plan = 1, list = 2, errands = 3, cleanup = 4 }
+-- cleanup on that tab, and /fb macros on the approved macros (MC1). /fb
+-- brief repeats this login's briefing in full; /fb brief off|on, coach,
+-- card and minimap toggle; /fb sync says how.
+local TAB = { plan = 1, list = 2, errands = 3, cleanup = 4, macros = "macros" }
 
 local function slash(msg)
     -- B4: /fb sync reloads, ReloadUI() before anything else the keypress
@@ -7396,6 +7822,8 @@ handlers.PLAYER_ENTERING_WORLD = function(_, isReloadingUi)
     if not isReloadingUi then
         read("C_Timer.After", 5, function()
             pcall(briefNow)
+            -- MC1: approved macros waiting for this character's click.
+            pcall(U.macros.announce)
         end)
     end
     -- Played time is asked for once per login (it prints the two "Total time
@@ -7435,6 +7863,8 @@ handlers.PLAYER_REGEN_DISABLED = function()
         S.hideCoach()
     end
     guarded(C.dialogKeys, nil)
+    -- MC1: an open Macros page says Apply waits.
+    pcall(U.refresh)
 end
 
 handlers.PLAYER_REGEN_ENABLED = function()
@@ -7445,6 +7875,7 @@ handlers.PLAYER_REGEN_ENABLED = function()
     if L.waiting then
         pcall(L.check)
     end
+    pcall(U.refresh)
 end
 
 -- The logout countdown (and /quit's): the card, until it's cancelled.
@@ -7904,6 +8335,11 @@ handlers.PLAYER_LOGOUT = function()
         settings = (function()
             local ok, s = pcall(U.prefs.saved)
             return ok and s or nil
+        end)(),
+        -- MC1: what happened to approved macros.
+        macros = (function()
+            local ok, r = pcall(U.macros.receipts)
+            return ok and r or nil
         end)(),
     }
     local version, build = read(GetBuildInfo)

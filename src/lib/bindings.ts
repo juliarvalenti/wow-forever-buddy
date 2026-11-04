@@ -1101,6 +1101,20 @@ export type Cleanup = {
 /**  How sure a price is, from how often and how lately it was seen. */
 export type Confidence = "sure" | "fair" | "rough";
 
+/**
+ *  A copy's source, for the card's "Copy "Kick focus" from Thrandor to
+ *  Kaelor".
+ */
+export type Copied = {
+	/**  "Thrandor", or "the account". */
+	from: string,
+	from_class: string | null,
+	/**  The source macro's name. */
+	name: string,
+	/**  The agent changed the text for this character (Kick to Counterspell). */
+	adapted: boolean,
+};
+
 /**  "Forever Buddy's own data" in Settings › Data. */
 export type DataSize = {
 	/**  The database file and its journal (write-ahead log). */
@@ -1740,14 +1754,27 @@ export type MacroAction = "new" | "edit" |
 
 /**  The Approvals preview: every field Apply uses, verbatim. */
 export type MacroView = {
+	/**  `Copy` for a copy, else as stored. */
 	action: MacroAction,
 	target: string,
+	target_class: string | null,
+	/**  An account-wide macro, for every character on the account. */
+	account_wide: boolean,
 	name: string,
 	icon: string,
 	body: string,
 	length: number,
+	max: number,
 	old_body: string | null,
-	copied_from: string | null,
+	copied: Copied | null,
+	slots_used: number,
+	slots_max: number,
+	/**
+	 *  After approval, what the game did: "waiting", "applied", "declined"
+	 *  (Not this one), "changed" (skipped: changed in game since) or
+	 *  "full" (no room yet). `None` before approval.
+	 */
+	game: string | null,
 };
 
 export type MacrosList = {

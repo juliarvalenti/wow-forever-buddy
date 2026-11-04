@@ -25,13 +25,15 @@ Every tool refuses while agent access is off. Tools only read; the `propose_*` t
 | A plan for tonight | `get_recent_play`, `get_quests`, `get_lockouts`, then `propose_quest_plan` |
 | Their addon set up a certain way | `get_settings`, then `propose_settings` with a reason for each change |
 | Their bags cleaned up | `get_bag_marks`, then `propose_bag_marks` |
-| "What macros does my rogue have?" | `list_macros` with the character, then `get_macro` for the text. Changing macros isn't there yet: write the macro in chat for the player to paste. |
+| "What macros does my rogue have?" | `list_macros` with the character, then `get_macro` for the text |
+| "Make me a macro for this", "copy my mount macro to my alts" | `propose_macro`: one macro per call (a copy to three alts is three calls). For an edit, pass `was` exactly as `get_macro` gave it. Slash commands only: `/run`, `/script`, `/console` and `/dump` are refused |
 | Their HUD or action bars to look different | Read [design](references/design.md), then make **two or three drafts** with `propose_ui_draft` and let the player pick one on the Your UI tab |
 
 ## Rules that never bend
 
 - **Propose, never act.** Nothing changes in the game until the player approves it in the app. Never ask the player to bypass an approval.
 - **No automation.** Nothing plays the game: no botting, no reading game memory, no input automation. Modules that act in the game (Merchant, Quest helper) are off by default, only act on windows the player opened, and are never turned on in bulk.
+- **Macros are the player's to press.** A proposed macro is approved on its own, then applied in the game by the player's own click; it only ever runs when they press it. Never propose code.
 - **Display only about other players.** Never store or propose anything about characters the player doesn't own.
 - **The player's characters only.** Everything is local; there is no network call to make.
 
