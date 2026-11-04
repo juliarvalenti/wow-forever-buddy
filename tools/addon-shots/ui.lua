@@ -157,6 +157,8 @@ if opts.examples then
     local failed = 0
     for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners" }) do
         local doc = decode(read(here .. "/ui-examples/" .. name .. ".json"))
+        local c = uicheck.cost(doc)
+        print(("%s costs %d frames, %d textures, %d font strings"):format(name, c.frames, c.textures, c.fontStrings))
         local errors, problems = draw(doc, name, out, opts.class, MOMENTS)
         if not errors then
             print("FAIL " .. name .. ": doesn't pass the check\n" .. uicheck.lines(problems))
@@ -184,7 +186,18 @@ if opts.examples then
             failed = failed + 1
         end
     end
-    print(failed == 0 and "ok: every example draws, and the broken one is refused" or (failed .. " failed"))
+    -- Over the client's limits: 40 texts with a stroke of 3 make about 1480
+    -- font strings, more than a UI gets.
+    local heavy = { ui = 1, parts = {} }
+    for i = 1, 40 do
+        heavy.parts[i] = { kind = "text", format = "{hp}", stroke = 3, anchor = { "CENTER", "screen", "CENTER", 0, i * 10 } }
+    end
+    local _, over = draw(heavy, "heavy", out, opts.class, { "standing" })
+    if not (over and over[1] and over[1].code == "over-budget") then
+        print("FAIL heavy document: not refused for its cost\n" .. uicheck.lines(over or {}))
+        failed = failed + 1
+    end
+    print(failed == 0 and "ok: every example draws, and the broken and the heavy one are refused" or (failed .. " failed"))
     os.exit(failed == 0 and 0 or 1)
 end
 
