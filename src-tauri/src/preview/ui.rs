@@ -151,6 +151,25 @@ fn walk(v: &Value, path: &str, depth: usize, values: &mut usize, found: &mut Vec
     }
 }
 
+/// A document's problems without drawing it: the limits, then the
+/// language's own check (`uicheck.lua`) in a sandbox of its own. Needs no
+/// WOWAPI data. Empty when it would draw.
+pub fn check(doc: &Value) -> Result<Vec<Problem>, String> {
+    let problems = limits(doc);
+    if !problems.is_empty() {
+        return Ok(problems);
+    }
+    let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let host = Host {
+        data: None,
+        scratch: scratch.path().to_path_buf(),
+        extract: None,
+        slots: Default::default(),
+    };
+    let session = Session::new(Arc::new(RwLock::new(host))).map_err(|e| e.to_string())?;
+    session.check_ui(doc)
+}
+
 /// The problems as lines an agent can read: `/parts/3/kind  unknown-kind: ...`.
 pub fn problem_lines(problems: &[Problem]) -> String {
     problems
@@ -510,6 +529,22 @@ mod tests {
         else {
             panic!("drawn");
         };
+        assert!(
+            problems.iter().any(|p| p.path == "/parts/0/kind"),
+            "{}",
+            problem_lines(&problems)
+        );
+    }
+
+    /// propose_ui's check needs no WOWAPI data: its sandbox has none (the
+    /// host's `data` is `None`), yet the language's check runs through
+    /// `preview.check` and finds a broken document's problems.
+    #[test]
+    fn the_check_runs_without_wowapi_data() {
+        assert!(check(&example()).unwrap().is_empty(), "round 4 passes");
+        let mut doc = example();
+        doc["parts"][0]["kind"] = json!("hologram");
+        let problems = check(&doc).unwrap();
         assert!(
             problems.iter().any(|p| p.path == "/parts/0/kind"),
             "{}",

@@ -57,6 +57,14 @@ end
 -- the class drawn (nil for the generic character). A document that doesn't
 -- pass the check draws nothing: the SVG is nil and the fourth value is its
 -- problems (the addon's UICheck.lua).
+-- UI1: a document's problems, without drawing it, from the addon's own
+-- UICheck.lua (`addon`, by default the app's bundled one). The app's
+-- propose_ui checks through here, so the app, the pictures and the game
+-- use the same checker.
+function M.check(doc, addon)
+    return M.uicheck(addon or "/addon/ForeverBuddy").check(doc)
+end
+
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
@@ -65,7 +73,7 @@ function M.draw(opts)
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
     local globals = {}
     if opts.ui ~= nil then
-        local problems = M.uicheck(opts.addon).check(opts.ui)
+        local problems = M.check(opts.ui, opts.addon)
         if #problems > 0 then
             return nil, 0, class, problems
         end

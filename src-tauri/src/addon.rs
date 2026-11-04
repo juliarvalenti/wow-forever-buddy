@@ -31,8 +31,8 @@ const TOC: &str = "ForeverBuddy.toc";
 /// draws a UI document (UI1), in game and in render_ui's pictures, and
 /// `UICheck.lua` checks one first (in game, and for render_ui and
 /// propose_ui). `Data/Macros.lua` carries approved macros to the game's
-/// Apply (MC1).
-const FILES: [(&str, &[u8]); 27] = [
+/// Apply (MC1), `Data/UI.lua` the UI document the player chose (UI1).
+const FILES: [(&str, &[u8]); 28] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -139,6 +139,10 @@ const FILES: [(&str, &[u8]); 27] = [
     (
         "Data/Macros.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Data/Macros.lua"),
+    ),
+    (
+        "Data/UI.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/Data/UI.lua"),
     ),
     (
         TOC,

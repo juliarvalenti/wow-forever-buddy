@@ -19,6 +19,7 @@ pub mod inbox;
 pub mod list;
 pub mod macros;
 pub mod plan;
+pub mod uidoc;
 
 use std::path::Path;
 
@@ -52,6 +53,9 @@ pub const UI_DRAFT: &str = "ui_draft";
 /// MC1: a new macro, an edit, or a copy; approved one by one, applied by
 /// the player's click in the game (`macros`).
 pub const MACRO: &str = "macro";
+/// UI1: a whole UI document; "Use this" makes it the UI the game draws
+/// (`uidoc`). Never part of Approve all.
+pub const UI_DOC: &str = "ui_doc";
 
 /// Emitted when ingest stores something, so Approvals and its sidebar count
 /// refresh.
@@ -119,6 +123,9 @@ pub struct Proposal {
     /// A macro, its text verbatim (and the old text, for an edit) (MC1).
     /// Never part of Approve all.
     pub macro_change: Option<macros::MacroView>,
+    /// A whole UI document (UI1): its name and why; the picture is
+    /// `ui_doc_picture`'s. Never part of Approve all.
+    pub ui_doc: Option<uidoc::UiDocView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -439,6 +446,12 @@ pub fn ingest_in(
                     let body = macros::check(db, flavor, &files, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
+                UI_DOC => {
+                    let p: uidoc::UiDocProposal = serde_json::from_value(f.body.clone())
+                        .map_err(|_| "the UI isn't in the form this version reads".to_string())?;
+                    let body = uidoc::check(&p)?;
+                    serde_json::to_string(&body).map_err(|e| e.to_string())
+                }
                 // In plain words, never the kind id (IMPLEMENTING §17).
                 _ => Err("This kind of suggestion can't be applied yet.".into()),
             }?;
@@ -612,6 +625,10 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         Some(b) => Some(macros::view(&b, macros::game_state(db, s.id)?)),
         None => None,
     };
+    let ui_doc = match body::<uidoc::UiDocBody>(&s, UI_DOC) {
+        Some(b) => Some(uidoc::view(&b, uidoc::is_active(db, flavor, s.id)?)),
+        None => None,
+    };
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
@@ -628,6 +645,7 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         goal,
         setting,
         macro_change,
+        ui_doc,
     })
 }
 
@@ -817,6 +835,10 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
         MACRO => {
             let b = body(&s, MACRO).ok_or_else(unreadable)?;
             macros::apply(db, flavor, s.id, &b, now)?;
+        }
+        UI_DOC => {
+            body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
+            uidoc::set_active(db, flavor, Some(s.id))?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -1617,5 +1639,72 @@ mod tests {
             list(&db, FLAVOR, NOW).unwrap().decided.is_empty(),
             "not in Approvals' history either"
         );
+    }
+
+    /// UI1: a UI document is checked at pickup like render_ui's (a broken
+    /// one is refused with its JSON pointer); Use this makes it the UI in
+    /// use, which the UI slot carries; Go back empties the slot.
+    #[test]
+    fn a_ui_document_is_checked_and_use_this_puts_it_in_the_slot() {
+        let (tmp, db) = setup();
+        let doc: serde_json::Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let ui = |doc: serde_json::Value| json!({ "name": "Round 4", "why": "Julia's cluster", "doc": doc });
+        drop_file(tmp.path(), UI_DOC, ui(doc.clone()));
+        let mut broken = doc.clone();
+        broken["parts"][0]["kind"] = json!("hologram");
+        drop_file(tmp.path(), UI_DOC, ui(broken));
+        assert_eq!(ingest(&db, tmp.path(), FLAVOR, true, NOW).unwrap(), 2);
+
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        let waiting = &a.waiting[0];
+        assert_eq!(waiting.kind, UI_DOC);
+        let v = waiting.ui_doc.as_ref().unwrap();
+        assert_eq!((v.name.as_str(), v.active), ("Round 4", false));
+        let refused = &a.decided[0];
+        assert_eq!(refused.status, "rejected");
+        assert!(
+            refused
+                .status_reason
+                .as_deref()
+                .unwrap()
+                .contains("/parts/0/kind"),
+            "{:?}",
+            refused.status_reason
+        );
+
+        // Nothing in use yet: the slot carries no document.
+        assert!(uidoc::slot_entries(&db, FLAVOR).unwrap().is_empty());
+        decide(&db, FLAVOR, waiting.id, Decision::Approve, NOW).unwrap();
+        let active = uidoc::active_ui(&db, FLAVOR).unwrap().unwrap();
+        assert_eq!((active.id, active.name.as_str()), (waiting.id, "Round 4"));
+        let entries = uidoc::slot_entries(&db, FLAVOR).unwrap();
+        let keys: Vec<_> = entries.iter().map(|(k, _)| k.clone()).collect();
+        assert_eq!(
+            keys,
+            [
+                crate::sv::LuaValue::str("name"),
+                crate::sv::LuaValue::str("doc")
+            ]
+        );
+        // The slot file holds it, within the bridge's caps, and reads back.
+        let built = crate::bridge::build(&db, FLAVOR, NOW, &[crate::bridge::Slot::Ui]).unwrap();
+        let text = String::from_utf8(built.slots[0].1.clone()).unwrap();
+        assert!(text.starts_with("ForeverBuddyData_UI = "), "{text}");
+        assert!(
+            text.contains("Round 4") && text.contains("actionbar"),
+            "{text}"
+        );
+        assert!(
+            list(&db, FLAVOR, NOW).unwrap().decided[0]
+                .ui_doc
+                .as_ref()
+                .unwrap()
+                .active
+        );
+
+        // Go back to the standard HUD.
+        uidoc::set_active(&db, FLAVOR, None).unwrap();
+        assert!(uidoc::active_ui(&db, FLAVOR).unwrap().is_none());
+        assert!(uidoc::slot_entries(&db, FLAVOR).unwrap().is_empty());
     }
 }

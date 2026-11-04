@@ -135,6 +135,19 @@ export const commands = {
 	 */
 	uiDraftsList: () => __TAURI_INVOKE<UiDraft[]>("ui_drafts_list"),
 	/**
+	 *  UI1: a proposed UI document drawn on the player's screen at `moment`,
+	 *  as a PNG `data:` URL for its Approvals card (the same render as
+	 *  render_ui). Needs the preview data the Your UI tab downloads.
+	 */
+	uiDocPicture: (id: number, moment: Moment) => __TAURI_INVOKE<string>("ui_doc_picture", { id, moment }),
+	/**  UI1: the UI document in use, if any (for "Go back to the standard HUD"). */
+	uiDocActive: () => __TAURI_INVOKE<{
+	id: number,
+	name: string,
+} | null>("ui_doc_active"),
+	/**  UI1: "Go back to the standard HUD": no document in use, sent to the game. */
+	uiDocGoBack: () => __TAURI_INVOKE<null>("ui_doc_go_back"),
+	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
 	 *  journal, over `range`, in the user's time zone.
 	 */
@@ -528,6 +541,12 @@ export type AccountNode = {
 	/**  Account-wide files (account SavedVariables, macros, bindings…). */
 	categories: CategoryNode[],
 	characters: CharacterNode[],
+};
+
+/**  The UI in use, for "Go back to the standard HUD". */
+export type ActiveUi = {
+	id: number,
+	name: string,
 };
 
 /**  One staged switch: turn `addon` on or off for `character`. */
@@ -2067,6 +2086,11 @@ export type Proposal = {
 	 *  Never part of Approve all.
 	 */
 	macro_change: MacroView | null,
+	/**
+	 *  A whole UI document (UI1): its name and why; the picture is
+	 *  `ui_doc_picture`'s. Never part of Approve all.
+	 */
+	ui_doc: UiDocView | null,
 };
 
 /**  What a prune did. */
@@ -2612,6 +2636,18 @@ export type TrialChange = {
 };
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
+
+/**
+ *  A document as Approvals shows it (its picture comes from
+ *  `ui_doc_picture`).
+ */
+export type UiDocView = {
+	name: string,
+	why: string,
+	words: string | null,
+	/**  It's the UI in use now. */
+	active: boolean,
+};
 
 /**  A draft as the Your UI tab shows it. */
 export type UiDraft = {

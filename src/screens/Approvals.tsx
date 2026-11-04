@@ -1,26 +1,34 @@
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Backpack,
   FileText,
   Hash,
+  LayoutDashboard,
   Map as MapIcon,
   ShoppingBag,
   SlidersHorizontal,
   Target,
 } from "lucide-react";
-import type {
-  BagMarksView,
-  Decision,
-  ListView,
-  LoginNote,
-  MacroView,
-  NoteView,
-  PlanView,
-  Proposal,
-  SettingView,
-  Step,
-  Trial,
+import {
+  type ActiveUi,
+  type Approvals as ApprovalsData,
+  type BagMarksView,
+  commands,
+  type Decision,
+  type ListView,
+  type LoginNote,
+  type MacroView,
+  type Moment,
+  type NoteView,
+  type PlanView,
+  type Proposal,
+  type SettingView,
+  type Step,
+  type Trial,
+  type UiDocView,
 } from "@/lib/bindings";
+import { errorText } from "@/lib/format";
 import { MarkTag } from "@/screens/BagCleanup";
 import { Button, EmptyState, ItemIcon, Page, PageHeader, Panel, PanelHeader, PrimaryButton } from "@/components/d";
 import { useApprovals } from "@/hooks/useApprovals";
@@ -53,6 +61,7 @@ const KIND: Record<string, string> = {
   goal: "Goal",
   settings: "Addon setting",
   macro: "Macro",
+  ui_doc: "UI",
 };
 
 function Who({ n }: { n: Pick<NoteView | PlanView | BagMarksView, "character" | "class"> }) {
@@ -88,7 +97,89 @@ function Title({ p }: { p: Proposal }) {
       </>
     );
   if (p.macro_change) return <MacroTitle m={p.macro_change} />;
+  if (p.ui_doc) return <>A new UI: "{p.ui_doc.name}"</>;
   return <>{kind}</>;
+}
+
+/** UI1: the document drawn on your screen, standing and in combat. */
+function UiShot({ id, moment }: { id: number; moment: Moment }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    commands.uiDocPicture(id, moment).then(
+      (s) => live && setSrc(s),
+      (e) => live && setErr(errorText(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [id, moment]);
+  return (
+    <div className="ap-pv">
+      <h3>{moment === "combat" ? "In combat" : "Standing"}</h3>
+      {src ? (
+        <img src={src} alt={`The UI ${moment === "combat" ? "in combat" : "standing"}`} style={{ width: "100%", display: "block", borderRadius: 3 }} />
+      ) : err ? (
+        <small className="d-dim">{err}</small>
+      ) : (
+        <small className="d-dim">Drawing…</small>
+      )}
+    </div>
+  );
+}
+
+function UiDocPreview({ id, v }: { id: number; v: UiDocView }) {
+  return (
+    <>
+      <div className="ap-why">
+        {v.why}
+        {v.words && (
+          <>
+            {" "}
+            · You asked for: <q>{v.words}</q>
+          </>
+        )}
+      </div>
+      <div className="ap-cmp">
+        <UiShot id={id} moment="standing" />
+        <UiShot id={id} moment="combat" />
+      </div>
+      <div className="ap-next">
+        Use this and it's live in the game at your next login, in place of the standard HUD, for every character. You
+        can go back any time.
+      </div>
+    </>
+  );
+}
+
+/** UI1: the UI in use, and the way back to the standard HUD. */
+function ActiveUiBar({ approvals }: { approvals: ApprovalsData | null }) {
+  const [active, setActive] = useState<ActiveUi | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Asked again whenever something is decided.
+  const decided = approvals ? approvals.decided.length + approvals.waiting.length * 1000 : -1;
+  useEffect(() => {
+    commands.uiDocActive().then(setActive, () => setActive(null));
+  }, [decided]);
+  if (!active) return null;
+  const back = () => {
+    setErr(null);
+    commands.uiDocGoBack().then(
+      () => setActive(null),
+      (e) => setErr(errorText(e)),
+    );
+  };
+  return (
+    <div className="ap-bar" style={{ marginBottom: 16 }}>
+      <span className="grow">
+        <b>Your UI in the game: "{active.name}".</b> {err ?? "Going back takes effect at your next login."}
+      </span>
+      <Button variant="ghost" onClick={back}>
+        Go back to the standard HUD
+      </Button>
+    </div>
+  );
 }
 
 /**
@@ -390,7 +481,9 @@ const needsYou = (p: Proposal) =>
   (p.note?.replaces?.conflict ?? false) ||
   (p.list?.gone ?? false) ||
   (p.kind === "settings" && (p.setting?.acts ?? true)) ||
-  p.kind === "macro";
+  p.kind === "macro" ||
+  // UI1: a whole UI is looked at and picked on its own.
+  p.kind === "ui_doc";
 
 function Mine({ now }: { now: LoginNote | null }) {
   if (!now) return <div className="ap-notetxt ap-gone">Removed since. Using the proposal adds it as a new note.</div>;
@@ -432,6 +525,8 @@ function Waiting({
             <SlidersHorizontal size={15} />
           ) : p.macro_change ? (
             <Hash size={15} />
+          ) : p.ui_doc ? (
+            <LayoutDashboard size={15} />
           ) : (
             <FileText size={15} />
           )}
@@ -462,6 +557,13 @@ function Waiting({
                 Keep mine
               </Button>
               <Button onClick={() => decide([p.id], "use_proposed")}>Use proposed</Button>
+            </>
+          ) : p.ui_doc ? (
+            <>
+              <Button variant="ghost" onClick={() => decide([p.id], "decline")}>
+                Not this one
+              </Button>
+              <Button onClick={() => decide([p.id], "approve")}>Use this</Button>
             </>
           ) : (
             <>
@@ -524,6 +626,7 @@ function Waiting({
           <div className="ap-next">{macroNext(p.macro_change)}</div>
         </>
       )}
+      {p.ui_doc && <UiDocPreview id={p.id} v={p.ui_doc} />}
     </div>
   );
 }
@@ -572,6 +675,7 @@ export function Approvals({
           <TrialPanel t={approvals.trial} keep={keepSettings} />
         </div>
       )}
+      <ActiveUiBar approvals={approvals} />
       <section className="ap-split">
         {settings && approvals && waiting.length === 0 ? (
           // UX-EMPTY: the same empty state as every other screen.
