@@ -2,7 +2,7 @@
 
 A UI document is JSON that describes a whole in-game UI: unit frames, bars, numbers, combo points, action buttons, and which of Blizzard's frames step aside. Nothing in it runs: Forever Buddy's addon reads it and builds frames. Never send Lua.
 
-**What works today:** `render_ui` draws a document on a stand-in screen (Forever Buddy's test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) and hands you back a picture, so you can see your work and fix it before the player looks. **What doesn't yet:** a document can't be sent to the game; that's next. To change what the player has in game today, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
+`render_ui` draws a document on a stand-in screen (Forever Buddy's test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) and hands you back a picture, so you can see your work and fix it before the player looks. `propose_ui` then sends the finished document to the player: they see it drawn in Forever Buddy's Approvals and pick it with **Use this**, and it's live in the game at their next login, in place of the standard HUD, for every character on the account. They can go back to the standard HUD any time. To tweak the standard HUD's look instead, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
 
 ## The loop
 
@@ -12,6 +12,7 @@ A UI document is JSON that describes a whole in-game UI: unit frames, bars, numb
 4. If the document has problems, nothing is drawn and you get each one with its path (`/parts/3/anchor/1`) and how to fix it. Fix them and draw again.
 5. Fix what looks off: overlaps, text too small to read, things that should hide out of combat. Draw again.
 6. Show the player the pictures and the idea in a sentence.
+7. When they like it, `propose_ui` with a `name` they'll pick it by, `why` in a sentence, their `words`, and the `doc`. It's checked exactly as `render_ui` checks it, and a document with problems isn't queued. Tell them to open Approvals and pick **Use this**; it's live at their next login.
 
 Without the MCP, the app's command line draws the same picture: `<WoW Forever Buddy> render doc.json --moment combat --out shot.png`.
 

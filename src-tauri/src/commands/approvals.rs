@@ -75,6 +75,60 @@ pub fn approvals_decide(state: State<'_, AppState>, id: u32, decision: Decision)
     Ok(())
 }
 
+/// UI1: a proposed UI document drawn on the player's screen at `moment`,
+/// as a PNG `data:` URL for its Approvals card (the same render as
+/// render_ui). Needs the preview data the Your UI tab downloads.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_picture(
+    state: State<'_, AppState>,
+    id: u32,
+    moment: crate::preview::Moment,
+) -> AppResult<String> {
+    use base64::Engine;
+    let core = &state.core;
+    let doc = proposals::uidoc::doc(&core.db, &core.active_game()?.flavor, id)?
+        .ok_or_else(|| crate::error::AppError::NotFound("that UI".into()))?;
+    let scratch = tempfile::tempdir().map_err(|e| crate::error::AppError::Io(e.to_string()))?;
+    let data = crate::preview::ui::data_dir(&core.paths.local_data_dir);
+    let outcome = crate::preview::ui::render(&crate::preview::ui::Request {
+        data: &data,
+        scratch: scratch.path(),
+        doc: &doc,
+        moment,
+        class: None,
+        scale: 0.5,
+    })
+    .map_err(crate::error::AppError::NotFound)?;
+    match outcome {
+        crate::preview::ui::Outcome::Drawn(r) => Ok(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(r.png)
+        )),
+        crate::preview::ui::Outcome::Refused(p) => Err(crate::error::AppError::InvalidSettings(
+            crate::preview::ui::problem_lines(&p),
+        )),
+    }
+}
+
+/// UI1: the UI document in use, if any (for "Go back to the standard HUD").
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_active(state: State<'_, AppState>) -> AppResult<Option<proposals::uidoc::ActiveUi>> {
+    let core = &state.core;
+    proposals::uidoc::active_ui(&core.db, &core.active_game()?.flavor)
+}
+
+/// UI1: "Go back to the standard HUD": no document in use, sent to the game.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_go_back(state: State<'_, AppState>) -> AppResult<()> {
+    let core = &state.core;
+    proposals::uidoc::set_active(&core.db, &core.active_game()?.flavor, None)?;
+    let _ = core.send_to_game();
+    Ok(())
+}
+
 /// P4b: "Keep the new settings or go back?", asked once after the game has
 /// applied them. Going back sends the old settings to the game.
 #[tauri::command(async)]

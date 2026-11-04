@@ -29,7 +29,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 10] = [
+const TOOLS: [Tool; 11] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -174,6 +174,20 @@ const TOOLS: [Tool; 10] = [
         description: "What became of the suggestions made through this connection in the last 30 days: waiting, approved, declined, or not queued (with the reason).",
         read_only: true,
         schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+    },
+    // UI1: a whole UI document, drawn live in the game once the player picks it.
+    Tool {
+        name: "propose_ui",
+        description: "Sends the player a whole UI document to use in the game: the same document render_ui draws (render it first and refine it until it looks right). The player sees it drawn in Forever Buddy's Approvals and picks it with Use this; it's live in the game at their next login, in place of the standard HUD, until they go back. Checked before anything is queued, exactly as render_ui checks it: a document with problems is refused with them, by JSON pointer, so fix and send again. One document per call; it's the account's UI (every character) for now.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "name": { "type": "string", "maxLength": proposals::uidoc::MAX_NAME, "description": "A few words the player picks it by, e.g. \"Halo\"." },
+                "why": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What this UI does, in a sentence. Shown to the player." },
+                "words": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What the player asked for, in their words." },
+                "doc": { "type": "object", "description": "The UI document, as render_ui takes it." } },
+              "required": ["name", "why", "doc"], "additionalProperties": false })
+        },
     },
 ];
 
@@ -355,6 +369,13 @@ pub fn call_in(
             let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
             stage(&db, paths, flavor, client, proposals::MACRO, a.reason, body)
         }
+        "propose_ui" => {
+            let p: proposals::uidoc::UiDocProposal = args(raw)?;
+            // The app checks again on pickup; this tells the agent now.
+            proposals::uidoc::check(&p)?;
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::UI_DOC, None, body)
+        }
         "propose_note" => {
             let a: NoteArgs = args(raw)?;
             let note = NoteProposal {
@@ -517,6 +538,7 @@ pub fn call_in(
                     "setting": p.setting.as_ref().map(|s| json!({ "option": s.option, "from": s.from, "to": s.to })),
                     "macro": p.macro_change.as_ref().map(|m| json!({
                         "action": m.action, "name": m.name, "for": m.target, "in_game": m.game })),
+                    "ui": p.ui_doc.as_ref().map(|u| json!({ "name": u.name, "in_use": u.active })),
                 })
             };
             let not_picked_up = inbox::waiting(&paths.dir).len();
