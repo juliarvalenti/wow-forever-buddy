@@ -23,9 +23,33 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use sandbox::{DrawOptions, Host, Session};
+
+/// The moment the Your UI tab shows (ED1): the logged-in scene, or the same
+/// scene in combat, in stealth or at low health (`tools/addon-shots/preview.lua`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum Moment {
+    #[default]
+    Standing,
+    Combat,
+    Stealth,
+    LowHealth,
+}
+
+impl Moment {
+    /// The name `preview.lua` knows it by.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Moment::Standing => "standing",
+            Moment::Combat => "combat",
+            Moment::Stealth => "stealth",
+            Moment::LowHealth => "low_health",
+        }
+    }
+}
 
 /// A draw that takes longer than this is stopped (a full-art screen with
 /// Blizzard's UI takes several seconds).
@@ -64,6 +88,8 @@ pub struct PreviewStatus {
     pub draw_error: Option<String>,
     /// The frame is only the backdrop: none of our frames are on at login.
     pub blank: bool,
+    /// The moment the last frame shows.
+    pub moment: Moment,
 }
 
 /// The frame as the tab shows it: a `data:` URL, which the app's CSP lets an
@@ -87,6 +113,8 @@ pub struct Inputs {
     pub class: Option<String>,
     /// The player's extracted game files: only with the art switch on.
     pub extract: Option<PathBuf>,
+    /// The moment to draw; `Preview` sets it from the tab's choice.
+    pub moment: Moment,
 }
 
 enum Job {
@@ -116,6 +144,8 @@ pub struct Preview {
     tx: Sender<Job>,
     shared: Arc<Shared>,
     started: Mutex<bool>,
+    /// The tab's moment: kept here so a setting change redraws the same one.
+    moment: Mutex<Moment>,
 }
 
 impl Preview {
@@ -142,6 +172,7 @@ impl Preview {
                 class: None,
                 draw_error: None,
                 blank: false,
+                moment: Moment::Standing,
             }),
             frame: Mutex::new(None),
             notify: Mutex::new(None),
@@ -163,6 +194,7 @@ impl Preview {
             tx,
             shared,
             started: Mutex::new(false),
+            moment: Mutex::new(Moment::Standing),
         }
     }
 
@@ -187,15 +219,22 @@ impl Preview {
             .clone()
     }
 
-    /// The Preview tab asked: from now on, setting changes redraw too.
-    pub fn open(&self, inputs: Inputs) {
+    /// The tab asked for `moment` (or the one it last chose): from now on,
+    /// setting changes redraw too.
+    pub fn open(&self, mut inputs: Inputs, moment: Option<Moment>) {
         *self.started.lock().expect("preview started lock") = true;
+        let mut m = self.moment.lock().expect("preview moment lock");
+        if let Some(moment) = moment {
+            *m = moment;
+        }
+        inputs.moment = *m;
         let _ = self.tx.send(Job::Draw(inputs));
     }
 
-    /// A setting changed: redraw, if the tab has ever been opened.
-    pub fn changed(&self, inputs: Inputs) {
+    /// A setting changed: redraw the tab's moment, if it has ever been opened.
+    pub fn changed(&self, mut inputs: Inputs) {
         if *self.started.lock().expect("preview started lock") {
+            inputs.moment = *self.moment.lock().expect("preview moment lock");
             let _ = self.tx.send(Job::Draw(inputs));
         }
     }
@@ -341,6 +380,7 @@ impl Worker {
                     s.drew_ms = Some(ms);
                     s.lua_errors = drawn.lua_errors;
                     s.class = drawn.class;
+                    s.moment = inputs.moment;
                     s.draw_error = None;
                 });
             }
@@ -380,6 +420,7 @@ impl Worker {
         let opts = DrawOptions {
             class: inputs.class.clone(),
             art: inputs.extract.is_some(),
+            moment: inputs.moment.as_str(),
         };
         let host = host.clone();
         SESSION.with(|s| {
@@ -423,6 +464,7 @@ pub fn inputs(db: &crate::db::Db, flavor: &str, now: i64) -> crate::error::AppRe
         slots,
         class,
         extract: None,
+        moment: Moment::Standing,
     })
 }
 
@@ -506,7 +548,7 @@ mod tests {
 
         // Nothing changed yet: the settings slot is the shipped stub, and our
         // rogue HUD is off.
-        preview.open(rogue(inputs(&db, FLAVOR, 1).unwrap()));
+        preview.open(rogue(inputs(&db, FLAVOR, 1).unwrap()), None);
         let (first, before) = next_frame(&preview, &rx, 0);
         assert_eq!(first.class.as_deref(), Some("rogue"));
         assert!(!before.contains("Syndicate Highwayman"));
@@ -547,11 +589,15 @@ mod tests {
         let s = preview.status();
         assert_eq!(s.data, PreviewData::Missing);
         assert_eq!(s.download_bytes as u64, data::total_bytes());
-        preview.open(Inputs {
-            slots: BTreeMap::new(),
-            class: None,
-            extract: None,
-        });
+        preview.open(
+            Inputs {
+                slots: BTreeMap::new(),
+                class: None,
+                extract: None,
+                moment: Moment::Standing,
+            },
+            None,
+        );
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(preview.status().generation, 0);
         assert!(preview.frame().is_none());

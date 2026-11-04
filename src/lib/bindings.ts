@@ -370,8 +370,11 @@ export const commands = {
 	previewStatus: () => __TAURI_INVOKE<PreviewStatus>("preview_status"),
 	/**  The last good frame, if there is one, as a `data:` URL for an `<img>`. */
 	previewFrame: () => __TAURI_INVOKE<string | null>("preview_frame"),
-	/**  The tab opened: draw now, and redraw on every change from here on. */
-	previewOpen: () => __TAURI_INVOKE<null>("preview_open"),
+	/**
+	 *  The tab opened, or picked a moment: draw now (that moment, or the one it
+	 *  last picked), and redraw on every change from here on.
+	 */
+	previewOpen: (moment: "standing" | "combat" | "stealth" | "low_health" | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
 	/**
 	 *  "Download preview data": WOWAPI's data files from GitHub, checked against
 	 *  the hashes the app carries. Progress arrives as `PreviewChanged`.
@@ -1779,6 +1782,12 @@ export type Marker = {
 	label: string,
 };
 
+/**
+ *  The moment the Your UI tab shows (ED1): the logged-in scene, or the same
+ *  scene in combat, in stealth or at low health (`tools/addon-shots/preview.lua`).
+ */
+export type Moment = "standing" | "combat" | "stealth" | "low_health";
+
 export type MoneyPoint = {
 	at: string,
 	money: number | null,
@@ -1959,6 +1968,8 @@ export type PreviewStatus = {
 	draw_error: string | null,
 	/**  The frame is only the backdrop: none of our frames are on at login. */
 	blank: boolean,
+	/**  The moment the last frame shows. */
+	moment: Moment,
 };
 
 /**  Emitted after new prices were read. */

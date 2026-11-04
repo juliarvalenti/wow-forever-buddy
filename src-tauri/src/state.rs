@@ -273,6 +273,7 @@ impl AppCore {
                 slots: Default::default(),
                 class: None,
                 extract: None,
+                moment: Default::default(),
             });
         };
         crate::preview::inputs(&self.db, &game.flavor, chrono::Utc::now().timestamp())

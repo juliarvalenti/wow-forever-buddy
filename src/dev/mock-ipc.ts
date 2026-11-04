@@ -37,6 +37,7 @@ import type {
   Mark,
   Marked,
   MacrosList,
+  Moment,
   Plan,
   PlaySession,
   QuestLog,
@@ -451,6 +452,8 @@ export function installMockIpc(): void {
   // P1: Thrandor's plan from character.html?plan, 2 of 5 done, in the game.
   const approved = new Date(now - 20 * 60_000).toISOString();
   const planStep = (text: string, zone: string): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
+  // ED1: the moment the Your UI tab last picked.
+  let previewMoment: Moment = "standing";
   let plans: Plan[] = [
     {
       id: 1,
@@ -1506,7 +1509,8 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
-    // PV1: the preview's data is downloaded and one frame drawn.
+    // PV1 and ED1: the preview's data is downloaded and one frame drawn.
+    // ?yourui=blank shows the "This is Blizzard's UI" state.
     preview_status: () => ({
       data: "ready",
       data_error: null,
@@ -1518,7 +1522,8 @@ export function installMockIpc(): void {
       lua_errors: 0,
       class: "rogue",
       draw_error: null,
-      blank: false,
+      blank: new URLSearchParams(location.search).get("yourui") === "blank",
+      moment: previewMoment,
     }),
     preview_frame: () =>
       "data:image/svg+xml;charset=utf-8," +
@@ -1526,7 +1531,10 @@ export function installMockIpc(): void {
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>' +
           '<rect x="660" y="960" width="600" height="56" rx="6" fill="#2a3338"/></svg>',
       ),
-    preview_open: () => null,
+    preview_open: ({ moment }) => {
+      if (moment) previewMoment = moment as Moment;
+      return null;
+    },
     preview_download: () => null,
     preview_remove_data: () => null,
     // O2: IMPLEMENTING §22. "tidy" has one of each; elsewhere nothing.
