@@ -151,7 +151,7 @@ pub type Values = BTreeMap<String, Value>;
 /// number its range, for a choice one of its values, for text its length
 /// and no control characters. The addon's `U.prefs.fits` checks the same
 /// before applying anything.
-fn fits(o: &Opt, v: &Value) -> bool {
+pub(crate) fn fits(o: &Opt, v: &Value) -> bool {
     match o.kind.as_str() {
         "bool" => v.is_boolean(),
         "number" => v.as_f64().is_some_and(|n| {
@@ -176,7 +176,7 @@ fn fits(o: &Opt, v: &Value) -> bool {
 }
 
 /// What an option takes, in words for the agent.
-fn allowed(o: &Opt) -> String {
+pub(crate) fn allowed(o: &Opt) -> String {
     let n = |v: Option<f64>| v.map_or_else(|| "any".to_string(), |v| v.to_string());
     match o.kind.as_str() {
         "bool" => "true or false".into(),
@@ -217,6 +217,11 @@ fn read_vals(s: &str) -> Values {
 
 fn json(vals: &Values) -> String {
     serde_json::to_string(vals).expect("values serialize")
+}
+
+/// What each option is about to be (`effective`'s values).
+pub(crate) fn values_now(db: &Db, flavor: &str) -> AppResult<Values> {
+    Ok(db.with_conn(|c| effective(c, flavor))?.0)
 }
 
 pub fn defaults() -> Values {
@@ -515,13 +520,24 @@ pub fn view(db: &Db, flavor: &str, b: &SettingBody) -> AppResult<SettingView> {
 
 /// Approve: a new profile, the values about to be with this change.
 pub fn approve(db: &Db, flavor: &str, b: &SettingBody, now: i64) -> AppResult<()> {
-    let o = option(&b.option)
-        .filter(|o| fits(o, &b.value))
-        .ok_or_else(|| AppError::NotFound(format!("the setting {}", b.option)))?;
+    approve_all(db, flavor, std::slice::from_ref(b), now)
+}
+
+/// Approve several at once (a UI draft's "Use this", ED1): one new profile
+/// with all of them, or nothing if each is already the value.
+pub fn approve_all(db: &Db, flavor: &str, changes: &[SettingBody], now: i64) -> AppResult<()> {
+    for b in changes {
+        option(&b.option)
+            .filter(|o| fits(o, &b.value))
+            .ok_or_else(|| AppError::NotFound(format!("the setting {}", b.option)))?;
+    }
     db.with_conn(|c| {
         let tx = c.transaction()?;
         let (mut vals, _) = effective(&tx, flavor)?;
-        if vals.get(&o.id).is_some_and(|v| same(v, &b.value)) {
+        if changes
+            .iter()
+            .all(|b| vals.get(&b.option).is_some_and(|v| same(v, &b.value)))
+        {
             return Ok(());
         }
         let s = seen(&tx, flavor)?;
@@ -531,7 +547,9 @@ pub fn approve(db: &Db, flavor: &str, b: &SettingBody, now: i64) -> AppResult<()
         let base = pending(s.as_ref(), n.as_ref())
             .and_then(|p| p.base.clone())
             .unwrap_or_else(|| in_game(s.as_ref()));
-        vals.insert(o.id.clone(), b.value.clone());
+        for b in changes {
+            vals.insert(b.option.clone(), b.value.clone());
+        }
         insert_profile(&tx, flavor, &vals, Some(&base), now)?;
         tx.commit()?;
         Ok(())
@@ -566,10 +584,31 @@ pub fn slot_entries(db: &Db, flavor: &str) -> AppResult<Vec<(LuaValue, LuaValue)
     let Some(p) = db.with_conn(|c| newest(c, flavor))? else {
         return Ok(Vec::new());
     };
+    Ok(entries(p.id, &p.vals))
+}
+
+/// The Settings slot as it would be with a draft used (ED1): what each
+/// option is about to be, with `changes` over it, as the profile after the
+/// newest. Only the Your UI tab's preview draws it; nothing writes it.
+pub fn draft_slot_entries(
+    db: &Db,
+    flavor: &str,
+    changes: &[SettingBody],
+) -> AppResult<Vec<(LuaValue, LuaValue)>> {
+    let (mut vals, id) = db.with_conn(|c| {
+        let (vals, _) = effective(c, flavor)?;
+        Ok((vals, newest(c, flavor)?.map_or(0, |p| p.id)))
+    })?;
+    for b in changes {
+        vals.insert(b.option.clone(), b.value.clone());
+    }
+    Ok(entries(id + 1, &vals))
+}
+
+fn entries(profile: i64, vals: &Values) -> Vec<(LuaValue, LuaValue)> {
     let values = LuaTable {
         array: Vec::new(),
-        hash: p
-            .vals
+        hash: vals
             .iter()
             .filter_map(|(k, v)| {
                 let v = match v {
@@ -585,10 +624,10 @@ pub fn slot_entries(db: &Db, flavor: &str) -> AppResult<Vec<(LuaValue, LuaValue)
             })
             .collect(),
     };
-    Ok(vec![
-        (LuaValue::str("profile"), LuaValue::Int(p.id)),
+    vec![
+        (LuaValue::str("profile"), LuaValue::Int(profile)),
         (LuaValue::str("values"), LuaValue::Table(Box::new(values))),
-    ])
+    ]
 }
 
 // ---- keep or go back -------------------------------------------------------

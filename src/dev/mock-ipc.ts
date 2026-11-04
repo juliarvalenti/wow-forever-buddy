@@ -43,6 +43,8 @@ import type {
   QuestLog,
   Reason,
   RestorePlan,
+  SettingView,
+  UiDraft,
   SearchResults,
   SecretStatus,
   SeenItem,
@@ -452,8 +454,35 @@ export function installMockIpc(): void {
   // P1: Thrandor's plan from character.html?plan, 2 of 5 done, in the game.
   const approved = new Date(now - 20 * 60_000).toISOString();
   const planStep = (text: string, zone: string): Plan["steps"][number] => ({ text, quest_id: null, zone, kind: null });
-  // ED1: the moment the Your UI tab last picked.
+  // ED1: the moment and the draft the Your UI tab last picked, and three
+  // drafts from Claude (?yourui=draft opens on the first).
   let previewMoment: Moment = "standing";
+  const yourui = new URLSearchParams(location.search).get("yourui");
+  const look = (option: string, label: string, from: string, to: string): SettingView => ({
+    option, label, help: "", section: "Look", from, to, acts: false, same: false, lints: [],
+  });
+  const asked = "something cleaner, closer to my character";
+  let uiDrafts: UiDraft[] = yourui === "nodrafts" ? [] : [
+    {
+      id: 901, name: "Stacked, blue", why: "Both frames over the bars, so your eyes stay in the middle of the screen.",
+      words: asked, producer: "Claude Code", created_at: iso(0),
+      changes: [look("hud.enabled", "HUD", "off", "on"), look("hud.healthColor", "Health colour", "#4fd99a", "#5fb6e8"),
+        look("hud.layout", "Layout", "side", "stacked")],
+    },
+    {
+      id: 902, name: "Round 4, bigger numbers", why: "Our usual look, with health numbers you can read mid-fight.",
+      words: asked, producer: "Claude Code", created_at: iso(0),
+      changes: [look("hud.enabled", "HUD", "off", "on"), look("hud.textSize", "Number size", "22", "28")],
+    },
+    {
+      id: 903, name: "Flat and small", why: "No gradient, smaller frames and buttons: as little as possible on screen.",
+      words: asked, producer: "Claude Code", created_at: iso(0),
+      changes: [look("hud.enabled", "HUD", "off", "on"), look("hud.gradient", "Gradient on bars", "on", "off"),
+        look("hud.width", "Frame width", "300", "240"), look("actionbars.iconSize", "Button size", "46", "40")],
+    },
+  ];
+  let previewDraft: number | null = yourui === "draft" ? 901 : null;
+  let previewGen = 1;
   let plans: Plan[] = [
     {
       id: 1,
@@ -1450,6 +1479,11 @@ export function installMockIpc(): void {
     approvals_list: () => approvals,
     approvals_waiting: () => (settings.agent_access ? approvals.waiting.length : 0),
     approvals_decide: ({ id, decision }) => {
+      // ED1: a UI draft's Use this or Throw away.
+      if (uiDrafts.some((d) => d.id === id)) {
+        uiDrafts = uiDrafts.filter((d) => d.id !== id);
+        return null;
+      }
       const p = approvals.waiting.find((w) => w.id === id);
       if (!p) throw { kind: "NotFound", message: "that suggestion, or it was already decided" };
       approvals.waiting = approvals.waiting.filter((w) => w.id !== id);
@@ -1509,6 +1543,13 @@ export function installMockIpc(): void {
       plans = plans.filter((p) => p.character_id !== characterId);
       return plans;
     },
+    // ED1: Claude's drafts (?yourui=nodrafts for none).
+    ui_drafts_list: (): UiDraft[] => uiDrafts,
+    preview_draft: ({ draft }) => {
+      previewDraft = (draft as number | null) ?? null;
+      previewGen += 1;
+      return null;
+    },
     // PV1 and ED1: the preview's data is downloaded and one frame drawn.
     // ?yourui=blank shows the "This is Blizzard's UI" state.
     preview_status: () => ({
@@ -1517,20 +1558,41 @@ export function installMockIpc(): void {
       download_bytes: 7_768_345,
       downloaded_bytes: 7_768_345,
       drawing: false,
-      generation: 1,
+      generation: previewGen,
       drew_ms: 212,
       lua_errors: 0,
       class: "rogue",
       draw_error: null,
       blank: new URLSearchParams(location.search).get("yourui") === "blank",
       moment: previewMoment,
+      draft: previewDraft,
     }),
-    preview_frame: () =>
-      "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>' +
-          '<rect x="660" y="960" width="600" height="56" rx="6" fill="#2a3338"/></svg>',
-      ),
+    // A sketch of round 4's cluster: frames either side of the bars, or
+    // stacked over them for a draft that says so, in its health colour.
+    preview_frame: () => {
+      const d = uiDrafts.find((x) => x.id === previewDraft);
+      const to = (option: string) => d?.changes.find((c) => c.option === option)?.to;
+      const health = to("hud.healthColor") ?? "#4fd99a";
+      const stacked = to("hud.layout") === "stacked";
+      const frame = (x: number, y: number, fill: string, w: number) =>
+        `<rect x="${x}" y="${y}" width="300" height="48" fill="#000"/>` +
+        `<rect x="${x + 1}" y="${y + 1}" width="${w}" height="39" fill="${fill}"/>` +
+        `<rect x="${x + 1}" y="${y + 42}" width="298" height="5" fill="#f0c94a"/>`;
+      const bars = Array.from({ length: 16 }, (_, i) =>
+        `<rect x="${773 + (i % 8) * 47}" y="${786 + Math.floor(i / 8) * 47}" width="46" height="46" fill="#2a3338"/>`,
+      ).join("");
+      const hud = stacked
+        ? frame(810, 717, health, 253) + frame(810, 665, "#d24a3a", 179)
+        : frame(397, 785, health, 253) + frame(1148, 785, "#d24a3a", 179);
+      return (
+        "data:image/svg+xml;charset=utf-8," +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>` +
+            `<rect x="772" y="785" width="377" height="95" fill="#000"/>${bars}${hud}` +
+            `<rect x="772" y="${stacked ? 777 : 773}" width="376" height="8" fill="#fff569"/></svg>`,
+        )
+      );
+    },
     preview_open: ({ moment }) => {
       if (moment) previewMoment = moment as Moment;
       return null;

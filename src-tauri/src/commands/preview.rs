@@ -40,6 +40,17 @@ pub fn preview_open(state: State<'_, AppState>, moment: Option<Moment>) -> AppRe
     Ok(())
 }
 
+/// The tab picked a UI draft to see, or what's in game (none): draw it, and
+/// keep showing it through setting changes until the next pick.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn preview_draft(state: State<'_, AppState>, draft: Option<u32>) -> AppResult<()> {
+    let core = &state.core;
+    core.preview.set_draft(draft);
+    core.preview.open(core.preview_inputs()?, None);
+    Ok(())
+}
+
 /// "Download preview data": WOWAPI's data files from GitHub, checked against
 /// the hashes the app carries. Progress arrives as `PreviewChanged`.
 #[tauri::command(async)]

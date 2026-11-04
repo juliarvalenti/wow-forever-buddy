@@ -266,7 +266,8 @@ impl AppCore {
     /// What the Preview tab draws (PV1): the addon with every slot the app
     /// would send the game now (so the settings profile is the newest one
     /// approved), and the last-played character's class. With no install
-    /// yet, the addon as shipped and the generic character.
+    /// yet, the addon as shipped and the generic character. With a UI draft
+    /// picked (ED1) that's still waiting, its settings instead.
     pub fn preview_inputs(&self) -> AppResult<crate::preview::Inputs> {
         let Ok(game) = self.active_game() else {
             return Ok(crate::preview::Inputs {
@@ -274,9 +275,20 @@ impl AppCore {
                 class: None,
                 extract: None,
                 moment: Default::default(),
+                draft: None,
             });
         };
-        crate::preview::inputs(&self.db, &game.flavor, chrono::Utc::now().timestamp())
+        let draft = match self.preview.draft() {
+            Some(id) => crate::proposals::draft_changes(&self.db, &game.flavor, id)?
+                .map(|changes| (id, changes)),
+            None => None,
+        };
+        crate::preview::inputs(
+            &self.db,
+            &game.flavor,
+            chrono::Utc::now().timestamp(),
+            draft,
+        )
     }
 
     /// Something the game gets changed: the preview redraws, if it's open.

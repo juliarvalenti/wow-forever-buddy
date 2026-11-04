@@ -130,6 +130,11 @@ export const commands = {
 	 */
 	approvalsKeepSettings: (keep: boolean) => __TAURI_INVOKE<null>("approvals_keep_settings", { keep }),
 	/**
+	 *  ED1: the UI drafts waiting for the Your UI tab, newest first. Its "Use
+	 *  this" and "Throw away" are `approvals_decide`'s Approve and Decline.
+	 */
+	uiDraftsList: () => __TAURI_INVOKE<UiDraft[]>("ui_drafts_list"),
+	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
 	 *  journal, over `range`, in the user's time zone.
 	 */
@@ -375,6 +380,11 @@ export const commands = {
 	 *  last picked), and redraw on every change from here on.
 	 */
 	previewOpen: (moment: "standing" | "combat" | "stealth" | "low_health" | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
+	/**
+	 *  The tab picked a UI draft to see, or what's in game (none): draw it, and
+	 *  keep showing it through setting changes until the next pick.
+	 */
+	previewDraft: (draft: number | null) => __TAURI_INVOKE<null>("preview_draft", { draft }),
 	/**
 	 *  "Download preview data": WOWAPI's data files from GitHub, checked against
 	 *  the hashes the app carries. Progress arrives as `PreviewChanged`.
@@ -1970,6 +1980,8 @@ export type PreviewStatus = {
 	blank: boolean,
 	/**  The moment the last frame shows. */
 	moment: Moment,
+	/**  The UI draft the last frame shows, or `None` for what's in game. */
+	draft: number | null,
 };
 
 /**  Emitted after new prices were read. */
@@ -2552,6 +2564,21 @@ export type TrialChange = {
 };
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
+
+/**  A draft as the Your UI tab shows it. */
+export type UiDraft = {
+	id: number,
+	name: string,
+	why: string,
+	/**  What the player asked for, in their words, as the agent passed them on. */
+	words: string | null,
+	/**  Exactly as the client reported it. Shown quoted, as a claim. */
+	producer: string,
+	/**  RFC 3339. */
+	created_at: string,
+	/**  Each change: our label, and what it is now and would be. */
+	changes: SettingView[],
+};
 
 export type VerifyReport = {
 	snapshot_id: string,

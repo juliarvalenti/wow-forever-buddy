@@ -11,14 +11,15 @@ import {
   PrimaryButton,
   Segmented,
 } from "@/components/d";
-import { commands, events, type Moment, type PreviewStatus } from "@/lib/bindings";
+import { commands, events, type Moment, type PreviewStatus, type UiDraft } from "@/lib/bindings";
 import { useEvent } from "@/hooks/useEvent";
-import { usePreview } from "@/hooks/usePreview";
+import { useDrafts, usePreview } from "@/hooks/usePreview";
 import { bytes, errorText } from "@/lib/format";
 
 // ED1 (was PV1's Preview): Your UI. The player's own screen as the game
 // draws it with Forever Buddy and their settings, in a moment they pick, and
-// how to ask Claude to change it. No editing here: Claude makes the changes.
+// how to ask Claude to change it. No editing here: Claude makes drafts, the
+// player tries each on their own screen, and Use this sends one to the game.
 
 const MOMENTS: { value: Moment; label: string }[] = [
   { value: "standing", label: "Standing around" },
@@ -36,8 +37,36 @@ const ASKS = [
 ];
 
 export function Preview() {
-  const { status, frame, blank, error, download, moment, show } = usePreview();
+  const { status, frame, blank, error, download, moment, show, draft, showDraft } = usePreview();
+  const { drafts, reload } = useDrafts();
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const current = drafts.find((d) => d.id === draft) ?? null;
+
+  const pick = (id: number | null) => {
+    setDone(null);
+    setFailed(null);
+    showDraft(id);
+  };
+
+  const decide = async (d: UiDraft, use: boolean) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await commands.approvalsDecide(d.id, use ? "approve" : "decline");
+      setDone(
+        use ? `"${d.name}" is yours now. You'll see it in game the next time you log in.` : `Threw away "${d.name}".`,
+      );
+      showDraft(null);
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+      reload();
+    }
+  };
 
   const copy = () => {
     navigator.clipboard.writeText(SKILL).then(
@@ -119,20 +148,63 @@ export function Preview() {
                 ) : blank && !status.drawing ? (
                   <div className="yu-empty">
                     <h3>This is Blizzard's UI</h3>
-                    <p>
-                      Forever Buddy's HUD and action bars are off. Turn them on in game: type /fb, then open HUD and
-                      Action bars. Or ask Claude to make you a look. Either way, it shows up here.
-                    </p>
+                    {current ? (
+                      <p>This draft doesn't turn on anything of ours.</p>
+                    ) : (
+                      <p>
+                        Forever Buddy's HUD and action bars are off. Turn them on in game: type /fb, then open HUD
+                        and Action bars. Or ask Claude to make you a look. Either way, it shows up here.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="yu-empty">
                     <p>Drawing your screen…</p>
                   </div>
                 )}
-                {frame && !blank && <span className="yu-tag">{label}</span>}
+                {frame && !blank && (
+                  <span className="yu-tag">
+                    {current ? current.name : "In game now"} · {label}
+                  </span>
+                )}
               </div>
               {status.draw_error && (
                 <Callout tone="bad">That one didn't draw, so this is the last one that did. {status.draw_error}</Callout>
+              )}
+              {done && <Callout tone="stone">{done}</Callout>}
+              {failed && <Callout tone="bad">{failed}</Callout>}
+              {current && (
+                <div className="yu-draft">
+                  <div className="yu-draft-head">
+                    <h3>{current.name}</h3>
+                    <div className="ctl">
+                      <Button variant="ghost" onClick={() => decide(current, false)} disabled={busy}>
+                        Throw away
+                      </Button>
+                      <PrimaryButton onClick={() => decide(current, true)} disabled={busy}>
+                        Use this
+                      </PrimaryButton>
+                    </div>
+                  </div>
+                  <p className="d">{current.why}</p>
+                  {current.words && <p className="yu-words">You asked: “{current.words}”</p>}
+                  <ul className="yu-changes">
+                    {current.changes.map((c) => (
+                      <li key={c.option}>
+                        <span>{c.label}</span>
+                        <span className="d-dim">
+                          {c.same ? null : (
+                            <>
+                              <Value v={c.from} /> →{" "}
+                            </>
+                          )}
+                          <Value v={c.to} />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="d-dim">Use this sends it to the game for your next login. Nothing changes before then.</p>
+                </div>
               )}
               <p className="d-dim yu-note">
                 Only your UI is drawn here, not the world behind it. Icons show as grey squares.
@@ -142,6 +214,28 @@ export function Preview() {
         </div>
 
         <div className="yu-side">
+          <Panel>
+            <PanelHeader title="Drafts" />
+            <PanelBody>
+              <div className="yu-drafts">
+                <button type="button" aria-pressed={!current} onClick={() => pick(null)}>
+                  <b>In game now</b>
+                  <span>What you have today.</span>
+                </button>
+                {drafts.map((d) => (
+                  <button key={d.id} type="button" aria-pressed={current?.id === d.id} onClick={() => pick(d.id)}>
+                    <b>{d.name}</b>
+                    <span>{d.why}</span>
+                  </button>
+                ))}
+              </div>
+              {drafts.length === 0 && (
+                <p className="d-dim" style={{ marginTop: 8 }}>
+                  None yet. Ask Claude for two or three takes, and try each one on here.
+                </p>
+              )}
+            </PanelBody>
+          </Panel>
           <Panel>
             <PanelHeader title="Ask Claude" />
             <PanelBody>
@@ -159,13 +253,24 @@ export function Preview() {
                 ))}
               </ul>
               <p className="d-dim" style={{ marginTop: 10 }}>
-                Claude's changes wait in Approvals. Once you approve, you'll see them in game the next time you log in.
+                Claude's takes show up under Drafts. Nothing reaches the game until you pick one with Use this.
               </p>
             </PanelBody>
           </Panel>
         </div>
       </div>
     </Page>
+  );
+}
+
+/** A setting's value in a draft: a colour gets its swatch. */
+function Value({ v }: { v: string }) {
+  if (!/^#[0-9a-f]{6}$/i.test(v)) return <>{v}</>;
+  return (
+    <>
+      <i className="yu-swatch" style={{ background: v }} />
+      {v}
+    </>
   );
 }
 

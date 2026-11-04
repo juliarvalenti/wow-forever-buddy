@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { commands, events, type Moment, type PreviewStatus } from "@/lib/bindings";
+import { commands, events, type Moment, type PreviewStatus, type UiDraft } from "@/lib/bindings";
 import { useEvent } from "@/hooks/useEvent";
 import { errorText } from "@/lib/format";
 
@@ -46,6 +46,14 @@ export function usePreview() {
     commands.previewDownload().catch((e) => setError(errorText(e)));
   }, []);
 
+  // ED1: a UI draft to try on, or what's in game (null).
+  const [draft, setDraft] = useState<number | null | undefined>(undefined);
+  const showDraft = useCallback((id: number | null) => {
+    setDraft(id);
+    setError(null);
+    commands.previewDraft(id).catch((e) => setError(errorText(e)));
+  }, []);
+
   return {
     status,
     frame,
@@ -55,5 +63,20 @@ export function usePreview() {
     // The moment picked here, until the frame for it arrives.
     moment: moment ?? status?.moment ?? "standing",
     show,
+    // Likewise the draft.
+    draft: draft !== undefined ? draft : (status?.draft ?? null),
+    showDraft,
   };
+}
+
+/** ED1: Claude's UI drafts waiting on the Your UI tab, newest first. They
+ *  arrive through the agent inbox, which `approvals-changed` announces. */
+export function useDrafts() {
+  const [drafts, setDrafts] = useState<UiDraft[]>([]);
+  const load = useCallback(() => {
+    commands.uiDraftsList().then(setDrafts, () => setDrafts([]));
+  }, []);
+  useEffect(load, [load]);
+  useEvent(events.approvalsChanged, load);
+  return { drafts, reload: load };
 }

@@ -12,6 +12,7 @@ use crate::addon_settings::SettingsProposal;
 use crate::db::Db;
 use crate::goals::{self, GoalKind};
 use crate::proposals::bags::{BagProposal, ProposedMark};
+use crate::proposals::draft::DraftProposal;
 use crate::proposals::goal::GoalProposal;
 use crate::proposals::inbox::{self, InboxFile};
 use crate::proposals::list::{ListProposal, ProposedItem};
@@ -28,7 +29,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 7] = [
+const TOOLS: [Tool; 9] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -124,6 +125,26 @@ const TOOLS: [Tool; 7] = [
                     "required": ["option", "value"], "additionalProperties": false } } },
               "required": ["changes"], "additionalProperties": false })
         },
+    },
+    Tool {
+        name: "propose_ui_draft",
+        description: "Makes a draft of the player's in-game look: a named set of HUD and action bar settings (get_settings lists them; only display-only hud.* and actionbars.* options). The player sees each draft drawn on their own screen in Forever Buddy's Your UI tab and picks one with Use this, which sends it to the game at its next login; Throw away drops it. Nothing reaches the game until then. Make two or three drafts that differ in a clear way and let the player pick, rather than one. Up to 10 drafts wait at once.",
+        read_only: false,
+        schema: || {
+            json!({ "type": "object", "properties": {
+                "name": { "type": "string", "maxLength": proposals::draft::MAX_NAME, "description": "A few words the player picks it by, e.g. \"Stacked, blue\"." },
+                "why": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What this take does differently, in a sentence. Shown to the player." },
+                "words": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What the player asked for, in their words." },
+                "settings": { "type": "object", "minProperties": 1, "maxProperties": crate::addon_settings::MAX_CHANGES,
+                              "description": "Option id to value, e.g. {\"hud.enabled\": true, \"hud.layout\": \"stacked\"}. Each value of the option's type." } },
+              "required": ["name", "why", "settings"], "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "list_ui_drafts",
+        description: "The player's UI drafts: those waiting on the Your UI tab, and the last 30 days' used, thrown away, or not queued (with the reason), each with its settings.",
+        read_only: true,
+        schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
     },
     Tool {
         name: "list_proposals",
@@ -361,6 +382,47 @@ pub fn call(
             }
             let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
             stage(&db, paths, flavor, client, proposals::SETTINGS, None, body)
+        }
+        "propose_ui_draft" => {
+            let p: DraftProposal = args(raw)?;
+            // The app checks again on pickup; this tells the agent now.
+            proposals::draft::check(&db, flavor, &p)?;
+            if proposals::drafts_count(&db, flavor).map_err(|e| e.to_string())?
+                >= proposals::draft::MAX_STAGED
+            {
+                return Err(format!(
+                    "{} drafts are already waiting for the player. Ask them to use or throw some away first.",
+                    proposals::draft::MAX_STAGED
+                ));
+            }
+            let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+            stage(&db, paths, flavor, client, proposals::UI_DRAFT, None, body)
+        }
+        "list_ui_drafts" => {
+            args::<NoArgs>(raw)?;
+            let drafts = proposals::draft_history(&db, flavor, now).map_err(|e| e.to_string())?;
+            let row = |r: &proposals::DraftRecord| {
+                json!({
+                    "status": match r.status.as_str() {
+                        "staged" => "waiting",
+                        "applied" => "used",
+                        "discarded" => "thrown away",
+                        _ => "not queued",
+                    },
+                    "why_not_queued": r.status_reason,
+                    "proposed_at": r.created_at,
+                    "decided_at": r.decided_at,
+                    "name": r.draft.as_ref().map(|d| d.name.clone()),
+                    "why": r.draft.as_ref().map(|d| d.why.clone()),
+                    "settings": r.draft.as_ref().map(|d| d.changes.iter()
+                        .map(|c| json!({ "option": c.option, "from": c.from, "to": c.to }))
+                        .collect::<Vec<_>>()),
+                })
+            };
+            Ok(json!({
+                "drafts": drafts.iter().map(row).collect::<Vec<_>>(),
+                "not_yet_picked_up": inbox::waiting(&paths.dir).len(),
+            }))
         }
         "list_proposals" => {
             args::<NoArgs>(raw)?;

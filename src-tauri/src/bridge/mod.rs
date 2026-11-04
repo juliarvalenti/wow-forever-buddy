@@ -441,6 +441,17 @@ pub(crate) fn build(
     Ok(tooltip::Built { slots, too_large })
 }
 
+/// A Settings slot from `entries`: the Your UI tab's preview of a draft
+/// (ED1). Only the preview reads it; `send` never writes it.
+pub(crate) fn settings_slot(
+    entries: Vec<(LuaValue, LuaValue)>,
+    stamp: i64,
+) -> AppResult<(Slot, Vec<u8>)> {
+    let mut body = header(stamp);
+    body.hash.extend(entries);
+    Ok((Slot::Settings, render(Slot::Settings, body)?))
+}
+
 /// Whether the slot's file already holds this data (its stamp aside).
 fn same_on_disk(target: &MutationTarget, slot: Slot, bytes: &[u8]) -> bool {
     let old = slot

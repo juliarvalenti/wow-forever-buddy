@@ -20,6 +20,26 @@
 .yu-asks { display: grid; gap: 5px; margin-top: 6px; }
 .yu-asks li { padding: 6px 9px; border-radius: var(--r); background: rgba(0, 0, 0, .28); color: var(--chalk); font-size: 12px; }
 
+/* Drafts: the list to try on, and the one shown */
+.yu-drafts { display: grid; gap: 6px; }
+.yu-drafts button { display: grid; gap: 2px; padding: 8px 10px; border: 0; border-radius: var(--r); text-align: left; cursor: pointer;
+  background: rgba(0, 0, 0, .28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5); color: var(--chalk); font: inherit; }
+.yu-drafts button:hover { background: rgba(0, 0, 0, .4); }
+.yu-drafts button[aria-pressed="true"] { background: rgba(0, 0, 0, .5); box-shadow: inset 0 0 0 1px var(--bronze-hi); }
+.yu-drafts b { font-weight: 600; font-size: 12.5px; color: var(--chalk-hi); }
+.yu-drafts span { font-size: 11.5px; line-height: 1.4; color: var(--ash);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.yu-draft { display: grid; gap: 8px; padding: 12px 14px; border-radius: var(--r); background: rgba(0, 0, 0, .3);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55); }
+.yu-draft-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.yu-draft h3 { font: 600 15px "Geist", sans-serif; color: var(--chalk-hi); }
+.yu-words { font-size: 12.5px; color: var(--chalk); font-style: italic; }
+.yu-changes { display: grid; gap: 3px; font-size: 12px; }
+.yu-changes li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(0, 0, 0, .35); }
+.yu-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .7); }
+
 @media (max-width: 1100px) {
   .yu { grid-template-columns: minmax(0, 1fr); }
 }
