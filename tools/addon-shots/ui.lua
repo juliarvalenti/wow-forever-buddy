@@ -155,7 +155,7 @@ end
 if opts.examples then
     local out = assert(args[1], "usage: ui.lua --examples <out-dir>")
     local failed = 0
-    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners" }) do
+    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners", "rogue-auras" }) do
         local doc = decode(read(here .. "/ui-examples/" .. name .. ".json"))
         local c = uicheck.cost(doc)
         print(("%s costs %d frames, %d textures, %d font strings"):format(name, c.frames, c.textures, c.fontStrings))
@@ -185,6 +185,14 @@ if opts.examples then
             print("FAIL bad document: no " .. w .. "\n" .. uicheck.lines(problems or {}))
             failed = failed + 1
         end
+    end
+    -- Aura bars with maxDuration: the rogue's hour-long poisons are left
+    -- out, Adrenaline Rush (15 seconds) stays.
+    local short = preview.draw({ addon = ADDON, class = opts.class, ui = { ui = 1, parts = { { kind = "auras",
+        unit = "player", maxDuration = 60, anchor = { "CENTER", "screen", "CENTER", 0, 0 } } } } })
+    if not (short and short:find("Adrenaline Rush", 1, true) and not short:find("Poison", 1, true)) then
+        print("FAIL aura bars: maxDuration didn't leave out the long poisons")
+        failed = failed + 1
     end
     -- Over the client's limits: 40 texts with a stroke of 3 make about 1480
     -- font strings, more than a UI gets.
