@@ -30,6 +30,8 @@ use sandbox::{DrawOptions, Host, Session};
 
 /// The moment the Your UI tab shows (ED1): the logged-in scene, or the same
 /// scene in combat, in stealth or at low health (`tools/addon-shots/preview.lua`).
+/// UI3: with no target out of combat, and in combat with the values the game
+/// hides from addons hidden.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
@@ -38,14 +40,19 @@ pub enum Moment {
     Combat,
     Stealth,
     LowHealth,
+    NoTarget,
+    Hidden,
 }
 
 impl Moment {
-    pub const ALL: [Moment; 4] = [
+    /// In `preview.MOMENT_ORDER`'s order.
+    pub const ALL: [Moment; 6] = [
         Moment::Standing,
         Moment::Combat,
         Moment::Stealth,
         Moment::LowHealth,
+        Moment::NoTarget,
+        Moment::Hidden,
     ];
 
     /// The name `preview.lua` knows it by.
@@ -55,6 +62,8 @@ impl Moment {
             Moment::Combat => "combat",
             Moment::Stealth => "stealth",
             Moment::LowHealth => "low_health",
+            Moment::NoTarget => "no_target",
+            Moment::Hidden => "hidden",
         }
     }
 

@@ -395,8 +395,10 @@ const HELP: &str = "render <doc.json> [options]
 Draws a UI document on Forever Buddy's test screen and writes a PNG, the same
 picture the agent connection's render_ui returns.
 
-  --moment <m>   standing (default), combat, stealth or low_health; several
-                 with commas (standing,combat) or `all`. With more than one,
+  --moment <m>   standing (default), combat, stealth, low_health, no_target
+                 (out of combat, nothing targeted) or hidden (combat with the
+                 values the game hides from addons hidden); several with
+                 commas (standing,combat) or `all`. With more than one,
                  each picture gets the moment in its name (shot-combat.png).
   --class <c>    the test character's class (rogue by default); an unknown
                  one is refused with the classes there are

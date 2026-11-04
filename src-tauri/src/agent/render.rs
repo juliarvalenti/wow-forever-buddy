@@ -26,8 +26,10 @@ icons, auras, action bars), placed by `anchor` [point, \"screen\", \"char\" or a
 x, y] in 1080p pixels, bound to unit data (health, power, combo points, auras), with states (combat, stealth, \
 low health at `lowAt`, target) that change any property. get_ui_spec returns the whole language; read it before \
 your first document. Leave `doc` out to draw round 4 and get its document back as a starting point. `moments` \
-draws several at once (standing, combat, stealth, low_health; `all` for every one), `class` picks the test \
-character (rogue by default; an unknown one is refused with the classes there are), `scale` sizes the pictures \
+draws several at once (standing, combat, stealth, low_health, no_target: out of combat with nothing targeted, \
+hidden: combat with health, power and aura timing hidden from the addon as the game does; `all` for every one), \
+`class` picks the test character (warrior, paladin, hunter, rogue, priest, shaman, mage, warlock or druid in cat \
+form; rogue by default; an unknown one is refused with the classes there are), `scale` sizes the pictures \
 (0.25 to 1 of the 1920x1080 screen; two thirds by default). A document that doesn't pass the check comes back as \
 its problems instead, each with a JSON pointer into the document and how to fix it. Only data: 64 KB at most. \
 Without the MCP, the app's command line draws the same: `<app> render doc.json --moment all --class rogue`.";
@@ -41,8 +43,8 @@ pub fn list() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "doc": { "type": "object", "description": "The UI document. Leave out for the round 4 example." },
-                    "moment": { "type": "string", "description": "One moment: standing (default), combat, stealth or low_health." },
-                    "moments": { "type": "array", "items": { "type": "string" }, "maxItems": 4,
+                    "moment": { "type": "string", "description": "One moment: standing (default), combat, stealth, low_health, no_target or hidden." },
+                    "moments": { "type": "array", "items": { "type": "string" }, "maxItems": 6,
                                  "description": "Several moments in one call, e.g. [\"standing\", \"combat\"], or [\"all\"]." },
                     "class": { "type": "string", "description": "The test character's class; rogue by default." },
                     "scale": { "type": "number", "minimum": 0.25, "maximum": 1,
@@ -185,10 +187,17 @@ mod tests {
             wanted(&a(None, Some(vec!["Low Health", "combat", "combat"]))).unwrap(),
             [Moment::LowHealth, Moment::Combat]
         );
+        assert_eq!(
+            wanted(&a(None, Some(vec!["notarget", "no-target", "Hidden"]))).unwrap(),
+            [Moment::NoTarget, Moment::Hidden]
+        );
         assert_eq!(wanted(&a(None, Some(vec!["all"]))).unwrap(), Moment::ALL);
         let e = wanted(&a(Some("stelth"), None)).unwrap_err();
         assert!(e.contains("Did you mean stealth?"), "{e}");
-        assert!(e.contains("standing, combat, stealth, low_health"), "{e}");
+        assert!(
+            e.contains("standing, combat, stealth, low_health, no_target, hidden"),
+            "{e}"
+        );
     }
 
     #[test]

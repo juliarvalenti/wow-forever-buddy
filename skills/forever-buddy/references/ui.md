@@ -8,7 +8,7 @@ A UI document is JSON that describes a whole in-game UI: unit frames, bars, numb
 
 1. Read [design](design.md) for the house style, and ask what the player wants if it isn't clear.
 2. Read the language with `get_ui_spec`. If the player already has a UI, `get_ui` gives you its document to revise. Otherwise start from round 4: `render_ui` with no document returns round 4 and its JSON.
-3. `render_ui` it with `moments: ["all"]` (standing, combat, stealth, low_health) and the player's `class`. Look at every picture.
+3. `render_ui` it with `moments: ["all"]` (standing, combat, stealth, low_health, no_target, and hidden: combat with the values the game hides from addons hidden, as it really is in a fight) and the player's `class`. Look at every picture.
 4. If the document has problems, nothing is drawn and you get each one with its path (`/parts/3/anchor/1`) and how to fix it. Fix them and draw again.
 5. Fix what looks off: overlaps, text too small to read, things that should hide out of combat. Draw again.
 6. Show the player the pictures and the idea in a sentence.
