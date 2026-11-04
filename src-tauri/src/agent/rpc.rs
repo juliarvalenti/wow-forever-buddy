@@ -95,10 +95,11 @@ fn error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-/// What a tool hands back: JSON, or (render_ui) a picture and a line about it.
+/// What a tool hands back: JSON, or (render_ui) pictures and a line about
+/// them.
 enum Reply {
     Json(Value),
-    Png(Vec<u8>, String),
+    Png(Vec<(Vec<u8>, String)>, String),
 }
 
 /// A tool's answer: its JSON as text, a PNG as image content, or a refusal
@@ -109,16 +110,16 @@ fn tool_result(outcome: Result<Reply, String>) -> Value {
             "content": [{ "type": "text", "text": serde_json::to_string_pretty(&v).unwrap_or_default() }],
             "isError": false,
         }),
-        Ok(Reply::Png(png, text)) => {
+        Ok(Reply::Png(pictures, text)) => {
             use base64::Engine;
-            json!({
-                "content": [
-                    { "type": "image", "data": base64::engine::general_purpose::STANDARD.encode(png),
-                      "mimeType": "image/png" },
-                    { "type": "text", "text": text },
-                ],
-                "isError": false,
-            })
+            // The text first: it says which moment each picture is, in order.
+            let mut content = vec![json!({ "type": "text", "text": text })];
+            for (png, _moment) in pictures {
+                content.push(json!({ "type": "image",
+                    "data": base64::engine::general_purpose::STANDARD.encode(png),
+                    "mimeType": "image/png" }));
+            }
+            json!({ "content": content, "isError": false })
         }
         Err(message) => json!({
             "content": [{ "type": "text", "text": message }],
@@ -219,9 +220,12 @@ impl Session<'_> {
             return Err(OFF.into());
         }
         // Drawing a document needs the preview's data, not the game folder.
+        if render::draws(name) {
+            let (pictures, text) = render::call(self.paths, args)?;
+            return Ok(Reply::Png(pictures, text));
+        }
         if render::exists(name) {
-            let (png, text) = render::call(self.paths, args)?;
-            return Ok(Reply::Png(png, text));
+            return Ok(Reply::Json(render::spec()));
         }
         let flavor = access.flavor.ok_or_else(|| NOT_SET_UP.to_string())?;
         if propose::exists(name) {
@@ -410,22 +414,28 @@ mod tests {
                     json!({ "doc": { "ui": 1, "parts": [{ "kind": "hologram" }] } }),
                 ),
                 render(4, json!({})),
+                // UI3: several moments, by alias, at a scale; an unknown class.
+                render(
+                    5,
+                    json!({ "moments": ["standing", "lowhealth"], "scale": 0.5 }),
+                ),
+                render(6, json!({ "class": "paladin" })),
+                json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                        "params": { "name": "get_ui_spec", "arguments": {} } }),
             ],
         );
         let content = &out[0]["result"]["content"];
         assert_eq!(out[0]["result"]["isError"], false, "{}", out[0]);
+        let text = content[0]["text"].as_str().unwrap();
+        assert!(text.contains("- combat (1280x720)"), "{text}");
         assert_eq!(
-            (&content[0]["type"], &content[0]["mimeType"]),
+            (&content[1]["type"], &content[1]["mimeType"]),
             (&json!("image"), &json!("image/png"))
         );
         let png = base64::engine::general_purpose::STANDARD
-            .decode(content[0]["data"].as_str().unwrap())
+            .decode(content[1]["data"].as_str().unwrap())
             .unwrap();
         assert_eq!(&png[1..4], b"PNG");
-        assert!(content[1]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("Drawn combat (1280x720"));
         // The language's check refuses it: its problems, by JSON pointer.
         assert_eq!(out[1]["result"]["isError"], true);
         let refused = out[1]["result"]["content"][0]["text"].as_str().unwrap();
@@ -435,8 +445,26 @@ mod tests {
         );
         assert!(refused.contains("/parts/0/kind"), "{refused}");
         // No document: the example, and its document to start from.
-        let text = out[2]["result"]["content"][1]["text"].as_str().unwrap();
+        let text = out[2]["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("The round 4 example document"), "{text}");
         assert!(text.contains("\"parts\""), "{text}");
+        // Two moments: a line each, then two pictures in that order.
+        let content = out[3]["result"]["content"].as_array().unwrap();
+        let text = content[0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("- standing (960x540)") && text.contains("- low_health (960x540)"),
+            "{text}"
+        );
+        assert_eq!(content.len(), 3, "the text and two pictures");
+        // A class without a test character says which there are.
+        let refused = out[4]["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            refused.contains("No test character for class \"paladin\"")
+                && refused.contains("rogue"),
+            "{refused}"
+        );
+        // The language's reference.
+        let spec = out[5]["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(spec.contains("ui_language"), "{}", &spec[..100]);
     }
 }

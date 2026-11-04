@@ -620,6 +620,25 @@ impl Session {
         self.deadline.set(None);
         result.map_err(|e| e.to_string())
     }
+
+    /// The classes the scene has a test character for (`fixtures.lua`), in
+    /// order, so render_ui can refuse any other by name (UI3).
+    pub fn classes(&self) -> Result<Vec<String>, String> {
+        let result = (|| -> mlua::Result<Vec<String>> {
+            let t: Table = self
+                .lua
+                .load("return require('fixtures').CLASSES")
+                .set_mode(ChunkMode::Text)
+                .eval()?;
+            let mut names: Vec<String> = t
+                .pairs::<String, Value>()
+                .map(|p| p.map(|(k, _)| k))
+                .collect::<mlua::Result<_>>()?;
+            names.sort();
+            Ok(names)
+        })();
+        result.map_err(|e| e.to_string())
+    }
 }
 
 /// uicheck's list of `{ path, code, message }`.

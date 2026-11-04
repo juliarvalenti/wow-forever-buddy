@@ -13,7 +13,7 @@ use crate::fsx::atomic::atomic_replace;
 /// The file format this build writes and reads.
 pub const VERSION: u32 = 1;
 /// Spec §5: a larger file is refused unread.
-pub const MAX_FILE: u64 = 64 * 1024;
+pub const MAX_FILE: u64 = 128 * 1024;
 /// Spec §5: the agent process stops writing past this many unread files.
 pub const MAX_FILES: usize = 200;
 
@@ -82,11 +82,30 @@ pub fn write(agent_dir: &Path, file: &InboxFile) -> AppResult<String> {
     Ok(id)
 }
 
+/// What each waiting file is, for `list_proposals` (UI3: name what's
+/// waiting, not just how many): its kind, and its name or title or
+/// character when it has one. Files that don't read are listed as such.
+pub fn summary(agent_dir: &Path) -> Vec<serde_json::Value> {
+    waiting(agent_dir)
+        .into_iter()
+        .map(|(_, path)| match read(&path) {
+            Ok(f) => {
+                let label = ["name", "title", "character"]
+                    .iter()
+                    .find_map(|k| f.body.get(*k).and_then(|v| v.as_str()))
+                    .map(str::to_string);
+                serde_json::json!({ "kind": f.kind, "name": label, "proposed_at": f.created_at })
+            }
+            Err(why) => serde_json::json!({ "kind": "unknown", "problem": why }),
+        })
+        .collect()
+}
+
 /// Reads a waiting file, refusing one past the size limit.
 pub fn read(path: &Path) -> Result<InboxFile, &'static str> {
     let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
     if len > MAX_FILE {
-        return Err("it was larger than 64 KB");
+        return Err("it was larger than 128 KB");
     }
     let bytes = std::fs::read(path).map_err(|_| "it couldn't be read")?;
     let file: InboxFile =
@@ -130,7 +149,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("f.json");
         std::fs::write(&p, vec![b' '; MAX_FILE as usize + 1]).unwrap();
-        assert_eq!(read(&p), Err("it was larger than 64 KB"));
+        assert_eq!(read(&p), Err("it was larger than 128 KB"));
         std::fs::write(
             &p,
             r#"{"v":1,"producer":"x","kind":"login_note","created_at":1,"body":{},"extra":1}"#,

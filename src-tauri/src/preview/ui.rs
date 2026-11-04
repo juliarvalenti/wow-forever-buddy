@@ -218,9 +218,26 @@ pub enum Outcome {
 
 /// Checks `req.doc` and draws it at `req.moment`.
 pub fn render(req: &Request) -> Result<Outcome, String> {
+    Ok(match render_moments(req, &[req.moment])? {
+        Many::Drawn(mut all) => Outcome::Drawn(all.remove(0).1),
+        Many::Refused(p) => Outcome::Refused(p),
+    })
+}
+
+/// Several moments' pictures, or the document's problems.
+#[derive(Debug)]
+pub enum Many {
+    Drawn(Vec<(Moment, Rendered)>),
+    Refused(Vec<Problem>),
+}
+
+/// Checks `req.doc` and draws it at each of `moments` in turn, in one
+/// sandbox (UI3: several moments per call). `req.moment` is ignored. A
+/// class without a test character is refused with the ones there are.
+pub fn render_moments(req: &Request, moments: &[Moment]) -> Result<Many, String> {
     let problems = limits(req.doc);
     if !problems.is_empty() {
-        return Ok(Outcome::Refused(problems));
+        return Ok(Many::Refused(problems));
     }
     if !data::is_ready(req.data) {
         return Err(NO_DATA.into());
@@ -232,25 +249,45 @@ pub fn render(req: &Request) -> Result<Outcome, String> {
         slots: Default::default(),
     };
     let session = Session::new(Arc::new(RwLock::new(host))).map_err(|e| e.to_string())?;
-    let drawn = session.draw(
-        &DrawOptions {
-            class: Some(req.class.clone().unwrap_or_else(|| "rogue".into())),
-            art: false,
-            moment: req.moment.as_str(),
-            ui: Some(req.doc.clone()),
-        },
-        DRAW_LIMIT,
-    )?;
-    if !drawn.problems.is_empty() {
-        return Ok(Outcome::Refused(drawn.problems));
+    let class = req
+        .class
+        .as_deref()
+        .unwrap_or("rogue")
+        .trim()
+        .to_ascii_lowercase();
+    let classes = session.classes()?;
+    if !classes.contains(&class) {
+        return Err(format!(
+            "No test character for class \"{class}\": the classes are {}.",
+            classes.join(", ")
+        ));
     }
-    let (png, width, height) = png(&drawn.svg, req.scale)?;
-    Ok(Outcome::Drawn(Rendered {
-        png,
-        width,
-        height,
-        lua_errors: drawn.lua_errors,
-    }))
+    let mut out = Vec::new();
+    for &moment in moments {
+        let drawn = session.draw(
+            &DrawOptions {
+                class: Some(class.clone()),
+                art: false,
+                moment: moment.as_str(),
+                ui: Some(req.doc.clone()),
+            },
+            DRAW_LIMIT,
+        )?;
+        if !drawn.problems.is_empty() {
+            return Ok(Many::Refused(drawn.problems));
+        }
+        let (png, width, height) = png(&drawn.svg, req.scale)?;
+        out.push((
+            moment,
+            Rendered {
+                png,
+                width,
+                height,
+                lua_errors: drawn.lua_errors,
+            },
+        ));
+    }
+    Ok(Many::Drawn(out))
 }
 
 /// An SVG from the preview as a PNG, scaled. The addon's fonts (Barlow,
@@ -349,11 +386,32 @@ pub fn data_dir(local_data: &Path) -> PathBuf {
     super::dir(local_data).join("data")
 }
 
-const USAGE: &str = "usage: render <doc.json> [--moment standing|combat|stealth|low_health] \
-[--class rogue] [--out shot.png] [--scale 1] [--data <WOWAPI data folder>]";
+const USAGE: &str =
+    "usage: render <doc.json> [--moment <moments>] [--class rogue] [--out shot.png] \
+[--scale 1] [--data <WOWAPI data folder>]   (render --help for more)";
+
+const HELP: &str = "render <doc.json> [options]
+
+Draws a UI document on Forever Buddy's test screen and writes a PNG, the same
+picture the agent connection's render_ui returns.
+
+  --moment <m>   standing (default), combat, stealth or low_health; several
+                 with commas (standing,combat) or `all`. With more than one,
+                 each picture gets the moment in its name (shot-combat.png).
+  --class <c>    the test character's class (rogue by default); an unknown
+                 one is refused with the classes there are
+  --out <file>   where the PNG goes (ui.png by default)
+  --scale <n>    0.1 to 2 of the 1920x1080 screen (1 by default)
+  --data <dir>   WOWAPI's data folder (by default the one the app downloaded
+                 on its Your UI tab)
+  --help         this";
 
 /// `<app> render ...`: the same render to a file. Returns the exit code.
 pub fn cli(args: &[String], local_data: Option<PathBuf>) -> i32 {
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{HELP}");
+        return 0;
+    }
     match cli_inner(args, local_data) {
         Ok(msg) => {
             println!("{msg}");
@@ -366,10 +424,38 @@ pub fn cli(args: &[String], local_data: Option<PathBuf>) -> i32 {
     }
 }
 
+/// "standing,combat" or "all" as moments.
+pub fn moments(list: &str) -> Result<Vec<Moment>, String> {
+    if list.trim().eq_ignore_ascii_case("all") {
+        return Ok(Moment::ALL.to_vec());
+    }
+    let mut out = Vec::new();
+    for name in list.split(',').filter(|s| !s.trim().is_empty()) {
+        let m = Moment::parse(name.trim())?;
+        if !out.contains(&m) {
+            out.push(m);
+        }
+    }
+    if out.is_empty() {
+        return Err("no moment given".into());
+    }
+    Ok(out)
+}
+
+/// `shot.png` for one picture; `shot-combat.png` for each of several.
+fn out_for(out: &Path, moment: Moment, several: bool) -> PathBuf {
+    if !several {
+        return out.to_path_buf();
+    }
+    let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or("ui");
+    let ext = out.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    out.with_file_name(format!("{stem}-{}.{ext}", moment.as_str()))
+}
+
 fn cli_inner(args: &[String], local_data: Option<PathBuf>) -> Result<String, String> {
     let mut doc_path = None;
-    let (mut moment, mut class, mut out, mut scale, mut data) = (
-        Moment::Standing,
+    let (mut wanted, mut class, mut out, mut scale, mut data) = (
+        vec![Moment::Standing],
         None,
         PathBuf::from("ui.png"),
         1.0f32,
@@ -383,15 +469,7 @@ fn cli_inner(args: &[String], local_data: Option<PathBuf>) -> Result<String, Str
                 .ok_or_else(|| format!("{a} needs a value; {USAGE}"))
         };
         match a.as_str() {
-            "--moment" => {
-                moment = match value()?.as_str() {
-                    "standing" => Moment::Standing,
-                    "combat" => Moment::Combat,
-                    "stealth" => Moment::Stealth,
-                    "low_health" => Moment::LowHealth,
-                    m => return Err(format!("no moment \"{m}\"; {USAGE}")),
-                }
-            }
+            "--moment" | "--moments" => wanted = moments(&value()?)?,
             "--class" => class = Some(value()?),
             "--out" => out = PathBuf::from(value()?),
             "--scale" => {
@@ -414,17 +492,20 @@ fn cli_inner(args: &[String], local_data: Option<PathBuf>) -> Result<String, Str
         .or_else(|| local_data.map(|d| data_dir(&d)))
         .ok_or(NO_DATA)?;
     let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
-    let outcome = render(&Request {
-        data: &data,
-        scratch: scratch.path(),
-        doc: &doc,
-        moment,
-        class,
-        scale,
-    })?;
-    let r = match outcome {
-        Outcome::Drawn(r) => r,
-        Outcome::Refused(problems) => {
+    let outcome = render_moments(
+        &Request {
+            data: &data,
+            scratch: scratch.path(),
+            doc: &doc,
+            moment: wanted[0],
+            class,
+            scale,
+        },
+        &wanted,
+    )?;
+    let drawn = match outcome {
+        Many::Drawn(all) => all,
+        Many::Refused(problems) => {
             return Err(format!(
                 "{} isn't drawn:\n{}",
                 doc_path.display(),
@@ -432,14 +513,21 @@ fn cli_inner(args: &[String], local_data: Option<PathBuf>) -> Result<String, Str
             ))
         }
     };
-    std::fs::write(&out, &r.png).map_err(|e| format!("{}: {e}", out.display()))?;
-    Ok(format!(
-        "{} ({}x{}, {} Lua errors)",
-        out.display(),
-        r.width,
-        r.height,
-        r.lua_errors
-    ))
+    let several = drawn.len() > 1;
+    let mut lines = Vec::new();
+    for (moment, r) in drawn {
+        let file = out_for(&out, moment, several);
+        std::fs::write(&file, &r.png).map_err(|e| format!("{}: {e}", file.display()))?;
+        lines.push(format!(
+            "{} ({}x{}, {}, {} Lua errors)",
+            file.display(),
+            r.width,
+            r.height,
+            moment.as_str(),
+            r.lua_errors
+        ));
+    }
+    Ok(lines.join("\n"))
 }
 
 #[cfg(test)]

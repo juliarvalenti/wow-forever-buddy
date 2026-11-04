@@ -29,7 +29,7 @@ struct Tool {
     schema: fn() -> Value,
 }
 
-const TOOLS: [Tool; 11] = [
+const TOOLS: [Tool; 12] = [
     Tool {
         name: "propose_note",
         description: "Suggests a login note for one character: a line shown in the game's chat when it logs in, at the next login only or at each login until a date. The player approves or declines it in Forever Buddy; nothing changes until then. To replace one of the character's notes (get_character lists them), pass its id and the text you read.",
@@ -172,6 +172,13 @@ const TOOLS: [Tool; 11] = [
     Tool {
         name: "list_proposals",
         description: "What became of the suggestions made through this connection in the last 30 days: waiting, approved, declined, or not queued (with the reason).",
+        read_only: true,
+        schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+    },
+    // UI3: read a UI back, to revise it.
+    Tool {
+        name: "get_ui",
+        description: "The player's UI documents: the one in use in the game (if any), and the ones proposed in the last 30 days (waiting, used, not this one, or not queued with the reason), each with its full document, so you can revise one instead of starting over. Then render_ui the revision and propose_ui it.",
         read_only: true,
         schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
     },
@@ -541,10 +548,27 @@ pub fn call_in(
                     "ui": p.ui_doc.as_ref().map(|u| json!({ "name": u.name, "in_use": u.active })),
                 })
             };
-            let not_picked_up = inbox::waiting(&paths.dir).len();
+            let pickup = inbox::summary(&paths.dir);
             Ok(json!({
                 "proposals": a.waiting.iter().chain(&a.decided).map(row).collect::<Vec<_>>(),
-                "not_yet_picked_up": not_picked_up,
+                "not_yet_picked_up": pickup.len(),
+                // UI3: what's on its way to Approvals, by name. The app picks
+                // these up while it's open (every 10 seconds).
+                "waiting_for_the_app": pickup,
+            }))
+        }
+        "get_ui" => {
+            args::<NoArgs>(raw)?;
+            let (in_use, recent) =
+                proposals::uidoc::history(&db, flavor, now).map_err(|e| e.to_string())?;
+            let pickup: Vec<Value> = inbox::summary(&paths.dir)
+                .into_iter()
+                .filter(|f| f["kind"] == proposals::UI_DOC)
+                .collect();
+            Ok(json!({
+                "in_use": in_use,
+                "proposed": recent,
+                "waiting_for_the_app": pickup,
             }))
         }
         _ => Err(format!("Unknown tool: {name}")),
@@ -665,6 +689,36 @@ mod tests {
         assert_eq!(seen["proposals"][0]["status"], "waiting");
         assert_eq!(seen["proposals"][0]["text"], "Post the bars");
         assert_eq!(seen["not_yet_picked_up"], 0);
+    }
+
+    /// UI3: get_ui reads back what's waiting, what's proposed and what's in
+    /// use, with each document, so the agent can revise one.
+    #[test]
+    fn get_ui_reads_back_waiting_proposed_and_in_use() {
+        let (_tmp, paths) = setup();
+        let doc: Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let get = || call(&paths, FLAVOR, "c", "get_ui", &json!({})).unwrap();
+        let ui = json!({ "name": "Halo", "why": "Round 4", "doc": doc });
+        call(&paths, FLAVOR, "c", "propose_ui", &ui).unwrap();
+        let seen = get();
+        assert!(seen["in_use"].is_null());
+        assert_eq!(seen["waiting_for_the_app"][0]["name"], "Halo");
+        let listed = call(&paths, FLAVOR, "c", "list_proposals", &json!({})).unwrap();
+        assert_eq!(listed["waiting_for_the_app"][0]["kind"], proposals::UI_DOC);
+
+        let db = Db::open(&paths.db).unwrap();
+        let now = chrono::Utc::now().timestamp();
+        proposals::ingest(&db, &paths.dir, FLAVOR, true, now).unwrap();
+        let seen = get();
+        assert_eq!(seen["proposed"][0]["status"], "waiting");
+        assert_eq!(seen["proposed"][0]["doc"], doc);
+        let id = seen["proposed"][0]["id"].as_u64().unwrap() as u32;
+        proposals::decide(&db, FLAVOR, id, proposals::Decision::Approve, now).unwrap();
+        drop(db);
+        let seen = get();
+        assert_eq!(seen["in_use"]["name"], "Halo");
+        assert_eq!(seen["in_use"]["doc"], doc);
+        assert_eq!(seen["proposed"][0]["status"], "in use");
     }
 
     #[test]
