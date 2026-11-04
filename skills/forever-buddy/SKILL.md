@@ -28,6 +28,7 @@ Every tool refuses while agent access is off. Tools only read; the `propose_*` t
 | "What macros does my rogue have?" | `list_macros` with the character, then `get_macro` for the text |
 | "Make me a macro for this", "copy my mount macro to my alts" | `propose_macro`: one macro per call (a copy to three alts is three calls). For an edit, pass `was` exactly as `get_macro` gave it. Slash commands only: `/run`, `/script`, `/console` and `/dump` are refused |
 | Their HUD or action bars to look different | Read [design](references/design.md), then make **two or three drafts** with `propose_ui_draft` and let the player pick one on the Your UI tab |
+| A whole new UI, their own layout | Write a UI document and see it with `render_ui` in every moment before showing anyone: [ui](references/ui.md). It can't be sent to the game yet. |
 
 ## Rules that never bend
 

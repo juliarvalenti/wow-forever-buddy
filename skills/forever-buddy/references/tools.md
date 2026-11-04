@@ -19,6 +19,7 @@ All tools read the app's local database, read-only; the macro tools read the gam
 | `list_ui_drafts` | Your UI drafts: waiting, used, thrown away, or not queued (with the reason), each with its settings. |
 | `list_macros` | The account-wide macros and each character's own: name, icon, length against the game's 255. Takes an optional `character`. |
 | `get_macro` | A macro's full text by name: a character's own, then its account's; without a character, the account's. |
+| `render_ui` | A picture of a stand-in screen (a test level 34 rogue with a hostile target; none of the player's data) with a UI document (`doc`) drawn on it, in a `moment` (`standing`, `combat`, `stealth`, `low_health`). A document with problems draws nothing and returns each problem with its path. With no document, round 4 and its JSON to start from. See [ui](ui.md). |
 
 ## Propose (the player approves in the app)
 
