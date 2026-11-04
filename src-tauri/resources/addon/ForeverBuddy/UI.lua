@@ -391,6 +391,148 @@ function DRAW.actionbar(f, p, unit, on)
     end
 end
 
+-- Aura bars (UI1, Julia's ask): one timer bar per aura on a unit, each with
+-- its icon, name, stacks, a fill that drains and the time left. Which ones:
+-- `filter` (mine, the default: helpful or harmful, cast by you; or
+-- helpful, harmful, all), `show` (only these spell names or IDs, in that
+-- order of priority), `max`, `sort` (time left or name) and `grow` (down
+-- or up from the anchor).
+--
+-- Secret values: the client can hide an aura's timing in combat, and code
+-- can't do sums on a hidden value. Here (a picture of one moment) a bar
+-- whose timing is hidden shows full with no time, never a guess. In game
+-- (UI1's in-game phase) the fill is the aura's duration object handed to
+-- StatusBar:SetTimerDuration and the time a duration text binding, so no
+-- Lua ever reads the time left; and if the aura list itself is refused in
+-- combat, the last bars stay up.
+local DISPEL = { Magic = "#3c8cff", Curse = "#a24dff", Poison = "#3fbf5f", Disease = "#b8862b" }
+
+local function auraList(unit, p)
+    local out = {}
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+        return out
+    end
+    local filter = p.filter or "mine"
+    for _, kind in ipairs({ "HELPFUL", "HARMFUL" }) do
+        if filter == "all" or filter == "mine" or (filter == "helpful") == (kind == "HELPFUL") then
+            for i = 1, 40 do
+                local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, kind)
+                if not ok or type(a) ~= "table" or (issecrettable and issecrettable(a)) then
+                    break
+                end
+                local mine = a.sourceUnit == "player" or a.isFromPlayerOrPlayerPet
+                if filter ~= "mine" or mine then
+                    -- (wrapped: the client's own table is never written to)
+                    out[#out + 1] = { aura = a, harmful = kind == "HARMFUL" }
+                end
+            end
+        end
+    end
+    if p.show then
+        local rank = {}
+        for i, s in ipairs(p.show) do
+            rank[s] = i
+        end
+        local kept = {}
+        for _, e in ipairs(out) do
+            local r = rank[e.aura.spellId] or rank[e.aura.name]
+            if r then
+                e.rank = r
+                kept[#kept + 1] = e
+            end
+        end
+        out = kept
+    end
+    local now = GetTime and GetTime() or 0
+    local function left(entry)
+        local e = entry.aura.expirationTime
+        if type(e) ~= "number" or (issecretvalue and issecretvalue(e)) or e <= 0 then
+            return math.huge
+        end
+        return e - now
+    end
+    table.sort(out, function(x, y)
+        if p.sort == "name" then
+            return (x.aura.name or "") < (y.aura.name or "")
+        elseif p.show and p.sort == nil then
+            return x.rank < y.rank
+        end
+        return left(x) < left(y)
+    end)
+    for i = #out, (p.max or 8) + 1, -1 do
+        out[i] = nil
+    end
+    return out, left
+end
+
+-- "14", "1:05", "40m", "2h"; nothing for an aura that doesn't run out.
+local function timeLeft(s)
+    if s == math.huge or s <= 0 then
+        return ""
+    elseif s >= 3600 then
+        return math.ceil(s / 3600) .. "h"
+    elseif s >= 600 then
+        return math.ceil(s / 60) .. "m"
+    elseif s >= 60 then
+        return ("%d:%02d"):format(math.floor(s / 60), math.floor(s % 60))
+    end
+    return tostring(math.ceil(s))
+end
+
+function DRAW.auras(f, p, unit, on)
+    local list, left = auraList(unit, p)
+    local w, h, gap = (p.w or 220) * PX, (p.h or 22) * PX, (p.gap or 2) * PX
+    local iconW = p.icon == false and 0 or h
+    local up = p.grow == "up"
+    f:SetSize(w, h)
+    for i, entry in ipairs(list) do
+        local a = entry.aura
+        local row = CreateFrame("Frame", nil, f)
+        row:SetSize(w, h)
+        row:SetPoint(up and "BOTTOMLEFT" or "TOPLEFT", f, up and "BOTTOMLEFT" or "TOPLEFT", 0,
+            (up and 1 or -1) * (i - 1) * (h + gap))
+        if iconW > 0 then
+            local ic = row:CreateTexture(nil, "ARTWORK")
+            ic:SetTexture(a.icon)
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ic:SetSize(iconW, h)
+            ic:SetPoint("LEFT", row, "LEFT", 0, 0)
+            local stacks = a.applications
+            if type(stacks) == "number" and not (issecretvalue and issecretvalue(stacks)) and stacks > 1 then
+                label(row, { font = p.font, fontSize = math.max(8, (p.fontSize or 13) - 2), outline = p.outline,
+                    stroke = p.stroke, justify = "RIGHT" }, tostring(stacks), "BOTTOMRIGHT", ic, "BOTTOMRIGHT",
+                    -PX, PX, on)
+            end
+        end
+        local bar = CreateFrame("Frame", nil, row)
+        bar:SetPoint("TOPLEFT", row, "TOPLEFT", iconW > 0 and iconW + PX or 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        local bw = w - (iconW > 0 and iconW + PX or 0)
+        tex(bar, "BACKGROUND", hex(p.back or "#000000", p.backAlpha or 0.6)):SetAllPoints()
+        -- the share left: full while the timing is hidden or it never runs out
+        local s, dur = left(entry), a.duration
+        local frac = 1
+        if s ~= math.huge and type(dur) == "number" and not (issecretvalue and issecretvalue(dur)) and dur > 0 then
+            frac = math.max(0, math.min(1, s / dur))
+        end
+        local c = p.color == "dispel" and hex(entry.harmful and (DISPEL[a.dispelName] or "#d24a3a") or "#4fd99a")
+            or color(pick(p.color, on) or (entry.harmful and "#d24a3a" or "#4fd99a"), unit, frac)
+        local fill = tex(bar, "ARTWORK", c)
+        fill:SetPoint("TOPLEFT")
+        fill:SetPoint("BOTTOMLEFT")
+        fill:SetWidth(math.max(1, bw * frac))
+        if p.border then
+            border(row, hex(p.border))
+        end
+        local text = { font = p.font, fontSize = p.fontSize or 13, outline = p.outline, stroke = p.stroke,
+            color = p.nameColor }
+        text.justify = "LEFT"
+        label(bar, text, a.name or "", "LEFT", bar, "LEFT", 5 * PX, 0, on)
+        text.justify = "RIGHT"
+        label(bar, text, timeLeft(s), "RIGHT", bar, "RIGHT", -5 * PX, 0, on)
+    end
+end
+
 local built = {}
 local function build(onlyTarget)
     for i = #built, 1, -1 do
@@ -427,21 +569,22 @@ local function build(onlyTarget)
     end
 end
 
--- Login draws it; a new target redraws the target's parts; entering or
--- leaving combat and the player's health redraw the lot (their states).
+-- Login draws it; a new target, or the target's auras, redraw the target's
+-- parts; entering or leaving combat, the player's health and the player's
+-- auras redraw the lot (their states, the aura bars).
 local ev = CreateFrame("Frame")
 for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
-    "UNIT_HEALTH" }) do
+    "UNIT_HEALTH", "UNIT_AURA" }) do
     ev:RegisterEvent(e)
 end
 ev:SetScript("OnEvent", function(_, event, unit)
-    if event == "UNIT_HEALTH" and unit ~= "player" then
+    if (event == "UNIT_HEALTH" and unit ~= "player") or (event == "UNIT_AURA" and unit ~= "player" and unit ~= "target") then
         return
     end
     if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         inCombat = event == "PLAYER_REGEN_DISABLED"
     end
-    build(event == "PLAYER_TARGET_CHANGED")
+    build(event == "PLAYER_TARGET_CHANGED" or (event == "UNIT_AURA" and unit == "target"))
     if event ~= "PLAYER_LOGIN" then
         return
     end

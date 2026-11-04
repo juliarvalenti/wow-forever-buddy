@@ -32,7 +32,7 @@ The format grew from the TH1 prototype that drew round 4 from a spec. Nothing in
 }
 ```
 
-A thin health line under the character that's faint until combat or low health, the percentage beside it only then, the target's name above, and one small row of buttons. The seven examples in `tools/addon-shots/ui-examples/` look nothing alike: round 4, a longer version of this one, "Columns", "Halo" (health as a ring of 32 segments around the character, buttons fanned under it), "Terminal" (a green console in a corner), "Shards" (slanted crystal segments, mirrored for the target) and "Corners" (huge numbers in two corners, the middle left clear).
+A thin health line under the character that's faint until combat or low health, the percentage beside it only then, the target's name above, and one small row of buttons. The examples in `tools/addon-shots/ui-examples/` look nothing alike: round 4, a longer version of this one, "Columns", "Halo" (health as a ring of 32 segments around the character, buttons fanned under it), "Terminal" (a green console in a corner), "Shards" (slanted crystal segments, mirrored for the target), "Corners" (huge numbers in two corners, the middle left clear) and "Rogue, aura bars" (your buffs and your debuffs on the target as timer bars either side of you).
 
 ## 2. The document
 
@@ -59,6 +59,7 @@ Every part has a `kind`. A part with a `name` can be anchored to by the parts af
 | `pips` | Marks lit up to a value | `value` (default `combo`: one pip per point; `health` or `power` light their share, so 30 pips make a segmented gauge), `count` (up to 40), `w`, `h`, `gap`, `layout` (`row`, `column` or `arc`, with `radius`, `from`, `to` in degrees, 0 up), `rotate` (each mark), `orient` (on an arc, each faces out), `color` (stops colour each pip by its place), `emptyColor`, `emptyAlpha`, `border` |
 | `icon` | An image | `slot` (an action slot's icon) or `aura` (a spell name), `zoom`, `border` |
 | `actionbar` | The player's action buttons | `slots`, `icon` (size), `gap`, `columns`, `layout` (`grid`, or `arc` with `radius`, `from`, `to`), `zoom`, `border`, `back`, `keys`, `bind`, `bindFrom`, `keySize`, `keyColor`, `font`, `outline`, `stroke` |
+| `auras` | A timer bar per aura on the `unit`: its icon, name, stacks, a fill that drains and the time left | `filter` (`mine`, the default: helpful or harmful, cast by you; or `helpful`, `harmful`, `all`), `show` (only these spell names or IDs, in that order of priority), `max` (1 to 20), `sort` (`time` left or `name`), `grow` (`down` or `up` from the anchor), `w` and `h` (each bar), `gap`, `icon` (true or false), `color` (or `dispel`: a debuff in its dispel type's colour), `back`, `backAlpha`, `border`, `font`, `fontSize`, `outline`, `stroke`, `nameColor` |
 
 Every part also takes `name`, `unit`, `anchor`, `size`, `level`, `alpha` and `hidden`.
 
@@ -112,6 +113,8 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 ```
 
 **Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part reading one draws its bar full and its text as `?` rather than break; the interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything. The in-game interpreter will hand bars and text the value directly, so they keep showing it. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
+
+**Aura bars and hidden timing.** An aura's time left can be hidden too. In a picture, a bar whose timing is hidden shows full with no time, never a guess. In game, an aura bar's fill is the aura's duration object handed to `StatusBar:SetTimerDuration`, and its time is a duration text binding (`C_DurationUtil.CreateDurationTextBinding`), so no Lua ever reads the time left. If the aura list itself is refused in combat, the bars keep the last ones they had, and the interpreter remembers only that it was refused, never the values.
 
 **Combat.** A new document never changes the screen in combat. It waits, and when combat ends (`PLAYER_REGEN_ENABLED`) the latest one is drawn; any earlier one waiting is dropped.
 

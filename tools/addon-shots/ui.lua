@@ -155,7 +155,7 @@ end
 if opts.examples then
     local out = assert(args[1], "usage: ui.lua --examples <out-dir>")
     local failed = 0
-    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners" }) do
+    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners", "rogue-auras" }) do
         local doc = decode(read(here .. "/ui-examples/" .. name .. ".json"))
         local c = uicheck.cost(doc)
         print(("%s costs %d frames, %d textures, %d font strings"):format(name, c.frames, c.textures, c.fontStrings))

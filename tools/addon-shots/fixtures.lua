@@ -61,12 +61,21 @@ M.CLASSES = {
             [408] = "Kidney Shot", [2094] = "Blind", [1784] = "Stealth", [8647] = "Expose Armor",
             [1725] = "Distract", [2983] = "Sprint", [1856] = "Vanish", [8676] = "Ambush", [703] = "Garrote",
             [1833] = "Cheap Shot", [6770] = "Sap", [921] = "Pick Pocket",
+            [13750] = "Adrenaline Rush", [8679] = "Instant Poison", [2823] = "Deadly Poison",
+        },
+        -- Spells only ever seen as auras here: { spell ID, icon }.
+        auraSpells = {
+            { 13750, icon("Spell_Shadow_ShadowWordDominate") },
+            { 8679, icon("Ability_Poisons") },
+            { 2823, icon("Ability_Rogue_DualWeild") },
         },
         -- auras at login: unit -> { spell ID, seconds it lasts, seconds left,
-        -- harmful }. Slice and Dice up; Rupture and Expose Armor on the target.
+        -- harmful }. On you: Slice and Dice, Adrenaline Rush and both
+        -- poisons; on the target: Rupture, Garrote and Expose Armor (UI1's
+        -- aura bars, Julia's example).
         auras = {
-            player = { { 5171, 21, 14 } },
-            target = { { 1943, 16, 9, true }, { 8647, 30, 22, true } },
+            player = { { 5171, 21, 14 }, { 13750, 15, 11 }, { 8679, 3600, 2410 }, { 2823, 3600, 2410 } },
+            target = { { 1943, 16, 9, true }, { 703, 18, 5, true }, { 8647, 30, 22, true } },
         },
         -- the quest log, every quest watched: { quest ID, title, level,
         -- objectives = { { text, have, need } } }. Believable for an Alliance
@@ -138,7 +147,7 @@ function M.mock(sim, class, opts)
     end
     -- the class's spells, by ID and name, with their icons (GetSpellInfo,
     -- tooltips, auras)
-    for _, list in ipairs({ c.actions or {}, c.stealthActions or {} }) do
+    for _, list in ipairs({ c.actions or {}, c.stealthActions or {}, c.auraSpells or {} }) do
         for _, a in pairs(list) do
             local name = (c.names or {})[a[1]]
             if name and not sim.spells[a[1]] then

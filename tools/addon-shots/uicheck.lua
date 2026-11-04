@@ -6,7 +6,7 @@
 
 local M = {}
 
-M.KINDS = { plate = true, bar = true, text = true, pips = true, icon = true, actionbar = true }
+M.KINDS = { plate = true, bar = true, text = true, pips = true, icon = true, actionbar = true, auras = true }
 M.UNITS = { player = true, target = true, targettarget = true, focus = true, pet = true,
     party1 = true, party2 = true, party3 = true, party4 = true }
 M.POINTS = { TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true, RIGHT = true,
@@ -76,6 +76,18 @@ function M.cost(doc)
                     text(p.stroke)
                 end
             end
+        elseif p.kind == "auras" then
+            -- each bar: its row and bar frames, back, fill and icon, a border,
+            -- and its name, time and stacks
+            local n = p.max or 8
+            if type(p.show) == "table" then
+                n = math.min(n, #p.show)
+            end
+            c.frames = c.frames + 2 * n
+            c.textures = c.textures + n * (3 + (p.border and 4 or 0))
+            for _ = 1, 3 * n do
+                text(p.stroke)
+            end
         end
     end
     return c
@@ -93,6 +105,8 @@ local TAKES = {
     icon = { "slot", "aura", "zoom", "border", "borderWidth" },
     actionbar = { "slots", "icon", "gap", "columns", "zoom", "border", "back", "keys", "bind", "bindFrom", "keySize",
         "keyColor", "font", "outline", "stroke", "layout", "radius", "from", "to" },
+    auras = { "filter", "show", "max", "sort", "grow", "w", "h", "gap", "icon", "color", "back", "backAlpha", "border",
+        "font", "fontSize", "outline", "stroke", "nameColor" },
 }
 -- Properties that may differ by state.
 local STATEFUL = { size = true, alpha = true, hidden = true, color = true, gradient = true }
@@ -144,6 +158,10 @@ function M.check(doc)
     end
     local function colour(path, v)
         if isHex(v) or v == "class" or v == "power" or v == "reaction" then
+            return
+        end
+        -- (aura bars: a debuff in its dispel type's colour)
+        if v == "dispel" and path:match("^/parts/%d+/color") then
             return
         end
         if isList(v) and #v > 0 then
@@ -313,17 +331,49 @@ function M.check(doc)
                     bad(path, "bad-gradient", "a plate's gradient is [\"HORIZONTAL\" or \"VERTICAL\", \"#from\", \"#to\"].")
                 end
             end)
-            for _, k in ipairs({ "border", "back", "tickColor", "emptyColor", "keyColor" }) do
+            for _, k in ipairs({ "border", "back", "tickColor", "emptyColor", "keyColor", "nameColor" }) do
                 if p[k] ~= nil and not isHex(p[k]) then
                     bad(at .. "/" .. k, "bad-colour", k .. " is a colour, \"#rrggbb\".")
                 end
             end
+            local auras = p.kind == "auras"
             for k, r in pairs({ borderWidth = { 1, 8 }, backAlpha = { 0, 1 }, emptyAlpha = { 0, 1 }, ticks = { 1, 20 },
-                count = { 1, 40 }, rotate = { -360, 360 }, w = { 1, 300 }, h = { 1, 300 }, gap = { 0, 100 }, from = { -360, 360 },
+                count = { 1, 40 }, rotate = { -360, 360 }, w = auras and { 20, 600 } or { 1, 300 },
+                h = auras and { 6, 60 } or { 1, 300 }, gap = { 0, 100 }, from = { -360, 360 },
                 to = { -360, 360 }, radius = { 0, 1000 }, zoom = { 0, 0.3 }, fontSize = { 6, 120 }, stroke = { 0, 3 },
-                icon = { 8, 128 }, columns = { 1, 48 }, keySize = { 6, 40 }, bindFrom = { 1, 12 }, slot = { 1, 180 } }) do
+                icon = (not auras) and { 8, 128 } or nil, columns = { 1, 48 }, keySize = { 6, 40 }, bindFrom = { 1, 12 },
+                slot = { 1, 180 }, max = { 1, 20 } }) do
                 if p[k] ~= nil then
                     number(at .. "/" .. k, p[k], r[1], r[2], k)
+                end
+            end
+            if not auras and p.color == "dispel" then
+                bad(at .. "/color", "bad-colour", "\"dispel\" colours aura bars by debuff type; this part can't use it.")
+            end
+            -- UI1 aura bars: which auras, in what order, which way.
+            if auras then
+                if p.icon ~= nil and type(p.icon) ~= "boolean" then
+                    bad(at .. "/icon", "not-true-or-false", "on aura bars, icon is true or false (show each aura's icon).")
+                end
+                if p.filter ~= nil then
+                    oneOf(at .. "/filter", p.filter, { mine = true, helpful = true, harmful = true, all = true }, "filter")
+                end
+                if p.sort ~= nil then
+                    oneOf(at .. "/sort", p.sort, { time = true, name = true }, "sort")
+                end
+                if p.grow ~= nil then
+                    oneOf(at .. "/grow", p.grow, { down = true, up = true }, "grow")
+                end
+                if p.show ~= nil then
+                    if not isList(p.show) or #p.show == 0 or #p.show > 20 then
+                        bad(at .. "/show", "bad-show", "show is a list of up to 20 spell names or IDs, e.g. [\"Slice and Dice\", 13750].")
+                    else
+                        for j, s in ipairs(p.show) do
+                            if not ((type(s) == "string" and #s > 0 and #s <= 60) or (type(s) == "number" and s % 1 == 0 and s > 0)) then
+                                bad(at .. "/show/" .. (j - 1), "bad-spell", "a spell is its name (up to 60 characters) or its ID.")
+                            end
+                        end
+                    end
                 end
             end
             for _, k in ipairs({ "vertical", "reverse", "keys", "orient" }) do

@@ -1,0 +1,35 @@
+{
+  "ui": 1,
+  "name": "Rogue, aura bars",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft", "BuffFrame"],
+  "parts": [
+    { "name": "hp", "kind": "bar", "value": "health", "color": "#4fd99a", "gradient": [0.3, -0.15],
+      "back": "#0c0d10", "backAlpha": 0.85, "border": "#000000",
+      "anchor": ["TOP", "char", "CENTER", 0, -96], "size": [260, 18] },
+    { "kind": "text", "format": "{hp} | {hp%}", "font": "Barlow", "fontSize": 16, "stroke": 1, "justify": "RIGHT",
+      "level": 1, "anchor": ["RIGHT", "hp", "RIGHT", -6, 0], "size": [160, 18] },
+    { "name": "en", "kind": "bar", "value": "power", "color": "power", "back": "#0c0d10", "backAlpha": 0.85,
+      "border": "#000000", "anchor": ["TOP", "hp", "BOTTOM", 0, -3], "size": [260, 6] },
+    { "kind": "pips", "unit": "target", "value": "combo", "count": 5, "w": 48, "h": 6, "gap": 5,
+      "color": "#fff569", "emptyColor": "#ffffff", "emptyAlpha": 0.12,
+      "anchor": ["BOTTOM", "hp", "TOP", 0, 6], "size": [1, 6] },
+
+    { "kind": "auras", "unit": "player", "filter": "mine",
+      "show": ["Slice and Dice", "Adrenaline Rush", "Instant Poison", "Deadly Poison"],
+      "w": 230, "h": 22, "gap": 3, "grow": "up", "color": "#f0c94a", "back": "#0c0d10", "backAlpha": 0.8,
+      "border": "#000000", "font": "Barlow", "fontSize": 14, "stroke": 1,
+      "anchor": ["BOTTOMRIGHT", "char", "CENTER", -150, -60], "size": [230, 22] },
+
+    { "kind": "text", "unit": "target", "format": "{name}  {hp%}", "font": "Barlow", "fontSize": 16, "stroke": 1,
+      "justify": "LEFT", "color": "reaction",
+      "anchor": ["BOTTOMLEFT", "char", "CENTER", 150, 52], "size": [300, 18] },
+    { "kind": "auras", "unit": "target", "filter": "mine", "show": ["Rupture", "Garrote", "Expose Armor"],
+      "sort": "time", "w": 230, "h": 22, "gap": 3, "grow": "up", "color": "#d24a3a", "back": "#0c0d10", "backAlpha": 0.8,
+      "border": "#000000", "font": "Barlow", "fontSize": 14, "stroke": 1,
+      "anchor": ["BOTTOMLEFT", "char", "CENTER", 150, -60], "size": [230, 22] },
+
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "icon": 40, "gap": 2,
+      "border": "#000000", "keySize": 11, "stroke": 1,
+      "anchor": ["BOTTOM", "screen", "BOTTOM", 0, 60] }
+  ]
+}
