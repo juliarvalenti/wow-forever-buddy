@@ -1081,6 +1081,25 @@ function M.new(opts)
         UnitIsFriend = function(_, unit)
             return world.units[unit] ~= nil and world.units[unit].hostile ~= true
         end,
+        -- UI3: what shows a hidden value. A secret in, a secret out (the
+        -- client's text is made where Lua can't see it); the percent is
+        -- secret when opts.secret names it, like any API here.
+        AbbreviateNumbers = function(n)
+            return secrets[n] and client.secret() or tostring(n)
+        end,
+        UnitHealthPercent = function(unit, _, curve)
+            local u = world.units[unit]
+            local f = u and (u.healthMax or 0) > 0 and u.health / u.healthMax or 0
+            return curve and curve.scale and f * curve.scale or f
+        end,
+        ["C_CurveUtil.CreateCurve"] = function()
+            local c = { points = {} }
+            function c:AddPoint(x, y)
+                self.points[#self.points + 1] = { x, y }
+                self.scale = y
+            end
+            return c
+        end,
         ["C_UnitAuras.GetAuraDataByIndex"] = function(unit, i, filter)
             if unit == "player" and filter == "HELPFUL" then
                 return world.auras[i]
@@ -1296,6 +1315,8 @@ function M.new(opts)
         "EnableKeyboard",
         -- UI1: a UI document's textures and text, handed out again on a repaint.
         "SetDrawLayer",
+        -- UI3: a bar part's status bar, for a hidden value.
+        "SetStatusBarTexture", "SetReverseFill",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -1392,6 +1413,18 @@ function M.new(opts)
     function Frame:GetText()
         return rawget(self, "text")
     end
+    -- UI3: text with secrets in it, which the client shows and Lua can't
+    -- read: kept as { format, values... } on w.formatted, and as text with
+    -- each secret a "#".
+    function Frame:SetFormattedText(fmt, ...)
+        local args = { n = select("#", ...), ... }
+        self.formatted = { fmt, unpack(args, 1, args.n) }
+        local shown = {}
+        for i = 1, args.n do
+            shown[i] = secrets[args[i]] and "#" or args[i]
+        end
+        self.text = (fmt:gsub("%%[%d%.]*[sfd]", "%%s")):format(unpack(shown, 1, args.n))
+    end
     -- (The alpha, when given: W1's faint text is the same colour, fainter.)
     function Frame:SetTextColor(r, g, b, a)
         self.color = { r, g, b, a }
@@ -1448,6 +1481,12 @@ function M.new(opts)
     end
     function Frame:SetValue(v, byUser)
         local s = self.sliding or {}
+        -- UI3: a status bar takes a secret as it is (the client draws it)
+        if secrets[v] then
+            s.value = v
+            self.sliding = s
+            return
+        end
         v = math.max(s.min or v, math.min(s.max or v, v))
         s.value = v
         self.sliding = s

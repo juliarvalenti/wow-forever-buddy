@@ -608,11 +608,18 @@ function M.install(sim, env)
     return (neg and "-" or "") .. s
   end
   rawset(env, "BreakUpLargeNumbers", BreakUpLargeNumbers)
-  rawset(env, "AbbreviateNumbers", function(n)
+  local function abbreviate(n)
     if n >= 1e9 then return (string.format("%.1fB", n / 1e9):gsub("%.0B", "B")) end
     if n >= 1e6 then return (string.format("%.1fM", n / 1e6):gsub("%.0M", "M")) end
     if n >= 1e3 then return (string.format("%.1fK", n / 1e3):gsub("%.0K", "K")) end
     return tostring(n)
+  end
+  -- WFB patch (UI3): a secret number comes back as a secret string, as in
+  -- 12.x (it's one of the functions made to display secrets).
+  rawset(env, "AbbreviateNumbers", function(n)
+    local secrets = require("wowapi.secrets")
+    if secrets.isSecret(n) then return secrets.wrap(abbreviate(secrets.unwrap(n))) end
+    return abbreviate(n)
   end)
   rawset(env, "AbbreviateLargeNumbers", env.AbbreviateNumbers)
   local function coinText(copper, icons)
@@ -693,6 +700,18 @@ function M.install(sim, env)
       if t and x.powers and x.powers[t] then return x.powers[t][2] end
       if t and x.powerType and t ~= x.powerType and t >= 0 then return 0 end
       return x.powerMax or 0
+    end,
+    -- WFB patch (UI3): the share of max, through a curve if given (12.x;
+    -- secret in combat by the API docs, like UnitHealth).
+    UnitHealthPercent = function(u, _, curve)
+      local x = U(u)
+      local f = x and (x.healthMax or 0) > 0 and (x.health or 0) / x.healthMax or 0
+      return curve and curve:Evaluate(f) or f
+    end,
+    UnitPowerPercent = function(u, t, _, curve)
+      local max = env.UnitPowerMax(u, t)
+      local f = max > 0 and env.UnitPower(u, t) / max or 0
+      return curve and curve:Evaluate(f) or f
     end,
     UnitPowerType = function(u) local x = U(u); if x then return x.powerType, POWER_TOKENS[x.powerType] end end,
     UnitIsDead = function(u) local x = U(u); return x and (x.dead or (x.health or 1) <= 0) or false end,

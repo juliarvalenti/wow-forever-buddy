@@ -2235,12 +2235,26 @@ scenario("ui_live", function()
     eq(fight.global("ForeverBuddyActionButton1").points[1][2], fight.ns().uiParts[8].f, "and the buttons placed")
     eq(#fight.errors, 0, "nothing refused")
 
-    -- A health the client keeps secret: never compared; the bar full until
-    -- it has a value it can read (then it keeps the last), the numbers a "?".
-    local hidden = rogue(UI_SLOT, { secret = { UnitHealth = true } })
+    -- UI3: a health the client keeps secret is shown anyway, never compared:
+    -- the bar is a status bar handed the secret as it is, and the numbers go
+    -- through AbbreviateNumbers and UnitHealthPercent into SetFormattedText.
+    local hidden = rogue(UI_SLOT, { secret = { UnitHealth = true, UnitHealthPercent = true } })
     hidden.unit("player", { health = 500 })
-    eq(hidden.ns().uiParts[2].f.children[2].width, 300 * P, "secret health: the bar full")
-    eq(textOf(hidden.ns().uiParts[3].f), "? | ?", "and the numbers are a ?")
+    local bar = hidden.ns().uiParts[2].f
+    eq(bar.kind, "StatusBar", "a bar part is a status bar")
+    eq(bar.layout.SetStatusBarTexture ~= nil, true, "with our own fill")
+    eq(hidden.env().issecretvalue(bar.sliding.value), true, "handed the secret health as it is")
+    eq(bar.sliding.max, 1200, "out of the max, which isn't secret")
+    local hp
+    for _, k in ipairs(hidden.ns().uiParts[3].f.children) do
+        if k.kind == "FontString" and k.shown then
+            hp = k
+        end
+    end
+    eq(hp.formatted and hp.formatted[1], "%s | %.0f%%", "the numbers formatted where Lua can't read them")
+    eq(hidden.env().issecretvalue(hp.formatted[2]) and hidden.env().issecretvalue(hp.formatted[3]), true,
+        "both of them secret")
+    eq(hp.text, "# | #%", "shown, not a ?")
     eq(#hidden.errors, 0, "nothing broken")
 
     -- Every example document (tools/addon-shots/ui-examples) live through the

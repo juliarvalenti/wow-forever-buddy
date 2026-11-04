@@ -112,7 +112,7 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 "alpha": { "always": 0.25, "combat": 1, "low": 1 }
 ```
 
-**Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part reading one keeps its bar where it last was (full if it never had a value) and shows its text as `?` rather than break; the interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything. Handing bars and text the hidden value directly, so they keep showing it, is in Next. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
+**Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part shows one anyway: a bar hands it to a status bar, which fills from it without Lua reading it, and a number in text goes through the game's own `AbbreviateNumbers` (`{hp}`, `{power}`, `{combo}`) or `UnitHealthPercent` and `UnitPowerPercent` (`{hp%}`, `{power%}`) into `SetFormattedText`. A hidden number reads `1.2K` where a readable one reads `1.2 K`. What needs a comparison keeps the last it could work out: a colour from stops, the `full` and `low` states, and how many pips are lit. The interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything, and shows `?` only where the game has no way to show the value. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
 
 **Aura bars and hidden timing.** An aura's time left can be hidden too. A bar whose timing is hidden shows full with no time, never a guess. If the aura list itself is refused in combat, the bars keep the last ones they had.
 
@@ -144,7 +144,18 @@ While a document draws:
 
 ## 9. Seeing it
 
-`render_ui` draws the document on a stand-in screen (our test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) in a moment: standing around, in combat, in stealth, or at low health, with a target. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir>` draws all four from the command line.
+`render_ui` draws the document on a stand-in screen (a level 34 test character, a rogue unless another class is asked for, logged in with a hostile target; it reads none of the player's data) in a moment:
+
+| Moment | What it is |
+|---|---|
+| `standing` | Out of combat, with a target. |
+| `combat` | In combat. |
+| `stealth` | In stealth (the rogue's stealth bar). |
+| `low_health` | Out of combat, at a quarter of your health. |
+| `no_target` | Out of combat with nothing targeted: a UI's quiet look. |
+| `hidden` | In combat, with every value the game hides in combat hidden from the UI (your own health included, as Forever's API docs have it). What the design really does in a fight. |
+
+There's a test character for each class: `warrior`, `paladin`, `hunter`, `rogue`, `priest`, `shaman`, `mage`, `warlock` and `druid` (in cat form, with combo points). An unknown class or moment is refused with the names there are. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir> [--class mage]` draws all six from the command line.
 
 ## 10. Rules that stay
 
@@ -166,7 +177,7 @@ From the first draft of this doc, to add as the language grows, each without bre
 - **Named styles** merged per part, and theme images.
 - **Per character and spec:** `for`, most specific wins.
 - **Blizzard's frames placed** through an Edit Mode layout, so one document describes the whole screen.
-- **Hidden values shown anyway:** bars and text handed the hidden value directly (a status bar), and aura bars timed by the aura's duration object (`StatusBar:SetTimerDuration`, `C_DurationUtil.CreateDurationTextBinding`), so no Lua reads the time left.
+- **Hidden aura timing shown anyway:** aura bars timed by the aura's duration object (`StatusBar:SetTimerDuration`, `C_DurationUtil.CreateDurationTextBinding`), so no Lua reads the time left; and a colour from stops worked out by the game from a hidden value (a colour curve).
 - **Action buttons on any slot**, not only the sixteen the Action bars module makes, styled by the document (keybind font, border).
 - **Text roles:** named styles for a frame's `header`, `value` and `label` text, instead of one font per part.
 - **RGBA colours:** `"#rrggbbaa"`, alongside the separate alpha keys.

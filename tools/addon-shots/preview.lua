@@ -24,16 +24,41 @@ local M = {}
 -- plus what the game would do: combat enters combat (lockdown and its
 -- events, as in game), stealth shows the stealth bar, low health drops the
 -- player to a quarter of their health. Standing around is the scene as it
--- logs in.
-M.MOMENTS = { standing = true, combat = true, stealth = true, low_health = true }
+-- logs in. UI3: no target is out of combat with nothing targeted (a UI's
+-- quiet look); hidden is combat as Forever's API docs have it, with every
+-- value the game marks secret hidden from the addon (the player's health
+-- included), so a picture shows what a design really does then.
+M.MOMENTS = { standing = true, combat = true, stealth = true, low_health = true, no_target = true, hidden = true }
+M.MOMENT_ORDER = { "standing", "combat", "stealth", "low_health", "no_target", "hidden" }
+
+-- UI3: every class there's a test character for, in the game's order.
+M.CLASSES = fixtures.ORDER
 
 local function enter(sim, moment)
-    if moment == "combat" then
+    if moment == "combat" or moment == "hidden" then
         sim:EnterCombat()
+        -- A fight goes on: health, power and auras change once combat has
+        -- started (and, in hidden, once their values are hidden), as they
+        -- would a moment into it.
+        for _, unit in ipairs({ "player", "target" }) do
+            if sim.units[unit] then
+                sim:FireEvent("UNIT_HEALTH", unit)
+                sim:FireEvent("UNIT_POWER_UPDATE", unit, "ENERGY")
+                sim:FireEvent("UNIT_AURA", unit)
+            end
+        end
     elseif moment == "low_health" then
         local p = sim.units.player
         sim:SetHealth("player", math.floor((p.healthMax or p.health or 100) * 0.25))
+    elseif moment == "no_target" then
+        sim.units.target = nil
+        sim:FireEvent("PLAYER_TARGET_CHANGED")
     end
+end
+
+-- A request draw can't serve, as a document's problems are given.
+local function refused(code, message)
+    return { { path = "", code = code, message = message } }
 end
 
 -- UI1: the document checker, the addon's own UICheck.lua (the one the game
@@ -66,11 +91,18 @@ function M.check(doc, addon)
 end
 
 function M.draw(opts)
+    -- (UI3: an unknown class or moment is refused by name, not drawn as
+    -- something else)
     local class = opts.class and opts.class:lower()
-    if not fixtures.CLASSES[class or ""] then
-        class = nil
+    if class and not fixtures.CLASSES[class] then
+        return nil, 0, nil, refused("unknown-class", ("There's no test character for %q. There are: %s.")
+            :format(opts.class, table.concat(M.CLASSES, ", ")))
     end
-    local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
+    if opts.moment and not M.MOMENTS[opts.moment] then
+        return nil, 0, class, refused("unknown-moment", ("%q isn't a moment. They are: %s.")
+            :format(opts.moment, table.concat(M.MOMENT_ORDER, ", ")))
+    end
+    local moment = opts.moment or "standing"
     local globals = {}
     if opts.ui ~= nil then
         local problems = M.check(opts.ui, opts.addon)
@@ -89,6 +121,7 @@ function M.draw(opts)
         stealth = moment == "stealth",
         art = opts.art == true,
         offline = true,
+        secretValues = moment == "hidden",
     })
     enter(sim, moment)
     sim:Advance(1)

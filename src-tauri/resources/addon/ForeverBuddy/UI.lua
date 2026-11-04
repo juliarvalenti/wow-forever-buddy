@@ -18,8 +18,11 @@
 -- refused in combat. Blizzard's player and target frames, and the ones named
 -- in `hide`, only get alpha 0.
 --
--- Values the game hides (secret values) are never compared or summed: a bar
--- keeps its last fill, text shows "?".
+-- Values the game hides (secret values) are never compared or summed. UI3:
+-- they're shown anyway, handed to what the game made for it: a bar's to a
+-- StatusBar, a number in text to AbbreviateNumbers or UnitHealthPercent and
+-- SetFormattedText. What needs a comparison (a colour from stops, the full
+-- and low states, how many pips are lit) keeps the last it could work out.
 --
 -- Action bars: in a picture, icons as they look. In game the `actionbar`
 -- parts place TH3's secure buttons (ForeverBuddy.lua, U.bars), which lays
@@ -106,23 +109,25 @@ local function pick(v, on)
     return out
 end
 
+-- A value and its max as the game gives them: either may be hidden.
+local function raw(unit, what)
+    if what == "health" then
+        return UnitHealth(unit), UnitHealthMax(unit)
+    elseif what == "power" then
+        return UnitPower(unit), UnitPowerMax(unit)
+    elseif what == "combo" then
+        local cur, max = UnitPower("player", 4), UnitPowerMax("player", 4)
+        if not isSecret(max) and (not max or max == 0) then
+            max = 5
+        end
+        return cur, max
+    end
+end
+
 -- A value as a fraction of its max, and the value; nil for one the client
 -- keeps secret.
 local function value(unit, what)
-    local cur, max
-    if what == "health" then
-        cur, max = UnitHealth(unit), UnitHealthMax(unit)
-    elseif what == "power" then
-        cur, max = UnitPower(unit), UnitPowerMax(unit)
-    elseif what == "combo" then
-        cur, max = UnitPower("player", 4), UnitPowerMax("player", 4)
-        if isSecret(max) then
-            return nil, nil
-        end
-        if not max or max == 0 then
-            max = 5
-        end
-    end
+    local cur, max = raw(unit, what)
     if isSecret(cur) or isSecret(max) then
         return nil, nil
     end
@@ -167,23 +172,98 @@ local function short(v)
     return tostring(math.floor(v + 0.5))
 end
 
+-- UI3: hidden values shown anyway. The game's own functions turn a hidden
+-- number into text without Lua reading it (AbbreviateNumbers, and the
+-- percent through a curve from 0-1 to 0-100), and FontString's
+-- SetFormattedText puts it in place. "?" only where the game has neither.
+local PERCENT
+local function percentCurve()
+    if PERCENT == nil then
+        PERCENT = false
+        local ok, c = pcall(function()
+            return C_CurveUtil.CreateCurve()
+        end)
+        if ok and c and pcall(c.AddPoint, c, 0, 0) and pcall(c.AddPoint, c, 1, 100) then
+            PERCENT = c
+        end
+    end
+    return PERCENT or nil
+end
+
+-- A hidden token's text, as a format spec and the hidden value it formats;
+-- nil when the game can't show it.
+local function hiddenToken(tok, unit)
+    local ok, v
+    if tok == "hp%" or tok == "power%" then
+        local curve = percentCurve()
+        if not curve then
+            return nil
+        end
+        if tok == "hp%" then
+            ok, v = pcall(UnitHealthPercent, unit, true, curve)
+        else
+            ok, v = pcall(UnitPowerPercent, unit, nil, false, curve)
+        end
+        return ok and v ~= nil and "%.0f%%" or nil, v
+    end
+    local cur = raw(unit, tok == "hp" and "health" or tok)
+    ok, v = pcall(AbbreviateNumbers, cur)
+    return ok and v ~= nil and "%s" or nil, v
+end
+
+-- The text of a format: a string, or (when a value is hidden) a table
+-- { fmt, n = count, values... } for SetFormattedText.
 local function format(fmt, unit)
-    return (fmt:gsub("{([%w%%]+)}", function(tok)
+    local plain, spec, args, i = {}, {}, { n = 0 }, 1
+    local function add(text)
+        plain[#plain + 1] = text
+        spec[#spec + 1] = (text:gsub("%%", "%%%%"))
+    end
+    while true do
+        local s, e, tok = fmt:find("{([%w%%]+)}", i)
+        add(fmt:sub(i, (s or 0) - 1))
+        if not s then
+            break
+        end
+        i = e + 1
         if tok == "name" then
             local n = UnitName(unit)
-            return type(n) == "string" and not isSecret(n) and n:gsub("|", "||") or ""
+            add(type(n) == "string" and not isSecret(n) and (n:gsub("|", "||")) or "")
         elseif tok == "level" then
             local l = UnitLevel(unit)
-            return type(l) == "number" and not isSecret(l) and tostring(l) or ""
-        elseif tok == "hp%" or tok == "power%" then
-            local f = value(unit, tok == "hp%" and "health" or "power")
-            return f and (math.floor(f * 100 + 0.5) .. "%") or "?"
-        elseif tok == "hp" or tok == "power" or tok == "combo" then
-            local _, v = value(unit, tok == "hp" and "health" or tok)
-            return v and short(v) or "?"
+            add(type(l) == "number" and not isSecret(l) and tostring(l) or "")
+        elseif tok == "hp%" or tok == "power%" or tok == "hp" or tok == "power" or tok == "combo" then
+            local percent = tok:sub(-1) == "%"
+            local f, v = value(unit, (tok == "hp" or tok == "hp%") and "health" or (percent and "power" or tok))
+            if f then
+                add(percent and (math.floor(f * 100 + 0.5) .. "%") or short(v))
+            else
+                local hs, hv = hiddenToken(tok, unit)
+                if hs then
+                    plain[#plain + 1] = "?"
+                    spec[#spec + 1] = hs
+                    args.n = args.n + 1
+                    args[args.n] = hv
+                else
+                    add("?")
+                end
+            end
         end
-        return ""
-    end))
+    end
+    if args.n == 0 then
+        return table.concat(plain)
+    end
+    args.fmt = table.concat(spec)
+    return args
+end
+
+-- Puts a format's text on a font string.
+local function setText(s, text)
+    if type(text) == "table" then
+        s:SetFormattedText(text.fmt, unpack(text, 1, text.n))
+    else
+        s:SetText(text)
+    end
 end
 
 local made = {}
@@ -271,7 +351,9 @@ end
 
 local function finish(e)
     for _, f in ipairs(e.frames) do
-        local p = pools[f]
+        -- (a frame added during this paint, a hidden value's status bar, may
+        -- have drawn nothing yet)
+        local p = poolOf(f)
         for _, k in ipairs({ { "tex", p.nt }, { "fs", p.nf }, { "fr", p.nr } }) do
             local list = p[k[1]]
             for i = k[2] + 1, #list do
@@ -310,7 +392,7 @@ local function label(f, p, text, point, rel, relPoint, x, y, on)
                 k:SetTextColor(0, 0, 0, 1)
                 k:SetJustifyH(p.justify or "CENTER")
                 k:SetPoint(point, rel, relPoint, x + dx * PX, y + dy * PX)
-                k:SetText(text)
+                setText(k, text)
             end
         end
     end
@@ -321,7 +403,7 @@ local function label(f, p, text, point, rel, relPoint, x, y, on)
     s:SetTextColor(c[1], c[2], c[3], c[4] or 1)
     s:SetJustifyH(p.justify or "CENTER")
     s:SetPoint(point, rel, relPoint, x, y)
-    s:SetText(text)
+    setText(s, text)
     return s
 end
 
@@ -344,18 +426,10 @@ function DRAW.plate(f, p, unit, on)
     end
 end
 
--- (A value the game hides keeps the bar where it last was.)
-function DRAW.bar(f, p, unit, on, e)
-    local frac = value(unit, p.value)
-    if frac then
-        e.fill = frac
-    end
-    frac = e.fill or 1
-    local back = tex(f, "BACKGROUND", hex(p.back or "#000000", p.backAlpha or 0.6))
-    back:SetAllPoints()
-    local c = color(pick(p.color, on) or "#ffffff", unit, frac)
-    local fill = tex(f, "ARTWORK", c)
-    -- a gentle gradient: lighter at the start, deeper at the end
+-- A bar's fill colour: flat, or a gentle gradient (lighter at the start,
+-- deeper at the end).
+local function paintFill(t, c, p, on)
+    t:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
     local g = pick(p.gradient, on)
     if type(g) == "table" and type(g[1]) == "number" and CreateColor then
         local function shade(k)
@@ -364,18 +438,67 @@ function DRAW.bar(f, p, unit, on, e)
             end
             return c[1] * (1 + k), c[2] * (1 + k), c[3] * (1 + k), 1
         end
-        fill:SetVertexColor(1, 1, 1, 1)
-        fill:SetGradient(p.vertical and "VERTICAL" or "HORIZONTAL", CreateColor(shade(g[1])), CreateColor(shade(g[2])))
+        t:SetVertexColor(1, 1, 1, 1)
+        t:SetGradient(p.vertical and "VERTICAL" or "HORIZONTAL", CreateColor(shade(g[1])), CreateColor(shade(g[2])))
     end
-    local start = p.reverse and (p.vertical and "TOP" or "RIGHT") or (p.vertical and "BOTTOM" or "LEFT")
-    if p.vertical then
-        fill:SetPoint(start .. "LEFT")
-        fill:SetPoint(start .. "RIGHT")
-        fill:SetHeight(math.max(1, e.h * frac))
+end
+
+-- UI3: a bar part's frame is a StatusBar (build), so a hidden value goes to
+-- it as it is: the game fills the bar and Lua never reads the value. Its
+-- fill is our own texture, in the same layer as the usual one. False where
+-- the game can't (the bar then keeps its last fill).
+local function hiddenFill(f, p, unit, e)
+    if not f.SetStatusBarTexture then
+        return false
+    end
+    local now, max = raw(unit, p.value)
+    return pcall(function()
+        if not e.barFill then
+            local t = f:CreateTexture(nil, "ARTWORK")
+            t:SetColorTexture(1, 1, 1, 1)
+            f:SetStatusBarTexture(t)
+            f:SetOrientation(p.vertical and "VERTICAL" or "HORIZONTAL")
+            f:SetReverseFill(p.reverse and true or false)
+            e.barFill = t
+        end
+        f:SetMinMaxValues(0, max)
+        f:SetValue(now)
+    end)
+end
+
+function DRAW.bar(f, p, unit, on, e)
+    local frac = value(unit, p.value)
+    local hidden = frac == nil
+    if frac then
+        e.fill = frac
+    end
+    -- (a colour from stops needs the value: while it's hidden, the last one)
+    frac = e.fill or 1
+    local back = tex(f, "BACKGROUND", hex(p.back or "#000000", p.backAlpha or 0.6))
+    back:SetAllPoints()
+    local c = color(pick(p.color, on) or "#ffffff", unit, frac)
+    if hidden and hiddenFill(f, p, unit, e) then
+        paintFill(e.barFill, c, p, on)
     else
-        fill:SetPoint("TOP" .. start)
-        fill:SetPoint("BOTTOM" .. start)
-        fill:SetWidth(math.max(1, e.w * frac))
+        if e.barFill then
+            -- (back to our own fill: the status bar's empties)
+            pcall(function()
+                f:SetMinMaxValues(0, 1)
+                f:SetValue(0)
+            end)
+        end
+        local fill = tex(f, "ARTWORK", c)
+        paintFill(fill, c, p, on)
+        local start = p.reverse and (p.vertical and "TOP" or "RIGHT") or (p.vertical and "BOTTOM" or "LEFT")
+        if p.vertical then
+            fill:SetPoint(start .. "LEFT")
+            fill:SetPoint(start .. "RIGHT")
+            fill:SetHeight(math.max(1, e.h * frac))
+        else
+            fill:SetPoint("TOP" .. start)
+            fill:SetPoint("BOTTOM" .. start)
+            fill:SetWidth(math.max(1, e.w * frac))
+        end
     end
     for i = 1, (p.ticks or 1) - 1 do
         local t = tex(f, "OVERLAY", hex(p.tickColor or "#000000", 0.7))
@@ -785,7 +908,11 @@ local function build()
     built, pending = true, false
     local timed = false
     for _, p in ipairs(SPEC.parts) do
-        local f = CreateFrame("Frame", nil, UIParent)
+        -- (a bar is a StatusBar, for a hidden value: DRAW.bar)
+        local ok, f = pcall(CreateFrame, p.kind == "bar" and "StatusBar" or "Frame", nil, UIParent)
+        if not ok or not f then
+            f = CreateFrame("Frame", nil, UIParent)
+        end
         f:EnableMouse(false)
         f:SetFrameStrata("MEDIUM")
         f:SetFrameLevel(10 + (p.level or 0))

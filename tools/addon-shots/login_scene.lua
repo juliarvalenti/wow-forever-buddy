@@ -109,7 +109,8 @@ end
 -- opts: blizzard (the extract's interface/addons, or nil for WOWAPI's
 -- stand-ins), extra (more addon dirs), globals (set before those load),
 -- class, level, stealth, layout,
--- uiScale (default 1080/768), art (default: WOWAPI_ART is set).
+-- uiScale (default 1080/768), art (default: WOWAPI_ART is set),
+-- secretValues (UI3: hidden values in combat).
 -- Returns the sim, logged in and settled, and how many Blizzard addons
 -- loaded.
 function M.boot(opts)
@@ -142,6 +143,8 @@ function M.boot(opts)
         -- AuraUtil.ForEachAura never ends on random auras.
         fakeData = false,
         apiDocsDir = blizzard and (blizzard .. "/blizzard_apidocumentationgenerated") or nil,
+        -- UI3: in combat, what the API docs mark secret comes back hidden
+        secretValues = opts.secretValues,
     })
 
     -- The client's UI scale at 1080p: UIParent is 768 units tall, each unit

@@ -5,11 +5,13 @@
 --   luajit tools/addon-shots/ui.lua <doc.json> <out-dir> [--class rogue] [--moment combat]
 --   luajit tools/addon-shots/ui.lua --examples <out-dir>
 --
--- Writes <out-dir>/<name>-<moment>.svg for each moment (all four unless
+-- Writes <out-dir>/<name>-<moment>.svg for each moment (all six unless
 -- --moment picks one), with a target for the parts that need one. A
 -- document that doesn't pass the check prints its problems and draws
--- nothing. --examples draws every ui-examples/*.json and fails on a Lua
--- error, then checks that a broken document gets the problems it should.
+-- nothing. --examples draws every ui-examples/*.json in every moment, and
+-- for every class with its values hidden, and fails on a Lua error or a "?"
+-- where a hidden value should show; then checks that a broken document gets
+-- the problems it should, and an unknown class or moment is refused.
 
 local here = (arg[0]:match("^(.*)[/\\]") or ".")
 local wowapiDir = here .. "/../wowapi"
@@ -17,7 +19,7 @@ package.path = wowapiDir .. "/?.lua;" .. wowapiDir .. "/?/init.lua;" .. here .. 
 local preview = require("preview")
 local ADDON = here .. "/../../src-tauri/resources/addon/ForeverBuddy"
 local uicheck = preview.uicheck(ADDON)
-local MOMENTS = { "standing", "combat", "stealth", "low_health" }
+local MOMENTS = preview.MOMENT_ORDER
 
 local decode = require("json").decode
 
@@ -71,6 +73,27 @@ if opts.examples then
             failed = failed + 1
         elseif errors > 0 then
             print("FAIL " .. name .. ": " .. errors .. " Lua errors")
+            failed = failed + 1
+        end
+        -- UI3: every class, with its values hidden as in combat: no Lua
+        -- error, and no number turned into a "?".
+        for _, class in ipairs(preview.CLASSES) do
+            local svg, n = preview.draw({ addon = ADDON, class = class, moment = "hidden", ui = doc })
+            if not svg or n > 0 then
+                print(("FAIL %s as a %s, values hidden: %s"):format(name, class, svg and (n .. " Lua errors") or "not drawn"))
+                failed = failed + 1
+            elseif svg:find(">%??[^<]*%?[^<]*</text>") then
+                print(("FAIL %s as a %s, values hidden: a ? where a number should show"):format(name, class))
+                failed = failed + 1
+            end
+        end
+    end
+    -- An unknown class or moment is refused by name, not drawn as another.
+    for _, o in ipairs({ { class = "deathknight", code = "unknown-class" }, { moment = "lowhealth", code = "unknown-moment" } }) do
+        local svg, _, _, problems = preview.draw({ addon = ADDON, class = o.class or "rogue", moment = o.moment,
+            ui = decode(read(here .. "/ui-examples/minimal.json")) })
+        if svg or not (problems and problems[1] and problems[1].code == o.code) then
+            print("FAIL " .. o.code .. ": not refused")
             failed = failed + 1
         end
     end

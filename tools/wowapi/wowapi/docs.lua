@@ -70,6 +70,9 @@ local function check(name, args, argv, n, isMethod)
   local offset = isMethod and 1 or 0
   for i, a in ipairs(args) do
     local v = argv[i + offset]
+    -- WFB patch (UI3): a secret passes as the type it hides, as in the
+    -- client (AbbreviateNumbers takes a secret number).
+    v = require("wowapi.secrets").unwrap(v)
     local k = kind(a[2])
     if v == nil then
       if not isMethod and not a[3] and a[5] == nil and (k == "number" or k == "string" or k == "table" or k == "function") then
