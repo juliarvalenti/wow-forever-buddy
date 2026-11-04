@@ -679,7 +679,7 @@ function U.look.set(id, v)
         ForeverBuddySettings.look[id] = v
     end
     -- (A profile from the app sets several at once: laid out once, after.)
-    if U.look.holding then
+    if U.applyingProfile then
         U.look.dirty = true
         return
     end
@@ -1153,7 +1153,10 @@ function U.bars.option()
                 ForeverBuddySettings = {}
             end
             ForeverBuddySettings.ourBars = on and true or nil
-            U.bars.apply()
+            -- (From a profile at login: PLAYER_ENTERING_WORLD applies it.)
+            if not U.applyingProfile then
+                U.bars.apply()
+            end
         end,
     }
 end
@@ -5823,14 +5826,17 @@ do
         end
         ForeverBuddySettings.profileApplied = p.profile
         -- In declaration order, so a parent is on before its children.
-        U.look.holding = true
+        -- (While it's applied, the look is laid out once, after, and our
+        -- bars are built at PLAYER_ENTERING_WORLD, which follows every
+        -- login and /reload, so this handler stays light.)
+        U.applyingProfile = true
         for _, o in ipairs(OPTIONS) do
             local v = o.key and p.values[o.key]
             if v ~= nil and U.prefs.fits(o.decl, v) and v ~= U.prefs.now(o) then
                 pcall(o.set, v)
             end
         end
-        U.look.holding = nil
+        U.applyingProfile = nil
         if U.look.dirty then
             U.look.dirty = nil
             U.look.refresh()
