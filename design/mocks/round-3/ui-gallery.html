@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Your UI · WoW Forever Buddy (mock r3, UI2)</title>
+<link rel="stylesheet" href="_d.css">
+<style>
+  /* UI2: Your UI becomes the gallery. Every look is a UI document (design/specs/ui-language.md): the ones that ship
+     in the repo's gallery/ folder, and the ones Claude made for you. The pictures on the cards are drawn by CI when a
+     look is added and ship with the app, so the gallery works before the preview download. Looking closer redraws it
+     live, in any moment. ?state=detail | use | none (the standard HUD in use, no drafts). */
+  .yu2 { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+  .now { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 14px; }
+  .now img, .card img, .big img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 3px; background: #1d2228; }
+  .now .t { display: grid; gap: 3px; min-width: 0; }
+  .now .t small { font-size: 11.5px; color: var(--soot); }
+  .now .t b { font-weight: 500; color: var(--chalk-hi); font-size: 15px; }
+  .now .t span { font-size: 12.5px; color: var(--ash); }
+  .filt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 8px; }
+  .filt .grow { flex: 1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { height: 24px; padding: 0 9px; border-radius: 12px; font-size: 11.5px; color: var(--ash); background: rgba(0,0,0,.28); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); display: inline-flex; align-items: center; gap: 5px; }
+  .chip.on { color: var(--chalk-hi); box-shadow: inset 0 0 0 1px rgba(255,177,92,.45); background: rgba(255,177,92,.08); }
+  .chip .crest { width: 13px; height: 13px; }
+  .search { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: var(--r); background: rgba(0,0,0,.35); box-shadow: inset 0 2px 4px rgba(0,0,0,.6); color: var(--soot); font-size: 12px; width: 190px; }
+  h2.sec { font: 500 13px/1.3 Geist, sans-serif; color: var(--chalk); margin: 16px 0 8px; display: flex; gap: 8px; align-items: baseline; }
+  h2.sec small { color: var(--soot); font-size: 11.5px; font-weight: 400; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .card { padding: 8px; display: grid; gap: 7px; align-content: start; cursor: pointer; }
+  .card:hover { filter: brightness(1.07); }
+  .card .name { display: flex; align-items: baseline; gap: 6px; }
+  .card .name b { font-weight: 500; color: var(--chalk-hi); font-size: 13.5px; }
+  .card .name .inuse { margin-left: auto; font-size: 11px; color: var(--ok); }
+  .card small { font-size: 11.5px; color: var(--soot); }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .card .tags span { font-size: 10.5px; color: var(--ash); padding: 1px 6px; border-radius: 9px; background: rgba(0,0,0,.3); }
+  .card.mine { box-shadow: inset 0 0 0 1px rgba(255,177,92,.28); }
+  .card .acts { display: flex; gap: 6px; }
+  .side { display: grid; gap: 12px; }
+  .pb { padding: 10px 12px; font-size: 12.5px; color: var(--ash); display: grid; gap: 8px; }
+  .pb b { color: var(--chalk-hi); font-weight: 500; }
+  .cmd { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.35); border-radius: var(--r); padding: 4px 4px 4px 8px; }
+  .side, .side .panel, .pb, .pb > *, .cmd { min-width: 0; }
+  .side .panel { overflow: hidden; }
+  .pb { grid-template-columns: minmax(0, 1fr); }
+  .cmd code { flex: 1; min-width: 0;font-size: 11px; color: var(--chalk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* detail */
+  .big { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; padding: 12px 14px; }
+  .big .tools { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .big .info { display: grid; gap: 10px; align-content: start; font-size: 12.5px; color: var(--ash); }
+  .big .info h3 { margin: 0; font: 500 18px/1.2 Geist, sans-serif; color: var(--chalk-hi); }
+  .big .info dl { margin: 0; display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 4px 8px; }
+  .big .info dt { color: var(--soot); }
+  .big .info dd { margin: 0; color: var(--chalk); }
+  .big .info .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ask { display: grid; gap: 6px; }
+  .ask textarea { width: 100%; min-height: 58px; resize: vertical; box-sizing: border-box; background: rgba(0,0,0,.35); border: 0; border-radius: var(--r); color: var(--chalk); padding: 7px 9px; font: 12.5px/1.4 Geist, sans-serif; box-shadow: inset 0 2px 4px rgba(0,0,0,.6); }
+  .back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ash); margin-bottom: 8px; }
+  /* use */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 50; }
+  .dlg { width: 440px; padding: 16px 18px; display: grid; gap: 12px; font-size: 12.5px; color: var(--ash); }
+  .dlg h3 { margin: 0; font: 500 16px/1.3 Geist, sans-serif; color: var(--chalk-hi); }
+  .dlg label { display: flex; align-items: center; gap: 8px; color: var(--chalk); }
+  .dlg .chars { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding-left: 22px; }
+  .dlg .acts { display: flex; justify-content: flex-end; gap: 8px; }
+  .only-detail, .only-use, .only-none { display: none; }
+  body[data-ui="detail"] .only-detail, body[data-ui="use"] .only-use, body[data-ui="none"] .only-none { display: grid; }
+  body[data-ui="detail"] .only-list, body[data-ui="none"] .only-some { display: none !important; }
+  @media (max-width: 1100px) { .yu2, .big { grid-template-columns: minmax(0, 1fr); } .now { grid-template-columns: 140px minmax(0, 1fr); } .now .acts { grid-column: 1 / -1; } }
+</style>
+</head>
+<body data-page="yourui" data-wow="closed">
+<script>
+  const st = new URLSearchParams(location.search).get('state');
+  if (st === 'detail' || st === 'use' || st === 'none') document.body.dataset.ui = st;
+</script>
+<main class="main">
+  <header class="head">
+    <div><h1>Your UI</h1><div class="lede">Looks for your screen in WoW: Forever. Pick one from the gallery, or ask Claude to make one for you.</div></div>
+  </header>
+
+  <section class="yu2">
+    <div>
+      <!-- What the game has now. With nothing chosen it's the standard HUD, and there's no way back to offer. -->
+      <article class="panel now only-some" style="display:grid">
+        <img src="shots/ui2/halo-combat.jpg" alt="Halo, in combat">
+        <div class="t">
+          <small>In the game now · on every character</small>
+          <b>Halo</b>
+          <span>Health as a ring of segments around your character, buttons fanned under it.</span>
+        </div>
+        <div class="acts"><button class="btn ghost">Go back to the standard HUD</button></div>
+      </article>
+      <article class="panel now only-none">
+        <img src="shots/ui2/round4-combat.jpg" alt="The standard HUD, in combat">
+        <div class="t">
+          <small>In the game now · on every character</small>
+          <b>The standard HUD</b>
+          <span>Forever Buddy's own frames and bars. Pick any look below to try something else.</span>
+        </div>
+      </article>
+
+      <!-- The list: drafts first, then the gallery. -->
+      <div class="only-list">
+        <div class="filt">
+          <div class="chips">
+            <button class="chip on">Any class</button>
+            <button class="chip"><span class="cc c-rogue">Rogue</span></button>
+            <button class="chip"><span class="cc c-druid">Druid</span></button>
+            <button class="chip"><span class="cc c-warrior">Warrior</span></button>
+            <button class="chip"><span class="cc c-mage">Mage</span></button>
+            <button class="chip"><span class="cc c-priest">Priest</span></button>
+            <button class="chip"><span class="cc c-hunter">Hunter</span></button>
+            <button class="chip"><span class="cc c-paladin">Paladin</span></button>
+          </div>
+          <span class="grow"></span>
+          <span class="search"><i data-i="search" class="sm"></i>Find a look</span>
+        </div>
+        <div class="chips">
+          <button class="chip">Minimal</button><button class="chip">Big numbers</button><button class="chip">Aura bars</button>
+          <button class="chip">Action bars</button><button class="chip">Healer</button><button class="chip">Unusual</button>
+        </div>
+
+        <div class="only-some" style="display:block">
+          <h2 class="sec">Made for you <small>2 · by Claude, waiting for you to pick or throw away</small></h2>
+          <div class="grid">
+            <article class="panel card mine">
+              <img src="shots/ui2/rogue-auras-combat.jpg" alt="Rogue timers, in combat">
+              <div class="name"><b>Rogue timers</b></div>
+              <small>from "Claude Code" · 10 minutes ago · You asked: "bars for my buffs and their bleeds"</small>
+              <div class="acts"><button class="btn ghost">Throw away</button><button class="btn">Look closer</button></div>
+            </article>
+            <article class="panel card mine">
+              <img src="shots/ui2/corners-combat.jpg" alt="Big corners, in combat">
+              <div class="name"><b>Big corners</b></div>
+              <small>from "Claude Code" · 10 minutes ago · started from Corners in the gallery</small>
+              <div class="acts"><button class="btn ghost">Throw away</button><button class="btn">Look closer</button></div>
+            </article>
+          </div>
+        </div>
+
+        <h2 class="sec">Gallery <small>8 looks · new ones come with each Forever Buddy update</small></h2>
+        <div class="grid">
+          <article class="panel card"><img src="shots/ui2/halo-combat.jpg" alt="Halo, in combat"><div class="name"><b>Halo</b><span class="inuse only-some">In the game</span></div><small>by Forever Buddy · any class</small><div class="tags"><span>Unusual</span><span>Action bars</span></div></article>
+          <article class="panel card"><img src="shots/ui2/minimal-combat.jpg" alt="Almost nothing, in combat"><div class="name"><b>Almost nothing</b></div><small>by Forever Buddy · any class</small><div class="tags"><span>Minimal</span></div></article>
+          <article class="panel card"><img src="shots/ui2/round4-combat.jpg" alt="Round 4, in combat"><div class="name"><b>Round 4</b></div><small>by Forever Buddy · rogue</small><div class="tags"><span>Big numbers</span><span>Action bars</span></div></article>
+          <article class="panel card"><img src="shots/ui2/columns-combat.jpg" alt="Columns, in combat"><div class="name"><b>Columns</b></div><small>by Forever Buddy · any class</small><div class="tags"><span>Minimal</span></div></article>
+          <article class="panel card"><img src="shots/ui2/terminal-combat.jpg" alt="Terminal, in combat"><div class="name"><b>Terminal</b></div><small>by Forever Buddy · any class</small><div class="tags"><span>Unusual</span></div></article>
+          <article class="panel card"><img src="shots/ui2/shards-combat.jpg" alt="Shards, in combat"><div class="name"><b>Shards</b></div><small>by Forever Buddy · any class</small><div class="tags"><span>Unusual</span></div></article>
+          <article class="panel card"><img src="shots/ui2/corners-combat.jpg" alt="Corners, in combat"><div class="name"><b>Corners</b></div><small>by Forever Buddy · any class</small><div class="tags"><span>Big numbers</span></div></article>
+          <article class="panel card"><img src="shots/ui2/rogue-auras-combat.jpg" alt="Rogue, aura bars, in combat"><div class="name"><b>Rogue, aura bars</b></div><small>by Forever Buddy · rogue</small><div class="tags"><span>Aura bars</span></div></article>
+        </div>
+      </div>
+
+      <!-- Look closer: drawn live, in any moment. -->
+      <div class="only-detail">
+        <a class="back" href="ui-gallery.html"><i data-i="left" class="sm"></i>All looks</a>
+        <article class="panel big">
+          <div>
+            <div class="tools"><span class="d-dim" style="font-size:12px;color:var(--soot)">Show</span>
+              <div class="seg"><button data-m="standing">Standing around</button><button class="on" data-m="combat">In combat</button><button data-m="stealth">In stealth</button><button data-m="low_health">Low health</button></div>
+            </div>
+            <img id="bigpic" src="shots/ui2/halo-combat.jpg" alt="Halo, in combat">
+          </div>
+          <div class="info">
+            <h3>Halo</h3>
+            <div>Health as a ring of 32 segments around your character, energy inside it, combo points above and your first eight buttons fanned under it. The target's name and health sit high and out of the way.</div>
+            <dl>
+              <dt>By</dt><dd>Forever Buddy</dd>
+              <dt>For</dt><dd>Any class</dd>
+              <dt>Shows</dt><dd>Your health, power and combo points, your target, action bars 1 to 8</dd>
+              <dt>Hides</dt><dd>Blizzard's player and target frames, the main action bar</dd>
+            </dl>
+            <div class="acts"><button class="primary">Use this</button><button class="btn ghost">See it on GitHub</button></div>
+            <div class="ask">
+              <b style="color:var(--chalk-hi);font-weight:500">Ask Claude to change it</b>
+              <textarea placeholder="What would you change? For example: make the ring smaller and put my target's health inside it."></textarea>
+              <div><button class="btn">Copy for Claude</button> <span style="font-size:11.5px;color:var(--soot)">Paste it into Claude Code. Its take shows up under Made for you.</span></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="side">
+      <article class="panel">
+        <div class="ph"><h2>Ask Claude</h2></div>
+        <div class="pb">
+          <span>Once, in Claude Code:</span>
+          <div class="cmd"><code>npx skills add juliarvalenti/wow-forever-buddy</code><button class="btn ghost">Copy</button></div>
+          <span>Then say what you want, in your own words. Claude can start from any look in the gallery:</span>
+          <span><q>Take Corners and make the numbers smaller.</q></span>
+          <span><q>Show me three takes on Halo for a druid.</q></span>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="ph"><h2>Share yours</h2></div>
+        <div class="pb">
+          <span>Made a look you like? Anyone can add one to the gallery on GitHub. Each one is checked and drawn in all four moments before it goes in, then everyone gets it with the next update.</span>
+          <span><a class="ember" href="#">How to add a look</a></span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- Use this: which characters. -->
+  <div class="scrim only-use">
+    <article class="panel dlg">
+      <h3>Use Halo</h3>
+      <label><input type="radio" name="who" checked> On every character</label>
+      <label><input type="radio" name="who"> Only on these</label>
+      <div class="chars">
+        <label><input type="checkbox" checked> <span class="cc c-rogue">Thrandor</span></label>
+        <label><input type="checkbox"> <span class="cc c-druid">Velyra</span></label>
+        <label><input type="checkbox"> <span class="cc c-warrior">Coinpurse</span></label>
+        <label><input type="checkbox"> <span class="cc c-priest">Sela</span></label>
+      </div>
+      <span>It's in the game at your next login. The others keep what they have.</span>
+      <div class="acts"><button class="btn ghost">Cancel</button><button class="primary">Use this</button></div>
+    </article>
+  </div>
+</main>
+<script src="_shell.js"></script>
+<script>
+  // Look closer: the moment switch (the mock has Halo in all four).
+  document.querySelectorAll('.seg [data-m]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.seg [data-m]').forEach(x => x.classList.toggle('on', x === b));
+    document.getElementById('bigpic').src = 'shots/ui2/halo-' + b.dataset.m + '.jpg';
+  }));
+  document.querySelectorAll('.card').forEach(c => c.addEventListener('click', e => {
+    if (!e.target.closest('button')) location.search = '?state=detail';
+  }));
+</script>
+</body>
+</html>

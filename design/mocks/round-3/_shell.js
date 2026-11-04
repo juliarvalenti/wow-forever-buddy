@@ -70,6 +70,8 @@
     { id: 'ah', label: 'Auction House', icon: 'scale', href: 'ah.html' },
     // P2: agent proposals waiting for a click. The badge is the pending count, hidden at 0 and while agent access is off.
     { id: 'approvals', label: 'Approvals', icon: 'check', href: 'approvals.html', badge: 3 },
+    // UI2: the UI gallery (ui-gallery.html).
+    { id: 'yourui', label: 'Your UI', icon: 'image', href: 'ui-gallery.html' },
     { group: 'Game files' },
     { id: 'backups', label: 'Backups', icon: 'archive', href: 'backups.html', n: 23 },
     { id: 'addons', label: 'Addons', icon: 'puzzle', href: 'addons.html', soon: 1 },
