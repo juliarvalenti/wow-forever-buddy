@@ -25,6 +25,8 @@ The base theme is **Forever Clean**. Copy its feel, not a single screenshot.
 
 Change the theme's values for a player rather than inventing a style: dark mode (dark fill, the missing part shows the colour), slim bars, stacked frames, bigger icons, a different accent. Keep the language the same.
 
+The values a draft can set today are the `look: true` options in `get_settings`: health, power and accent colours, the gradient on or off, frame width and height, number size, text outline (thick, thin or none), side by side or stacked, and button size. Their defaults are this page's look. A good set of drafts changes one or two of them each, in ways the player can tell apart at a glance.
+
 ## Things players disliked
 
 - Material textures (stone, leather, parchment) on HUD elements read as 2007.
