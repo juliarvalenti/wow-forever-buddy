@@ -32,7 +32,7 @@ The format grew from the TH1 prototype that drew round 4 from a spec. Nothing in
 }
 ```
 
-A thin health line under the character that's faint until combat or low health, the percentage beside it only then, the target's name above, and one small row of buttons. The three examples in `tools/addon-shots/ui-examples/` (round 4, a longer version of this one, and "Columns") look nothing alike.
+A thin health line under the character that's faint until combat or low health, the percentage beside it only then, the target's name above, and one small row of buttons. The seven examples in `tools/addon-shots/ui-examples/` look nothing alike: round 4, a longer version of this one, "Columns", "Halo" (health as a ring of 32 segments around the character, buttons fanned under it), "Terminal" (a green console in a corner), "Shards" (slanted crystal segments, mirrored for the target) and "Corners" (huge numbers in two corners, the middle left clear).
 
 ## 2. The document
 
@@ -53,12 +53,12 @@ Every part has a `kind`. A part with a `name` can be anchored to by the parts af
 
 | Kind | Draws | Takes |
 |---|---|---|
-| `plate` | A rectangle | `color`, `gradient` (`["HORIZONTAL" or "VERTICAL", "#from", "#to"]`), `border`, `borderWidth` |
+| `plate` | A rectangle | `color`, `gradient` (`["HORIZONTAL" or "VERTICAL", "#from", "#to"]`), `border`, `borderWidth`, `rotate` (degrees, about its middle: 45 on a square is a diamond, a thin turned plate is a slash) |
 | `bar` | A fill that follows a value | `value` (required), `color`, `gradient` (`[lighten start, darken end]`, e.g. `[0.38, -0.18]`), `back`, `backAlpha`, `border`, `vertical`, `reverse`, `ticks`, `tickColor` |
 | `text` | A line of text | `format` (section 6), `font`, `fontSize`, `outline`, `stroke`, `justify`, `color` |
-| `pips` | Marks lit up to a value | `value` (default `combo`), `count`, `w`, `h`, `gap`, `layout` (`row` or `arc`, with `radius`, `from`, `to` in degrees, 0 up), `color`, `emptyColor`, `emptyAlpha`, `border` |
+| `pips` | Marks lit up to a value | `value` (default `combo`: one pip per point; `health` or `power` light their share, so 30 pips make a segmented gauge), `count` (up to 40), `w`, `h`, `gap`, `layout` (`row`, `column` or `arc`, with `radius`, `from`, `to` in degrees, 0 up), `rotate` (each mark), `orient` (on an arc, each faces out), `color` (stops colour each pip by its place), `emptyColor`, `emptyAlpha`, `border` |
 | `icon` | An image | `slot` (an action slot's icon) or `aura` (a spell name), `zoom`, `border` |
-| `actionbar` | The player's action buttons | `slots`, `icon` (size), `gap`, `columns`, `zoom`, `border`, `back`, `keys`, `bind`, `bindFrom`, `keySize`, `keyColor`, `font`, `outline`, `stroke` |
+| `actionbar` | The player's action buttons | `slots`, `icon` (size), `gap`, `columns`, `layout` (`grid`, or `arc` with `radius`, `from`, `to`), `zoom`, `border`, `back`, `keys`, `bind`, `bindFrom`, `keySize`, `keyColor`, `font`, `outline`, `stroke` |
 
 Every part also takes `name`, `unit`, `anchor`, `size`, `level`, `alpha` and `hidden`.
 
@@ -99,7 +99,7 @@ A key a kind doesn't take is an error, so a typo (`"colour"`) is caught, not ign
 
 `"{hp} | {hp%}"` shows `1.2 K | 85%`.
 
-Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `Friz`, `Arial Narrow`, `Morpheus`, `Skurri`. `outline` is `thick`, `thin` or `none`. `stroke` (0 to 3) draws a heavier black stroke, as round 4 does.
+Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `Friz`, `Arial Narrow`, `Morpheus`, `Skurri`. `outline` is `thick`, `thin` or `none`. `stroke` (0 to 3) draws a heavier black stroke, as round 4 does. `fontSize` is 6 to 120, so a number can be the whole design. (The game's own fonts only draw in pictures with game art on; ours always do.)
 
 ## 7. States
 
