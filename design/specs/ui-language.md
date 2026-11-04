@@ -122,6 +122,8 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 
 The player's chosen document lives in the slot `Data/UI.lua` (`ForeverBuddyData_UI = { schema = 1, stamp, doc }`), written by the app only when the player picks Use this. At login the addon checks it again with the same `UICheck.lua` (the folder can be edited by anything on the machine); a missing or failing document draws nothing and the standard HUD stays. The app never writes a slot while WoW is running, so a new choice (or going back) reaches the game at the next login after WoW has been closed; a `/reload` loads the file as it was.
 
+**For some characters, a class or a spec.** The slot can carry several documents, `docs = { { name, for = { characters, classes, specs }, doc }, ... }`, at most 8. Each character gets the first that fits it, and with none the standard HUD. The app puts them in order: ones for characters, then specs, then classes, then the one for everyone. A `for` fits when every key it has lists this character's value: `characters` by GUID (Forever's names carry a surname, so a name isn't enough), `classes` by the class file token (`ROGUE`), `specs` by spec ID. Within a key any value fits; across keys all must. No `for`, or one with no keys, fits everyone. A key the addon doesn't know never fits, and neither does `specs` where the game gives no spec. Only the document picked is checked. An app without `docs` sends one `doc` for everyone, which an older addon also reads.
+
 While a document draws:
 
 - Our fixed HUD stays off. Blizzard's player and target frames, and the ones in `hide`, get alpha 0 and nothing else.
@@ -175,7 +177,6 @@ From the first draft of this doc, to add as the language grows, each without bre
 - **More data:** casts, absorbs, any aura's time left and stacks, spell cooldowns and charges, `dead`, `inRange`.
 - **Conditions:** `when` with comparisons (`player.health < 35%`) and named states (`group`, `mounted`, `resting`), each saying what to assume when the game hides the value.
 - **Named styles** merged per part, and theme images.
-- **Per character and spec:** `for`, most specific wins.
 - **Blizzard's frames placed** through an Edit Mode layout, so one document describes the whole screen.
 - **Hidden aura timing shown anyway:** aura bars timed by the aura's duration object (`StatusBar:SetTimerDuration`, `C_DurationUtil.CreateDurationTextBinding`), so no Lua reads the time left; and a colour from stops worked out by the game from a hidden value (a colour curve).
 - **Action buttons on any slot**, not only the sixteen the Action bars module makes, styled by the document (keybind font, border).
