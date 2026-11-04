@@ -705,6 +705,8 @@ mod tests {
                     LuaValue::Bool(b) => json!(b),
                     LuaValue::Num(n) => json!(n),
                     LuaValue::Int(n) => json!(n),
+                    // ED1: the look's colours and choices.
+                    LuaValue::Str(s) => json!(String::from_utf8(s.to_vec()).unwrap()),
                     _ => panic!(),
                 };
                 (

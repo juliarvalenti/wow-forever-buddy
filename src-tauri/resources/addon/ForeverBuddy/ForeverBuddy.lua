@@ -686,11 +686,18 @@ function U.look.set(id, v)
     U.look.refresh()
 end
 
+-- (The bars only need laying out again, and only out of combat; in combat
+-- their apply, which lays them out too, waits for it to end.)
 function U.look.refresh()
     if not pcall(U.hud.restyle) then
         U.errors = U.errors + 1
     end
-    if U.bars.header and not pcall(U.bars.apply) then
+    if not U.bars.header then
+        return
+    end
+    if read("InCombatLockdown") then
+        U.bars.pending = true
+    elseif not pcall(U.bars.layout) then
         U.errors = U.errors + 1
     end
 end
