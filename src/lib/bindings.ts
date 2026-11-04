@@ -374,7 +374,7 @@ export const commands = {
 	 *  The tab opened, or picked a moment: draw now (that moment, or the one it
 	 *  last picked), and redraw on every change from here on.
 	 */
-	previewOpen: (moment: Moment | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
+	previewOpen: (moment: "standing" | "combat" | "stealth" | "low_health" | null) => __TAURI_INVOKE<null>("preview_open", { moment }),
 	/**
 	 *  "Download preview data": WOWAPI's data files from GitHub, checked against
 	 *  the hashes the app carries. Progress arrives as `PreviewChanged`.
