@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In game: macros to apply · WoW Forever Buddy (mock r3)</title>
+<style>
+  /* MC1 part 2, in game. One line in chat at login says how many approved macros are waiting; the Forever
+     Buddy window's Macros page lists them, each with its exact text and its own Apply. The click is the
+     confirm: no second dialog, and no Apply all. CreateMacro or EditMacro runs on that click, out of combat
+     only. An edit is re-checked first (same name, same text as approved) and skipped with a line if not.
+     A macro for another character waits until you log in on them. Our own look (INGAME, the app's D language),
+     never Blizzard's templates. */
+  :root { --bg: #101114; --panel: #16171b; --line: rgba(255,255,255,.07); --chalk: #d9d4c7; --chalk-hi: #f1ece0;
+    --ash: #9a9384; --soot: #6f6a5f; --ember: #ff7a2e; --ember-2: #ffb15c; --ok: #9fc27a; --bad: #e07a5f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0c0b; color: var(--chalk); font: 13px/1.45 Geist, -apple-system, sans-serif; padding: 24px; }
+  .world { position: relative; height: 760px; max-width: 1180px; border-radius: 6px; overflow: hidden;
+    background: radial-gradient(ellipse at 60% 40%, #3a4a3a, #1b241c 60%, #0f1410); box-shadow: 0 0 0 1px #000; }
+  .chat { position: absolute; left: 18px; bottom: 18px; width: 430px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
+    background: rgba(0,0,0,.35); border-radius: 3px; text-shadow: 0 1px 1px #000; }
+  .chat .fb { color: #ffd23c; }
+  .chat .dim { color: #c8c2b3; }
+  .chat .gen { color: #f1ece0; }
+
+  .win { position: absolute; left: 470px; top: 36px; width: 560px; background: var(--bg); border-radius: 4px;
+    box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.06), 0 14px 30px rgba(0,0,0,.7); }
+  .hd { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #000;
+    background: linear-gradient(180deg, #1c1d22, #141519); border-radius: 4px 4px 0 0; }
+  .hd b { font: 600 13px Geist, sans-serif; color: var(--chalk-hi); }
+  .hd .x { margin-left: auto; color: var(--soot); font-size: 14px; }
+  .pagehd { padding: 12px 16px 6px; }
+  .pagehd h2 { margin: 0; font: 600 16px Geist, sans-serif; color: var(--chalk-hi); }
+  .pagehd p { margin: 3px 0 0; color: var(--ash); font-size: 12px; }
+  .rows { padding: 6px 12px 12px; display: grid; gap: 8px; }
+  .row { background: var(--panel); border-radius: 3px; box-shadow: inset 0 0 0 1px var(--line); padding: 10px 12px; display: grid; gap: 8px; }
+  .row .top { display: flex; align-items: center; gap: 8px; }
+  .row .ico { width: 26px; height: 26px; border-radius: 2px; background: #2b2d33; box-shadow: 0 0 0 1px #000; flex: none; }
+  .row .t { display: grid; gap: 1px; min-width: 0; }
+  .row .t b { font-weight: 600; color: var(--chalk-hi); }
+  .row .t small { color: var(--soot); font-size: 11.5px; }
+  .row .cc { color: #fff569; }
+  .row .cm { color: #3fc7eb; }
+  .tag { margin-left: auto; font-size: 11px; color: var(--ash); padding: 1px 7px; border-radius: 9px; background: rgba(255,255,255,.06); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .box { background: rgba(0,0,0,.35); border-radius: 2px; padding: 6px 8px; min-width: 0; }
+  .box h4 { margin: 0 0 3px; font: 500 11px Geist, sans-serif; color: var(--soot); }
+  .box.new h4 { color: var(--ember-2); }
+  .box pre { margin: 0; font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--chalk-hi); white-space: pre-wrap; word-break: break-word; }
+  .acts { display: flex; gap: 8px; align-items: center; }
+  .btn { font: 600 12px Geist, sans-serif; padding: 5px 14px; border-radius: 3px; border: 0; color: #1b1205;
+    background: linear-gradient(180deg, #ffb15c, #e8892f); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255,255,255,.35); }
+  .btn.ghost { background: none; color: var(--ash); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); font-weight: 500; }
+  .btn[disabled] { background: #2a2b30; color: var(--soot); box-shadow: 0 0 0 1px #000; }
+  .note { font-size: 11.5px; color: var(--soot); }
+  .done { color: var(--ok); font-size: 12px; }
+  .warn { color: var(--ember-2); font-size: 12px; }
+  .foot { padding: 0 16px 14px; font-size: 11.5px; color: var(--soot); }
+
+  .states { max-width: 1180px; margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .states .row { background: var(--bg); }
+  .states h5 { margin: 0 0 2px; font: 600 11px Geist, sans-serif; color: var(--soot); }
+</style>
+</head>
+<body>
+<div class="world">
+  <div class="chat">
+    <div class="gen">[General] Welcome to Elwynn Forest</div>
+    <div><span class="fb">Forever Buddy:</span> <span class="dim">3 macros you approved are ready. Type /fb, then Macros, to apply them.</span></div>
+  </div>
+
+  <div class="win">
+    <div class="hd"><b>Forever Buddy</b><span class="x">✕</span></div>
+    <div class="pagehd">
+      <h2>Macros to apply</h2>
+      <p>You approved these in the app. Each one is applied only when you click it.</p>
+    </div>
+    <div class="rows">
+      <!-- An edit for this character: was and will be, and its own Apply -->
+      <div class="row">
+        <div class="top">
+          <span class="ico"></span>
+          <div class="t"><b>Opener</b><small>for <span class="cc">Thrandor</span> (you)</small></div>
+          <span class="tag">Change</span>
+        </div>
+        <div class="two">
+          <div class="box"><h4>Now</h4><pre>#showtooltip Cheap Shot
+/cast [stealth] Cheap Shot; Sinister Strike</pre></div>
+          <div class="box new"><h4>After</h4><pre>#showtooltip
+/cast [stealth,harm] Cheap Shot; [nostealth] Sinister Strike
+/startattack</pre></div>
+        </div>
+        <div class="acts"><button class="btn">Apply</button><button class="btn ghost">Not this one</button></div>
+      </div>
+
+      <!-- Applied: a line where the button was -->
+      <div class="row">
+        <div class="top">
+          <span class="ico"></span>
+          <div class="t"><b>Mount</b><small>for every character on this account</small></div>
+          <span class="tag">New</span>
+        </div>
+        <div class="done">✓ Applied. It's in /macro, on the General tab.</div>
+      </div>
+
+      <!-- For another character: waits until you log in on them -->
+      <div class="row">
+        <div class="top">
+          <span class="ico"></span>
+          <div class="t"><b>Kick focus</b><small>for <span class="cm">Kaelor</span></small></div>
+          <span class="tag">Copy</span>
+        </div>
+        <div class="note">Log in on Kaelor to apply it. It waits here until then.</div>
+      </div>
+    </div>
+    <div class="foot">Not this one drops it from the list and tells the app. Nothing is ever applied without your click.</div>
+  </div>
+</div>
+
+<div class="states">
+  <div class="row">
+    <h5>Skipped: changed since</h5>
+    <div class="warn">"Opener" changed in game after you approved it, so it wasn't replaced. Ask for it again in the app.</div>
+  </div>
+  <div class="row">
+    <h5>No room</h5>
+    <div class="warn">Thrandor's macros are full (18 of 18). Delete one in /macro, then Apply.</div>
+  </div>
+  <div class="row">
+    <h5>In combat</h5>
+    <div class="acts"><button class="btn" disabled>Apply after combat</button></div>
+  </div>
+</div>
+</body>
+</html>
