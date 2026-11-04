@@ -105,7 +105,7 @@ local TAKES = {
     icon = { "slot", "aura", "zoom", "border", "borderWidth" },
     actionbar = { "slots", "icon", "gap", "columns", "zoom", "border", "back", "keys", "bind", "bindFrom", "keySize",
         "keyColor", "font", "outline", "stroke", "layout", "radius", "from", "to" },
-    auras = { "filter", "show", "max", "sort", "grow", "w", "h", "gap", "icon", "color", "back", "backAlpha", "border",
+    auras = { "filter", "show", "max", "maxDuration", "sort", "grow", "w", "h", "gap", "icon", "color", "back", "backAlpha", "border",
         "font", "fontSize", "outline", "stroke", "nameColor" },
 }
 -- Properties that may differ by state.
@@ -342,7 +342,7 @@ function M.check(doc)
                 h = auras and { 6, 60 } or { 1, 300 }, gap = { 0, 100 }, from = { -360, 360 },
                 to = { -360, 360 }, radius = { 0, 1000 }, zoom = { 0, 0.3 }, fontSize = { 6, 120 }, stroke = { 0, 3 },
                 icon = (not auras) and { 8, 128 } or nil, columns = { 1, 48 }, keySize = { 6, 40 }, bindFrom = { 1, 12 },
-                slot = { 1, 180 }, max = { 1, 20 } }) do
+                slot = { 1, 180 }, max = { 1, 20 }, maxDuration = { 1, 86400 } }) do
                 if p[k] ~= nil then
                     number(at .. "/" .. k, p[k], r[1], r[2], k)
                 end

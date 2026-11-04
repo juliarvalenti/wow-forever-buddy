@@ -421,7 +421,12 @@ local function auraList(unit, p)
                     break
                 end
                 local mine = a.sourceUnit == "player" or a.isFromPlayerOrPlayerPet
-                if filter ~= "mine" or mine then
+                -- maxDuration leaves out long and endless auras (a poison's
+                -- hour); one whose duration is hidden stays, never a guess.
+                local dur = a.duration
+                local long = p.maxDuration and type(dur) == "number" and not (issecretvalue and issecretvalue(dur))
+                    and (dur <= 0 or dur > p.maxDuration)
+                if (filter ~= "mine" or mine) and not long then
                     -- (wrapped: the client's own table is never written to)
                     out[#out + 1] = { aura = a, harmful = kind == "HARMFUL" }
                 end
