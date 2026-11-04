@@ -40,19 +40,31 @@ end
 -- without a fixtures.lua character gets the generic one), blizzard (the
 -- extract's interface/addons, art on only), art (draw with the game's art),
 -- layout (an Edit Mode layout), moment (one of M.MOMENTS, standing by
--- default), ui (UI1's render_ui: the prototype interpreter's folder, whose
--- Spec.lua is the document to draw). Returns the SVG, the number of Lua
--- errors the scene logged, and the class drawn (nil for the generic
--- character).
+-- default), ui (a UI document, UI1: checked first, then drawn over the
+-- scene by the addon's own UI.lua, the one the game has). Returns the SVG,
+-- the number of Lua errors the scene logged, and
+-- the class drawn (nil for the generic character). A document that doesn't
+-- pass the check draws nothing: the SVG is nil and the fourth value is its
+-- problems (uicheck.lua).
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
         class = nil
     end
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
+    local globals = {}
+    if opts.ui ~= nil then
+        local problems = require("uicheck").check(opts.ui)
+        if #problems > 0 then
+            return nil, 0, class, problems
+        end
+        globals.FBUISpec = opts.ui
+        globals.FBUIStealth = moment == "stealth"
+    end
     local sim = scene.boot({
         blizzard = opts.blizzard,
-        extra = { opts.addon, opts.ui },
+        extra = { opts.addon },
+        globals = globals,
         class = class,
         layout = opts.layout,
         stealth = moment == "stealth",

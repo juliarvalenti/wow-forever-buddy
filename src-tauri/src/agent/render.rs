@@ -13,13 +13,13 @@ use crate::preview::{ui, Moment};
 pub const NAME: &str = "render_ui";
 
 const DESCRIPTION: &str = "Draws a UI document on the player's WoW: Forever screen and returns the picture. \
-The document is the prototype UI format: a JSON object with `units` (player and target, each a list of \
-[name, part] entries: plate, bar, text, pips), `backdrop` (screen-wide parts such as an actionbar grid or a \
-tracked buff icon) and `hide` (Blizzard frames to fade out). Sizes are UI units (1 = 1080/768 screen pixels), \
-anchors are [point, \"screen\" or a part's name, relativePoint, x, y]. Leave `doc` out to draw the round 4 \
-example and get its document back as a starting point. `moment` draws the screen standing, in combat, in \
-stealth or at low health; the character is a level 34 rogue with a hostile target. Only data is accepted: \
-strings, numbers, booleans, lists and objects, 64 KB at most.";
+A document is a JSON object: `ui` (1), `hide` (Blizzard frames to fade out) and `parts`, each a plate, bar, \
+text, pips, icon or actionbar with an `anchor` [point, \"screen\" or another part's name, relativePoint, x, y] \
+and a `size` in 1080p pixels; bars and text bind to a unit's health, power or combo points. Leave `doc` out to \
+draw the round 4 example and get its document back as a starting point. `moment` draws the screen standing, in \
+combat, in stealth or at low health; the character is a level 34 rogue with a hostile target. A document that \
+doesn't pass the check comes back as its problems instead, each with a JSON pointer into the document and how \
+to fix it. Only data: 64 KB at most.";
 
 pub fn list() -> Vec<Value> {
     vec![json!({
@@ -64,7 +64,7 @@ pub fn call(paths: &Paths, raw: &Value) -> Result<(Vec<u8>, String), String> {
     };
     let moment = args.moment.unwrap_or_default();
     let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
-    let r = ui::render(&ui::Request {
+    let outcome = ui::render(&ui::Request {
         data: &paths.preview_data,
         scratch: scratch.path(),
         doc: &doc,
@@ -73,6 +73,17 @@ pub fn call(paths: &Paths, raw: &Value) -> Result<(Vec<u8>, String), String> {
         // 1280x720: enough to read the numbers, small enough to look at.
         scale: 2.0 / 3.0,
     })?;
+    let r = match outcome {
+        ui::Outcome::Drawn(r) => r,
+        ui::Outcome::Refused(problems) => {
+            return Err(format!(
+                "Not drawn: the document has {} problem{}.\n{}",
+                problems.len(),
+                if problems.len() == 1 { "" } else { "s" },
+                ui::problem_lines(&problems)
+            ))
+        }
+    };
     let mut text = format!(
         "Drawn {} ({}x{}, the 1920x1080 screen at two thirds), {} Lua errors in the scene.",
         moment.as_str(),

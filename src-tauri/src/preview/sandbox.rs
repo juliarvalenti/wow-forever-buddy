@@ -44,17 +44,10 @@ pub struct Host {
     /// Addon files that replace the bundled ones ("Data/Settings.lua"): the
     /// slots the app would send the game.
     pub slots: BTreeMap<String, Vec<u8>>,
-    /// A UI document to draw (UI1's render_ui), as the prototype
-    /// interpreter's `Spec.lua` (`ui::spec_lua`); `None` draws without it.
-    pub ui: Option<Vec<u8>>,
 }
 
 const ADDON: &str = "addon/ForeverBuddy";
 const DATA: &str = "tools/wowapi/wowapi/data";
-/// The prototype interpreter (UI1), bundled from `tools/ui-proto`. Its
-/// `Spec.lua` is the document being drawn and its font is the addon's own.
-pub const PROTO: &str = "tools/ui-proto/FBUnitProto";
-const PROTO_FONT: &str = "Media/BarlowSCB.ttf";
 
 /// Where a path lands.
 enum At {
@@ -117,36 +110,9 @@ impl Host {
         Some(At::Virtual(joined))
     }
 
-    /// The prototype's files that aren't in the bundle: the document, while
-    /// there is one, and the font, from the addon's own media.
-    fn proto_extra(&self, rest: &str) -> Option<Vec<u8>> {
-        match rest {
-            "Spec.lua" => self.ui.clone(),
-            PROTO_FONT => crate::addon::bundled_files()
-                .iter()
-                .find(|(f, _)| *f == PROTO_FONT)
-                .map(|(_, b)| b.to_vec()),
-            _ => None,
-        }
-    }
-
-    /// Those files' paths, for listing the tree.
-    fn proto_extra_paths(&self) -> Vec<String> {
-        let mut out = vec![format!("{PROTO}/{PROTO_FONT}")];
-        if self.ui.is_some() {
-            out.push(format!("{PROTO}/Spec.lua"));
-        }
-        out
-    }
-
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
         match self.at(path)? {
-            At::Tool(p) => match p.strip_prefix(&format!("{PROTO}/")) {
-                Some(rest) => self
-                    .proto_extra(rest)
-                    .or_else(|| bundle::tool(&p).map(<[u8]>::to_vec)),
-                None => bundle::tool(&p).map(<[u8]>::to_vec),
-            },
+            At::Tool(p) => bundle::tool(&p).map(<[u8]>::to_vec),
             At::Addon(p) => self.slots.get(&p).cloned().or_else(|| {
                 crate::addon::bundled_files()
                     .iter()
@@ -199,11 +165,9 @@ impl Host {
                 }
             }
             At::Tool(dir) | At::Virtual(dir) => {
-                let extra = self.proto_extra_paths();
                 let mut keys = bundle::TOOLS
                     .iter()
                     .map(|(p, _)| *p)
-                    .chain(extra.iter().map(String::as_str))
                     .chain(std::iter::once(ADDON))
                     .chain(["scratch"])
                     .chain(self.extract.as_ref().map(|_| "extract"))
@@ -254,12 +218,9 @@ impl Host {
                 } else {
                     format!("{d}/")
                 };
-                let extra = self.proto_extra_paths();
                 bundle::TOOLS
                     .iter()
-                    .map(|(p, _)| *p)
-                    .chain(extra.iter().map(String::as_str))
-                    .filter_map(|p| p.strip_prefix(&prefix))
+                    .filter_map(|(p, _)| p.strip_prefix(&prefix))
                     .filter(|rel| wanted(rel))
                     .map(|rel| format!("./{rel}"))
                     .collect()
@@ -316,18 +277,65 @@ pub struct DrawOptions {
     /// The moment to draw (`preview.lua`'s MOMENTS): "standing", "combat",
     /// "stealth" or "low_health".
     pub moment: &'static str,
-    /// Also load the prototype interpreter with `Host::ui` (UI1).
-    pub ui: bool,
+    /// A UI document to check and draw over the scene (UI1's render_ui),
+    /// already within `ui::limits`. It reaches the Lua as a table built here
+    /// from the JSON, never as source.
+    pub ui: Option<serde_json::Value>,
 }
 
 /// A drawn frame.
 #[derive(Debug, Clone)]
 pub struct Drawn {
+    /// Empty when the document had problems (nothing is drawn then).
     pub svg: String,
     /// The Lua errors the scene logged (WOWAPI's gaps, or our addon's).
     pub lua_errors: u32,
     /// The fixture character drawn ("rogue"), or `None` for the generic one.
     pub class: Option<String>,
+    /// What the document's check (`uicheck.lua`) found wrong.
+    pub problems: Vec<Problem>,
+}
+
+/// One thing wrong with a UI document: where (a JSON pointer into it, as
+/// the agent wrote it), a code, and how to fix it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Problem {
+    pub path: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// A JSON value as Lua data: objects as tables with their own keys, lists
+/// as sequences. `ui::limits` has refused what doesn't fit (nulls, size,
+/// depth) before this runs; the depth guard here only keeps it finite.
+fn json_to_lua(lua: &Lua, v: &serde_json::Value, depth: usize) -> mlua::Result<Value> {
+    use serde_json::Value as J;
+    if depth > 64 {
+        return Err(mlua::Error::runtime("the document is nested too deep"));
+    }
+    Ok(match v {
+        J::Null => Value::Nil,
+        J::Bool(b) => Value::Boolean(*b),
+        J::Number(n) => match n.as_i64() {
+            Some(i) => Value::Integer(i),
+            None => Value::Number(n.as_f64().unwrap_or(0.0)),
+        },
+        J::String(s) => Value::String(lua.create_string(s)?),
+        J::Array(items) => {
+            let t = lua.create_table_with_capacity(items.len(), 0)?;
+            for (i, item) in items.iter().enumerate() {
+                t.raw_set(i + 1, json_to_lua(lua, item, depth + 1)?)?;
+            }
+            Value::Table(t)
+        }
+        J::Object(map) => {
+            let t = lua.create_table_with_capacity(0, map.len())?;
+            for (k, item) in map {
+                t.raw_set(k.as_str(), json_to_lua(lua, item, depth + 1)?)?;
+            }
+            Value::Table(t)
+        }
+    })
 }
 
 /// One Lua state, kept between draws (the modules stay loaded).
@@ -565,17 +573,34 @@ impl Session {
             o.set("class", opts.class.clone())?;
             o.set("art", opts.art)?;
             o.set("moment", opts.moment)?;
-            if opts.ui {
-                o.set("ui", format!("/{PROTO}"))?;
-            }
             if opts.art {
                 o.set("blizzard", "/extract/interface/addons")?;
             }
-            let (svg, errors, class): (LuaString, u32, Option<String>) = draw.call(o)?;
+            if let Some(doc) = &opts.ui {
+                o.set("ui", json_to_lua(&self.lua, doc, 0)?)?;
+            }
+            let (svg, errors, class, problems): (
+                Option<LuaString>,
+                u32,
+                Option<String>,
+                Option<Table>,
+            ) = draw.call(o)?;
+            let mut found = Vec::new();
+            if let Some(list) = problems {
+                for p in list.sequence_values::<Table>() {
+                    let p = p?;
+                    found.push(Problem {
+                        path: p.get::<Option<String>>("path")?.unwrap_or_default(),
+                        code: p.get::<Option<String>>("code")?.unwrap_or_default(),
+                        message: p.get::<Option<String>>("message")?.unwrap_or_default(),
+                    });
+                }
+            }
             Ok(Drawn {
-                svg: svg.to_string_lossy(),
+                svg: svg.map(|s| s.to_string_lossy()).unwrap_or_default(),
                 lua_errors: errors,
                 class,
+                problems: found,
             })
         })();
         self.deadline.set(None);
@@ -595,7 +620,6 @@ pub(crate) mod tests {
             scratch: scratch.to_path_buf(),
             extract: None,
             slots: BTreeMap::new(),
-            ui: None,
         }
     }
 
@@ -695,7 +719,7 @@ pub(crate) mod tests {
             class: Some("rogue".into()),
             art: false,
             moment: "standing",
-            ui: false,
+            ui: None,
         };
         let started = Instant::now();
         let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
@@ -725,7 +749,7 @@ pub(crate) mod tests {
                 class: Some("rogue".into()),
                 art: false,
                 moment,
-                ui: false,
+                ui: None,
             };
             let drawn = s.draw(&opts, Duration::from_secs(60)).unwrap();
             assert!(

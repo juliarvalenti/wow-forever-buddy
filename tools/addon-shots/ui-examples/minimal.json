@@ -1,0 +1,25 @@
+{
+  "ui": 1,
+  "name": "Almost nothing",
+  "hide": ["PlayerFrame", "TargetFrame", "MainActionBar", "MultiBarBottomLeft"],
+  "parts": [
+    { "name": "hp", "kind": "bar", "value": "health",
+      "color": [[0.35, "#e0603a"], [1, "#e8ecf2"]], "back": "#000000", "backAlpha": 0.5,
+      "anchor": ["TOP", "char", "CENTER", 0, -70], "size": [220, 4],
+      "alpha": { "always": 0.25, "combat": 1, "low": 1 } },
+    { "name": "en", "kind": "bar", "value": "power", "color": "power", "back": "#000000", "backAlpha": 0.5,
+      "anchor": ["TOP", "hp", "BOTTOM", 0, -3], "size": [220, 2],
+      "alpha": { "always": 0.25, "combat": 1 } },
+    { "kind": "text", "format": "{hp%}", "font": "Geist", "fontSize": 13, "outline": "thin", "justify": "LEFT",
+      "color": "#e8ecf2", "anchor": ["LEFT", "hp", "RIGHT", 8, -1], "size": [60, 16],
+      "alpha": { "always": 0, "combat": 1, "low": 1 } },
+    { "kind": "pips", "unit": "target", "value": "combo", "count": 5, "w": 6, "h": 6, "gap": 6,
+      "color": "#e8ecf2", "emptyColor": "#e8ecf2", "emptyAlpha": 0.15,
+      "anchor": ["BOTTOM", "hp", "TOP", 0, 8], "size": [60, 6] },
+    { "kind": "text", "unit": "target", "format": "{name}  {hp%}", "font": "Geist", "fontSize": 13, "outline": "thin",
+      "color": "reaction", "anchor": ["BOTTOM", "char", "CENTER", 0, 150], "size": [300, 16] },
+    { "kind": "actionbar", "slots": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "icon": 34, "gap": 4, "zoom": 0.1,
+      "keys": false, "anchor": ["BOTTOM", "screen", "BOTTOM", 0, 24],
+      "alpha": { "always": 0.4, "combat": 1 } }
+  ]
+}

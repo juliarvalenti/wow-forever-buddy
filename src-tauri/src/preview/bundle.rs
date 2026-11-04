@@ -56,9 +56,8 @@ pub const TOOLS: &[File] = files![
     "tools/addon-shots/login_scene.lua",
     "tools/addon-shots/preview.lua",
     "tools/addon-shots/layouts/centered.lua",
-    // UI1: the prototype interpreter render_ui draws a document with.
-    "tools/ui-proto/FBUnitProto/FBUnitProto.toc",
-    "tools/ui-proto/FBUnitProto/UF.lua",
+    // UI1: checking a UI document (render_ui). The addon's UI.lua draws it.
+    "tools/addon-shots/uicheck.lua",
 ];
 
 /// A bundled tool file by its path from the repo root.
@@ -100,7 +99,13 @@ mod tests {
 
     #[test]
     fn bundle_has_the_scene_it_needs() {
-        for module in ["login_scene", "fixtures", "editmode_string", "preview"] {
+        for module in [
+            "login_scene",
+            "fixtures",
+            "editmode_string",
+            "preview",
+            "uicheck",
+        ] {
             assert!(
                 tool(&format!("tools/addon-shots/{module}.lua")).is_some(),
                 "{module}"

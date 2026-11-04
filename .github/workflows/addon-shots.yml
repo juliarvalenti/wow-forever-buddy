@@ -65,6 +65,12 @@ jobs:
       - name: WOWAPI secure handler template
         run: lua5.1 tools/wowapi/tests/securehandler.lua
 
+      # UI1: every example UI document (tools/addon-shots/ui-examples) draws
+      # in each moment with no Lua error, and a broken one is refused with
+      # its problems. The pictures go in the artifact with the rest.
+      - name: UI documents
+        run: lua5.1 tools/addon-shots/ui.lua --examples "$OUT"
+
       - name: SVG to PNG (headless Chrome, at 2x)
         run: |
           cd "$OUT"
