@@ -157,9 +157,11 @@ function UiDocPreview({ id, v }: { id: number; v: UiDocView }) {
 function ActiveUiBar({ approvals }: { approvals: ApprovalsData | null }) {
   const [active, setActive] = useState<ActiveUi | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Asked again whenever something is decided.
+  const decided = approvals ? approvals.decided.length + approvals.waiting.length * 1000 : -1;
   useEffect(() => {
     commands.uiDocActive().then(setActive, () => setActive(null));
-  }, [approvals]);
+  }, [decided]);
   if (!active) return null;
   const back = () => {
     setErr(null);

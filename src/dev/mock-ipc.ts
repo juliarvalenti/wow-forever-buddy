@@ -98,6 +98,7 @@ export const SCENARIOS = [
   "lists-proposal", // P2: an agent's change to Tailoring 300, in place (lists.html?state=proposal)
   "approvals", // P2b: a new note, a conflict, and the Decided list
   "approvals-macros", // MC1: a change, a new account macro and a copy (macros-approve.html)
+  "approvals-ui", // UI1: a whole UI from Claude, drawn standing and in combat, with Use this
   "approvals-empty", // agent access on, nothing waiting
   "approvals-off", // agent access off
   "settings-trial", // P4b: the game picked up new settings; the top strip asks keep or go back
@@ -281,9 +282,21 @@ export function installMockIpc(): void {
       macro_change: macro({ name: "Sprint", body: "/cast Sprint", length: 12, game: "applied" }),
     }),
   ];
+  // UI1: a whole UI waiting for Use this.
+  const uiWaiting: Proposal[] = [
+    proposal(40, 2, "Claude Code", {
+      kind: "ui_doc",
+      ui_doc: {
+        name: "Low and wide",
+        why: "Your frames either side of the bars, numbers big, combo points across the top.",
+        words: "make my rogue UI look clean",
+        active: false,
+      },
+    }),
+  ];
   const approvals: Approvals = {
     // "lists-proposal": only the list change, shown in place on Lists (§15).
-    waiting: s === "approvals-macros" ? macroWaiting : (s === "approvals" || s === "lists-proposal"
+    waiting: s === "approvals-ui" ? uiWaiting : s === "approvals-macros" ? macroWaiting : (s === "approvals" || s === "lists-proposal"
       ? [
             proposal(3, 4, "Claude Desktop", {
               kind: "quest_plan",
@@ -559,6 +572,8 @@ export function installMockIpc(): void {
     },
   ];
   let previewDraft: number | null = yourui === "draft" ? 901 : null;
+  // UI1: the UI in use, once one is picked with Use this.
+  let activeUi: { id: number; name: string } | null = null;
   let previewGen = 1;
   let plans: Plan[] = [
     {
@@ -1007,7 +1022,7 @@ export function installMockIpc(): void {
     // F8c: off by default, as in the app ("settings-icons": already on).
     item_icons: s.startsWith("settings-icons"),
     // P2a: off by default ("settings-agents": on, with some activity).
-    agent_access: ["settings-agents", "approvals", "approvals-macros", "approvals-empty", "lists-proposal"].includes(s),
+    agent_access: ["settings-agents", "approvals", "approvals-macros", "approvals-ui", "approvals-empty", "lists-proposal"].includes(s),
     ui: (setup ? { "onboarding.step": setup === "addon-running" ? "addon" : setup } : {}) as Record<string, string>,
   };
   const secrets = new Map<IntegrationId, boolean>([
@@ -1563,6 +1578,8 @@ export function installMockIpc(): void {
       }
       const p = approvals.waiting.find((w) => w.id === id);
       if (!p) throw { kind: "NotFound", message: "that suggestion, or it was already decided" };
+      // UI1: Use this makes it the UI in use.
+      if (p.ui_doc && decision === "approve") activeUi = { id: p.id, name: p.ui_doc.name };
       approvals.waiting = approvals.waiting.filter((w) => w.id !== id);
       const status = decision === "decline" ? "discarded" : "applied";
       approvals.decided.unshift({ ...p, status, decided_at: iso(0) });
@@ -1622,6 +1639,29 @@ export function installMockIpc(): void {
     },
     // ED1: Claude's drafts (?yourui=nodrafts for none).
     ui_drafts_list: (): UiDraft[] => uiDrafts,
+    // UI1: a proposed UI drawn (a sketch: frames either side of the bars,
+    // red in combat), the UI in use, and going back.
+    ui_doc_picture: ({ moment }) => {
+      const hp = moment === "combat" ? "#d24a3a" : "#4fd99a";
+      const bars = Array.from({ length: 16 }, (_, i) =>
+        `<rect x="${773 + (i % 8) * 47}" y="${786 + Math.floor(i / 8) * 47}" width="46" height="46" fill="#2a3338"/>`,
+      ).join("");
+      return (
+        "data:image/svg+xml;charset=utf-8," +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#1b2226"/>` +
+            `<rect x="772" y="785" width="377" height="95" fill="#000"/>${bars}` +
+            `<rect x="397" y="785" width="300" height="48" fill="#000"/><rect x="398" y="786" width="253" height="39" fill="${hp}"/>` +
+            `<rect x="1148" y="785" width="300" height="48" fill="#000"/><rect x="1149" y="786" width="179" height="39" fill="#d24a3a"/>` +
+            `<rect x="772" y="773" width="226" height="8" fill="#fff569"/></svg>`,
+        )
+      );
+    },
+    ui_doc_active: () => activeUi,
+    ui_doc_go_back: () => {
+      activeUi = null;
+      return null;
+    },
     preview_draft: ({ draft }) => {
       previewDraft = (draft as number | null) ?? null;
       previewGen += 1;
