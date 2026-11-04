@@ -500,6 +500,8 @@ const TOOL_WORDS: Record<string, string> = {
   get_price_history: "read price history",
   get_lockouts: "read lockouts",
   get_bag_marks: "read bag marks",
+  list_macros: "listed macros",
+  get_macro: "read a macro",
   propose_note: "suggested a login note",
   propose_quest_plan: "suggested a quest plan",
   propose_list_change: "suggested a list change",

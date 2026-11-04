@@ -18,7 +18,7 @@ use crate::characters::{self, BagView, CharacterCard, ItemRow};
 use crate::cleanup::{self, Marked, Reason};
 use crate::db::Db;
 use crate::error::AppError;
-use crate::{adventures, ah, ledger, notes, quests};
+use crate::{adventures, ah, ledger, macros, notes, quests};
 
 /// Spec §5: at most this many rows of any list in one answer, with `more`.
 const MAX_ROWS: usize = 500;
@@ -38,7 +38,7 @@ struct Tool {
 
 const CHARACTER_ARG: &str = "The character's name as list_characters gives it (\"Thrandor Vargur\"), or just the first name when only one character has it.";
 
-const TOOLS: [Tool; 11] = [
+const TOOLS: [Tool; 13] = [
     Tool {
         name: "list_characters",
         description: "Every character Forever Buddy has seen: name, class, race, level, zone, gold (copper), item level, rested XP and when it was last seen. Start here.",
@@ -133,6 +133,25 @@ const TOOLS: [Tool; 11] = [
                     "additionalProperties": false })
         },
     },
+    // MC1: the player's macros, as the Macros screen shows them.
+    Tool {
+        name: "list_macros",
+        description: "The player's macros, as of the game's last save (usually the last logout): the account-wide macros, shared by every character on that account, and each character's own. Each with its name, icon and length in bytes against the game's 255. See get_macro for a macro's text.",
+        schema: || {
+            json!({ "type": "object", "properties": { "character": { "type": "string", "description": "Only this character's own macros and its account's. The name as list_characters gives it, or just the first name when only one character has it." } },
+                    "additionalProperties": false })
+        },
+    },
+    Tool {
+        name: "get_macro",
+        description: "A macro's full text, by name. With a character, its own macros and then its account's; without one, the account-wide macros. Names can repeat, so every macro with that name is returned.",
+        schema: || {
+            json!({ "type": "object", "properties": {
+                        "name": { "type": "string", "description": "The macro's name, as list_macros gives it." },
+                        "character": { "type": "string", "description": CHARACTER_ARG } },
+                    "required": ["name"], "additionalProperties": false })
+        },
+    },
 ];
 
 pub fn list() -> Vec<Value> {
@@ -209,6 +228,19 @@ struct PriceHistoryArgs {
     days: Option<u32>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MacrosArgs {
+    character: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MacroArgs {
+    name: String,
+    character: Option<String>,
+}
+
 fn args<T: for<'de> Deserialize<'de>>(v: &Value) -> Result<T, String> {
     // Some clients send no arguments at all for a tool that takes none.
     let v = if v.is_null() { json!({}) } else { v.clone() };
@@ -223,7 +255,15 @@ fn db_error(e: AppError) -> String {
 }
 
 /// Runs one tool against the db at `db_path`, opened read-only for this call.
-pub fn call(db_path: &Path, flavor: &str, name: &str, raw: &Value) -> Result<Value, String> {
+/// The macro tools also read `game`'s WTF (the game folder the app is set up
+/// for, `None` before it is).
+pub fn call(
+    db_path: &Path,
+    game: Option<&Path>,
+    flavor: &str,
+    name: &str,
+    raw: &Value,
+) -> Result<Value, String> {
     if !db_path.exists() {
         return Err(
             "Forever Buddy has no data yet: open the app and play a character first.".into(),
@@ -252,6 +292,8 @@ pub fn call(db_path: &Path, flavor: &str, name: &str, raw: &Value) -> Result<Val
             crate::addon_settings::read(&db, flavor, args::<ModuleArgs>(raw)?.module.as_deref())
                 .map_err(db_error)
         }
+        "list_macros" => list_macros(&db, game, flavor, args(raw)?),
+        "get_macro" => get_macro(&db, game, flavor, args(raw)?),
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -659,6 +701,176 @@ fn get_bag_marks(db: &Db, flavor: &str, key: &str) -> Result<Value, String> {
     }))
 }
 
+/// MC1: the macro files the Macros screen reads, in the game folder the app
+/// is set up for.
+fn macro_files(game: Option<&Path>, flavor: &str) -> Result<macros::MacrosList, String> {
+    let root =
+        game.ok_or("Forever Buddy isn't set up yet: choose the game folder in the app first.")?;
+    let install = crate::install::validate::scan(root).map_err(|_| {
+        "Forever Buddy can't read the game folder: open the app to check it.".to_string()
+    })?;
+    let f = install.flavor(flavor).ok_or(
+        "Forever Buddy can't find the game's folder for this version: open the app to check it.",
+    )?;
+    Ok(macros::list(f))
+}
+
+/// A character folder Forever Buddy knows, named as list_characters names
+/// it. Forgotten characters aren't here, so their macros never leave.
+struct Known {
+    id: i64,
+    name: String,
+    account: String,
+    group: String,
+    dir: String,
+}
+
+fn known_characters(db: &Db, flavor: &str) -> Result<Vec<Known>, String> {
+    db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT id, name, surname, account, group_dir, char_dir FROM visible_characters
+             WHERE flavor = ?1 ORDER BY name, surname",
+        )?;
+        let rows = stmt
+            .query_map(params![flavor], |r| {
+                let name: String = r.get(1)?;
+                let surname: Option<String> = r.get(2)?;
+                Ok(Known {
+                    id: r.get(0)?,
+                    name: display(&name, surname.as_deref()),
+                    account: r.get(3)?,
+                    group: r.get(4)?,
+                    dir: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .map_err(db_error)
+}
+
+/// Each known character's macro file, and which account it's on (by index:
+/// account folders are never named).
+fn character_macros<'a>(
+    files: &'a macros::MacrosList,
+    known: &'a [Known],
+) -> Vec<(&'a Known, &'a macros::CharacterMacros)> {
+    files
+        .characters
+        .iter()
+        .filter_map(|c| {
+            known
+                .iter()
+                .find(|k| {
+                    k.account == c.account
+                        && k.group == c.group
+                        && k.dir.eq_ignore_ascii_case(&c.folder)
+                })
+                .map(|k| (k, c))
+        })
+        .collect()
+}
+
+fn macro_row(m: &macros::Macro) -> Value {
+    json!({ "name": m.name, "icon": m.icon, "length": m.length })
+}
+
+fn list_macros(db: &Db, game: Option<&Path>, flavor: &str, a: MacrosArgs) -> Result<Value, String> {
+    let only = a
+        .character
+        .as_deref()
+        .map(|k| resolve(db, flavor, k))
+        .transpose()?;
+    let files = macro_files(game, flavor)?;
+    let known = known_characters(db, flavor)?;
+    let chars = character_macros(&files, &known);
+    let only_account = only.as_ref().and_then(|o| {
+        known
+            .iter()
+            .find(|k| k.id == i64::from(o.id))
+            .map(|k| k.account.as_str())
+    });
+    let accounts: Vec<Value> = files
+        .accounts
+        .iter()
+        .enumerate()
+        .filter(|(_, acc)| only_account.is_none_or(|a| a == acc.account))
+        .map(|(i, acc)| {
+            json!({
+                "account": i + 1,
+                "as_of": acc.modified,
+                "characters": known.iter().filter(|k| k.account == acc.account).map(|k| &k.name).collect::<Vec<_>>(),
+                "macros": acc.macros.iter().take(MAX_ROWS).map(macro_row).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let characters: Vec<Value> = chars
+        .iter()
+        .filter(|(k, _)| only.as_ref().is_none_or(|o| k.id == i64::from(o.id)))
+        .map(|(k, c)| {
+            json!({
+                "character": k.name,
+                "account": files.accounts.iter().position(|acc| acc.account == k.account).map(|i| i + 1),
+                "as_of": c.modified,
+                "macros": c.macros.iter().take(MAX_ROWS).map(macro_row).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "as_of": "each file's last save by the game, usually the last logout",
+        "max_length": files.max,
+        "accounts": accounts,
+        "characters": characters,
+    }))
+}
+
+fn get_macro(db: &Db, game: Option<&Path>, flavor: &str, a: MacroArgs) -> Result<Value, String> {
+    let who = a
+        .character
+        .as_deref()
+        .map(|k| resolve(db, flavor, k))
+        .transpose()?;
+    let files = macro_files(game, flavor)?;
+    let known = known_characters(db, flavor)?;
+    let full = |m: &macros::Macro, scope: &str| json!({ "scope": scope, "name": m.name, "icon": m.icon, "body": m.body, "length": m.length });
+    let matches = |m: &&macros::Macro| m.name.eq_ignore_ascii_case(&a.name);
+    let mut found = Vec::new();
+    let account = match &who {
+        Some(o) => {
+            let k = known.iter().find(|k| k.id == i64::from(o.id));
+            if let Some((_, c)) = character_macros(&files, &known)
+                .into_iter()
+                .find(|(k, _)| k.id == i64::from(o.id))
+            {
+                found.extend(
+                    c.macros
+                        .iter()
+                        .filter(matches)
+                        .map(|m| full(m, "character")),
+                );
+            }
+            k.map(|k| k.account.as_str())
+        }
+        None => None,
+    };
+    for acc in files
+        .accounts
+        .iter()
+        .filter(|acc| account.is_none_or(|a| a == acc.account))
+    {
+        found.extend(
+            acc.macros
+                .iter()
+                .filter(matches)
+                .map(|m| full(m, "account")),
+        );
+    }
+    if found.is_empty() {
+        return Err("No macro has that name there. list_macros gives the names.".into());
+    }
+    Ok(json!({ "max_length": files.max, "macros": found }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -730,7 +942,120 @@ mod tests {
     }
 
     fn run(path: &Path, name: &str, a: Value) -> Result<Value, String> {
-        call(path, FLAVOR, name, &a)
+        call(path, None, FLAVOR, name, &a)
+    }
+
+    /// MC1: a game folder with the fixture character's macros, its
+    /// account's, and a folder Forever Buddy has never seen.
+    fn game_with_macros() -> tempfile::TempDir {
+        let game = tempfile::tempdir().unwrap();
+        let account = game.path().join(FLAVOR).join("WTF/Account/ACCOUNT1");
+        for dir in ["70/Ellygie-Vargur", "70/Stranger"] {
+            std::fs::create_dir_all(account.join(dir)).unwrap();
+        }
+        std::fs::write(
+            account.join("macros-cache.txt"),
+            "VER 3 01 \"Mount\" \"Ability_Mount_RidingHorse\"\n/cast Summon Felsteed\nEND\n",
+        )
+        .unwrap();
+        std::fs::write(
+            account.join("70/Ellygie-Vargur/macros-cache.txt"),
+            "VER 3 02 \"Blink\" \"135736\"\n#showtooltip\n/cast Blink\nEND\n\
+             VER 3 03 \"Mount\" \"I\"\n/cast Summon Warhorse\nEND\n",
+        )
+        .unwrap();
+        std::fs::write(
+            account.join("70/Stranger/macros-cache.txt"),
+            "VER 3 04 \"Secret\" \"I\"\n/say not yours\nEND\n",
+        )
+        .unwrap();
+        game
+    }
+
+    #[test]
+    fn macros_list_and_read() {
+        let (_dir, path) = fixture();
+        let game = game_with_macros();
+        let run = |name: &str, a: Value| call(&path, Some(game.path()), FLAVOR, name, &a);
+
+        let l = run("list_macros", json!({})).unwrap();
+        assert_eq!(l["max_length"], 255);
+        assert_eq!(l["accounts"][0]["account"], 1);
+        assert_eq!(l["accounts"][0]["characters"], json!(["Ellygie Vargur"]));
+        assert_eq!(l["accounts"][0]["macros"][0]["name"], "Mount");
+        let chars = l["characters"].as_array().unwrap();
+        assert_eq!(chars.len(), 1, "only characters Forever Buddy knows: {l}");
+        assert_eq!(chars[0]["character"], "Ellygie Vargur");
+        assert_eq!(
+            chars[0]["macros"][0],
+            json!({ "name": "Blink", "icon": "135736", "length": 24 })
+        );
+        assert!(
+            chars[0]["macros"][0].get("body").is_none(),
+            "names only in the list"
+        );
+        let text = l.to_string();
+        assert!(
+            !text.contains("Secret") && !text.contains("not yours"),
+            "an unknown folder's macros stay"
+        );
+        assert!(
+            !text.contains("ACCOUNT1") && !text.contains("Stranger"),
+            "no folder names: {text}"
+        );
+
+        let only = run("list_macros", json!({ "character": "Ellygie" })).unwrap();
+        assert_eq!(only["characters"].as_array().unwrap().len(), 1);
+
+        // A character's own macro first, then its account's of the same name.
+        let m = run(
+            "get_macro",
+            json!({ "name": "mount", "character": "Ellygie" }),
+        )
+        .unwrap();
+        let found = m["macros"].as_array().unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(
+            (found[0]["scope"].as_str(), found[0]["body"].as_str()),
+            (Some("character"), Some("/cast Summon Warhorse"))
+        );
+        assert_eq!(
+            (found[1]["scope"].as_str(), found[1]["body"].as_str()),
+            (Some("account"), Some("/cast Summon Felsteed"))
+        );
+        // Without a character: the account's.
+        let acc = run("get_macro", json!({ "name": "Mount" })).unwrap();
+        assert_eq!(acc["macros"].as_array().unwrap().len(), 1);
+        assert_eq!(acc["macros"][0]["scope"], "account");
+
+        assert!(
+            run("get_macro", json!({ "name": "Blink" })).is_err(),
+            "a character macro needs its character"
+        );
+        assert!(run(
+            "get_macro",
+            json!({ "name": "Secret", "character": "Stranger" })
+        )
+        .is_err());
+        assert!(run(
+            "get_macro",
+            json!({ "name": "Nope", "character": "Ellygie" })
+        )
+        .is_err());
+        assert!(run("list_macros", json!({ "path": "/etc" })).is_err());
+    }
+
+    #[test]
+    fn macros_need_the_game_folder() {
+        let (_dir, path) = fixture();
+        let e = run(&path, "list_macros", json!({})).unwrap_err();
+        assert!(e.contains("choose the game folder"), "{e}");
+        let gone = tempfile::tempdir().unwrap();
+        let e = call(&path, Some(gone.path()), FLAVOR, "list_macros", &json!({})).unwrap_err();
+        assert!(
+            e.contains("game folder") && !e.contains(&*gone.path().to_string_lossy()),
+            "no path: {e}"
+        );
     }
 
     #[test]
