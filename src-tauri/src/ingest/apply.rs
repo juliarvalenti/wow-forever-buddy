@@ -93,6 +93,10 @@ pub fn apply(tx: &Transaction<'_>, target: &Target, file: &AddonFile) -> AppResu
     if let Some(s) = &file.settings {
         crate::addon_settings::record_seen(tx, &target.flavor, s.profile, &s.values, at)?;
     }
+    // COMPAT1: which of the addons ours yields to the game had loaded.
+    if let Some(names) = &file.others {
+        crate::addon_settings::record_others(tx, &target.flavor, names, at)?;
+    }
     // Notes the login briefing showed: once notes are archived.
     crate::notes::mark_shown(tx, id, &file.briefed)?;
     // G1: goals this file shows reached are done, as of when it was written.

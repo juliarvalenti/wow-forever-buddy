@@ -15,7 +15,7 @@ All tools read the app's local database, read-only; the macro tools read the gam
 | `get_lockouts` | Current raid and dungeon lockouts with reset times. |
 | `get_prices`, `get_price_history` | Auction prices from the player's own Auctionator scans. |
 | `get_bag_marks` | Items marked to sell or send, and suggestions. |
-| `get_settings` | Every addon option: id, label, help, type, default, current value, whether it acts in the game, a choice's `values`, and `look: true` on the options that set the HUD's and bars' look. |
+| `get_settings` | Every addon option: id, label, help, type, default, current value, whether it acts in the game, a choice's `values`, and `look: true` on the options that set the HUD's and bars' look. `yields_to` names other addons that already do an option's job, `off_because` says one is loaded (ours stays off), and `other_addons` lists those the game had loaded. |
 | `list_ui_drafts` | Your UI drafts: waiting, used, thrown away, or not queued (with the reason), each with its settings. |
 | `list_macros` | The account-wide macros and each character's own: name, icon, length against the game's 255. Takes an optional `character`. |
 | `get_macro` | A macro's full text by name: a character's own, then its account's; without a character, the account's. |

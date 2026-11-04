@@ -345,6 +345,8 @@ function M.new(opts)
         greeting = { available = {}, active = {} }, -- QUEST_GREETING's lists
         repeatable = {}, -- quest id -> true
         quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
+        -- COMPAT1: the player's other addons that are loaded, name -> true.
+        addons = {},
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
         -- TH2: the HUD's units. Each is { name, health, healthMax, power,
@@ -686,6 +688,10 @@ function M.new(opts)
         end,
         InCombatLockdown = function()
             return world.combat
+        end,
+        -- COMPAT1: whether another addon is loaded (world.addons).
+        ["C_AddOns.IsAddOnLoaded"] = function(name)
+            return world.addons[name] == true
         end,
         -- TH3: the action bars, as the client reports them.
         HasAction = function(slot)

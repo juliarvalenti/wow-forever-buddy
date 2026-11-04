@@ -61,7 +61,10 @@
       "label": "Junk in your bags",
       "help": "A small coin on grey items, the ones only worth selling, in your bags and bank.",
       "parent": "bags.enabled",
-      "acts": false
+      "acts": false,
+      "yields": [
+        "Baganator"
+      ]
     },
     {
       "id": "bags.itemLevel",
@@ -72,7 +75,10 @@
       "label": "Item level on gear",
       "help": "The item level on each piece of gear in your bags and bank, in its quality colour.",
       "parent": "bags.enabled",
-      "acts": false
+      "acts": false,
+      "yields": [
+        "Baganator"
+      ]
     },
     {
       "id": "map.enabled",
@@ -185,7 +191,10 @@
       "label": "See-through quest tracker",
       "help": "The quest tracker fades until you move the mouse over it.",
       "parent": "quest.enabled",
-      "acts": false
+      "acts": false,
+      "yields": [
+        "Questie"
+      ]
     },
     {
       "id": "quest.trackerAlpha",
@@ -372,7 +381,11 @@
       "help": "In an NPC's chat or a quest window, Space takes the first choice and 1 to 9 the others. Not in combat, and never a reward choice.",
       "parent": "questhelp.enabled",
       "acts": true,
-      "showHelp": true
+      "showHelp": true,
+      "yields": [
+        "DialogueUI",
+        "DialogKey"
+      ]
     },
     {
       "id": "hud.enabled",
@@ -597,6 +610,22 @@
         "window.bagMarks": false
       },
       "say": "Marked items will sell without a mark in your bags to show which ones."
+    },
+    {
+      "id": "questhelp.acceptsWithQuestie",
+      "when": {
+        "questhelp.accept": true
+      },
+      "addon": "Questie",
+      "say": "Questie can accept quests too. If its auto-accept is on, keep only one of the two."
+    },
+    {
+      "id": "questhelp.handsInWithQuestie",
+      "when": {
+        "questhelp.turnIn": true
+      },
+      "addon": "Questie",
+      "say": "Questie can hand in quests too. If its auto-complete is on, keep only one of the two."
     }
   ],
   "presets": [

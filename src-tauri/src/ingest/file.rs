@@ -265,6 +265,9 @@ pub struct AddonFile {
     pub plan: Option<PlanProgress>,
     /// The addon's settings at logout (`settings`, P4b).
     pub settings: Option<SettingsSeen>,
+    /// COMPAT1: of the few other addons ours yields to, those loaded
+    /// (`others`); `None` from an addon too old to say.
+    pub others: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -530,7 +533,22 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         briefed,
         plan,
         settings,
+        others: tbl(db, "others").map(others),
     })
+}
+
+/// `others = { "Questie", … }`: short names only, at most 20.
+fn others(t: &LuaTable) -> Vec<String> {
+    t.array
+        .iter()
+        .filter_map(|v| match v {
+            LuaValue::Str(s) => String::from_utf8(s.to_vec())
+                .ok()
+                .filter(|n| !n.is_empty() && n.len() <= 64),
+            _ => None,
+        })
+        .take(20)
+        .collect()
 }
 
 /// `briefed = { [note id] = time shown }`: positive ids and times only, and

@@ -37,11 +37,14 @@ pub struct Schema {
 }
 
 /// A known poor combination (P4 §1, layer 4): it fires when every value in
-/// `when` holds (a `{ min, max }` range for a number, else that value).
+/// `when` holds (a `{ min, max }` range for a number, else that value), and,
+/// with an `addon` (COMPAT1), only while the game last had that addon loaded.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Lint {
     pub id: String,
     pub when: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addon: Option<String>,
     pub say: String,
 }
 
@@ -54,7 +57,15 @@ pub struct Preset {
 }
 
 impl Lint {
-    fn fires(&self, vals: &Values) -> bool {
+    /// `others`: the addons the game last had loaded (`addon_others`).
+    fn fires(&self, vals: &Values, others: &[String]) -> bool {
+        if self
+            .addon
+            .as_ref()
+            .is_some_and(|a| !others.iter().any(|o| o == a))
+        {
+            return false;
+        }
         self.when.iter().all(|(id, want)| {
             let have = vals.get(id).or_else(|| option(id).map(|o| &o.default));
             match (want, have) {
@@ -83,14 +94,51 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// The lines of the lints that fire with `vals` and mention `option`.
-pub fn lints_for(vals: &Values, option: &str) -> Vec<String> {
+/// The lines of the lints that fire with `vals` (and the other addons the
+/// game last had loaded) and mention `option`.
+pub fn lints_for(vals: &Values, others: &[String], option: &str) -> Vec<String> {
     schema()
         .lints
         .iter()
-        .filter(|l| l.when.contains_key(option) && l.fires(vals))
+        .filter(|l| l.when.contains_key(option) && l.fires(vals, others))
         .map(|l| l.say.clone())
         .collect()
+}
+
+/// COMPAT1: the other addons (of the few the addon looks for) the newest
+/// logout file had loaded.
+pub fn others(c: &Connection, flavor: &str) -> AppResult<Vec<String>> {
+    let names: Option<String> = c
+        .query_row(
+            "SELECT names FROM addon_others WHERE flavor = ?1",
+            params![flavor],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(names
+        .and_then(|n| serde_json::from_str(&n).ok())
+        .unwrap_or_default())
+}
+
+/// Ingest: a logout's `others` (none is an empty list), kept when it's the
+/// newest file.
+pub fn record_others(
+    tx: &Transaction<'_>,
+    flavor: &str,
+    names: &[String],
+    at: i64,
+) -> AppResult<()> {
+    tx.execute(
+        "INSERT INTO addon_others (flavor, names, seen_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT (flavor) DO UPDATE SET names = excluded.names, seen_at = excluded.seen_at
+         WHERE excluded.seen_at >= addon_others.seen_at",
+        params![
+            flavor,
+            serde_json::to_string(names).unwrap_or_else(|_| "[]".into()),
+            at
+        ],
+    )?;
+    Ok(())
 }
 
 /// One option as `Settings.lua` declares it.
@@ -127,6 +175,10 @@ pub struct Opt {
     /// nowhere in game.
     #[serde(default)]
     pub look: bool,
+    /// COMPAT1: addons that already do this job; while one is loaded ours
+    /// stays off.
+    #[serde(default)]
+    pub yields: Vec<String>,
 }
 
 /// Text's length when the declaration doesn't say.
@@ -329,6 +381,7 @@ pub fn record_seen(
 /// each option's value.
 pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
     let (vals, pending) = db.with_conn(|c| effective(c, flavor))?;
+    let loaded = db.with_conn(|c| others(c, flavor))?;
     let options: Vec<Value> = schema()
         .options
         .iter()
@@ -351,6 +404,15 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
             if o.look {
                 row["look"] = serde_json::json!(true);
             }
+            // COMPAT1: another addon already does this; while it's loaded,
+            // ours stays off whatever its value.
+            if !o.yields.is_empty() {
+                row["yields_to"] = serde_json::json!(o.yields);
+                if let Some(name) = o.yields.iter().find(|y| loaded.contains(y)) {
+                    row["off_because"] =
+                        serde_json::json!(format!("{name} is loaded and does this already"));
+                }
+            }
             row
         })
         .collect();
@@ -372,6 +434,8 @@ pub fn read(db: &Db, flavor: &str, module: Option<&str>) -> AppResult<Value> {
             "the game's, as of the last logout (defaults before the first)"
         },
         "options": options,
+        // COMPAT1: of the addons ours yields to, those the game last had loaded.
+        "other_addons": loaded,
         // Starting points: propose a preset's values as changes, plus your own.
         "presets": schema().presets,
         // Poor combinations, shown to the player beside a change that makes
@@ -505,8 +569,9 @@ pub fn view(db: &Db, flavor: &str, b: &SettingBody) -> AppResult<SettingView> {
     let from = now.get(&o.id).unwrap_or(&o.default);
     let mut after = now.clone();
     after.insert(o.id.clone(), b.value.clone());
+    let loaded = db.with_conn(|c| others(c, flavor))?;
     Ok(SettingView {
-        lints: lints_for(&after, &o.id),
+        lints: lints_for(&after, &loaded, &o.id),
         option: o.id.clone(),
         label: o.label.clone(),
         help: o.help.clone(),
@@ -763,6 +828,63 @@ mod tests {
         for o in &schema().options {
             assert!(fits(o, &o.default), "{}", o.id);
         }
+    }
+
+    /// COMPAT1: a lint with an addon fires only once a logout said that addon
+    /// was loaded; get_settings says which options yield to which addons,
+    /// and which are off because one is loaded.
+    #[test]
+    fn other_addons_gate_lints_and_show_in_get_settings() {
+        let db = Db::open_in_memory().unwrap();
+        let accept = SettingBody {
+            option: "questhelp.accept".into(),
+            value: json!(true),
+        };
+        assert!(
+            view(&db, FLAVOR, &accept).unwrap().lints.is_empty(),
+            "no Questie seen"
+        );
+        let seen = |names: &[&str], at: i64| {
+            db.with_conn(|c| {
+                let tx = c.unchecked_transaction()?;
+                let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+                record_others(&tx, FLAVOR, &names, at)?;
+                tx.commit()?;
+                Ok(())
+            })
+            .unwrap()
+        };
+        seen(&["Questie", "DialogKey"], 100);
+        assert_eq!(
+            view(&db, FLAVOR, &accept).unwrap().lints,
+            ["Questie can accept quests too. If its auto-accept is on, keep only one of the two."]
+        );
+        seen(&[], 50);
+        assert_eq!(
+            view(&db, FLAVOR, &accept).unwrap().lints.len(),
+            1,
+            "an older file changes nothing"
+        );
+
+        let r = read(&db, FLAVOR, Some("questhelp")).unwrap();
+        assert_eq!(r["other_addons"], json!(["Questie", "DialogKey"]));
+        let keys = r["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["id"] == "questhelp.dialogKeys")
+            .unwrap();
+        assert_eq!(keys["yields_to"], json!(["DialogueUI", "DialogKey"]));
+        assert_eq!(
+            keys["off_because"],
+            "DialogKey is loaded and does this already"
+        );
+
+        seen(&[], 200);
+        assert!(
+            view(&db, FLAVOR, &accept).unwrap().lints.is_empty(),
+            "Questie gone"
+        );
     }
 
     /// P4c: the map's number option: checked against its range, shown with

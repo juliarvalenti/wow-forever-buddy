@@ -71,6 +71,8 @@ ForeverBuddyDB = {
 			["subclass"] = 5,
 		},
 	},
+	["others"] = {
+	},
 	["record"] = {
 		["addon"] = "0.15.0",
 		["counts"] = {

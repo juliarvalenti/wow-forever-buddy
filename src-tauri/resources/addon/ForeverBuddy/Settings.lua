@@ -25,6 +25,8 @@
 --   look     (optional, ED1) part of the HUD's or the bars' look: set by
 --            Claude and the app, never drawn in the window or Options, and
 --            left alone by presets
+--   yields   (optional, COMPAT1) addons that already do this job: while one
+--            is loaded, ours stays off and its row says so
 --
 -- A profile's values are checked against these, in the addon and in the
 -- app: a number's min and max, and (ready for later types) an "enum"'s
@@ -40,7 +42,8 @@
 --
 -- lints: known poor combinations (P4 §1, layer 4), each with the values it
 -- fires on ({ min, max } for a number, else the value itself) and the line
--- the app shows beside a proposal that would make it fire.
+-- the app shows beside a proposal that would make it fire. A lint with an
+-- `addon` fires only while the game last had that addon loaded (COMPAT1).
 --
 -- presets: named starting points; each module adds its row of values,
 -- except options that act, which are only ever turned on one at a time.
@@ -145,6 +148,7 @@ ns.settings = {
             label = "Junk in your bags",
             help = "A small coin on grey items, the ones only worth selling, in your bags and bank.",
             parent = "bags.enabled",
+            yields = { "Baganator" },
             acts = false,
         },
         {
@@ -156,6 +160,7 @@ ns.settings = {
             label = "Item level on gear",
             help = "The item level on each piece of gear in your bags and bank, in its quality colour.",
             parent = "bags.enabled",
+            yields = { "Baganator" },
             acts = false,
         },
         -- P4c: the Map module. Display only.
@@ -272,6 +277,7 @@ ns.settings = {
             label = "See-through quest tracker",
             help = "The quest tracker fades until you move the mouse over it.",
             parent = "quest.enabled",
+            yields = { "Questie" },
             acts = false,
         },
         {
@@ -471,6 +477,7 @@ ns.settings = {
                 .. "Not in combat, and never a reward choice.",
             parent = "questhelp.enabled",
             showHelp = true,
+            yields = { "DialogueUI", "DialogKey" },
             acts = true,
         },
         -- TH2: the HUD module, the one module that's off until you turn it
@@ -683,6 +690,20 @@ ns.settings = {
             id = "merchant.sellsUnseen",
             when = { ["merchant.sellMarked"] = true, ["window.bagMarks"] = false },
             say = "Marked items will sell without a mark in your bags to show which ones.",
+        },
+        -- COMPAT1: two addons accepting or handing in the same quest race
+        -- each other. Questie has both, in its own options.
+        {
+            id = "questhelp.acceptsWithQuestie",
+            when = { ["questhelp.accept"] = true },
+            addon = "Questie",
+            say = "Questie can accept quests too. If its auto-accept is on, keep only one of the two.",
+        },
+        {
+            id = "questhelp.handsInWithQuestie",
+            when = { ["questhelp.turnIn"] = true },
+            addon = "Questie",
+            say = "Questie can hand in quests too. If its auto-complete is on, keep only one of the two.",
         },
     },
     presets = {

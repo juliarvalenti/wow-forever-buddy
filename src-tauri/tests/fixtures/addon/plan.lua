@@ -69,6 +69,8 @@ ForeverBuddyDB = {
 			["subclass"] = 5,
 		},
 	},
+	["others"] = {
+	},
 	["plan"] = {
 		["done"] = {
 			true, -- [1]
