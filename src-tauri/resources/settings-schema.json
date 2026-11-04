@@ -409,6 +409,137 @@
       "showHelp": true
     },
     {
+      "id": "hud.healthColor",
+      "module": "hud",
+      "section": "Look",
+      "type": "color",
+      "default": "#4fd99a",
+      "label": "Health colour",
+      "help": "Your health bar, and a friendly target's, as #rrggbb. Empty for round 4's green.",
+      "acts": false,
+      "look": true
+    },
+    {
+      "id": "hud.powerColor",
+      "module": "hud",
+      "section": "Look",
+      "type": "color",
+      "default": "",
+      "label": "Power colour",
+      "help": "Your power bar, as #rrggbb. Empty: each kind of power in its own colour (mana blue, rage red, energy yellow).",
+      "acts": false,
+      "look": true
+    },
+    {
+      "id": "hud.accentColor",
+      "module": "hud",
+      "section": "Look",
+      "type": "color",
+      "default": "#fff569",
+      "label": "Accent colour",
+      "help": "Combo points, as #rrggbb. Empty for round 4's yellow.",
+      "acts": false,
+      "look": true
+    },
+    {
+      "id": "hud.gradient",
+      "module": "hud",
+      "section": "Look",
+      "type": "bool",
+      "default": true,
+      "label": "Gradient on bars",
+      "help": "Bars lighter on the left and deeper on the right. Off: one flat colour.",
+      "acts": false,
+      "look": true
+    },
+    {
+      "id": "hud.width",
+      "module": "hud",
+      "section": "Look",
+      "type": "number",
+      "default": 300,
+      "label": "Frame width",
+      "help": "Your frame's and your target's width, in pixels on a 1080p screen.",
+      "acts": false,
+      "min": 200,
+      "max": 420,
+      "step": 2,
+      "look": true
+    },
+    {
+      "id": "hud.height",
+      "module": "hud",
+      "section": "Look",
+      "type": "number",
+      "default": 48,
+      "label": "Frame height",
+      "help": "Their height, in pixels on a 1080p screen. The power line under the health bar stays 5 pixels.",
+      "acts": false,
+      "min": 32,
+      "max": 72,
+      "step": 1,
+      "look": true
+    },
+    {
+      "id": "hud.textSize",
+      "module": "hud",
+      "section": "Look",
+      "type": "number",
+      "default": 22,
+      "label": "Number size",
+      "help": "Your health numbers' size; your target's and the names follow it.",
+      "acts": false,
+      "min": 14,
+      "max": 32,
+      "step": 1,
+      "look": true
+    },
+    {
+      "id": "hud.outline",
+      "module": "hud",
+      "section": "Look",
+      "type": "enum",
+      "default": "thick",
+      "label": "Text outline",
+      "help": "The stroke around the HUD's text and the buttons' numbers: thick, thin or none.",
+      "acts": false,
+      "values": [
+        "thick",
+        "thin",
+        "none"
+      ],
+      "look": true
+    },
+    {
+      "id": "hud.layout",
+      "module": "hud",
+      "section": "Look",
+      "type": "enum",
+      "default": "side",
+      "label": "Layout",
+      "help": "side: yours left of the action bars and your target's right. stacked: both above the bars, your target's on top.",
+      "acts": false,
+      "values": [
+        "side",
+        "stacked"
+      ],
+      "look": true
+    },
+    {
+      "id": "actionbars.iconSize",
+      "module": "actionbars",
+      "section": "Look",
+      "type": "number",
+      "default": 46,
+      "label": "Button size",
+      "help": "Each action button's size, in pixels on a 1080p screen. Changes wait until you leave combat.",
+      "acts": false,
+      "min": 32,
+      "max": 64,
+      "step": 1,
+      "look": true
+    },
+    {
       "id": "window.minimap",
       "module": "window",
       "section": "This window",

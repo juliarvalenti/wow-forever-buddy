@@ -3969,6 +3969,8 @@ local SCHEMA_FIELDS = {
     "min", "max", "step", "values", "maxLength",
     -- W1: a module's own on/off.
     "moduleSwitch",
+    -- ED1: part of the look, set by Claude and drawn nowhere in game.
+    "look",
 }
 
 local function declared()
@@ -3977,6 +3979,18 @@ local function declared()
     local s = c.ns().settings
     file(c.logout())
     return s
+end
+
+-- The options the Options page and the window draw, in order: all but the
+-- look (ED1), which only Claude and the app set.
+local function drawn()
+    local out = {}
+    for _, o in ipairs(declared().options) do
+        if not o.look then
+            out[#out + 1] = o
+        end
+    end
+    return out
 end
 
 -- The addon's own check of a value against a declaration (U.prefs.fits).
@@ -4023,14 +4037,29 @@ scenario("settings_schema", function()
         eq(type(o.id) == "string" and o.id:match("^%l%w*%.%a%w*$") ~= nil, true, what .. ": id is module.name")
         eq(ids[o.id], nil, what .. ": unique")
         eq(o.id:match("^(%l%w*)%."), o.module, what .. ": its id starts with its module")
-        eq(o.type == "bool" or o.type == "number", true, what .. ": a bool or a number (the types the UI draws)")
+        eq(o.type == "bool" or o.type == "number" or (o.look == true and (o.type == "enum" or o.type == "color")),
+            true, what .. ": a bool or a number (the types the UI draws), or a look's choice or colour")
         if o.type == "number" then
             eq(type(o.min) == "number" and type(o.max) == "number" and o.min < o.max, true, what .. ": a range")
             eq(type(o.step) == "number" and o.step > 0, true, what .. ": a step")
             eq(type(o.default) == "number" and o.default >= o.min and o.default <= o.max, true,
                 what .. ": a default in range")
+        elseif o.type == "enum" then
+            eq(type(o.values) == "table" and #o.values > 1, true, what .. ": its values")
+            local listed = false
+            for _, v in ipairs(o.values) do
+                listed = listed or v == o.default
+            end
+            eq(listed, true, what .. ": a default among its values")
+        elseif o.type == "color" then
+            eq(o.default == "" or (type(o.default) == "string" and o.default:match("^#%x%x%x%x%x%x$") ~= nil), true,
+                what .. ": a default that's #rrggbb or empty")
         else
             eq(type(o.default), "boolean", what .. ": a default")
+        end
+        -- ED1: the look is display only.
+        if o.look then
+            eq(o.acts, false, what .. ": part of the look, so it doesn't act")
         end
         eq(type(o.label) == "string" and #o.label > 0, true, what .. ": a label")
         eq(type(o.help) == "string" and #o.help > 10, true, what .. ": a help line")
@@ -4107,6 +4136,8 @@ scenario("settings_schema", function()
             local has = p.values[o.id] ~= nil
             if o.id == "window.record" then
                 eq(has, false, what .. ": leaves recording alone")
+            elseif o.look then
+                eq(has, false, what .. ": leaves the look (" .. o.id .. ") to Claude")
             elseif o.acts then
                 eq(has, false, what .. ": leaves " .. o.id .. " alone (it acts)")
             elseif o.type == "bool" then
@@ -4175,7 +4206,8 @@ local function playAWhile(c)
 end
 
 scenario("settings_matrix", function()
-    local s = declared()
+    -- (The look has its own scenario: it isn't on the Options page.)
+    local s = { options = drawn() }
     local profiles = {}
     -- A bool on and off; a number (P4c) at its min, its max and its default.
     local function values(o)
@@ -4254,7 +4286,7 @@ scenario("map", function()
     c.login(nil)
     c.advance(5)
     local function row(id)
-        for i, o in ipairs(declared().options) do
+        for i, o in ipairs(drawn()) do
             if o.id == id then
                 return optionRows(c)[i]
             end
@@ -4364,7 +4396,7 @@ scenario("map", function()
     broken.settings = bad.settings
     broken.login(nil)
     row = function(id)
-        for i, o in ipairs(declared().options) do
+        for i, o in ipairs(drawn()) do
             if o.id == id then
                 return optionRows(broken)[i]
             end
@@ -4398,7 +4430,7 @@ scenario("quest", function()
     c.login(nil)
     c.advance(5)
     local function row(id)
-        for i, o in ipairs(declared().options) do
+        for i, o in ipairs(drawn()) do
             if o.id == id then
                 return optionRows(c)[i]
             end
@@ -4585,7 +4617,12 @@ scenario("settings_fits", function()
         { choice, "left", true }, { choice, "up", false }, { choice, 1, false },
         { text, "hello", true }, { text, "hello!", false }, { text, "a\nb", false }, { text, true, false },
         { { type = "string" }, string.rep("x", 200), true }, { { type = "string" }, string.rep("x", 201), false },
-        { { type = "color" }, "ff0000", false }, -- no other type is accepted
+        -- ED1: a look's colour, "#rrggbb" or empty.
+        { { type = "color" }, "ff0000", false }, { { type = "color" }, "#4fd99a", true },
+        { { type = "color" }, "#4FD99A", true }, { { type = "color" }, "", true },
+        { { type = "color" }, "#4fd99", false }, { { type = "color" }, "#4fd99g", false },
+        { { type = "color" }, "red", false }, { { type = "color" }, 1, false },
+        { { type = "image" }, "x", false }, -- no other type is accepted
     }) do
         eq(fits(case[1], case[2]), case[3], case[1].type .. " " .. tostring(case[2]))
     end
@@ -4598,7 +4635,7 @@ end)
 -- profile applied, so the app knows what the game has.
 scenario("settings_slot", function()
     local coach
-    for i, o in ipairs(declared().options) do
+    for i, o in ipairs(drawn()) do
         if o.id == "window.coach" then
             coach = i
         end
@@ -4651,6 +4688,123 @@ scenario("settings_slot", function()
     eq(optionRows(future)[coach].setting:GetValue(), true, "a newer slot schema isn't read")
     v, profile = values(future)
     eq(profile, 6, "so nothing new was applied")
+end)
+
+-- ED1: the look, which comes only from the app (a draft the player picked,
+-- or a proposal they approved) and is drawn nowhere in game. Its defaults
+-- are round 4 to the pixel; every value Claude can set is applied and kept;
+-- one that doesn't fit is left alone; the bars wait out combat.
+scenario("look", function()
+    local P = 768 / 1080
+    local function px(n)
+        return math.floor(n / P + 0.5)
+    end
+    local function at(f)
+        local p, _, rp, x, y = f:GetPoint()
+        return p .. ">" .. rp .. " " .. px(x) .. "," .. px(y)
+    end
+    local function font(s)
+        local f = s.layout.SetFont
+        return px(f[2]) .. " " .. f[3]
+    end
+    local function rogue(profile, values, inCombat)
+        -- (CreateColor, so the bars' gradient is drawn.)
+        local c = client({ slots = { ["Data/Settings.lua"] = settingsSlot(profile, values) }, globals = {
+            CreateColor = function(r, g, b, a)
+                return { r, g, b, a }
+            end,
+        } })
+        c.world.class = { "Rogue", "ROGUE", 4 }
+        c.world.units.player = { health = 1020, healthMax = 1200, power = 100, powerMax = 100, powerType = 3 }
+        c.world.combat = inCombat or false
+        c.login(nil)
+        c.advance(5)
+        return c
+    end
+    local function parts(c)
+        return c.global("ForeverBuddyHudPlayer"), c.global("ForeverBuddyHudTarget"), c.global("ForeverBuddyHudCombo"),
+            c.global("ForeverBuddyHudBuff"), c.global("ForeverBuddyBarHeader"), c.global("ForeverBuddyActionButton1")
+    end
+    local on = { ["hud.enabled"] = true, ["actionbars.ours"] = true }
+
+    -- Nothing set: round 4.
+    local c = rogue(1, on)
+    local me, them, combo, buff, header, b1 = parts(c)
+    eq(px(me.width) .. "x" .. px(me.height), "300x48", "round 4: 300x48 frames")
+    eq(px(me.health.width) .. "x" .. px(me.health.height), "298x39", "health filling most of it")
+    eq(at(me) .. " / " .. at(them), "BOTTOMRIGHT>BOTTOM -188,247 / BOTTOMLEFT>BOTTOM 188,247", "either side of the bars")
+    eq(font(me.hp) .. " / " .. font(them.hp) .. " / " .. font(me.name), "22 THICKOUTLINE / 20 THICKOUTLINE / 18 THICKOUTLINE",
+        "numbers 22 and 20, names 18, a thick stroke")
+    eq(px(combo.width) .. " " .. at(combo), "376 BOTTOM>BOTTOM 0,299", "the combo strip over the grid")
+    eq(at(buff) .. " " .. font(buff.time), "BOTTOM>BOTTOM 0,340 32 THICKOUTLINE", "Slice and Dice above it")
+    eq(px(header.width) .. "x" .. px(header.height) .. " " .. px(b1.width), "377x95 46", "46px buttons, 1px gaps")
+    eq(font(b1.cd) .. " / " .. font(b1.count) .. " / " .. font(b1.key), "22 THICKOUTLINE / 16 THICKOUTLINE / 12 THICKOUTLINE",
+        "cooldowns 22, stacks 16, keybinds 12")
+    eq(me.health.color .. " " .. me.power.color, "#4fd99a #f0c94a", "green health, energy by its type")
+    local g = me.health.fill.layout.SetGradient
+    eq(hex(g[2]) ~= hex(g[3]), true, "a gradient")
+    c.comboPoints(2)
+    eq(hex(combo.pips[1].layout.SetColorTexture), "#fff569", "yellow combo points")
+    eq(c.global("ForeverBuddySettings").look, nil, "nothing saved for defaults")
+    eq(#optionRows(c), #drawn(), "no look option on the Options page")
+    file(c.logout())
+
+    -- Every look option changed, as a draft would.
+    local look = {
+        ["hud.healthColor"] = "#3a9bdc", ["hud.powerColor"] = "#ff00aa", ["hud.accentColor"] = "#e04040",
+        ["hud.gradient"] = false, ["hud.width"] = 240, ["hud.height"] = 40, ["hud.textSize"] = 18,
+        ["hud.outline"] = "thin", ["hud.layout"] = "stacked", ["actionbars.iconSize"] = 40,
+    }
+    for k, v in pairs(on) do
+        look[k] = v
+    end
+    local d = rogue(2, look)
+    me, them, combo, buff, header, b1 = parts(d)
+    eq(px(me.width) .. "x" .. px(me.height), "240x40", "the frame's size")
+    eq(px(me.health.width) .. "x" .. px(me.health.height), "238x31", "its health bar follows")
+    -- 40px buttons: a grid 329 wide, its top at 283.
+    eq(at(me) .. " / " .. at(them), "BOTTOM>BOTTOM 0,299 / BOTTOM>BOTTOM 0,343", "stacked over the strip, the target's on top")
+    eq(at(buff), "BOTTOM>BOTTOM 0,423", "Slice and Dice above both")
+    eq(px(combo.width) .. " " .. at(combo), "328 BOTTOM>BOTTOM 0,287", "the strip follows the grid")
+    eq(font(me.hp) .. " / " .. font(them.hp), "18 OUTLINE / 16 OUTLINE", "the numbers' size and a thin stroke")
+    eq(px(header.width) .. "x" .. px(header.height) .. " " .. px(b1.width), "329x83 40", "40px buttons")
+    eq(font(b1.cd), "19 OUTLINE", "their text follows")
+    g = me.health.fill.layout.SetGradient
+    eq(hex(g[2]) .. " " .. hex(g[3]), "#3a9bdc #3a9bdc", "flat, in the health colour")
+    eq(me.power.color, "#ff00aa", "the power colour")
+    d.comboPoints(1)
+    eq(hex(combo.pips[1].layout.SetColorTexture), "#e04040", "the accent on combo points")
+    local db = file(d.logout())
+    eq(db.settings.values["hud.layout"] .. " " .. db.settings.values["hud.width"], "stacked 240", "the file has the look")
+
+    -- Kept at the next login, with no new profile.
+    local again = client()
+    again.settings = d.settings
+    again.world.class = { "Rogue", "ROGUE", 4 }
+    again.login(nil)
+    again.advance(5)
+    me = parts(again)
+    eq(px(me.width) .. " " .. at(me), "240 BOTTOM>BOTTOM 0,299", "kept, account-wide")
+    file(again.logout())
+
+    -- Values that don't fit their declaration are left alone.
+    local bad = rogue(3, { ["hud.enabled"] = true, ["hud.healthColor"] = "red", ["hud.width"] = 9000,
+        ["hud.layout"] = "diagonal", ["hud.gradient"] = "yes", ["actionbars.iconSize"] = 20 })
+    eq(bad.global("ForeverBuddySettings").look, nil, "nothing that doesn't fit is taken")
+    me = parts(bad)
+    eq(px(me.width) .. " " .. me.health.color, "300 #4fd99a", "round 4 stays")
+    file(bad.logout())
+
+    -- Logged in during combat: the HUD's look at once, the bars' (secure)
+    -- once combat ends, with nothing blocked.
+    local fight = rogue(4, look, true)
+    me, them, combo, buff, header = parts(fight)
+    eq(px(me.width), 240, "the HUD's look in combat")
+    eq(header, nil, "the bars wait")
+    fight.combat(false)
+    header, b1 = select(5, parts(fight))
+    eq(px(b1.width), 40, "then come in the look")
+    file(fight.logout())
 end)
 
 -- U1d: the coach strip, the plan tracker and the logout card are placed in

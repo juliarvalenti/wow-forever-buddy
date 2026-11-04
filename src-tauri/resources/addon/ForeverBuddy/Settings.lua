@@ -9,7 +9,8 @@
 --   module   which feature it belongs to
 --   section  the heading it's listed under
 --   type     "bool" (a switch) or "number" (a slider, with min, max and
---            step)
+--            step); a look option may also be "enum" (one of its values)
+--            or "color" ("#rrggbb", or "" for the look's own)
 --   default  what a new player has, and what Options' Defaults goes back to
 --   label    its name
 --   help     the one line shown on hover (and under it in the window)
@@ -21,6 +22,9 @@
 --            Esc › Options
 --   moduleSwitch (optional) the module's own on/off (W1): the switch at the
 --            top of its page and the dot in the window's rail
+--   look     (optional, ED1) part of the HUD's or the bars' look: set by
+--            Claude and the app, never drawn in the window or Options, and
+--            left alone by presets
 --
 -- A profile's values are checked against these, in the addon and in the
 -- app: a number's min and max, and (ready for later types) an "enum"'s
@@ -507,6 +511,134 @@ ns.settings = {
             help = "Your first two bars in our look. Same spells, binds and drag and drop; Blizzard's bars fade out. Changes wait until you leave combat.",
             parent = "actionbars.enabled",
             showHelp = true,
+            acts = false,
+        },
+        -- ED1: the look of the HUD and the action bars, set by Claude (a
+        -- draft the player picks, or a proposal they approve) and seen on
+        -- the app's Your UI tab. Not drawn in the window or Esc › Options.
+        -- The defaults are round 4's (design/ingame/rogue/specs/round4.lua).
+        {
+            id = "hud.healthColor",
+            module = "hud",
+            section = "Look",
+            type = "color",
+            default = "#4fd99a",
+            label = "Health colour",
+            help = "Your health bar, and a friendly target's, as #rrggbb. Empty for round 4's green.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.powerColor",
+            module = "hud",
+            section = "Look",
+            type = "color",
+            default = "",
+            label = "Power colour",
+            help = "Your power bar, as #rrggbb. Empty: each kind of power in its own colour (mana blue, rage red, energy yellow).",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.accentColor",
+            module = "hud",
+            section = "Look",
+            type = "color",
+            default = "#fff569",
+            label = "Accent colour",
+            help = "Combo points, as #rrggbb. Empty for round 4's yellow.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.gradient",
+            module = "hud",
+            section = "Look",
+            type = "bool",
+            default = true,
+            label = "Gradient on bars",
+            help = "Bars lighter on the left and deeper on the right. Off: one flat colour.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.width",
+            module = "hud",
+            section = "Look",
+            type = "number",
+            default = 300,
+            min = 200,
+            max = 420,
+            step = 2,
+            label = "Frame width",
+            help = "Your frame's and your target's width, in pixels on a 1080p screen.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.height",
+            module = "hud",
+            section = "Look",
+            type = "number",
+            default = 48,
+            min = 32,
+            max = 72,
+            step = 1,
+            label = "Frame height",
+            help = "Their height, in pixels on a 1080p screen. The power line under the health bar stays 5 pixels.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.textSize",
+            module = "hud",
+            section = "Look",
+            type = "number",
+            default = 22,
+            min = 14,
+            max = 32,
+            step = 1,
+            label = "Number size",
+            help = "Your health numbers' size; your target's and the names follow it.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.outline",
+            module = "hud",
+            section = "Look",
+            type = "enum",
+            values = { "thick", "thin", "none" },
+            default = "thick",
+            label = "Text outline",
+            help = "The stroke around the HUD's text and the buttons' numbers: thick, thin or none.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "hud.layout",
+            module = "hud",
+            section = "Look",
+            type = "enum",
+            values = { "side", "stacked" },
+            default = "side",
+            label = "Layout",
+            help = "side: yours left of the action bars and your target's right. stacked: both above the bars, your target's on top.",
+            look = true,
+            acts = false,
+        },
+        {
+            id = "actionbars.iconSize",
+            module = "actionbars",
+            section = "Look",
+            type = "number",
+            default = 46,
+            min = 32,
+            max = 64,
+            step = 1,
+            label = "Button size",
+            help = "Each action button's size, in pixels on a 1080p screen. Changes wait until you leave combat.",
+            look = true,
             acts = false,
         },
         {

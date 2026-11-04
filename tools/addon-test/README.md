@@ -35,6 +35,7 @@ When the addon's output changes, run the harness and commit the fixtures with th
 **The settings schema (P4a):** the addon's settings are declared once, in `ForeverBuddy/Settings.lua`: id, module, section, type, default, label, help, parent and acts. The window's Settings tab and Esc › Options read that list; what each option does is in `ForeverBuddy.lua`, by id, and the addon refuses to load if a declared option does nothing.
 - `settings_schema` checks every declaration and generates `src-tauri/resources/settings-schema.json` for the app. Under `--check`, a stale file fails, so commit it with the change.
 - `settings_matrix` runs every declared value. Each option is set on and then off from the Options page, with a session played through and the file it writes checked. The value must be kept at the next login. Then every option off, and every option on.
+- `look` covers the look options (`look = true`: the HUD's colours, gradient, sizes, outline and layout, and the button size). Claude sets them through the app, and they aren't on the Options page or in the window. The scenario checks the defaults are round 4 to the pixel, that a full draft is applied and kept, that values which don't fit are refused, and that the bars wait out combat.
 - A new option needs its declaration, its get and set, then a run of the harness and a commit of the schema.
 
 ## The Forever census (SIM5a)
