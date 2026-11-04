@@ -146,8 +146,8 @@ function UiDocPreview({ id, v }: { id: number; v: UiDocView }) {
         <UiShot id={id} moment="combat" />
       </div>
       <div className="ap-next">
-        Use this and it's in the game from your next login or /reload, in place of the standard HUD, on every
-        character. You can go back any time.
+        Use this and it's live in the game at your next login, in place of the standard HUD, on every character. You
+        can go back any time.
       </div>
     </>
   );
@@ -173,7 +173,7 @@ function ActiveUiBar({ approvals }: { approvals: ApprovalsData | null }) {
   return (
     <div className="ap-bar" style={{ marginBottom: 16 }}>
       <span className="grow">
-        <b>Your UI in the game: "{active.name}".</b> {err ?? "Going back takes effect at your next login or /reload."}
+        <b>Your UI in the game: "{active.name}".</b> {err ?? "Going back takes effect at your next login."}
       </span>
       <Button variant="ghost" onClick={back}>
         Go back to the standard HUD
