@@ -36,6 +36,17 @@ local function enter(sim, moment)
     end
 end
 
+-- UI1: the document checker, the addon's own UICheck.lua (the one the game
+-- runs), loaded from the addon folder `addon`.
+local checkers = {}
+function M.uicheck(addon)
+    if not checkers[addon] then
+        local src = assert(require("wowapi.host").read(addon .. "/UICheck.lua"), "no UICheck.lua in " .. addon)
+        checkers[addon] = assert(loadstring(src, "@UICheck.lua"))()
+    end
+    return checkers[addon]
+end
+
 -- opts: addon (the ForeverBuddy folder), class (the player's class; one
 -- without a fixtures.lua character gets the generic one), blizzard (the
 -- extract's interface/addons, art on only), art (draw with the game's art),
@@ -45,12 +56,13 @@ end
 -- the number of Lua errors the scene logged, and
 -- the class drawn (nil for the generic character). A document that doesn't
 -- pass the check draws nothing: the SVG is nil and the fourth value is its
--- problems (uicheck.lua).
--- UI1: a document's problems (uicheck.lua), without drawing it. The app's
--- propose_ui checks through here, so wherever the checker lives, the app
--- and the pictures use the same one.
-function M.check(doc)
-    return require("uicheck").check(doc)
+-- problems (the addon's UICheck.lua).
+-- UI1: a document's problems, without drawing it, from the addon's own
+-- UICheck.lua (`addon`, by default the app's bundled one). The app's
+-- propose_ui checks through here, so the app, the pictures and the game
+-- use the same checker.
+function M.check(doc, addon)
+    return M.uicheck(addon or "/addon/ForeverBuddy").check(doc)
 end
 
 function M.draw(opts)
@@ -61,7 +73,7 @@ function M.draw(opts)
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
     local globals = {}
     if opts.ui ~= nil then
-        local problems = M.check(opts.ui)
+        local problems = M.check(opts.ui, opts.addon)
         if #problems > 0 then
             return nil, 0, class, problems
         end

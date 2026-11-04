@@ -28,11 +28,11 @@ const TOC: &str = "ForeverBuddy.toc";
 /// app replaces with generated data. `Media/` holds our own art (U1).
 /// `Settings.lua` declares the addon's settings (P4a); `Data/Settings.lua`
 /// is the slot that carries a profile approved in the app (P4b). `UI.lua`
-/// draws a UI document (UI1): the Your UI preview and render_ui use it, and
-/// in game it does nothing until a document is set. `Data/Macros.lua`
-/// carries approved macros to the game's Apply (MC1), `Data/UI.lua` the UI
-/// document the player chose (UI1).
-const FILES: [(&str, &[u8]); 27] = [
+/// draws a UI document (UI1), in game and in render_ui's pictures, and
+/// `UICheck.lua` checks one first (in game, and for render_ui and
+/// propose_ui). `Data/Macros.lua` carries approved macros to the game's
+/// Apply (MC1), `Data/UI.lua` the UI document the player chose (UI1).
+const FILES: [(&str, &[u8]); 28] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -40,6 +40,10 @@ const FILES: [(&str, &[u8]); 27] = [
     (
         "Settings.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Settings.lua"),
+    ),
+    (
+        "UICheck.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/UICheck.lua"),
     ),
     (
         "UI.lua",

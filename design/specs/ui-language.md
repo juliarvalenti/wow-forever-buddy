@@ -1,6 +1,6 @@
 # The Forever Buddy UI language (UI1)
 
-Status: version 1 draws today (`src-tauri/resources/addon/ForeverBuddy/UI.lua`, the addon's own, checked by `tools/addon-shots/uicheck.lua`, through `render_ui`). Issue #259. Written by @designer for Julia, coders and agents.
+Status: version 1 draws today, in `render_ui` and in game (`src-tauri/resources/addon/ForeverBuddy/UI.lua`, checked by the addon's `UICheck.lua` in both). Issue #259. Written by @designer for Julia, coders and agents.
 
 One document describes a whole UI. An agent writes it, `render_ui` shows it on a stand-in screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
 
@@ -112,11 +112,21 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 "alpha": { "always": 0.25, "combat": 1, "low": 1 }
 ```
 
-**Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part reading one draws its bar full and its text as `?` rather than break; the interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything. The in-game interpreter will hand bars and text the value directly, so they keep showing it. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
+**Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part reading one keeps its bar where it last was (full if it never had a value) and shows its text as `?` rather than break; the interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything. Handing bars and text the hidden value directly, so they keep showing it, is in Next. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
 
-**Aura bars and hidden timing.** An aura's time left can be hidden too. In a picture, a bar whose timing is hidden shows full with no time, never a guess. In game, an aura bar's fill is the aura's duration object handed to `StatusBar:SetTimerDuration`, and its time is a duration text binding (`C_DurationUtil.CreateDurationTextBinding`), so no Lua ever reads the time left. If the aura list itself is refused in combat, the bars keep the last ones they had, and the interpreter remembers only that it was refused, never the values.
+**Aura bars and hidden timing.** An aura's time left can be hidden too. A bar whose timing is hidden shows full with no time, never a guess. If the aura list itself is refused in combat, the bars keep the last ones they had.
 
-**Combat.** A new document never changes the screen in combat. It waits, and when combat ends (`PLAYER_REGEN_ENABLED`) the latest one is drawn; any earlier one waiting is dropped.
+**Combat.** The UI's frames are made once, out of combat: a login or reload in combat makes them when it ends (`PLAYER_REGEN_ENABLED`). After that, in combat, the interpreter only repaints: it never moves or resizes a frame (a `size` given per state waits for combat to end), and a state that hides a part does it by alpha.
+
+## In game
+
+The player's chosen document lives in the slot `Data/UI.lua` (`ForeverBuddyData_UI = { schema = 1, stamp, doc }`), written by the app only when the player picks Use this. At login the addon checks it again with the same `UICheck.lua` (the folder can be edited by anything on the machine); a missing or failing document draws nothing and the standard HUD stays. A new document takes a `/reload`.
+
+While a document draws:
+
+- Our fixed HUD stays off. Blizzard's player and target frames, and the ones in `hide`, get alpha 0 and nothing else.
+- Parts repaint from the game's events: health, power and combo points, auras, the target, combat and stealth. Aura bars tick five times a second from one shared update.
+- `actionbar` parts are our real action buttons (the Action bars module's secure buttons, slots 1 to 12 and 61 to 64, paging with stealth). The document sets where each slot's button goes and its size; they're laid out only out of combat. A slot no part names has no button showing, and its key still presses it.
 
 ## 8. Checking
 
@@ -130,7 +140,7 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 /parts/2/slots/1   bad-slot: an action slot is a whole number from 1 to 180.
 ```
 
-**What a document costs.** The client caps each addon's objects (from its own log: Frame 10,000, Texture 40,000, FontString 5,000, Font 300, Animation 5,000, AnimationGroup 2,000, Timer 500). The checker counts what a document will make and refuses one over a UI's share, a fifth of each: 2,000 frames, 8,000 textures, 1,000 font strings. Stroke is the expensive part: a stroked text is drawn once plus 8, 20 or 36 black copies (stroke 1, 2 or 3), so round 4 makes 228 font strings. The interpreter makes no timers; the in-game one will run one shared update for the whole UI, not one per part.
+**What a document costs.** The client caps each addon's objects (from its own log: Frame 10,000, Texture 40,000, FontString 5,000, Font 300, Animation 5,000, AnimationGroup 2,000, Timer 500). The checker counts what a document will make and refuses one over a UI's share, a fifth of each: 2,000 frames, 8,000 textures, 1,000 font strings. Stroke is the expensive part: a stroked text is drawn once plus 8, 20 or 36 black copies (stroke 1, 2 or 3), so round 4 makes 228 font strings. The interpreter makes no timers and runs one shared update for the whole UI, not one per part; a repaint reuses the textures and text it made before.
 
 ## 9. Seeing it
 
@@ -156,7 +166,8 @@ From the first draft of this doc, to add as the language grows, each without bre
 - **Named styles** merged per part, and theme images.
 - **Per character and spec:** `for`, most specific wins.
 - **Blizzard's frames placed** through an Edit Mode layout, so one document describes the whole screen.
-- **Secure action buttons** in game: the picture's `actionbar` becomes real buttons, with stance paging.
+- **Hidden values shown anyway:** bars and text handed the hidden value directly (a status bar), and aura bars timed by the aura's duration object (`StatusBar:SetTimerDuration`, `C_DurationUtil.CreateDurationTextBinding`), so no Lua reads the time left.
+- **Action buttons on any slot**, not only the sixteen the Action bars module makes, styled by the document (keybind font, border).
 - **Text roles:** named styles for a frame's `header`, `value` and `label` text, instead of one font per part.
 - **RGBA colours:** `"#rrggbbaa"`, alongside the separate alpha keys.
 - **Backdrop and border as their own properties**, with `strata` and `scale`.

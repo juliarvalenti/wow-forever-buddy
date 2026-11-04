@@ -22,4 +22,5 @@ Data/Macros.lua
 Data/UI.lua
 Settings.lua
 ForeverBuddy.lua
+UICheck.lua
 UI.lua
