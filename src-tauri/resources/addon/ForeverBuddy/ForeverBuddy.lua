@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.13.0"
+local VERSION = "0.14.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -613,6 +613,131 @@ function U.mods.option(id)
     }
 end
 
+-- The look (ED1) ------------------------------------------------------------------------
+--
+-- Settings.lua's look options: the HUD's colours, gradient, sizes, outline
+-- and layout, and the buttons' size. Claude sets them (a draft the player
+-- picks in the app, or a proposal they approve); nothing in the window
+-- draws them. Kept in ForeverBuddySettings.look by id, only where they
+-- differ from the default, which is round 4. A value that doesn't fit its
+-- declaration reads as the default.
+
+U.look = {}
+
+function U.look.decls()
+    if not U.look.byId then
+        U.look.byId = {}
+        for _, o in ipairs(U.mods.declared and U.mods.declared.options or {}) do
+            if o.look then
+                U.look.byId[o.id] = o
+            end
+        end
+    end
+    return U.look.byId
+end
+
+function U.look.fits(d, v)
+    if d.type == "number" then
+        return type(v) == "number" and v >= d.min and v <= d.max
+    elseif d.type == "color" then
+        return type(v) == "string" and (v == "" or v:match("^#%x%x%x%x%x%x$") ~= nil)
+    elseif d.type == "enum" then
+        for _, x in ipairs(d.values) do
+            if x == v then
+                return true
+            end
+        end
+        return false
+    end
+    return type(v) == "boolean"
+end
+
+function U.look.get(id)
+    local d = U.look.decls()[id]
+    local l = type(ForeverBuddySettings) == "table" and ForeverBuddySettings.look
+    local v
+    if type(l) == "table" then
+        v = l[id]
+    end
+    if v == nil or not U.look.fits(d, v) then
+        return d.default
+    end
+    return v
+end
+
+-- A change lays the HUD and the bars out again (the bars once out of combat).
+function U.look.set(id, v)
+    if type(ForeverBuddySettings) ~= "table" then
+        ForeverBuddySettings = {}
+    end
+    if type(ForeverBuddySettings.look) ~= "table" then
+        ForeverBuddySettings.look = {}
+    end
+    if v == U.look.decls()[id].default then
+        ForeverBuddySettings.look[id] = nil
+    else
+        ForeverBuddySettings.look[id] = v
+    end
+    -- (A profile from the app sets several at once: laid out once, after.)
+    if U.applyingProfile then
+        U.look.dirty = true
+        return
+    end
+    U.look.refresh()
+end
+
+-- (The bars only need laying out again, and only out of combat; in combat
+-- their apply, which lays them out too, waits for it to end.)
+function U.look.refresh()
+    if not pcall(U.hud.restyle) then
+        U.errors = U.errors + 1
+    end
+    if not U.bars.header then
+        return
+    end
+    if read("InCombatLockdown") then
+        U.bars.pending = true
+    elseif not pcall(U.bars.layout) then
+        U.errors = U.errors + 1
+    end
+end
+
+-- A look option's get and set, for the Settings list.
+function U.look.option(id)
+    return {
+        get = function()
+            return U.look.get(id)
+        end,
+        set = function(v)
+            U.look.set(id, v)
+        end,
+    }
+end
+
+-- A colour setting's hex, or `fallback` while it's empty.
+function U.look.color(id, fallback)
+    local v = U.look.get(id)
+    return v ~= "" and v or fallback
+end
+
+-- The text outline as SetFont's flags.
+function U.look.outline()
+    return ({ thick = "THICKOUTLINE", thin = "OUTLINE", none = "" })[U.look.get("hud.outline")]
+end
+
+-- The button grid's width and the height of its top edge, in 1080p pixels
+-- (377 and 295 with round 4's 46px buttons): the HUD sits by them.
+function U.look.grid()
+    local icon, gap = U.look.get("actionbars.iconSize"), U.bars.GAP
+    return 8 * icon + 7 * gap + 2, U.bars.Y0 + 2 * icon + gap + 2
+end
+
+-- Barlow, with the game's font under it in case ours isn't found.
+function U.look.font(s, size, flags)
+    s:SetFont("Fonts\\FRIZQT__.TTF", size, flags)
+    s:SetFont(U.bars.MEDIA .. "BarlowSCB.ttf", size, flags)
+end
+
 -- The Action bars module (TH3) -----------------------------------------------------------
 --
 -- Our own action buttons in round 4's grid (design/ingame/rogue/specs/
@@ -632,7 +757,7 @@ end
 -- Off until "Our action bars" is turned on. Anything that would touch a
 -- secure frame in combat waits for PLAYER_REGEN_ENABLED.
 U.bars = {
-    ICON = 46, GAP = 1, Y0 = 200, -- screen pixels at 1080p (round 4)
+    GAP = 1, Y0 = 200, -- screen pixels at 1080p (round 4); the button size is the look's
     PX = 768 / 1080,
     -- Each button: its action slot and the binding whose keys press it.
     -- The first twelve page with the bonus bar; 61-64 don't.
@@ -781,7 +906,6 @@ function U.bars.build()
     local header = CreateFrame("Frame", "ForeverBuddyBarHeader", UIParent, "SecureHandlerStateTemplate")
     header:SetFrameStrata("HIGH")
     header:SetFrameLevel(10) -- above the click shields
-    header:SetSize(P(8 * B.ICON + 7 * B.GAP + 2), P(2 * B.ICON + B.GAP + 2))
     header:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, P(B.Y0))
     local box = header:CreateTexture(nil, "BACKGROUND")
     box:SetAllPoints()
@@ -790,9 +914,6 @@ function U.bars.build()
     for i, s in ipairs(B.SLOTS) do
         local name = "ForeverBuddyActionButton" .. i
         local b = CreateFrame("CheckButton", name, header, "SecureActionButtonTemplate")
-        local col, row = (i - 1) % 8, i <= 8 and 1 or 0
-        b:SetSize(P(B.ICON), P(B.ICON))
-        b:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", P(1 + col * (B.ICON + B.GAP)), P(1 + row * (B.ICON + B.GAP)))
         b:SetAttribute("type", "action")
         b:SetAttribute("action", s[1])
         b:RegisterForClicks(useDown and "AnyDown" or "AnyUp")
@@ -815,12 +936,11 @@ function U.bars.build()
         b.glow = CreateFrame("Frame", nil, b)
         b.glow:SetAllPoints()
         b.glow:SetFrameLevel(b:GetFrameLevel() + 5)
-        local soft = b.glow:CreateTexture(nil, "OVERLAY")
-        soft:SetTexture(B.MEDIA .. "Glow")
-        soft:SetBlendMode("ADD")
-        soft:SetVertexColor(1, 0.824, 0.235, 0.55) -- #ffd23c
-        soft:SetPoint("CENTER")
-        soft:SetSize(P(B.ICON * 1.5), P(B.ICON * 1.5))
+        b.soft = b.glow:CreateTexture(nil, "OVERLAY")
+        b.soft:SetTexture(B.MEDIA .. "Glow")
+        b.soft:SetBlendMode("ADD")
+        b.soft:SetVertexColor(1, 0.824, 0.235, 0.55) -- #ffd23c
+        b.soft:SetPoint("CENTER")
         for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
             { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
             local edge = b.glow:CreateTexture(nil, "OVERLAY")
@@ -844,19 +964,15 @@ function U.bars.build()
         b.over = CreateFrame("Frame", nil, b)
         b.over:SetAllPoints()
         b.over:SetFrameLevel(b:GetFrameLevel() + 4)
+        -- (Its font and size, like the stacks' and the keybind's, are
+        -- B.layout's.)
         b.cd = b.over:CreateFontString(nil, "OVERLAY")
-        b.cd:SetFont("Fonts\\FRIZQT__.TTF", P(22), "THICKOUTLINE")
-        b.cd:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(22), "THICKOUTLINE")
         b.cd:SetShadowOffset(0, 0)
         b.cd:SetTextColor(1, 1, 1, 1)
         b.cd:SetPoint("CENTER", b, "CENTER", 0, 0)
-        -- Round 4's text: Barlow Semi Condensed Bold, a thick black stroke;
-        -- stacks 16px, keybinds 12px.
         b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-        b.count:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(16), "THICKOUTLINE")
         b.count:SetPoint("BOTTOMRIGHT", -P(3), P(3))
         b.key = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        b.key:SetFont(B.MEDIA .. "BarlowSCB.ttf", P(12), "THICKOUTLINE")
         b.key:SetPoint("TOPRIGHT", -P(3), -P(3))
         -- Drag and drop as Blizzard's buttons: out of combat, and with the
         -- bars locked only with the pick-up modifier held.
@@ -931,6 +1047,30 @@ function U.bars.build()
     return true
 end
 
+-- The grid's sizes from the look (ED1): round 4's 46px buttons and 1px
+-- gaps by default, with their text in Barlow Semi Condensed Bold, stroked:
+-- cooldown seconds 22px, stacks 16, keybinds 12, all following the button
+-- size. Secure frames, so out of combat only (apply's).
+function U.bars.layout()
+    local B = U.bars
+    local function P(n)
+        return n * B.PX
+    end
+    local icon, flags = U.look.get("actionbars.iconSize"), U.look.outline()
+    local k = icon / 46
+    B.header:SetSize(P(8 * icon + 7 * B.GAP + 2), P(2 * icon + B.GAP + 2))
+    for i, b in ipairs(B.buttons) do
+        local col, row = (i - 1) % 8, i <= 8 and 1 or 0
+        b:SetSize(P(icon), P(icon))
+        b:ClearAllPoints()
+        b:SetPoint("BOTTOMLEFT", B.header, "BOTTOMLEFT", P(1 + col * (icon + B.GAP)), P(1 + row * (icon + B.GAP)))
+        b.soft:SetSize(P(icon * 1.5), P(icon * 1.5))
+        U.look.font(b.cd, P(22 * k), flags)
+        U.look.font(b.count, P(16 * k), flags)
+        U.look.font(b.key, P(12 * k), flags)
+    end
+end
+
 -- Ours on or off, Blizzard's faded to match, and the keys pointed at ours.
 -- Secure work waits for the end of combat; the look updates any time.
 function U.bars.apply()
@@ -946,6 +1086,7 @@ function U.bars.apply()
         return
     end
     if B.header then
+        B.layout()
         B.header:SetShown(want)
         for _, s in ipairs(B.shields) do
             s:SetShown(want)
@@ -1012,7 +1153,10 @@ function U.bars.option()
                 ForeverBuddySettings = {}
             end
             ForeverBuddySettings.ourBars = on and true or nil
-            U.bars.apply()
+            -- (From a profile at login: PLAYER_ENTERING_WORLD applies it.)
+            if not U.applyingProfile then
+                U.bars.apply()
+            end
         end,
     }
 end
@@ -1216,7 +1360,6 @@ U.mods.register({ id = "map", enable = U.map.apply, disable = U.map.apply })
 U.hud = {
     -- Round 4's sizes are 1080p screen pixels; one in UI units.
     P = 768 / 1080,
-    FONT = "Interface\\AddOns\\ForeverBuddy\\Media\\BarlowSCB.ttf",
     COLORS = {
         back = "#141416",
         health = "#4fd99a",
@@ -1233,39 +1376,45 @@ U.hud = {
     },
 }
 
--- Stroked, bold and condensed: Barlow, with the game's font under it in case
--- ours isn't found.
-function U.hud.text(parent, size, justify)
+-- Stroked, bold and condensed: white text, its font and size set by
+-- U.hud.layout.
+function U.hud.text(parent, justify)
     local s = parent:CreateFontString(nil, "OVERLAY")
-    s:SetFont("Fonts\\FRIZQT__.TTF", size, "THICKOUTLINE")
-    s:SetFont(U.hud.FONT, size, "THICKOUTLINE")
     s:SetShadowOffset(0, 0)
     s:SetTextColor(1, 1, 1, 1)
     s:SetJustifyH(justify)
     return s
 end
 
--- A bar: a dark back and a fill from the left.
-function U.hud.bar(parent, w, h)
+-- A bar: a dark back and a fill from the left, sized by U.hud.size.
+function U.hud.bar(parent)
     local b = CreateFrame("Frame", nil, parent)
-    b:SetSize(w, h)
-    b.w = w
     U.ui.fill(b, U.ui.hex(U.hud.COLORS.back, 0.9)):SetAllPoints()
     b.fill = b:CreateTexture(nil, "ARTWORK")
     b.fill:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
     b.fill:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-    b.fill:SetWidth(w)
     return b
 end
 
+function U.hud.size(b, w, h)
+    b:SetSize(w, h)
+    b.w = w
+    b.fill:SetWidth(w)
+end
+
 -- Its colour, lighter on the left and deeper on the right (round 4's
--- gradient), set again only when it changes.
+-- gradient; flat with the look's gradient off), set again only when it
+-- changes.
 function U.hud.paint(b, hex)
     if b.color == hex then
         return
     end
     b.color = hex
     local c = U.ui.hex(hex)
+    local hi, lo = 0.38, -0.18
+    if not U.look.get("hud.gradient") then
+        hi, lo = 0, 0
+    end
     local function shade(k)
         if k >= 0 then
             return c[1] + (1 - c[1]) * k, c[2] + (1 - c[2]) * k, c[3] + (1 - c[3]) * k, 1
@@ -1274,7 +1423,7 @@ function U.hud.paint(b, hex)
     end
     b.fill:SetColorTexture(1, 1, 1, 1)
     if not (type(CreateColor) == "function"
-            and pcall(b.fill.SetGradient, b.fill, "HORIZONTAL", CreateColor(shade(0.38)), CreateColor(shade(-0.18)))) then
+            and pcall(b.fill.SetGradient, b.fill, "HORIZONTAL", CreateColor(shade(hi)), CreateColor(shade(lo)))) then
         b.fill:SetColorTexture(c[1], c[2], c[3], 1)
     end
 end
@@ -1306,30 +1455,24 @@ function U.hud.short(v)
     return tostring(math.floor(v + 0.5))
 end
 
--- A unit's frame: a 300x48 black box, health filling most of it, power a
--- 5px line under it, and the numbers. The player's sits left of centre,
--- the target's right, with the combo strip's width between them.
+-- A unit's frame: a black box (300x48 in round 4), health filling most of
+-- it, power a 5px line under it, and the numbers. U.hud.layout sizes and
+-- places it.
 function U.hud.unitFrame(unit)
     local P = U.hud.P
     local f = CreateFrame("Frame", unit == "player" and "ForeverBuddyHudPlayer" or "ForeverBuddyHudTarget", UIParent)
     f:EnableMouse(false)
     f:SetFrameStrata("MEDIUM")
-    f:SetSize(300 * P, 48 * P)
-    if unit == "player" then
-        f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOM", -188 * P, 247 * P)
-    else
-        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOM", 188 * P, 247 * P)
-    end
     U.ui.fill(f, { 0, 0, 0, 1 }):SetAllPoints()
-    f.health = U.hud.bar(f, 298 * P, 39 * P)
+    f.health = U.hud.bar(f)
     f.health:SetPoint("TOPLEFT", f, "TOPLEFT", P, -P)
-    f.power = U.hud.bar(f, 298 * P, 5 * P)
+    f.power = U.hud.bar(f)
     f.power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", P, P)
     if unit == "player" then
-        f.hp = U.hud.text(f.health, 22 * P, "RIGHT")
+        f.hp = U.hud.text(f.health, "RIGHT")
         f.hp:SetPoint("RIGHT", f.health, "RIGHT", -8 * P, 0)
         -- Your name on the left in your class's colour (th1-class-tuned).
-        f.name = U.hud.text(f.health, 18 * P, "LEFT")
+        f.name = U.hud.text(f.health, "LEFT")
         f.name:SetPoint("LEFT", f.health, "LEFT", 8 * P, 0)
         f.name:SetText((string.gsub(read("UnitName", "player") or "", "|", "||")))
         local _, class = read(UnitClass, "player")
@@ -1338,9 +1481,9 @@ function U.hud.unitFrame(unit)
             f.name:SetTextColor(c.r, c.g, c.b, 1)
         end
     else
-        f.name = U.hud.text(f.health, 16 * P, "LEFT")
+        f.name = U.hud.text(f.health, "LEFT")
         f.name:SetPoint("TOPLEFT", f.health, "TOPLEFT", 7 * P, -P)
-        f.hp = U.hud.text(f.health, 20 * P, "RIGHT")
+        f.hp = U.hud.text(f.health, "RIGHT")
         f.hp:SetPoint("BOTTOMRIGHT", f.health, "BOTTOMRIGHT", -7 * P, 0)
     end
     f.unit = unit
@@ -1349,18 +1492,12 @@ end
 
 -- Five segments across the top of where the action bars sit.
 function U.hud.comboStrip()
-    local P = U.hud.P
     local f = CreateFrame("Frame", "ForeverBuddyHudCombo", UIParent)
     f:EnableMouse(false)
     f:SetFrameStrata("MEDIUM")
-    f:SetSize(376 * P, 8 * P)
-    f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 299 * P)
     f.pips = {}
     for i = 1, 5 do
-        local t = f:CreateTexture(nil, "ARTWORK")
-        t:SetSize((376 / 5 - 1) * P, 8 * P)
-        t:SetPoint("LEFT", f, "LEFT", (i - 1) * 376 / 5 * P, 0)
-        f.pips[i] = t
+        f.pips[i] = f:CreateTexture(nil, "ARTWORK")
     end
     return f
 end
@@ -1373,12 +1510,11 @@ function U.hud.buffFrame()
     f:EnableMouse(false)
     f:SetFrameStrata("MEDIUM")
     f:SetSize(40 * P, 40 * P)
-    f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 340 * P)
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.icon:SetAllPoints()
     U.ui.border(f, { 0, 0, 0, 1 }, "OVERLAY")
-    f.time = U.hud.text(f, 32 * P, "CENTER")
+    f.time = U.hud.text(f, "CENTER")
     f.time:SetPoint("TOP", f, "BOTTOM", 0, -2 * P)
     local since = 1
     f:SetScript("OnUpdate", function(_, elapsed)
@@ -1412,6 +1548,7 @@ function U.hud.build()
     U.hud.target = U.hud.unitFrame("target")
     U.hud.combo = U.hud.comboStrip()
     U.hud.buff = U.hud.buffFrame()
+    U.hud.layout()
     U.hud.events = CreateFrame("Frame")
     U.hud.events:SetScript("OnEvent", function(_, event, unit, kind)
         if not pcall(U.hud.on, event, unit, kind) then
@@ -1421,11 +1558,69 @@ function U.hud.build()
     U.hud.built = true
 end
 
+-- Sizes, places and fonts from the look (ED1). Round 4 by default: 300x48
+-- frames with their tops level with the button grid's, either side of it;
+-- numbers 22px (the target's 20, the names 18 and 16) with a thick stroke;
+-- the combo strip 4px above the grid and as wide, and Slice and Dice above
+-- that. Stacked, both frames sit centred above the strip, your target's on
+-- top. Not secure frames, so any time.
+function U.hud.layout()
+    local P = U.hud.P
+    local w, h = U.look.get("hud.width"), U.look.get("hud.height")
+    local k, flags = U.look.get("hud.textSize") / 22, U.look.outline()
+    local grid, top = U.look.grid()
+    local stacked = U.look.get("hud.layout") == "stacked"
+    for _, f in ipairs({ U.hud.player, U.hud.target }) do
+        local mine = f.unit == "player"
+        f:SetSize(w * P, h * P)
+        U.hud.size(f.health, (w - 2) * P, (h - 9) * P)
+        U.hud.size(f.power, (w - 2) * P, 5 * P)
+        U.look.font(f.hp, (mine and 22 or 20) * k * P, flags)
+        U.look.font(f.name, (mine and 18 or 16) * k * P, flags)
+        f:ClearAllPoints()
+        if stacked then
+            f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, (top + 16 + (mine and 0 or h + 4)) * P)
+        elseif mine then
+            f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOM", -math.floor(grid / 2) * P, (top - h) * P)
+        else
+            f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOM", math.floor(grid / 2) * P, (top - h) * P)
+        end
+        f.health.color, f.power.color = nil, nil
+    end
+    local c = U.hud.combo
+    c:SetSize((grid - 1) * P, 8 * P)
+    c:ClearAllPoints()
+    c:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, (top + 4) * P)
+    for i, t in ipairs(c.pips) do
+        t:SetSize(((grid - 1) / 5 - 1) * P, 8 * P)
+        t:ClearAllPoints()
+        t:SetPoint("LEFT", c, "LEFT", (i - 1) * (grid - 1) / 5 * P, 0)
+    end
+    local b = U.hud.buff
+    U.look.font(b.time, 32 * k * P, flags)
+    b:ClearAllPoints()
+    b:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, (stacked and top + 60 + 2 * h or top + 45) * P)
+end
+
+-- Claude changed the look: laid out and painted again, if it's built.
+function U.hud.restyle()
+    if not U.hud.built then
+        return
+    end
+    U.hud.layout()
+    if U.mods.on("hud") then
+        U.hud.health(U.hud.player)
+        U.hud.power(U.hud.player)
+        U.hud.targetFrame()
+        U.hud.comboPoints()
+    end
+end
+
 -- A unit's health: the bar, its colour, "1.2 K | 85%".
 function U.hud.health(f)
     local frac, cur = U.hud.value(f.unit, "health")
     local hostile = f.unit == "target" and read("UnitCanAttack", "player", "target")
-    U.hud.paint(f.health, hostile and U.hud.COLORS.hostile or U.hud.COLORS.health)
+    U.hud.paint(f.health, hostile and U.hud.COLORS.hostile or U.look.color("hud.healthColor", U.hud.COLORS.health))
     if not frac then
         f.hp:SetText("")
         return
@@ -1434,10 +1629,12 @@ function U.hud.health(f)
     f.hp:SetText(U.hud.short(cur) .. " | " .. math.floor(frac * 100 + 0.5) .. "%")
 end
 
--- Its power, in its type's colour; nothing for a unit with none.
+-- Its power, in its type's colour (or the look's power colour, for yours);
+-- nothing for a unit with none.
 function U.hud.power(f)
     local frac = U.hud.value(f.unit, "power")
-    U.hud.paint(f.power, U.hud.COLORS.power[read("UnitPowerType", f.unit)] or U.hud.COLORS.power[3])
+    local byType = U.hud.COLORS.power[read("UnitPowerType", f.unit)] or U.hud.COLORS.power[3]
+    U.hud.paint(f.power, f.unit == "player" and U.look.color("hud.powerColor", byType) or byType)
     if frac then
         f.power.fill:SetWidth(math.max(f.power.w * frac, 1))
         f.power.fill:SetShown(frac > 0)
@@ -1458,7 +1655,7 @@ function U.hud.comboPoints()
     end
     local n = read("UnitPower", "player", 4) or 0 -- Enum.PowerType.ComboPoints
     for i, t in ipairs(U.hud.combo.pips) do
-        local c = U.ui.hex(i <= n and U.hud.COLORS.combo or U.hud.COLORS.comboOff)
+        local c = U.ui.hex(i <= n and U.look.color("hud.accentColor", U.hud.COLORS.combo) or U.hud.COLORS.comboOff)
         t:SetColorTexture(c[1], c[2], c[3], 1)
     end
 end
@@ -5488,7 +5685,9 @@ do
             if not act then
                 error("Settings.lua declares " .. tostring(d.id) .. ", which nothing here does")
             end
-            if d.section ~= section then
+            -- (A look option is applied and saved like the rest, but drawn
+            -- nowhere, so it brings no heading.)
+            if d.section ~= section and not d.look then
                 section = d.section
                 list[#list + 1] = { head = section }
             end
@@ -5499,6 +5698,7 @@ do
                 default = d.default,
                 parent = d.parent,
                 sub = d.showHelp and d.help or nil,
+                look = d.look,
                 decl = d,
                 get = act.get,
                 set = act.set,
@@ -5567,6 +5767,17 @@ do
         -- TH3: our own action bars (secure buttons; changes wait out combat).
         ["actionbars.enabled"] = U.mods.option("actionbars"),
         ["actionbars.ours"] = U.bars.option(),
+        -- ED1: the look (set by Claude, not drawn here).
+        ["hud.healthColor"] = U.look.option("hud.healthColor"),
+        ["hud.powerColor"] = U.look.option("hud.powerColor"),
+        ["hud.accentColor"] = U.look.option("hud.accentColor"),
+        ["hud.gradient"] = U.look.option("hud.gradient"),
+        ["hud.width"] = U.look.option("hud.width"),
+        ["hud.height"] = U.look.option("hud.height"),
+        ["hud.textSize"] = U.look.option("hud.textSize"),
+        ["hud.outline"] = U.look.option("hud.outline"),
+        ["hud.layout"] = U.look.option("hud.layout"),
+        ["actionbars.iconSize"] = U.look.option("actionbars.iconSize"),
         ["window.minimap"] = {
             get = function()
                 return C.opt("minimap")
@@ -5615,11 +5826,20 @@ do
         end
         ForeverBuddySettings.profileApplied = p.profile
         -- In declaration order, so a parent is on before its children.
+        -- (While it's applied, the look is laid out once, after, and our
+        -- bars are built at PLAYER_ENTERING_WORLD, which follows every
+        -- login and /reload, so this handler stays light.)
+        U.applyingProfile = true
         for _, o in ipairs(OPTIONS) do
             local v = o.key and p.values[o.key]
             if v ~= nil and U.prefs.fits(o.decl, v) and v ~= U.prefs.now(o) then
                 pcall(o.set, v)
             end
+        end
+        U.applyingProfile = nil
+        if U.look.dirty then
+            U.look.dirty = nil
+            U.look.refresh()
         end
         say(GOLD_PREFIX .. "new settings from the app are on. Keep them or go back in Forever Buddy.")
         pcall(U.refresh)
@@ -5665,6 +5885,8 @@ do
             return false
         elseif d.type == "string" then
             return type(v) == "string" and #v <= (d.maxLength or 200) and not v:find("%c")
+        elseif d.type == "color" then
+            return U.look.fits(d, v)
         end
         return false
     end
@@ -5771,7 +5993,9 @@ do
     local function buildOptions(parent, y)
         local checks = { top = y, items = {} }
         for _, o in ipairs(OPTIONS) do
-            if o.head then
+            if o.look then
+                -- (Set by Claude; not drawn.)
+            elseif o.head then
                 local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 h:SetText(o.head)
                 checks.items[#checks.items + 1] = { head = h }
@@ -5824,7 +6048,7 @@ do
                 if layout and type(CreateSettingsListSectionHeaderInitializer) == "function" then
                     layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(o.head))
                 end
-            else
+            elseif not o.look then
                 local variable = "FOREVERBUDDY_" .. o.key:gsub("%.", "_"):upper()
                 local number = o.decl.type == "number"
                 local setting = Settings.RegisterProxySetting(category, variable,
@@ -6352,7 +6576,7 @@ do
             p.note:SetText(m.note)
         end
         for _, o in ipairs(OPTIONS) do
-            if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch then
+            if o.key and U.ui.inModule(o, id) and not o.decl.moduleSwitch and not o.look then
                 p.items[#p.items + 1] = { cb = U.ui.optionRow(card, o, p.checks) }
             end
         end
@@ -6365,7 +6589,7 @@ do
         p.checks = {}
         local section, card
         for _, o in ipairs(OPTIONS) do
-            if o.key and not U.ui.inModule(o) then
+            if o.key and not U.ui.inModule(o) and not o.look then
                 if o.decl.section ~= section then
                     section = o.decl.section
                     card = U.ui.card(p, section)
