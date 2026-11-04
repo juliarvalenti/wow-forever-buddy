@@ -1,11 +1,16 @@
--- UI1: draws a UI document (design/specs/ui-language.md) in the logged-in
--- scene, for render_ui and the Your UI preview. Grown from the TH1
--- prototype (FBUnitProto's UF.lua), which drew round 4 from a spec.
+-- UI1: draws a UI document (design/specs/ui-language.md). Grown from the
+-- TH1 prototype (FBUnitProto's UF.lua), which drew round 4 from a spec.
+--
+-- One interpreter for the game and the pictures, so a draft never shows
+-- what the game wouldn't draw: it ships in the addon, and render_ui and the
+-- Your UI preview run this same file in the scene (tools/addon-shots/
+-- preview.lua). In game it does nothing yet: no document is ever set there
+-- until UI1's in-game phase.
 --
 -- The document is data only, in the global FBUISpec, already checked by
 -- uicheck.lua (preview.lua does both). Sizes and offsets are 1080p screen
--- pixels. It draws once at login and again when the target changes: enough
--- for a picture of one moment. The in-game interpreter (UI1 phase 3)
+-- pixels. It draws at login and again on the target, combat and the
+-- player's health: enough for a picture of one moment. The in-game phase
 -- updates from events instead.
 --
 -- Display only: our own frames with the mouse off. Blizzard's frames named

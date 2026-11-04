@@ -1,5 +1,0 @@
-## Interface: 16001
-## Title: FBUI
-## Notes: Draws a UI document (UI1) for render_ui and the Your UI preview. Not shipped in game yet.
-
-UI.lua

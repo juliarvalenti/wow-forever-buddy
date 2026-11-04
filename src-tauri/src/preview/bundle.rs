@@ -56,10 +56,8 @@ pub const TOOLS: &[File] = files![
     "tools/addon-shots/login_scene.lua",
     "tools/addon-shots/preview.lua",
     "tools/addon-shots/layouts/centered.lua",
-    // UI1: checking and drawing a UI document (render_ui).
+    // UI1: checking a UI document (render_ui). The addon's UI.lua draws it.
     "tools/addon-shots/uicheck.lua",
-    "tools/addon-shots/FBUI/FBUI.toc",
-    "tools/addon-shots/FBUI/UI.lua",
 ];
 
 /// A bundled tool file by its path from the repo root.
@@ -107,7 +105,6 @@ mod tests {
             "editmode_string",
             "preview",
             "uicheck",
-            "FBUI/UI",
         ] {
             assert!(
                 tool(&format!("tools/addon-shots/{module}.lua")).is_some(),
