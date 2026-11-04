@@ -419,7 +419,7 @@ mod tests {
                     5,
                     json!({ "moments": ["standing", "lowhealth"], "scale": 0.5 }),
                 ),
-                render(6, json!({ "class": "paladin" })),
+                render(6, json!({ "class": "deathknight" })),
                 json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
                         "params": { "name": "get_ui_spec", "arguments": {} } }),
             ],
@@ -459,8 +459,9 @@ mod tests {
         // A class without a test character says which there are.
         let refused = out[4]["result"]["content"][0]["text"].as_str().unwrap();
         assert!(
-            refused.contains("No test character for class \"paladin\"")
-                && refused.contains("rogue"),
+            refused.contains("No test character for class \"deathknight\"")
+                && refused.contains("rogue")
+                && refused.contains("paladin"),
             "{refused}"
         );
         // The language's reference.
