@@ -30,7 +30,7 @@ const MOMENTS: { value: Moment; label: string }[] = [
 const SKILL = "npx skills add juliarvalenti/wow-forever-buddy";
 
 const ASKS = [
-  "Turn on my HUD and the clean action bars.",
+  "Stack my health over my target's, in blue.",
   "Make my bars a bit smaller and closer to my character.",
   "Show me two or three takes and I'll pick.",
 ];
@@ -120,8 +120,8 @@ export function Preview() {
                   <div className="yu-empty">
                     <h3>This is Blizzard's UI</h3>
                     <p>
-                      Forever Buddy's look is off, so there's nothing of ours to show. Ask Claude to turn it on, or to
-                      make you a look, and it shows up here on your own screen.
+                      Forever Buddy's HUD and action bars are off. Turn them on in game: type /fb, then open HUD and
+                      Action bars. Or ask Claude to make you a look. Either way, it shows up here.
                     </p>
                   </div>
                 ) : (
