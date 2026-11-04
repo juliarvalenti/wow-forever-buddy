@@ -6772,8 +6772,12 @@ do
             cb = U.ui.switch(parent, o.label, help)
             cb.option = o
             cb.yields = help ~= o.description
-            -- A help line long enough to wrap takes a second line.
-            cb.height = #(help or "") > 64 and 62 or 46
+            -- Room for the help however many lines it wraps to, each past the
+            -- first 16 more, at about 56 characters a line (11px Geist,
+            -- 320px). Measuring isn't possible yet: the text isn't laid out
+            -- when the row is made. (A guess of "over 64 is two lines" let a
+            -- 63-character line wrap into the next row.)
+            cb.height = 30 + 16 * math.max(1, math.ceil(#(help or "") / 56))
             -- Yielding, the switch and its label are dimmed and the switch
             -- does nothing; the line saying why stays at full strength.
             if cb.yields then
