@@ -19,10 +19,13 @@ All tools read the app's local database, read-only; the macro tools read the gam
 | `list_ui_drafts` | Your UI drafts: waiting, used, thrown away, or not queued (with the reason), each with its settings. |
 | `list_macros` | The account-wide macros and each character's own: name, icon, length against the game's 255. Takes an optional `character`. |
 | `get_macro` | A macro's full text by name: a character's own, then its account's; without a character, the account's. |
+| `render_ui` | A picture of a stand-in screen (a test level 34 rogue with a hostile target; none of the player's data) with a UI document (`doc`) drawn on it, in a `moment` (`standing`, `combat`, `stealth`, `low_health`). A document with problems draws nothing and returns each problem with its path. With no document, round 4 and its JSON to start from. See [ui](ui.md). |
 
 ## Propose (the player approves in the app)
 
 `propose_note`, `propose_quest_plan`, `propose_list_change`, `propose_bag_marks`, `propose_goal`, `propose_settings`, and `list_proposals` to see what's pending.
+
+`propose_macro` suggests one macro: `new`, `edit` (with `was`, the text as `get_macro` gave it) or `copy` (with `from`, and `body` only to adapt it). The player approves each macro on its own, then applies it in game with one click, out of combat; `list_proposals` shows what the game did with it (`in_game`: waiting, applied, declined, changed, full). It's checked before it's queued: 255 bytes, 16-character names, the 120 account and 18 character slots, and no `/run`, `/script`, `/console` or `/dump` lines.
 
 For `propose_settings`: give a short reason per change. Options marked as acting in the game are never proposed in bulk, and the player approves each one separately. Settings reach the game at the next /reload or login.
 

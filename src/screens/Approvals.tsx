@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Backpack,
   FileText,
+  Hash,
   Map as MapIcon,
   ShoppingBag,
   SlidersHorizontal,
@@ -12,6 +13,7 @@ import type {
   Decision,
   ListView,
   LoginNote,
+  MacroView,
   NoteView,
   PlanView,
   Proposal,
@@ -50,6 +52,7 @@ const KIND: Record<string, string> = {
   bag_marks: "Bag marks",
   goal: "Goal",
   settings: "Addon setting",
+  macro: "Macro",
 };
 
 function Who({ n }: { n: Pick<NoteView | PlanView | BagMarksView, "character" | "class"> }) {
@@ -84,8 +87,125 @@ function Title({ p }: { p: Proposal }) {
         {kind}: {p.setting.label}
       </>
     );
+  if (p.macro_change) return <MacroTitle m={p.macro_change} />;
   return <>{kind}</>;
 }
+
+/**
+ * MC1 (design/mocks/round-3/macros-approve.html): the title says what it
+ * does. Change the macro "Opener" for Thrandor; New account macro "Mount";
+ * Copy "Kick focus" from Thrandor to Kaelor.
+ */
+function MacroTitle({ m }: { m: MacroView }) {
+  const target = <Who n={{ character: m.target, class: m.target_class }} />;
+  if (m.action === "edit" && m.account_wide) return <>Change the account macro "{m.name}"</>;
+  if (m.action === "edit")
+    return (
+      <>
+        Change the macro "{m.name}" for {target}
+      </>
+    );
+  if (m.copied)
+    return (
+      <>
+        Copy "{m.copied.name}" from{" "}
+        {m.copied.from === "the account" ? "the account" : <Who n={{ character: m.copied.from, class: m.copied.from_class }} />}{" "}
+        to {target}
+      </>
+    );
+  if (m.account_wide) return <>New account macro "{m.name}"</>;
+  return (
+    <>
+      New macro "{m.name}" for {target}
+    </>
+  );
+}
+
+/** A macro's length as the game counts it: bytes. */
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+
+/** "Thrandor Vargur" → "Thrandor", for "Thrandor's now". */
+const first = (name: string) => name.split(" ")[0];
+
+/**
+ * MC1: the macro text verbatim, in a mono box with its count and the slots
+ * it uses. An edit shows the game's text now beside the proposal, removed
+ * lines struck through and new lines marked.
+ */
+function MacroPreview({ v }: { v: MacroView }) {
+  const slots = v.account_wide
+    ? `account macros ${v.slots_used} of ${v.slots_max}`
+    : `${first(v.target)}'s macros ${v.slots_used} of ${v.slots_max}`;
+  const after = v.body.split("\n");
+  if (v.old_body != null) {
+    const before = v.old_body.split("\n");
+    return (
+      <div className="ap-cmp">
+        <div className="ap-pv">
+          <h3 className="ap-mh">
+            <span>{first(v.target)}'s now</span>
+            <span>
+              {bytes(v.old_body)} of {v.max}
+            </span>
+          </h3>
+          <pre className="ap-macro">
+            {before.map((l, i) => (
+              <span key={i} className={after.includes(l) ? undefined : "gone"}>
+                {l}
+                {"\n"}
+              </span>
+            ))}
+          </pre>
+        </div>
+        <div className="ap-pv new">
+          <h3 className="ap-mh">
+            <span>Proposed</span>
+            <span>
+              {v.length} of {v.max}
+            </span>
+          </h3>
+          <pre className="ap-macro">
+            {after.map((l, i) => (
+              <span key={i} className={before.includes(l) ? undefined : "added"}>
+                {l}
+                {"\n"}
+              </span>
+            ))}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ap-cmp one ap-half">
+      <div className="ap-pv new">
+        <h3 className="ap-mh">
+          <span>{v.copied ? `${first(v.target)} gets` : "Proposed"}</span>
+          <span>
+            {v.length} of {v.max} · {slots}
+          </span>
+        </h3>
+        <pre className="ap-macro">{v.body}</pre>
+      </div>
+      {v.copied?.adapted && <small>Changed from {v.copied.from}'s text for this character.</small>}
+    </div>
+  );
+}
+
+/** What Approve leads to, under the macro. */
+function macroNext(v: MacroView) {
+  const how = "Approving sends it to the game. You apply it there with one click, out of combat: /fb, then Macros.";
+  return v.action === "edit" ? `${how} If you change "${v.name}" in game before then, it's skipped and you're told.` : how;
+}
+
+/** After approval, what the game did (its receipt). */
+const GAME: Record<string, string> = {
+  waiting: "waiting for your click in game",
+  applied: "applied in game",
+  declined: "dropped in game (Not this one)",
+  changed: "skipped in game: it changed there first",
+  full: "no room in game yet",
+};
 
 /** A plan's steps, crossed out where done. */
 function Steps({ steps, done = [] }: { steps: Step[]; done?: number[] }) {
@@ -310,6 +430,8 @@ function Waiting({
             <Target size={15} />
           ) : p.setting ? (
             <SlidersHorizontal size={15} />
+          ) : p.macro_change ? (
+            <Hash size={15} />
           ) : (
             <FileText size={15} />
           )}
@@ -320,6 +442,7 @@ function Waiting({
           </b>
           <small>
             from "{p.producer}" · {ago(p.created_at)}
+            {p.macro_change?.account_wide ? " · for every character on this account" : ""}
             {r && !conflict ? " · replaces a note" : ""}
             {p.plan?.replaces ? " · replaces the active plan" : ""}
             {p.list?.list_id != null && !p.list.gone && (
@@ -395,6 +518,12 @@ function Waiting({
       {p.bags && <BagPreview v={p.bags} />}
       {p.goal && <GoalPreview v={p.goal} />}
       {p.setting && <SettingPreview v={p.setting} />}
+      {p.macro_change && (
+        <>
+          <MacroPreview v={p.macro_change} />
+          <div className="ap-next">{macroNext(p.macro_change)}</div>
+        </>
+      )}
     </div>
   );
 }
@@ -411,6 +540,7 @@ function DecidedRow({ p }: { p: Proposal }) {
       <small>
         from "{p.producer}" · {stamp(p.decided_at ?? p.created_at)}
         {p.status_reason ? ` · ${p.status_reason}` : ""}
+        {p.macro_change?.game ? ` · ${GAME[p.macro_change.game] ?? p.macro_change.game}` : ""}
       </small>
     </div>
   );
@@ -477,6 +607,9 @@ export function Approvals({
               {waiting.map((p) => (
                 <Waiting key={p.id} p={p} decide={decide} onOpenList={onOpenList} />
               ))}
+              {waiting.some((p) => p.macro_change) && (
+                <div className="ap-next ap-foot">Macros are approved one at a time: each one can cast when you press it.</div>
+              )}
               {waiting.length > 1 && together.length > 0 && (
                 <div className="ap-bar">
                   <span className="grow">

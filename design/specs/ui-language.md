@@ -2,7 +2,7 @@
 
 Status: version 1 draws today (`src-tauri/resources/addon/ForeverBuddy/UI.lua`, the addon's own, checked by `tools/addon-shots/uicheck.lua`, through `render_ui`). Issue #259. Written by @designer for Julia, coders and agents.
 
-One document describes a whole UI. An agent writes it, `render_ui` shows it on the player's screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
+One document describes a whole UI. An agent writes it, `render_ui` shows it on a stand-in screen in each moment, the agent fixes what's off, and the player picks it. The HUD we ship is one example document (`ui-examples/round4.json`), not the only shape a UI can take.
 
 The format grew from the TH1 prototype that drew round 4 from a spec. Nothing in a document runs: it's JSON, the app turns it into a Lua table, and the interpreter builds frames from it. An agent never sends Lua.
 
@@ -111,7 +111,9 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 "alpha": { "always": 0.25, "combat": 1, "low": 1 }
 ```
 
-**Values the game hides in combat.** WoW: Forever can hand an addon a hidden value in combat. A part reading one draws its bar full and its text as `?` rather than break. Which values Forever hides, for which units, is for @coder2 to confirm in game; the in-game interpreter will hand bars the value directly so they keep filling.
+**Values the game hides in combat.** WoW: Forever can hand an addon a hidden ("secret") value in combat, and code can't branch on one. A part reading one draws its bar full and its text as `?` rather than break; the interpreter tests `issecretvalue` (and `issecrettable` for a table) before it compares anything. The in-game interpreter will hand bars and text the value directly, so they keep showing it. When conditions come (see Next), any rule that compares a value, like health below 35%, has to say what to assume when it's hidden, and the checker refuses one that doesn't.
+
+**Combat.** A new document never changes the screen in combat. It waits, and when combat ends (`PLAYER_REGEN_ENABLED`) the latest one is drawn; any earlier one waiting is dropped.
 
 ## 8. Checking
 
@@ -121,13 +123,15 @@ Fonts: `Barlow` (bold, condensed; ours), `Geist`, `Marcellus`, and the game's `F
 /parts/0/anchor/1  unknown-anchor: anchors to hpBar, but no part before this one has that name. It can be "screen", "char", or a part named before this one: grid, me.
 /parts/0/colour    unknown-key: a bar doesn't take colour. It takes: alpha, anchor, back, ...
 /parts/1/format    unknown-token: {mana} isn't a token. Tokens: {combo}, {hp}, {hp%}, {level}, {name}, {power}, {power%}.
-/parts/1/fontSize  out-of-range: fontSize is 200; it takes 6 to 72.
+/parts/1/fontSize  out-of-range: fontSize is 200; it takes 6 to 120.
 /parts/2/slots/1   bad-slot: an action slot is a whole number from 1 to 180.
 ```
 
+**What a document costs.** The client caps each addon's objects (from its own log: Frame 10,000, Texture 40,000, FontString 5,000, Font 300, Animation 5,000, AnimationGroup 2,000, Timer 500). The checker counts what a document will make and refuses one over a UI's share, a fifth of each: 2,000 frames, 8,000 textures, 1,000 font strings. Stroke is the expensive part: a stroked text is drawn once plus 8, 20 or 36 black copies (stroke 1, 2 or 3), so round 4 makes 228 font strings. The interpreter makes no timers; the in-game one will run one shared update for the whole UI, not one per part.
+
 ## 9. Seeing it
 
-`render_ui` draws the document on the player's screen (their class, our fixture character, the logged-in scene) in a moment: standing around, in combat, in stealth, or at low health, with a target. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir>` draws all four from the command line.
+`render_ui` draws the document on a stand-in screen (our test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) in a moment: standing around, in combat, in stealth, or at low health, with a target. The agent gets back a picture, fixes what's off and draws it again before the player sees anything. `luajit tools/addon-shots/ui.lua <doc.json> <dir>` draws all four from the command line.
 
 ## 10. Rules that stay
 
@@ -150,3 +154,10 @@ From the first draft of this doc, to add as the language grows, each without bre
 - **Per character and spec:** `for`, most specific wins.
 - **Blizzard's frames placed** through an Edit Mode layout, so one document describes the whole screen.
 - **Secure action buttons** in game: the picture's `actionbar` becomes real buttons, with stance paging.
+- **Text roles:** named styles for a frame's `header`, `value` and `label` text, instead of one font per part.
+- **RGBA colours:** `"#rrggbbaa"`, alongside the separate alpha keys.
+- **Backdrop and border as their own properties**, with `strata` and `scale`.
+- **Hover** as a state, with children fading in on it (a bar that shows its numbers when you point at it).
+- **More states,** like in an instance or in a group, each with three outcomes: show, collapse (take no room), or hide.
+- **Lists with sort and group,** for auras by time left or party members by role.
+- **Share strings:** a document as a short string to paste to a friend, with a header (language version, addon, kind) on a compressed payload. The client has `C_EncodingUtil.SerializeCBOR` and `CompressString` built in.

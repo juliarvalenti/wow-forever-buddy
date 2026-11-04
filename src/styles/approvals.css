@@ -35,6 +35,15 @@
 .ap-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid rgba(255, 255, 255, .06); font-size: 12.5px; }
 .ap-bar .grow { flex: 1; color: var(--ash); }
 .ap-bar b { color: var(--chalk-hi); font-weight: 500; }
+/* MC1: a macro's text verbatim, mono, with its count and slots. */
+.ap-half { max-width: 520px; }
+.ap-half > small { font-size: 11.5px; color: var(--soot); }
+.ap-mh { display: flex; justify-content: space-between; gap: 10px; }
+.ap-macro { margin: 0; font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; color: var(--chalk-hi); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ap-macro .gone { color: var(--soot); text-decoration: line-through; }
+.ap-macro .added { color: var(--ember-2); }
+.ap-next { margin-left: 40px; font-size: 11.5px; color: var(--soot); }
+.ap-foot { margin: 0; padding: 0 14px 12px 54px; }
 .ap-hist { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 8px; align-items: start; padding: 8px 12px; font-size: 12.5px; color: var(--chalk); }
 .ap-hist + .ap-hist { border-top: 1px solid rgba(255, 255, 255, .05); }
 .ap-hist small { grid-column: 2; font-size: 11px; color: var(--soot); overflow-wrap: anywhere; }

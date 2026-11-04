@@ -178,6 +178,12 @@ return {
     ["C_GossipInfo.SelectOptionByIndex"] = { from = "assumed" },
     IsModifierKeyDown = { from = "assumed" },
     GetCurrentKeyBoardFocus = { from = "assumed" },
+    -- MC1: the game's macros, read and changed only on the player's Apply
+    -- (or to show where a row stands), once they're in the world.
+    GetNumMacros = { from = "assumed" },
+    GetMacroInfo = { from = "assumed" },
+    CreateMacro = { from = "assumed" },
+    EditMacro = { from = "assumed" },
     ["C_QuestLog.IsComplete"] = { from = "assumed" },
     ["C_QuestLog.ReadyForTurnIn"] = { from = "assumed" },
     ["C_TradeSkillUI.GetAllRecipeIDs"] = { from = "assumed" },

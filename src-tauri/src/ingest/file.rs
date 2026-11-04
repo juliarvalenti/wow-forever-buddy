@@ -265,6 +265,9 @@ pub struct AddonFile {
     pub plan: Option<PlanProgress>,
     /// The addon's settings at logout (`settings`, P4b).
     pub settings: Option<SettingsSeen>,
+    /// What the game did with approved macros (`macros = { [queue id] =
+    /// outcome }`, MC1): applied, declined, changed or full.
+    pub macros: Vec<(i64, String)>,
     /// COMPAT1: of the few other addons ours yields to, those loaded
     /// (`others`); `None` from an addon too old to say.
     pub others: Option<Vec<String>>,
@@ -533,6 +536,7 @@ pub fn decode(bytes: &[u8]) -> Result<AddonFile, Rejected> {
         briefed,
         plan,
         settings,
+        macros: tbl(db, "macros").map(macro_receipts).unwrap_or_default(),
         others: tbl(db, "others").map(others),
     })
 }
@@ -548,6 +552,22 @@ fn others(t: &LuaTable) -> Vec<String> {
             _ => None,
         })
         .take(20)
+        .collect()
+}
+
+/// `macros = { [queue id] = outcome }`: positive ids, the outcomes the app
+/// knows, and at most 200.
+fn macro_receipts(t: &LuaTable) -> Vec<(i64, String)> {
+    pairs(t)
+        .filter_map(|(id, v)| {
+            let id = id.filter(|&i| i > 0)?;
+            let LuaValue::Str(s) = v else { return None };
+            let s = String::from_utf8(s.to_vec()).ok()?;
+            crate::proposals::macros::OUTCOMES
+                .contains(&s.as_str())
+                .then_some((id, s))
+        })
+        .take(200)
         .collect()
 }
 

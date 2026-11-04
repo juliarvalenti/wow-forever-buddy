@@ -791,7 +791,7 @@ scenario("toc", function()
     -- The bridge slots load first, so their globals exist when the addon runs.
     eq(table.concat(files, ", "),
         "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, Data/Cleanup.lua, "
-            .. "Data/Settings.lua, Settings.lua, ForeverBuddy.lua, UI.lua", "files")
+            .. "Data/Settings.lua, Data/Macros.lua, Settings.lua, ForeverBuddy.lua, UI.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -2231,6 +2231,130 @@ scenario("action_bars", function()
     eq(c.clickOnBar("MainActionBar"), "ForeverBuddyBarShieldMainActionBar", "and the shield")
     eq(table.concat(c.taint, ", "), "", "Blizzard's bars: only SetAlpha, all along")
     file(c.logout())
+end)
+
+-- MC1: approved macros from the Macros slot. One chat line at login; the
+-- window's Macros page shows each with its exact text, and only Apply (the
+-- player's click, out of combat) runs the game's own macro call. Not this
+-- one drops it. An edit the game no longer matches, a name already taken,
+-- another character's macro, full slots and combat each say so instead,
+-- and a row with code in it never shows. The logout file tells the app.
+local function macroSlot(rows)
+    local parts = {}
+    for _, r in ipairs(rows) do
+        local on = {}
+        for _, who in ipairs(r.on) do
+            on[#on + 1] = string.format("{ name = %q, surname = %q }", who[1], who[2] or "")
+        end
+        parts[#parts + 1] = string.format(
+            "{ id = %d, action = %q, name = %q, icon = %q, body = %q, label = %q, account = %s, on = { %s }%s%s }",
+            r.id, r.action, r.name, r.icon or "INV_Misc_QuestionMark", r.body, r.label or "",
+            tostring(r.account == true), table.concat(on, ", "),
+            r.old and string.format(", old = %q", r.old) or "", r.copy and ", copy = true" or "")
+    end
+    return "ForeverBuddyData_Macros = { schema = 1, stamp = 1790960000, macros = { " .. table.concat(parts, ", ") .. " } }\n"
+end
+
+scenario("macros", function()
+    local ME = { { "Thrandor", "Vargur" } }
+    -- The client's own aliases of /run: a localized one (SLASH_SCRIPT3) and
+    -- one another addon pointed at the same handler.
+    local run = function() end
+    local c = client({ globals = {
+        SLASH_SCRIPT1 = "/run", SLASH_SCRIPT2 = "/script", SLASH_SCRIPT3 = "/lauf",
+        SlashCmdList = { SCRIPT = run }, hash_SlashCmdList = { ["/EXEC"] = run },
+    }, slots = { ["Data/Macros.lua"] = macroSlot({
+        { id = 1, action = "edit", name = "Opener", body = "/cast [stealth,harm] Cheap Shot\n/startattack",
+          old = "/cast Cheap Shot", label = "Thrandor Vargur", on = ME },
+        { id = 2, action = "new", name = "Mount", body = "/cast [flyable] Swift Gryphon; Brown Horse",
+          account = true, label = "Every character on the account", on = { { "Thrandor", "Vargur" }, { "Kaelor" } } },
+        { id = 3, action = "new", name = "Kick focus", body = "/cast [@focus] Counterspell", label = "Kaelor",
+          on = { { "Kaelor" } }, copy = true },
+        { id = 4, action = "new", name = "Sneaky", body = "/run DoSomething()", label = "Thrandor Vargur", on = ME },
+        { id = 5, action = "new", name = "Second", body = "/sit", label = "Thrandor Vargur", on = ME },
+        { id = 6, action = "edit", name = "Taunt", body = "/cast Taunt", old = "/cast Taunt\n/say Over here",
+          label = "Thrandor Vargur", on = ME },
+        { id = 7, action = "new", name = "Lauf", body = "/sit\n/lauf DoSomething()", label = "Thrandor Vargur", on = ME },
+        { id = 8, action = "new", name = "Exec", body = "  /Exec DoSomething()", label = "Thrandor Vargur", on = ME },
+    }) } })
+    local w = c.world
+    w.macros.character = {
+        { name = "Opener", icon = "I", body = "/cast Cheap Shot" },
+        { name = "Taunt", icon = "I", body = "/cast Taunt\n/yell Changed by hand" },
+    }
+    c.login(nil)
+    c.advance(10)
+    local said = table.concat(c.chat, "\n")
+    eq(said:find("3 macros you approved are ready. Type /fb, then Macros, to apply them.", 1, true) ~= nil, true,
+        "one line at login: " .. said)
+
+    c.slash("/fb macros")
+    local win = c.global("ForeverBuddyWindow")
+    eq(win.current, "macros", "/fb macros opens the page")
+    eq(c.global("ForeverBuddyWindowMacros").count.text, "3", "the rail counts what waits for this character")
+    local p = win.pages.macros
+    local function card(name)
+        for _, cd in ipairs(p.cards) do
+            if cd.shown and cd.name.text == name then
+                return cd
+            end
+        end
+    end
+    eq(card("Sneaky"), nil, "a row with /run never shows")
+    eq(card("Lauf"), nil, "nor a localized alias of it")
+    eq(card("Exec"), nil, "nor one another addon pointed at the same handler")
+    local opener = card("Opener")
+    eq(opener.tag.text, "Change", "an edit")
+    eq(opener.boxes[1].text.text .. " => " .. opener.boxes[2].text.text,
+        "/cast Cheap Shot => /cast [stealth,harm] Cheap Shot\n/startattack", "Now and After, verbatim")
+    eq(card("Kick focus").tag.text, "Copy", "a copy says so")
+    eq(card("Kick focus").apply == nil or not card("Kick focus").apply.shown, true, "another character's: no Apply")
+    eq(card("Kick focus").line.text, "Log in on Kaelor to apply it. It waits here until then.", "it waits")
+    eq(card("Taunt").line.text,
+        '"Taunt" changed in game after you approved it, so it wasn\'t replaced. Ask for it again in the app.',
+        "changed in game since: skipped, and says so")
+    eq(card("Taunt").apply == nil or not card("Taunt").apply.shown, true, "with no Apply")
+    eq(#w.macro_calls, 0, "nothing applied by showing")
+
+    -- In combat: Apply waits.
+    c.combat(true)
+    c.slash("/fb macros")
+    eq(card("Mount").apply.label.text, "Apply after combat", "in combat")
+    eq(card("Mount").apply.enabled, false, "and it can't be clicked")
+    c.click(card("Mount").apply)
+    eq(#w.macro_calls, 0, "nothing in combat")
+    c.combat(false)
+
+    -- Full: a line, and Apply again once there's room.
+    for i = 3, 18 do
+        w.macros.character[i] = { name = "M" .. i, icon = "I", body = "/sit" }
+    end
+    c.slash("/fb macros")
+    eq(card("Second").line.text, "Thrandor's macros are full (18 of 18). Delete one in /macro, then Apply.", "no room")
+    c.click(card("Second").apply)
+    eq(#w.macro_calls, 0, "no create while full")
+    for i = 18, 3, -1 do
+        w.macros.character[i] = nil
+    end
+    c.slash("/fb macros")
+    eq(card("Second").line.shown, false, "room again")
+
+    -- Apply, one click each.
+    c.click(opener.apply)
+    c.click(card("Mount").apply)
+    eq(table.concat(w.macro_calls, ","), "edit:Opener,create:Mount", "each click, its own call")
+    eq(w.macros.character[1].body, "/cast [stealth,harm] Cheap Shot\n/startattack", "the edit is in the game")
+    eq(w.macros.account[1].name, "Mount", "an account macro, account-wide")
+    eq(card("Opener").line.text, "Applied. It's in /macro, on Thrandor's tab.", "and says where")
+    eq(card("Mount").line.text, "Applied. It's in /macro, on the General tab.", "the General tab")
+    c.click(card("Second").skip)
+    eq(card("Second"), nil, "Not this one drops it")
+
+    local db = file(c.logout())
+    eq(db.macros[1] .. db.macros[2] .. db.macros[5] .. db.macros[6], "appliedapplieddeclinedchanged",
+        "the logout file tells the app")
+    eq(db.macros[3], nil, "another character's is still waiting")
+    eq(db.macros[4], nil, "and one with code was never offered")
 end)
 
 -- M3b: dialog keys. Off by default; on, Space and 1 to 9 pick from the open
@@ -3912,7 +4036,7 @@ local function texts(rows)
 end
 
 scenario("contract", function()
-    local names = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings" }
+    local names = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings", "Macros" }
     local slots = {}
     for _, name in ipairs(names) do
         slots["Data/" .. name .. ".lua"] = wow.readFile(BRIDGE .. name .. ".lua")
@@ -3940,11 +4064,21 @@ scenario("contract", function()
     local cleanup = texts(w.panes[4].rows)
     eq(cleanup:find("Linen Cloth", 1, true) ~= nil, true, "the Cleanup slot's mark: " .. cleanup)
 
+    -- Macros (MC1): the approved macro, applied on the player's click.
+    c.slash("/fb macros")
+    local card = w.pages.macros.cards[1]
+    eq(card.name.text, "Bubble", "the Macros slot's macro")
+    c.click(card.apply)
+    eq(c.world.macros.character[1] and c.world.macros.character[1].body, "#showtooltip\n/cast Divine Shield",
+        "applied with the game's own call")
+
     -- Every slot was read, at the schema this addon knows.
     local db = file(c.logout())
     -- Settings: the approved profile was applied (the coach is on).
     eq(db.settings.values["window.coach"], true, "the Settings slot's profile")
     eq(type(db.settings.profile), "number", "and its number is kept")
+    -- Macros: the outcome goes back to the app, by the queue's id.
+    eq(db.macros and db.macros[1], "applied", "the Macros slot's receipt")
     for _, name in ipairs(names) do
         local r = db.bridge and db.bridge[name]
         eq(r and r.stamp, BRIDGE_STAMP, name .. " was loaded")

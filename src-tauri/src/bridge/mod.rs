@@ -55,9 +55,12 @@ pub enum Slot {
     /// The addon's settings as approved in the app: a numbered profile the
     /// addon applies once (P4b).
     Settings,
+    /// Macros the player approved, waiting for their Apply click in the
+    /// game (MC1).
+    Macros,
 }
 
-pub const SLOTS: [Slot; 7] = [
+pub const SLOTS: [Slot; 8] = [
     Slot::Tooltip1,
     Slot::Tooltip2,
     Slot::Plan,
@@ -65,6 +68,7 @@ pub const SLOTS: [Slot; 7] = [
     Slot::Lists,
     Slot::Cleanup,
     Slot::Settings,
+    Slot::Macros,
 ];
 
 impl Slot {
@@ -77,6 +81,7 @@ impl Slot {
             Slot::Lists => "Lists",
             Slot::Cleanup => "Cleanup",
             Slot::Settings => "Settings",
+            Slot::Macros => "Macros",
         }
     }
 
@@ -438,6 +443,12 @@ pub(crate) fn build(
             .extend(crate::addon_settings::slot_entries(db, flavor)?);
         slots.push((Slot::Settings, render(Slot::Settings, body)?));
     }
+    if has(Slot::Macros) {
+        let mut body = header(stamp);
+        body.hash
+            .extend(crate::proposals::macros::slot_entries(db, flavor)?);
+        slots.push((Slot::Macros, render(Slot::Macros, body)?));
+    }
     Ok(tooltip::Built { slots, too_large })
 }
 
@@ -673,6 +684,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Lists.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Cleanup.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Settings.lua",
+                "Interface/AddOns/ForeverBuddy/Data/Macros.lua",
             ]
         );
         for slot in SLOTS {

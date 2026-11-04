@@ -347,6 +347,11 @@ function M.new(opts)
         quest_actions = {}, -- "accept:176", "reward:176:1", "gossip-active:176", ...
         -- COMPAT1: the player's other addons that are loaded, name -> true.
         addons = {},
+        -- MC1: the game's macros, { name, icon, body }: the account's
+        -- (indexes 1-120) and this character's (121-138); and each create
+        -- or edit the addon made ("create:Mount", "edit:Opener").
+        macros = { account = {}, character = {} },
+        macro_calls = {},
         ah_browse = {}, -- item ids in the AH's browse results
         ah_search = {}, -- item id -> buyouts per unit, cheapest first
         -- TH2: the HUD's units. Each is { name, health, healthMax, power,
@@ -599,6 +604,40 @@ function M.new(opts)
         end,
         ["C_GossipInfo.SelectActiveQuest"] = function(id)
             table.insert(world.quest_actions, "gossip-active:" .. id)
+        end,
+        -- MC1: the game's macro calls. Creating or editing one is refused
+        -- in combat (client.blocked fails the scenario), and past the
+        -- game's 120 account and 18 character slots.
+        GetNumMacros = function()
+            return #world.macros.account, #world.macros.character
+        end,
+        GetMacroInfo = function(i)
+            local m = i <= 120 and world.macros.account[i] or world.macros.character[i - 120]
+            if m then
+                return m.name, m.icon, m.body
+            end
+        end,
+        CreateMacro = function(name, icon, body, perCharacter)
+            if client.blocked("CreateMacro") then
+                return
+            end
+            local list = perCharacter and world.macros.character or world.macros.account
+            if #list >= (perCharacter and 18 or 120) then
+                error("Can't create any more macros")
+            end
+            list[#list + 1] = { name = name, icon = icon, body = body }
+            table.insert(world.macro_calls, "create:" .. name)
+            return (perCharacter and 120 or 0) + #list
+        end,
+        EditMacro = function(i, name, icon, body)
+            if client.blocked("EditMacro") then
+                return
+            end
+            local m = i <= 120 and world.macros.account[i] or world.macros.character[i - 120]
+            assert(m, "EditMacro: no macro " .. tostring(i))
+            m.name, m.icon, m.body = name, icon, body
+            table.insert(world.macro_calls, "edit:" .. name)
+            return i
         end,
         -- M3b: the chat's other options ({ name, orderIndex }), any order.
         ["C_GossipInfo.GetOptions"] = function()

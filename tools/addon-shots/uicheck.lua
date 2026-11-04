@@ -25,6 +25,61 @@ M.HIDE = { PlayerFrame = true, TargetFrame = true, FocusFrame = true, PetFrame =
     MultiBarLeft = true, StanceBar = true, MicroMenuContainer = true, BagsBar = true, MinimapCluster = true,
     ObjectiveTrackerFrame = true, BuffFrame = true, DebuffFrame = true }
 M.LIMITS = { parts = 300 }
+-- What a document may cost in the client's own objects. The client caps each
+-- addon (Frame 10000, Texture 40000, FontString 5000, and Timer 500, from
+-- the log); a UI gets a fifth of each so the rest of Forever Buddy and a
+-- redraw fit beside it. UI.lua makes no timers.
+M.BUDGET = { frames = 2000, textures = 8000, fontStrings = 1000 }
+
+-- Black copies a stroked text draws around itself (UI.lua's label).
+local function strokeCopies(r)
+    local n = 0
+    for dx = -r, r do
+        for dy = -r, r do
+            if (dx ~= 0 or dy ~= 0) and dx * dx + dy * dy <= r * r + r then
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+-- What a checked document makes, as UI.lua draws it: { frames, textures,
+-- fontStrings }. (Parts for a unit that isn't there cost nothing then, but
+-- are counted, since they will.)
+function M.cost(doc)
+    local c = { frames = 0, textures = 0, fontStrings = 0 }
+    local function text(stroke)
+        c.fontStrings = c.fontStrings + 1 + strokeCopies(math.floor(stroke or 0))
+    end
+    for _, p in ipairs(type(doc) == "table" and type(doc.parts) == "table" and doc.parts or {}) do
+        c.frames = c.frames + 1
+        local edge = p.border and not p.rotate and 4 or 0
+        if p.kind == "plate" or p.kind == "icon" then
+            c.textures = c.textures + 1 + edge
+        elseif p.kind == "bar" then
+            c.textures = c.textures + 2 + math.max(0, (p.ticks or 1) - 1) + edge
+        elseif p.kind == "text" then
+            text(p.stroke)
+        elseif p.kind == "pips" then
+            local n = p.count or 5
+            c.textures = c.textures + n * (1 + edge)
+            if edge > 0 then
+                c.frames = c.frames + n
+            end
+        elseif p.kind == "actionbar" then
+            local n = type(p.slots) == "table" and #p.slots or 0
+            c.frames = c.frames + n
+            c.textures = c.textures + (p.back and (p.layout == "arc" and n or 1) or 0) + n * (1 + (p.border and 4 or 0))
+            if p.keys ~= false then
+                for _ = 1, n do
+                    text(p.stroke)
+                end
+            end
+        end
+    end
+    return c
+end
 
 -- What each kind takes, besides what every part takes.
 local COMMON = { "name", "kind", "unit", "anchor", "size", "level", "alpha", "hidden" }
@@ -213,7 +268,7 @@ function M.check(doc)
                         table.sort(known)
                         bad(at .. "/anchor/1", "unknown-anchor",
                             ("anchors to %s, but no part before this one has that name. It can be \"screen\", \"char\"%s."):format(
-                                tostring(to), #known > 0 and (" or " .. table.concat(known, ", ")) or ""))
+                                tostring(to), #known > 0 and (", or a part named before this one: " .. table.concat(known, ", ")) or ""))
                     end
                     if a[3] ~= nil then
                         oneOf(at .. "/anchor/2", a[3], M.POINTS, "point")
@@ -332,6 +387,18 @@ function M.check(doc)
             end
             if type(p.name) == "string" and not names[p.name] then
                 names[p.name] = i
+            end
+        end
+    end
+    -- The client's own limits (M.BUDGET): what the whole document makes.
+    if #problems == 0 then
+        local c = M.cost(doc)
+        for k, what in pairs({ frames = "frames", textures = "textures", fontStrings = "font strings" }) do
+            if c[k] > M.BUDGET[k] then
+                bad("/parts", "over-budget", ("this document makes about %d %s, and a UI gets %d of the game's limit for an addon. %s"):format(
+                    c[k], what, M.BUDGET[k], k == "fontStrings"
+                        and "Each stroked text is drawn up to 37 times (stroke 3): use stroke 1 or 2, or outline instead."
+                        or "Use fewer parts, pips or ticks."))
             end
         end
     end

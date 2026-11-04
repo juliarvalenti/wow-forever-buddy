@@ -29,7 +29,7 @@ local ADDON = ROOT .. "/src-tauri/resources/addon/ForeverBuddy"
 -- for Thrandor Vargur: the "filled" profile.
 local BRIDGE = ROOT .. "/src-tauri/tests/fixtures/bridge"
 local BRIDGE_STAMP = 1790960000
-local SLOTS = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup" }
+local SLOTS = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Macros" }
 
 -- `s` as one POSIX shell word.
 local function sq(s)

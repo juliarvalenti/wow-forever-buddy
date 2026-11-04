@@ -608,7 +608,10 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
     // A setting this version no longer declares has no preview (and
     // Approve refuses it).
     let setting = body(&s, SETTINGS).and_then(|b| crate::addon_settings::view(db, flavor, &b).ok());
-    let macro_change = body::<macros::MacroBody>(&s, MACRO).map(|b| macros::view(&b));
+    let macro_change = match body::<macros::MacroBody>(&s, MACRO) {
+        Some(b) => Some(macros::view(&b, macros::game_state(db, s.id)?)),
+        None => None,
+    };
     Ok(Proposal {
         id: s.id as u32,
         kind: s.kind,
