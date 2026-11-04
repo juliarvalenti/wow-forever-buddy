@@ -264,13 +264,15 @@ function TrialPanel({ t, keep }: { t: Trial; keep: (keep: boolean) => void }) {
 }
 
 /**
- * Not part of Approve all: a note to pick for, a list that's gone, or a
- * setting that lets the addon act (P4b), approved only on its own.
+ * Not part of Approve all: a note to pick for, a list that's gone, a
+ * setting that lets the addon act (P4b), or a macro (MC1: a macro can
+ * cast, so each is read and approved on its own).
  */
 const needsYou = (p: Proposal) =>
   (p.note?.replaces?.conflict ?? false) ||
   (p.list?.gone ?? false) ||
-  (p.kind === "settings" && (p.setting?.acts ?? true));
+  (p.kind === "settings" && (p.setting?.acts ?? true)) ||
+  p.kind === "macro";
 
 function Mine({ now }: { now: LoginNote | null }) {
   if (!now) return <div className="ap-notetxt ap-gone">Removed since. Using the proposal adds it as a new note.</div>;
