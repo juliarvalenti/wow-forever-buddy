@@ -1,6 +1,6 @@
 # Forever Buddy MCP tools
 
-All tools read the app's local database, read-only. Data is as of each character's last logout.
+All tools read the app's local database, read-only; the macro tools read the game's own macro files, also read-only. Data is as of each character's last logout.
 
 ## Read
 
@@ -17,6 +17,8 @@ All tools read the app's local database, read-only. Data is as of each character
 | `get_bag_marks` | Items marked to sell or send, and suggestions. |
 | `get_settings` | Every addon option: id, label, help, type, default, current value, whether it acts in the game, a choice's `values`, and `look: true` on the options that set the HUD's and bars' look. |
 | `list_ui_drafts` | Your UI drafts: waiting, used, thrown away, or not queued (with the reason), each with its settings. |
+| `list_macros` | The account-wide macros and each character's own: name, icon, length against the game's 255. Takes an optional `character`. |
+| `get_macro` | A macro's full text by name: a character's own, then its account's; without a character, the account's. |
 
 ## Propose (the player approves in the app)
 

@@ -2,10 +2,13 @@
 //! stdin/stdout that an agent client (Claude Desktop, Claude Code) starts as
 //! `wow-forever-buddy mcp`. `main` sends that argument here before Tauri, the
 //! single-instance plugin or anything else of the app starts, so this
-//! process has no window, no game paths and no write gate.
+//! process has no window and no write gate.
 //!
 //! Every tool reads the app's database opened read-only
-//! (`Db::open_read_only`). Every call re-reads settings.json and refuses
+//! (`Db::open_read_only`), except the macro tools (MC1), which read the
+//! game's own `macros-cache.txt` files in the game folder the app is set up
+//! for, as the Macros screen does: read-only, size-capped, through
+//! `safe_read`. Every call re-reads settings.json and refuses
 //! while "agent access" is off. This process writes only in its own folder:
 //! the activity list (`activity`) the app shows in Settings, and proposals
 //! (`propose`, P2b) as files in the inbox, which the app checks again and
@@ -80,13 +83,15 @@ impl Paths {
     }
 }
 
-/// What a call needs from settings.json: the switch, and the flavor the app
-/// is set up for. Read fresh on every call, so turning access off in the
-/// app takes effect on the agent's next call.
+/// What a call needs from settings.json: the switch, and the game folder and
+/// flavor the app is set up for. Read fresh on every call, so turning access
+/// off in the app takes effect on the agent's next call.
 #[derive(Debug, Clone, PartialEq)]
 struct Access {
     on: bool,
     flavor: Option<String>,
+    /// The game folder (the macro tools read its WTF).
+    root: Option<PathBuf>,
 }
 
 fn access(settings: &Path) -> Access {
@@ -101,6 +106,10 @@ fn access(settings: &Path) -> Access {
             .pointer("/install/flavor")
             .and_then(|f| f.as_str())
             .map(str::to_string),
+        root: value
+            .pointer("/install/root")
+            .and_then(|r| r.as_str())
+            .map(PathBuf::from),
     }
 }
 
