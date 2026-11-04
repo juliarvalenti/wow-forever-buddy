@@ -107,7 +107,8 @@ local function readLayout(layout)
 end
 
 -- opts: blizzard (the extract's interface/addons, or nil for WOWAPI's
--- stand-ins), extra (more addon dirs), class, level, stealth, layout,
+-- stand-ins), extra (more addon dirs), globals (set before those load),
+-- class, level, stealth, layout,
 -- uiScale (default 1080/768), art (default: WOWAPI_ART is set).
 -- Returns the sim, logged in and settled, and how many Blizzard addons
 -- loaded.
@@ -292,6 +293,10 @@ function M.boot(opts)
         if sim:LoadAddon(dir) then
             loaded = loaded + 1
         end
+    end
+    -- Globals the extra addons read as they load (UI1: FBUI's document).
+    for name, v in pairs(opts.globals or {}) do
+        sim.env[name] = v
     end
     for _, dir in ipairs(extra) do
         local ok, why = sim:LoadAddon(dir)

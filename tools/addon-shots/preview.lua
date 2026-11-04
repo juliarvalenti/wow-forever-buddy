@@ -36,21 +36,39 @@ local function enter(sim, moment)
     end
 end
 
+-- UI1: the FBUI addon, which draws a UI document (FBUI/UI.lua).
+local here = debug.getinfo(1, "S").source:match("^@(.*)[/\\]") or "."
+M.FBUI = here .. "/FBUI"
+
 -- opts: addon (the ForeverBuddy folder), class (the player's class; one
 -- without a fixtures.lua character gets the generic one), blizzard (the
 -- extract's interface/addons, art on only), art (draw with the game's art),
 -- layout (an Edit Mode layout), moment (one of M.MOMENTS, standing by
--- default). Returns the SVG, the number of Lua errors the scene logged, and
--- the class drawn (nil for the generic character).
+-- default), ui (a UI document, UI1: checked first, then drawn over the
+-- scene). Returns the SVG, the number of Lua errors the scene logged, and
+-- the class drawn (nil for the generic character). A document that doesn't
+-- pass the check draws nothing: the SVG is nil and the fourth value is its
+-- problems (uicheck.lua).
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
         class = nil
     end
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
+    local extra, globals = { opts.addon }, {}
+    if opts.ui ~= nil then
+        local problems = require("uicheck").check(opts.ui)
+        if #problems > 0 then
+            return nil, 0, class, problems
+        end
+        extra[#extra + 1] = M.FBUI
+        globals.FBUISpec = opts.ui
+        globals.FBUIStealth = moment == "stealth"
+    end
     local sim = scene.boot({
         blizzard = opts.blizzard,
-        extra = { opts.addon },
+        extra = extra,
+        globals = globals,
         class = class,
         layout = opts.layout,
         stealth = moment == "stealth",
