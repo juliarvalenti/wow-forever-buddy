@@ -28,10 +28,11 @@ const TOC: &str = "ForeverBuddy.toc";
 /// app replaces with generated data. `Media/` holds our own art (U1).
 /// `Settings.lua` declares the addon's settings (P4a); `Data/Settings.lua`
 /// is the slot that carries a profile approved in the app (P4b). `UI.lua`
-/// draws a UI document (UI1): the Your UI preview and render_ui use it, and
-/// in game it does nothing until a document is set. `Data/Macros.lua`
-/// carries approved macros to the game's Apply (MC1).
-const FILES: [(&str, &[u8]); 26] = [
+/// draws a UI document (UI1), in game and in render_ui's pictures, and
+/// `UICheck.lua` checks one first (in game, and for render_ui and
+/// propose_ui). `Data/Macros.lua` carries approved macros to the game's
+/// Apply (MC1).
+const FILES: [(&str, &[u8]); 27] = [
     (
         "ForeverBuddy.lua",
         include_bytes!("../resources/addon/ForeverBuddy/ForeverBuddy.lua"),
@@ -39,6 +40,10 @@ const FILES: [(&str, &[u8]); 26] = [
     (
         "Settings.lua",
         include_bytes!("../resources/addon/ForeverBuddy/Settings.lua"),
+    ),
+    (
+        "UICheck.lua",
+        include_bytes!("../resources/addon/ForeverBuddy/UICheck.lua"),
     ),
     (
         "UI.lua",
@@ -390,7 +395,7 @@ mod tests {
 
     #[test]
     fn reads_versions_from_tocs() {
-        assert_eq!(bundled_version(), "0.15.0");
+        assert_eq!(bundled_version(), "0.16.0");
         assert_eq!(
             toc_version(b"## Interface: 16001\r\n##Version:  0.1.9 \r\n"),
             Some("0.1.9".into())
@@ -413,7 +418,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let after = status(&t.target.game).unwrap();
-        assert_eq!(after.installed_version.as_deref(), Some("0.15.0"));
+        assert_eq!(after.installed_version.as_deref(), Some("0.16.0"));
         assert!(!after.update_available);
         for (name, bytes) in FILES {
             let path = t.flavor.join(FOLDER).join(name);
@@ -433,7 +438,7 @@ mod tests {
 
         install(&t.gate, &t.target).unwrap();
         let s = status(&t.target.game).unwrap();
-        assert_eq!(s.installed_version.as_deref(), Some("0.15.0"));
+        assert_eq!(s.installed_version.as_deref(), Some("0.16.0"));
         assert!(!s.update_available);
     }
 

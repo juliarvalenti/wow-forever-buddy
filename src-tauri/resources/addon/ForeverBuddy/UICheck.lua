@@ -2,7 +2,12 @@
 -- drawn. Returns a list of problems, each { path, code, message }: the path
 -- is a JSON pointer into the document as the agent wrote it (0-based list
 -- indices), and the message says how to fix it. An empty list means it
--- draws. FBUI/UI.lua trusts a document that passed.
+-- draws.
+--
+-- One checker everywhere: the addon loads this file before UI.lua and checks
+-- the document it's given again in game (ns.uicheck), and the app's
+-- render_ui and propose_ui load the same file from the addon folder
+-- (tools/addon-shots/preview.lua). Plain Lua: no game API.
 
 local M = {}
 
@@ -464,4 +469,9 @@ function M.lines(problems)
     return table.concat(out, "\n")
 end
 
+-- In game the client hands each file the addon's name and its shared table.
+local _, ns = ...
+if type(ns) == "table" then
+    ns.uicheck = M
+end
 return M

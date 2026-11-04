@@ -292,7 +292,7 @@ pub struct Drawn {
     pub lua_errors: u32,
     /// The fixture character drawn ("rogue"), or `None` for the generic one.
     pub class: Option<String>,
-    /// What the document's check (`uicheck.lua`) found wrong.
+    /// What the document's check (the addon's `UICheck.lua`) found wrong.
     pub problems: Vec<Problem>,
 }
 

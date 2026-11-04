@@ -1,7 +1,7 @@
 //! UI1's render_ui: a UI document drawn on the player's screen, as a PNG.
 //!
 //! The document is JSON in the UI language (the addon's own `UI.lua` draws
-//! it, `tools/addon-shots/uicheck.lua` checks it). Here it's held to size
+//! it, and its `UICheck.lua` checks it). Here it's held to size
 //! limits, handed to
 //! the preview's sandbox as a Lua table built from the JSON (never source),
 //! and drawn over the logged-in scene at a moment (standing, combat,

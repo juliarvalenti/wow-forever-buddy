@@ -791,7 +791,7 @@ scenario("toc", function()
     -- The bridge slots load first, so their globals exist when the addon runs.
     eq(table.concat(files, ", "),
         "Data/Tooltip1.lua, Data/Tooltip2.lua, Data/Plan.lua, Data/Briefing.lua, Data/Lists.lua, Data/Cleanup.lua, "
-            .. "Data/Settings.lua, Data/Macros.lua, Settings.lua, ForeverBuddy.lua, UI.lua", "files")
+            .. "Data/Settings.lua, Data/Macros.lua, Settings.lua, ForeverBuddy.lua, UICheck.lua, UI.lua", "files")
     local db = file(firstFile())
     eq(fields.Version, db._meta.addon, "Version")
 end)
@@ -2081,6 +2081,198 @@ end)
 -- with stealth, drag and drop, and show cooldowns and procs. Nothing secure
 -- is touched in combat (wow.lua refuses it, failing the scenario), and
 -- Blizzard's bars are only faded.
+-- UI1: the UI document the player chose (Use this), drawn live in game.
+local UI_SLOT = [[
+ForeverBuddyData_UI = {
+    schema = 1,
+    stamp = 1762300000,
+    doc = {
+        ui = 1,
+        name = "Live test",
+        hide = { "MainActionBar" },
+        parts = {
+            { kind = "plate", name = "back", anchor = { "CENTER", "char", "CENTER", 0, -80 }, size = { 320, 60 },
+                color = "#101014", alpha = { always = 0.5, combat = 1 } },
+            { kind = "bar", name = "hp", value = "health", anchor = { "TOP", "back", "TOP", 0, -6 }, size = { 300, 20 },
+                color = { { 0.35, "#d24a3a" }, { 1, "#4fd99a" } } },
+            { kind = "text", format = "{hp} | {hp%}", anchor = { "CENTER", "hp", "CENTER", 0, 0 }, size = { 300, 20 },
+                stroke = 2 },
+            { kind = "pips", value = "combo", count = 5, anchor = { "BOTTOM", "hp", "TOP", 0, 4 }, size = { 300, 8 },
+                w = 56, h = 6, color = "#fff569" },
+            { kind = "plate", anchor = { "CENTER", "char" }, size = { 40, 40 }, color = "#6a4fd9",
+                hidden = { always = true, stealth = false } },
+            { kind = "bar", unit = "target", value = "health", anchor = { "LEFT", "back", "RIGHT", 20, 0 },
+                size = { 200, 16 }, color = "reaction" },
+            { kind = "auras", filter = "helpful", anchor = { "BOTTOM", "back", "TOP", 0, 40 }, w = 220, h = 20, stroke = 1 },
+            { kind = "actionbar", slots = { 1, 2, 3, 4, 5, 6, 7, 8 }, icon = 46, anchor = { "BOTTOM", "screen", "BOTTOM", 0, 200 } },
+        },
+    },
+}
+]]
+
+-- The slot file's source as the client loads it. (Data/UI.lua is its own
+-- line in the TOC once the app ships the slot; before that, the document
+-- rides on the slot just ahead of where it goes.)
+local function uiSlots(src)
+    if wow.readFile(ADDON_DIR .. "ForeverBuddy.toc"):match("Data/UI%.lua") then
+        return { ["Data/UI.lua"] = src }
+    end
+    return { ["Data/Macros.lua"] = wow.readFile(ADDON_DIR .. "Data/Macros.lua") .. "\n" .. src }
+end
+
+scenario("ui_live", function()
+    local P = 768 / 1080
+    local function rogue(src, o)
+        local c = client({ slots = uiSlots(src), secret = o and o.secret })
+        c.world.class = { "Rogue", "ROGUE", 4 }
+        c.world.units.player = { health = 1020, healthMax = 1200, power = 100, powerMax = 100, powerType = 3 }
+        if o and o.combat then
+            c.world.combat = true
+        end
+        c.login(nil)
+        return c
+    end
+    -- A part's frame; a bar's fill; the last text a part drew (the main
+    -- string comes after its stroke copies); how many of its pips are lit.
+    local function textOf(f)
+        local last
+        for _, k in ipairs(f.children) do
+            if k.kind == "FontString" and k.shown then
+                last = k.text
+            end
+        end
+        return last
+    end
+    local function lit(f)
+        local s = ""
+        for _, t in ipairs(f.children) do
+            if t.kind == "Texture" then
+                s = s .. (hex(t.layout.SetVertexColor) == "#fff569" and "x" or ".")
+            end
+        end
+        return s
+    end
+    local function rows(f)
+        local n = 0
+        for _, k in ipairs(f.children) do
+            n = n + ((k.kind ~= "Texture" and k.kind ~= "FontString" and k.shown) and 1 or 0)
+        end
+        return n
+    end
+
+    local c = rogue(UI_SLOT)
+    local ns = c.ns()
+    eq(ns.uiActive, true, "the document passes the checks again in game")
+    local part = {}
+    for i, e in ipairs(ns.uiParts) do
+        part[i] = e.f
+    end
+    eq(#part, 8, "every part made, once")
+    eq(part[2].children[2].width, 300 * P * 0.85, "the health bar")
+    eq(hex(part[2].children[2].layout.SetVertexColor), "#4fd99a", "green while healthy")
+    eq(textOf(part[3]), "1.0 K | 85%", "its numbers")
+    eq(lit(part[4]), ".....", "no combo points yet")
+    eq(part[1].alpha, 0.5, "the plate faint out of combat")
+    eq(part[5].alpha, 0, "the stealth plate hidden (by alpha) out of stealth")
+    eq(part[6].alpha, 0, "no target, no target bar")
+    eq(c.global("ForeverBuddyHudPlayer"), nil, "our fixed HUD stays off")
+    eq(c.protected.PlayerFrame.alpha .. "," .. c.protected.TargetFrame.alpha, "0,0", "Blizzard's frames faded")
+    eq(c.protected.MainActionBar.alpha, 0, "and the one the document hides")
+
+    -- TH3's secure buttons where the document puts them; the others hidden.
+    local b1, b8, b9 = c.global("ForeverBuddyActionButton1"), c.global("ForeverBuddyActionButton8"),
+        c.global("ForeverBuddyActionButton9")
+    eq(b1.template, "SecureActionButtonTemplate", "real action buttons")
+    eq(b1.points[1][2] == part[8] and b1.points[1][1], "TOPLEFT", "slot 1 on the document's bar")
+    eq(b8.points[1][4], 7 * (46 * P + P), "slot 8 at the end of the row")
+    eq(b1.width, 46 * P, "the document's size")
+    eq(b9.shown, false, "a slot the document leaves out has no button showing")
+    eq(c.global("ForeverBuddyBarHeader").shown, true, "the bars on, for the document")
+
+    -- The scene: a target, a hit, combo points, stealth, combat, buffs.
+    c.target({ name = "Defias Pillager", health = 690, healthMax = 1150, power = 0, powerMax = 0, powerType = 0,
+        hostile = true })
+    eq(part[6].alpha, 1, "a target: its bar")
+    eq(part[6].children[2].width, 200 * P * 0.6, "at its health")
+    eq(hex(part[6].children[2].layout.SetVertexColor), "#d24a3a", "red on an enemy")
+    c.combat(true)
+    eq(part[1].alpha, 1, "the plate solid in combat")
+    c.unit("player", { health = 300 })
+    eq(part[2].children[2].width, 300 * P * 0.25, "health drops")
+    eq(hex(part[2].children[2].layout.SetVertexColor), "#d24a3a", "red when low")
+    eq(textOf(part[3]), "300 | 25%", "its numbers follow")
+    c.comboPoints(3)
+    eq(lit(part[4]), "xxx..", "three combo points")
+    c.unit("target", { health = 115 })
+    eq(part[6].children[2].width, 200 * P * 0.1, "the target's health follows")
+    local t0 = c.now - wow.EPOCH + 5000
+    c.buffs({ { spellId = 5171, name = "Slice and Dice", icon = 132306, duration = 21, expirationTime = t0 + 14,
+        sourceUnit = "player" }, { spellId = 13750, name = "Adrenaline Rush", icon = 136206, duration = 15,
+        expirationTime = t0 + 9, sourceUnit = "player" } })
+    eq(rows(part[7]), 2, "two aura bars")
+    c.advance(5)
+    c.update(ns.uiTimers, 0.2)
+    eq(rows(part[7]), 2, "still two, ticking")
+    c.buffs({ { spellId = 5171, name = "Slice and Dice", icon = 132306, duration = 21, expirationTime = t0 + 14,
+        sourceUnit = "player" } })
+    eq(rows(part[7]), 1, "one falls off")
+    c.combat(false)
+    c.stealth(true)
+    eq(part[5].alpha, 1, "the stealth plate in stealth")
+    c.stealth(false)
+    eq(part[5].alpha, 0, "and gone after")
+    c.target(nil)
+    eq(part[6].alpha, 0, "the target bar goes with the target")
+    eq(#c.errors, 0, "nothing refused or broken: " .. table.concat(c.errors, "; "))
+
+    -- A login in combat (a reload mid-fight): nothing is made until it ends,
+    -- then everything, the secure buttons included.
+    local fight = rogue(UI_SLOT, { combat = true })
+    eq(#fight.ns().uiParts, 0, "nothing made in combat")
+    fight.combat(false)
+    eq(#fight.ns().uiParts, 8, "made when combat ends")
+    eq(fight.global("ForeverBuddyActionButton1").points[1][2], fight.ns().uiParts[8].f, "and the buttons placed")
+    eq(#fight.errors, 0, "nothing refused")
+
+    -- A health the client keeps secret: never compared; the bar full until
+    -- it has a value it can read (then it keeps the last), the numbers a "?".
+    local hidden = rogue(UI_SLOT, { secret = { UnitHealth = true } })
+    hidden.unit("player", { health = 500 })
+    eq(hidden.ns().uiParts[2].f.children[2].width, 300 * P, "secret health: the bar full")
+    eq(textOf(hidden.ns().uiParts[3].f), "? | ?", "and the numbers are a ?")
+    eq(#hidden.errors, 0, "nothing broken")
+
+    -- Every example document (tools/addon-shots/ui-examples) live through the
+    -- same scene, in and out of combat: 0 errors, and each handler in budget
+    -- (the report at the end).
+    local json = dofile(dir .. "/../addon-shots/json.lua")
+    for _, name in ipairs({ "round4", "minimal", "columns", "halo", "terminal", "shards", "corners", "rogue-auras" }) do
+        local doc = json.decode(wow.readFile(dir .. "/../addon-shots/ui-examples/" .. name .. ".json"))
+        local k = rogue(serialize("ForeverBuddyData_UI",{ schema = 1, stamp = 1762300000, doc = doc }))
+        eq(k.ns().uiActive, true, name .. " passes the checks in game")
+        k.target({ name = "Defias Pillager", health = 690, healthMax = 1150, power = 0, powerMax = 0, powerType = 0,
+            hostile = true })
+        k.combat(true)
+        k.unit("player", { health = 300, power = 40 })
+        k.comboPoints(4)
+        k.buffs({ { spellId = 5171, name = "Slice and Dice", icon = 132306, duration = 21,
+            expirationTime = k.now - wow.EPOCH + 5014, sourceUnit = "player" } })
+        k.advance(1)
+        k.update(k.ns().uiTimers, 0.2)
+        k.combat(false)
+        k.stealth(true)
+        k.target(nil)
+        eq(#k.errors, 0, name .. ": nothing refused or broken: " .. table.concat(k.errors, "; "))
+    end
+
+    -- A document that fails the checks (edited on disk): nothing drawn, and
+    -- the standard HUD works as before.
+    local bad = rogue((UI_SLOT:gsub('kind = "pips"', 'kind = "script"')))
+    eq(bad.ns().uiActive, nil, "a bad document is ignored")
+    eq(bad.ns().uiParts, nil, "nothing drawn")
+    eq(bad.protected.PlayerFrame.alpha, nil, "Blizzard's frames untouched")
+end)
+
 scenario("action_bars", function()
     local c = client()
     local w = c.world

@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.15.0"
+local VERSION = "0.16.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -549,6 +549,9 @@ end
 -- is off.) The window's rail lists the modules in Settings.lua's order.
 
 U.mods = { list = {}, byId = {}, declared = select(2, ...).settings }
+-- The table the client shares between our files (UI.lua's document: uiActive,
+-- uiBars; ours back: barsApply).
+U.ns = select(2, ...)
 
 -- COMPAT1: the player's other addons that already do one of our jobs. An
 -- option names them (Settings.lua `yields`); while one is loaded, ours
@@ -822,7 +825,11 @@ U.bars = {
     pending = false, -- secure work waiting for the end of combat
 }
 
+-- (A UI document with action bars in it turns ours on.)
 function U.bars.wanted()
+    if U.ns.uiBars then
+        return true
+    end
     return U.mods.on("actionbars") and type(ForeverBuddySettings) == "table"
         and ForeverBuddySettings.ourBars == true
 end
@@ -957,6 +964,7 @@ function U.bars.build()
     local box = header:CreateTexture(nil, "BACKGROUND")
     box:SetAllPoints()
     box:SetColorTexture(0, 0, 0, 1)
+    B.box = box
     local useDown = read("GetCVarBool", "ActionButtonUseKeyDown") == true
     for i, s in ipairs(B.SLOTS) do
         local name = "ForeverBuddyActionButton" .. i
@@ -1106,7 +1114,38 @@ function U.bars.layout()
     local icon, flags = U.look.get("actionbars.iconSize"), U.look.outline()
     local k = icon / 46
     B.header:SetSize(P(8 * icon + 7 * B.GAP + 2), P(2 * icon + B.GAP + 2))
+    -- UI1: a UI document's actionbar parts say where each slot's button goes,
+    -- on that part's frame (UI.lua); a slot no part names has no button
+    -- showing, and its keys still press it, as with Blizzard's bar.
+    local placed = U.ns.uiBars
+    B.box:SetShown(not placed)
+    if placed then
+        local bySlot = {}
+        for _, b in ipairs(B.buttons) do
+            bySlot[b.base] = b
+            b:Hide()
+        end
+        for _, bar in ipairs(placed) do
+            for _, at in ipairs(bar.buttons) do
+                local b = bySlot[at.slot]
+                if b then
+                    bySlot[at.slot] = nil
+                    local s = bar.size / B.PX / 46
+                    b:SetSize(bar.size, bar.size)
+                    b:ClearAllPoints()
+                    b:SetPoint(at.point, bar.frame, at.point, at.x, at.y)
+                    b.soft:SetSize(bar.size * 1.5, bar.size * 1.5)
+                    U.look.font(b.cd, P(22 * s), flags)
+                    U.look.font(b.count, P(16 * s), flags)
+                    U.look.font(b.key, P(12 * s), flags)
+                    b:Show()
+                end
+            end
+        end
+        return
+    end
     for i, b in ipairs(B.buttons) do
+        b:Show()
         local col, row = (i - 1) % 8, i <= 8 and 1 or 0
         b:SetSize(P(icon), P(icon))
         b:ClearAllPoints()
@@ -1162,6 +1201,11 @@ function U.bars.apply()
     if want then
         B.paintAll()
     end
+end
+
+-- (UI.lua's way in, when its document was made at the end of combat.)
+U.ns.barsApply = function()
+    pcall(U.bars.apply)
 end
 
 -- The game's news about actions, cooldowns and procs: repaint. The end of
@@ -1791,8 +1835,9 @@ end
 
 -- Everything as the switch says: built the first time it's on; off, the
 -- frames hide, the events stop and Blizzard's frames come back.
+-- (Off while a UI document draws instead: UI.lua.)
 function U.hud.apply()
-    local on = U.mods.on("hud")
+    local on = U.mods.on("hud") and not U.ns.uiActive
     if on and not U.hud.built then
         U.hud.build()
     end

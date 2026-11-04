@@ -1074,6 +1074,13 @@ function M.new(opts)
         UnitCanAttack = function(_, unit)
             return world.units[unit] ~= nil and world.units[unit].hostile == true
         end,
+        -- UI1: a UI document's stealth state and reaction colour.
+        IsStealthed = function()
+            return world.stealth == true
+        end,
+        UnitIsFriend = function(_, unit)
+            return world.units[unit] ~= nil and world.units[unit].hostile ~= true
+        end,
         ["C_UnitAuras.GetAuraDataByIndex"] = function(unit, i, filter)
             if unit == "player" and filter == "HELPFUL" then
                 return world.auras[i]
@@ -1287,6 +1294,8 @@ function M.new(opts)
         "SetHideCountdownNumbers", "SetDrawEdge",
         -- M3b: a frame that hears keys.
         "EnableKeyboard",
+        -- UI1: a UI document's textures and text, handed out again on a repaint.
+        "SetDrawLayer",
     }) do
         Frame[method] = function(self, ...)
             self.layout[method] = { ... }
@@ -2226,6 +2235,12 @@ function M.new(opts)
         if fields.powerType then
             client.fire("UNIT_DISPLAYPOWER", unit)
         end
+    end
+
+    -- UI1: in or out of stealth.
+    function client.stealth(on)
+        world.stealth = on
+        client.fire("UPDATE_STEALTH")
     end
 
     function client.comboPoints(n)
