@@ -46,6 +46,13 @@ end
 -- the class drawn (nil for the generic character). A document that doesn't
 -- pass the check draws nothing: the SVG is nil and the fourth value is its
 -- problems (uicheck.lua).
+-- UI1: a document's problems (uicheck.lua), without drawing it. The app's
+-- propose_ui checks through here, so wherever the checker lives, the app
+-- and the pictures use the same one.
+function M.check(doc)
+    return require("uicheck").check(doc)
+end
+
 function M.draw(opts)
     local class = opts.class and opts.class:lower()
     if not fixtures.CLASSES[class or ""] then
@@ -54,7 +61,7 @@ function M.draw(opts)
     local moment = M.MOMENTS[opts.moment or ""] and opts.moment or "standing"
     local globals = {}
     if opts.ui ~= nil then
-        local problems = require("uicheck").check(opts.ui)
+        local problems = M.check(opts.ui)
         if #problems > 0 then
             return nil, 0, class, problems
         end

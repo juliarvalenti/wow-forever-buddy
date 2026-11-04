@@ -602,15 +602,16 @@ impl Session {
         result.map_err(|e| e.to_string())
     }
 
-    /// UI1's `propose_ui`: the language's check (`uicheck.lua`) on a
-    /// document, without drawing it, so no WOWAPI data is needed.
+    /// UI1's `propose_ui`: the language's check on a document, without
+    /// drawing it, so no WOWAPI data is needed. Through `preview.check`, the
+    /// same checker `draw` uses, wherever it lives.
     pub fn check_ui(&self, doc: &serde_json::Value) -> Result<Vec<Problem>, String> {
         self.deadline
             .set(Some(Instant::now() + Duration::from_secs(10)));
         let result = (|| -> mlua::Result<Vec<Problem>> {
             let check: mlua::Function = self
                 .lua
-                .load("return require('uicheck').check")
+                .load("return require('preview').check")
                 .set_mode(ChunkMode::Text)
                 .eval()?;
             let list: Table = check.call(json_to_lua(&self.lua, doc, 0)?)?;
