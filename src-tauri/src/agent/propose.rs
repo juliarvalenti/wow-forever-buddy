@@ -178,21 +178,27 @@ const TOOLS: [Tool; 12] = [
     // UI3: read a UI back, to revise it.
     Tool {
         name: "get_ui",
-        description: "The player's UI documents: the one in use in the game (if any), and the ones proposed in the last 30 days (waiting, used, not this one, or not queued with the reason), each with its full document, so you can revise one instead of starting over. Then render_ui the revision and propose_ui it.",
+        description: "The player's UI documents: the ones in use in the game, each with whom it's for (everyone, classes, specs or characters) in the order the game tries them, and the ones proposed in the last 30 days (waiting, used, not this one, or not queued with the reason), each with its full document, so you can revise one instead of starting over. Then render_ui the revision and propose_ui it.",
         read_only: true,
         schema: || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
     },
     // UI1: a whole UI document, drawn live in the game once the player picks it.
     Tool {
         name: "propose_ui",
-        description: "Sends the player a whole UI document to use in the game: the same document render_ui draws (render it first and refine it until it looks right). The player sees it drawn in Forever Buddy's Approvals and picks it with Use this; it's live in the game at their next login, in place of the standard HUD, until they go back. Checked before anything is queued, exactly as render_ui checks it: a document with problems is refused with them, by JSON pointer, so fix and send again. One document per call; it's the account's UI (every character) for now.",
+        description: "Sends the player a whole UI document to use in the game: the same document render_ui draws (render it first and refine it until it looks right). The player sees it drawn in Forever Buddy's Approvals and picks it with Use this; it's live in the game at their next login, in place of the standard HUD, until they go back. Checked before anything is queued, exactly as render_ui checks it: a document with problems is refused with them, by JSON pointer, so fix and send again. One document per call. `for` says whom it's for: some characters by name, classes (ROGUE) or spec ids; leave it out for everyone. Each character gets the first UI in use that's for them (characters, then specs, then classes, then everyone) or the standard HUD; a new UI for the same `for` replaces the old one.",
         read_only: false,
         schema: || {
             json!({ "type": "object", "properties": {
                 "name": { "type": "string", "maxLength": proposals::uidoc::MAX_NAME, "description": "A few words the player picks it by, e.g. \"Halo\"." },
                 "why": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What this UI does, in a sentence. Shown to the player." },
                 "words": { "type": "string", "maxLength": proposals::MAX_REASON, "description": "What the player asked for, in their words." },
-                "doc": { "type": "object", "description": "The UI document, as render_ui takes it." } },
+                "for": { "type": "object", "description": "Whom it's for; leave out for everyone. Lists match any of their values; several lists must all match.",
+                         "properties": {
+                            "characters": { "type": "array", "items": { "type": "string" }, "maxItems": 40, "description": "Character names, as list_characters gives them." },
+                            "classes": { "type": "array", "items": { "type": "string", "enum": proposals::uidoc::CLASSES }, "maxItems": 40 },
+                            "specs": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "maxItems": 40, "description": "Specialization ids, e.g. 260." } },
+                         "additionalProperties": false },
+                "doc":{ "type": "object", "description": "The UI document, as render_ui takes it." } },
               "required": ["name", "why", "doc"], "additionalProperties": false })
         },
     },
@@ -379,7 +385,7 @@ pub fn call_in(
         "propose_ui" => {
             let p: proposals::uidoc::UiDocProposal = args(raw)?;
             // The app checks again on pickup; this tells the agent now.
-            proposals::uidoc::check(&p)?;
+            proposals::uidoc::check(&db, flavor, &p)?;
             let body = serde_json::to_value(&p).map_err(|e| e.to_string())?;
             stage(&db, paths, flavor, client, proposals::UI_DOC, None, body)
         }
@@ -701,7 +707,7 @@ mod tests {
         let ui = json!({ "name": "Halo", "why": "Round 4", "doc": doc });
         call(&paths, FLAVOR, "c", "propose_ui", &ui).unwrap();
         let seen = get();
-        assert!(seen["in_use"].is_null());
+        assert_eq!(seen["in_use"], json!([]));
         assert_eq!(seen["waiting_for_the_app"][0]["name"], "Halo");
         let listed = call(&paths, FLAVOR, "c", "list_proposals", &json!({})).unwrap();
         assert_eq!(listed["waiting_for_the_app"][0]["kind"], proposals::UI_DOC);
@@ -716,9 +722,42 @@ mod tests {
         proposals::decide(&db, FLAVOR, id, proposals::Decision::Approve, now).unwrap();
         drop(db);
         let seen = get();
-        assert_eq!(seen["in_use"]["name"], "Halo");
-        assert_eq!(seen["in_use"]["doc"], doc);
+        assert_eq!(seen["in_use"][0]["name"], "Halo");
+        assert_eq!(seen["in_use"][0]["for"], "everyone");
+        assert_eq!(seen["in_use"][0]["doc"], doc);
         assert_eq!(seen["proposed"][0]["status"], "in use");
+
+        // UI3: one for Coinpurse, who needs their GUID from the addon first.
+        let mine = json!({ "name": "Mine", "why": "Just me", "for": { "characters": ["coinpurse"] }, "doc": doc });
+        let e = call(&paths, FLAVOR, "c", "propose_ui", &mine).unwrap_err();
+        assert!(e.contains("hasn't logged in"), "{e}");
+        let bad =
+            json!({ "name": "X", "why": "Y", "for": { "classes": ["deathknight"] }, "doc": doc });
+        let e = call(&paths, FLAVOR, "c", "propose_ui", &bad).unwrap_err();
+        assert!(e.contains("WARRIOR, PALADIN"), "{e}");
+        let db = Db::open(&paths.db).unwrap();
+        db.with_conn(|c| {
+            c.execute("UPDATE characters SET guid = 'Player-1-0A'", [])?;
+            Ok(())
+        })
+        .unwrap();
+        call(&paths, FLAVOR, "c", "propose_ui", &mine).unwrap();
+        proposals::ingest(&db, &paths.dir, FLAVOR, true, now).unwrap();
+        let id = get()["proposed"][0]["id"].as_u64().unwrap() as u32;
+        proposals::decide(&db, FLAVOR, id, proposals::Decision::Approve, now + 1).unwrap();
+        drop(db);
+        let seen = get();
+        let names: Vec<&str> = seen["in_use"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["Mine", "Halo"], "the character's first");
+        assert_eq!(
+            seen["in_use"][0]["for"],
+            json!({ "characters": ["Coinpurse"], "classes": [], "specs": [] })
+        );
     }
 
     #[test]

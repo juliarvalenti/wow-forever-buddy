@@ -145,7 +145,10 @@ export const commands = {
 	id: number,
 	name: string,
 } | null>("ui_doc_active"),
-	/**  UI1: "Go back to the standard HUD": no document in use, sent to the game. */
+	/**
+	 *  UI1: "Go back to the standard HUD": no document in use for anyone, sent
+	 *  to the game.
+	 */
 	uiDocGoBack: () => __TAURI_INVOKE<null>("ui_doc_go_back"),
 	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
@@ -2647,7 +2650,7 @@ export type UiDocView = {
 	name: string,
 	why: string,
 	words: string | null,
-	/**  It's the UI in use now. */
+	/**  It's a UI in use now. */
 	active: boolean,
 };
 

@@ -119,12 +119,13 @@ pub fn ui_doc_active(state: State<'_, AppState>) -> AppResult<Option<proposals::
     proposals::uidoc::active_ui(&core.db, &core.active_game()?.flavor)
 }
 
-/// UI1: "Go back to the standard HUD": no document in use, sent to the game.
+/// UI1: "Go back to the standard HUD": no document in use for anyone, sent
+/// to the game.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn ui_doc_go_back(state: State<'_, AppState>) -> AppResult<()> {
     let core = &state.core;
-    proposals::uidoc::set_active(&core.db, &core.active_game()?.flavor, None)?;
+    proposals::uidoc::go_back(&core.db, &core.active_game()?.flavor, None)?;
     let _ = core.send_to_game();
     Ok(())
 }

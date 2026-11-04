@@ -449,7 +449,7 @@ pub fn ingest_in(
                 UI_DOC => {
                     let p: uidoc::UiDocProposal = serde_json::from_value(f.body.clone())
                         .map_err(|_| "the UI isn't in the form this version reads".to_string())?;
-                    let body = uidoc::check(&p)?;
+                    let body = uidoc::check(db, flavor, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
                 // In plain words, never the kind id (IMPLEMENTING §17).
@@ -837,8 +837,9 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
             macros::apply(db, flavor, s.id, &b, now)?;
         }
         UI_DOC => {
-            body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
-            uidoc::set_active(db, flavor, Some(s.id))?;
+            // Use this: for whom the agent proposed it (everyone if no one).
+            let b = body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
+            uidoc::use_for(db, flavor, s.id, &b.target, now)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -1687,7 +1688,8 @@ mod tests {
             keys,
             [
                 crate::sv::LuaValue::str("name"),
-                crate::sv::LuaValue::str("doc")
+                crate::sv::LuaValue::str("doc"),
+                crate::sv::LuaValue::str("docs")
             ]
         );
         // The slot file holds it, within the bridge's caps, and reads back.
@@ -1707,8 +1709,120 @@ mod tests {
         );
 
         // Go back to the standard HUD.
-        uidoc::set_active(&db, FLAVOR, None).unwrap();
+        uidoc::go_back(&db, FLAVOR, None).unwrap();
         assert!(uidoc::active_ui(&db, FLAVOR).unwrap().is_none());
         assert!(uidoc::slot_entries(&db, FLAVOR).unwrap().is_empty());
+    }
+
+    /// UI3: documents for whom: the slot lists them most specific first,
+    /// `for` by GUID; a new one for the same `for` replaces the old; old
+    /// addons get everyone's as `doc`, or nothing when there's none; at most
+    /// eight; a deep document still fits the bridge's depth.
+    #[test]
+    fn ui_documents_for_characters_and_classes_go_most_specific_first() {
+        let (tmp, db) = setup();
+        db.with_conn(|c| {
+            c.execute(
+                "UPDATE characters SET guid = 'Player-1-' || name, class = 'ROGUE'",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let base: serde_json::Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let mut at = NOW;
+        let mut use_one = |name: &str, target: serde_json::Value, doc: &serde_json::Value| {
+            let mut ui = json!({ "name": name, "why": "w", "doc": doc });
+            if !target.is_null() {
+                ui["for"] = target;
+            }
+            drop_file(tmp.path(), UI_DOC, ui);
+            ingest(&db, tmp.path(), FLAVOR, true, at).unwrap();
+            let a = list(&db, FLAVOR, at).unwrap();
+            let Some(w) = a.waiting.first() else {
+                let why: Vec<_> = a
+                    .decided
+                    .iter()
+                    .filter_map(|d| d.status_reason.clone())
+                    .collect();
+                panic!("{name} not queued: {why:?}");
+            };
+            let id = w.id;
+            at += 1;
+            decide(&db, FLAVOR, id, Decision::Approve, at)
+        };
+        use_one("Rogues", json!({ "classes": ["rogue"] }), &base).unwrap();
+        use_one(
+            "Velyra",
+            json!({ "characters": ["Velyra Duskmane"] }),
+            &base,
+        )
+        .unwrap();
+        use_one(
+            "Rogues again",
+            json!({ "classes": ["ROGUE", "rogue"] }),
+            &base,
+        )
+        .unwrap();
+
+        let names = |db: &Db| -> Vec<String> {
+            uidoc::in_use(db, FLAVOR)
+                .unwrap()
+                .into_iter()
+                .map(|u| u.body.name)
+                .collect()
+        };
+        assert_eq!(
+            names(&db),
+            ["Velyra", "Rogues again"],
+            "replaced, and in order"
+        );
+        let entries = uidoc::slot_entries(&db, FLAVOR).unwrap();
+        assert_eq!(entries.len(), 1, "no everyone's: old addons get nothing");
+        let built = crate::bridge::build(&db, FLAVOR, NOW, &[crate::bridge::Slot::Ui]).unwrap();
+        let text = String::from_utf8(built.slots[0].1.clone()).unwrap();
+        assert!(text.contains("Player-1-Velyra"), "{text}");
+        let velyra = text.find("Player-1-Velyra").unwrap();
+        assert!(velyra < text.find("\"ROGUE\"").unwrap(), "{text}");
+
+        use_one("Everyone", serde_json::Value::Null, &base).unwrap();
+        assert_eq!(names(&db), ["Velyra", "Rogues again", "Everyone"]);
+        assert_eq!(uidoc::slot_entries(&db, FLAVOR).unwrap().len(), 3);
+        // As deep as render_ui's limits let a document be (16 keys down),
+        // stored as is: it still fits the bridge's depth inside `docs`.
+        let mut deep = json!(1);
+        for _ in 0..13 {
+            deep = json!([deep]);
+        }
+        let changed = db
+            .with_conn(|c| {
+                Ok(c.execute(
+                    "UPDATE proposals SET body = json_set(body, '$.doc.parts[0].deep', json(?1))
+                     WHERE kind = 'ui_doc'",
+                    [deep.to_string()],
+                )?)
+            })
+            .unwrap();
+        assert_eq!(changed, 4);
+        assert_eq!(
+            uidoc::in_use(&db, FLAVOR).unwrap()[0].body.doc["parts"][0]["deep"],
+            deep
+        );
+        crate::bridge::build(&db, FLAVOR, NOW, &[crate::bridge::Slot::Ui])
+            .expect("a deep document fits the bridge's depth inside docs");
+
+        for i in 0..5 {
+            use_one(&format!("Spec {i}"), json!({ "specs": [100 + i] }), &base).unwrap();
+        }
+        let e = use_one("One too many", json!({ "specs": [999] }), &base).unwrap_err();
+        assert!(e.to_string().contains("8 UIs are in use"), "{e}");
+        uidoc::go_back(
+            &db,
+            FLAVOR,
+            Some(&uidoc::in_use(&db, FLAVOR).unwrap()[0].target),
+        )
+        .unwrap();
+        assert_eq!(uidoc::in_use(&db, FLAVOR).unwrap().len(), 7);
+        assert!(!names(&db).contains(&"Velyra".to_string()));
     }
 }
