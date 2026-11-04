@@ -151,6 +151,25 @@ fn walk(v: &Value, path: &str, depth: usize, values: &mut usize, found: &mut Vec
     }
 }
 
+/// A document's problems without drawing it: the limits, then the
+/// language's own check (`uicheck.lua`) in a sandbox of its own. Needs no
+/// WOWAPI data. Empty when it would draw.
+pub fn check(doc: &Value) -> Result<Vec<Problem>, String> {
+    let problems = limits(doc);
+    if !problems.is_empty() {
+        return Ok(problems);
+    }
+    let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let host = Host {
+        data: None,
+        scratch: scratch.path().to_path_buf(),
+        extract: None,
+        slots: Default::default(),
+    };
+    let session = Session::new(Arc::new(RwLock::new(host))).map_err(|e| e.to_string())?;
+    session.check_ui(doc)
+}
+
 /// The problems as lines an agent can read: `/parts/3/kind  unknown-kind: ...`.
 pub fn problem_lines(problems: &[Problem]) -> String {
     problems

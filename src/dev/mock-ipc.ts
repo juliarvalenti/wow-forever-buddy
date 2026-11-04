@@ -175,6 +175,7 @@ export function installMockIpc(): void {
     goal: null,
     setting: null,
     macro_change: null,
+    ui_doc: null,
     ...extra,
   });
   // G1 (dashboard.html): Brannic to 55 by Friday, Fizzwick's mount gold, and

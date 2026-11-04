@@ -30,8 +30,10 @@ use crate::sv::{self, LuaTable, LuaValue};
 
 /// The largest slot file, so no producer can bloat the client's load time.
 pub const MAX_SLOT_BYTES: usize = 1024 * 1024;
-/// Deeper than any slot needs; a deeper table is refused.
-const MAX_DEPTH: usize = 8;
+/// Deeper than any slot needs; a deeper table is refused. The UI slot's
+/// document goes deepest: the slot, `doc`, then the document's own 16
+/// (`preview::ui::limits`).
+const MAX_DEPTH: usize = 20;
 /// The `schema` every slot carries; the addon ignores ones it doesn't know.
 pub const SCHEMA: i64 = 1;
 
@@ -58,9 +60,12 @@ pub enum Slot {
     /// Macros the player approved, waiting for their Apply click in the
     /// game (MC1).
     Macros,
+    /// The UI document in use (UI1): `name` and `doc`, or neither for the
+    /// standard HUD.
+    Ui,
 }
 
-pub const SLOTS: [Slot; 8] = [
+pub const SLOTS: [Slot; 9] = [
     Slot::Tooltip1,
     Slot::Tooltip2,
     Slot::Plan,
@@ -69,6 +74,7 @@ pub const SLOTS: [Slot; 8] = [
     Slot::Cleanup,
     Slot::Settings,
     Slot::Macros,
+    Slot::Ui,
 ];
 
 impl Slot {
@@ -82,6 +88,7 @@ impl Slot {
             Slot::Cleanup => "Cleanup",
             Slot::Settings => "Settings",
             Slot::Macros => "Macros",
+            Slot::Ui => "UI",
         }
     }
 
@@ -449,6 +456,12 @@ pub(crate) fn build(
             .extend(crate::proposals::macros::slot_entries(db, flavor)?);
         slots.push((Slot::Macros, render(Slot::Macros, body)?));
     }
+    if has(Slot::Ui) {
+        let mut body = header(stamp);
+        body.hash
+            .extend(crate::proposals::uidoc::slot_entries(db, flavor)?);
+        slots.push((Slot::Ui, render(Slot::Ui, body)?));
+    }
     Ok(tooltip::Built { slots, too_large })
 }
 
@@ -579,10 +592,6 @@ mod tests {
             (b"ForeverBuddyData_Tooltip2 = { 1/0 }\n", "infinite"),
             (b"ForeverBuddyData_Tooltip2 = { nil }\n", "nil"),
             (b"ForeverBuddyData_Tooltip2 = { [true] = 1 }\n", "bool key"),
-            (
-                b"ForeverBuddyData_Tooltip2 = {{{{{{{{{}}}}}}}}}\n",
-                "too deep",
-            ),
             (b"ForeverBuddyData_Tooltip2 = os.exit()\n", "code"),
             (
                 b"ForeverBuddyData_Tooltip2 = { f = function() end }\n",
@@ -594,6 +603,21 @@ mod tests {
                 "{why}"
             );
         }
+        let nested = |n: usize| {
+            format!(
+                "ForeverBuddyData_Tooltip2 = {}{}\n",
+                "{".repeat(n),
+                "}".repeat(n)
+            )
+        };
+        assert!(
+            matches!(
+                check(slot, nested(MAX_DEPTH + 2).as_bytes()),
+                Err(AppError::SlotRefused(_))
+            ),
+            "too deep"
+        );
+        assert!(check(slot, nested(MAX_DEPTH).as_bytes()).is_ok());
         assert!(check(
             slot,
             b"ForeverBuddyData_Tooltip2 = { 1, \"a\", true, 2.5 }\n"
@@ -685,6 +709,7 @@ mod tests {
                 "Interface/AddOns/ForeverBuddy/Data/Cleanup.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Settings.lua",
                 "Interface/AddOns/ForeverBuddy/Data/Macros.lua",
+                "Interface/AddOns/ForeverBuddy/Data/UI.lua",
             ]
         );
         for slot in SLOTS {

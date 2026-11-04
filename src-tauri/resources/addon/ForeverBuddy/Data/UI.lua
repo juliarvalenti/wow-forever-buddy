@@ -1,0 +1,1 @@
+ForeverBuddyData_UI = nil

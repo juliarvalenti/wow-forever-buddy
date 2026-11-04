@@ -27,7 +27,7 @@
 local ADDON_NAME = ...
 
 local SCHEMA = 1
-local VERSION = "0.15.0"
+local VERSION = "0.16.0"
 local MAX_SESSIONS = 10
 local MAX_EVENTS = 2000
 
@@ -112,7 +112,7 @@ end
 -- Bridge slots -------------------------------------------------------------------
 
 local SLOT_SCHEMA = 1 -- the slot format this version reads
-local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings", "Macros" }
+local SLOT_NAMES = { "Tooltip1", "Tooltip2", "Plan", "Briefing", "Lists", "Cleanup", "Settings", "Macros", "UI" }
 local slots = {} -- name -> the slot's table, when its schema is one we read
 local receipts -- name -> { stamp, schema, seen }, saved as ForeverBuddyDB.bridge
 

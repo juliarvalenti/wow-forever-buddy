@@ -587,14 +587,7 @@ impl Session {
             ) = draw.call(o)?;
             let mut found = Vec::new();
             if let Some(list) = problems {
-                for p in list.sequence_values::<Table>() {
-                    let p = p?;
-                    found.push(Problem {
-                        path: p.get::<Option<String>>("path")?.unwrap_or_default(),
-                        code: p.get::<Option<String>>("code")?.unwrap_or_default(),
-                        message: p.get::<Option<String>>("message")?.unwrap_or_default(),
-                    });
-                }
+                found = problems_from(list)?;
             }
             Ok(Drawn {
                 svg: svg.map(|s| s.to_string_lossy()).unwrap_or_default(),
@@ -608,6 +601,38 @@ impl Session {
         let _ = self.lua.gc_collect();
         result.map_err(|e| e.to_string())
     }
+
+    /// UI1's `propose_ui`: the language's check (`uicheck.lua`) on a
+    /// document, without drawing it, so no WOWAPI data is needed.
+    pub fn check_ui(&self, doc: &serde_json::Value) -> Result<Vec<Problem>, String> {
+        self.deadline
+            .set(Some(Instant::now() + Duration::from_secs(10)));
+        let result = (|| -> mlua::Result<Vec<Problem>> {
+            let check: mlua::Function = self
+                .lua
+                .load("return require('uicheck').check")
+                .set_mode(ChunkMode::Text)
+                .eval()?;
+            let list: Table = check.call(json_to_lua(&self.lua, doc, 0)?)?;
+            problems_from(list)
+        })();
+        self.deadline.set(None);
+        result.map_err(|e| e.to_string())
+    }
+}
+
+/// uicheck's list of `{ path, code, message }`.
+fn problems_from(list: Table) -> mlua::Result<Vec<Problem>> {
+    let mut found = Vec::new();
+    for p in list.sequence_values::<Table>() {
+        let p = p?;
+        found.push(Problem {
+            path: p.get::<Option<String>>("path")?.unwrap_or_default(),
+            code: p.get::<Option<String>>("code")?.unwrap_or_default(),
+            message: p.get::<Option<String>>("message")?.unwrap_or_default(),
+        });
+    }
+    Ok(found)
 }
 
 #[cfg(test)]
