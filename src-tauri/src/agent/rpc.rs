@@ -460,8 +460,8 @@ mod tests {
         let refused = out[4]["result"]["content"][0]["text"].as_str().unwrap();
         assert!(
             refused.contains("No test character for class \"deathknight\"")
-                && refused.contains("paladin")
-                && refused.contains("rogue"),
+                && refused.contains("rogue")
+                && refused.contains("paladin"),
             "{refused}"
         );
         // The language's reference.

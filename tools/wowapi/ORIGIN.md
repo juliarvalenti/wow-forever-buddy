@@ -99,6 +99,13 @@ PV1, the app's live preview:
 - `assets.lua`, `render.lua`: `render.svg(sim, { addonFonts = true })` embeds the loaded addons' own fonts without art, through a font-only store (`assets.addonFonts`) that never looks at the game's files, a cache or the environment.
 - `render.lua`: `render.svg(sim, { labels = false })` draws missing textures as plain squares, without their names.
 
+UI3, hidden (secret) values shown the way the client shows them:
+
+- `api.lua`: `AbbreviateNumbers` takes a secret number and returns a secret string, as in 12.x, instead of erroring on the comparison. Without it, a UI's `{hp}` in combat was a `?`.
+- `api.lua`: `UnitHealthPercent` and `UnitPowerPercent` (health or power over max, through a curve if given). They're `SecretReturns` in the API docs, so the docs layer hides them in combat like `UnitHealth`.
+- `docs.lua`: the argument check passes a secret as the type it hides, as the client does (`AbbreviateNumbers(secret)` was refused as "number expected, got table").
+- `render.lua`: a status bar whose fill is a colour texture (`SetColorTexture`, then a vertex colour or gradient) draws that fill with its own colour, in its own draw layer and across the bar to its value, as in the client. File and atlas fills (Blizzard's unit frames) draw as before. Without it, a bar handed a secret value drew under its own background.
+
 ## Updating
 
 To move to a new commit:
