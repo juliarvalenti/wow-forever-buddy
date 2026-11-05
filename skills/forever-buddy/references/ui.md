@@ -2,7 +2,7 @@
 
 A UI document is JSON that describes a whole in-game UI: unit frames, bars, numbers, combo points, action buttons, and which of Blizzard's frames step aside. Nothing in it runs: Forever Buddy's addon reads it and builds frames. Never send Lua.
 
-`render_ui` draws a document on a stand-in screen (Forever Buddy's test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) and hands you back a picture, so you can see your work and fix it before the player looks. `propose_ui` then sends the finished document to the player: they see it drawn in Forever Buddy's Approvals and pick it with **Use this**, and it's live in the game at their next login, in place of the standard HUD, for every character on the account. They can go back to the standard HUD any time. To tweak the standard HUD's look instead, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
+`render_ui` draws a document on a stand-in screen (Forever Buddy's test character, a level 34 rogue, logged in with a hostile target; it reads none of the player's data) and hands you back a picture, so you can see your work and fix it before the player looks. `propose_ui` then sends the finished document to the player: they see it drawn in Forever Buddy's Approvals and pick it with **Use this**, and it's live in the game at their next login, in place of the standard HUD, for every character on the account, or with `for` only some characters, classes or specs ("Halo on my rogue, the standard HUD everywhere else"). They can go back to the standard HUD any time. To tweak the standard HUD's look instead, use `propose_ui_draft` (see [SKILL](../SKILL.md#changing-the-look-drafts-not-one-answer)).
 
 ## The loop
 

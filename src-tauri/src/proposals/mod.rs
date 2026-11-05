@@ -449,7 +449,7 @@ pub fn ingest_in(
                 UI_DOC => {
                     let p: uidoc::UiDocProposal = serde_json::from_value(f.body.clone())
                         .map_err(|_| "the UI isn't in the form this version reads".to_string())?;
-                    let body = uidoc::check(&p)?;
+                    let body = uidoc::check(db, flavor, &p)?;
                     serde_json::to_string(&body).map_err(|e| e.to_string())
                 }
                 // In plain words, never the kind id (IMPLEMENTING §17).
@@ -626,7 +626,12 @@ fn view(db: &Db, flavor: &str, s: Stored, now: i64) -> AppResult<Proposal> {
         None => None,
     };
     let ui_doc = match body::<uidoc::UiDocBody>(&s, UI_DOC) {
-        Some(b) => Some(uidoc::view(&b, uidoc::is_active(db, flavor, s.id)?)),
+        Some(b) => Some(uidoc::view(
+            db,
+            flavor,
+            &b,
+            uidoc::is_active(db, flavor, s.id)?,
+        )?),
         None => None,
     };
     Ok(Proposal {
@@ -767,6 +772,24 @@ fn set_status(db: &Db, id: i64, status: &str, now: i64) -> AppResult<()> {
     })
 }
 
+/// UI3: Use this for whom the player picked on the card (`decide`'s Approve
+/// uses whom the agent proposed).
+pub fn use_ui(db: &Db, flavor: &str, id: u32, pick: &uidoc::UiForPick, now: i64) -> AppResult<()> {
+    let s = stored(
+        db,
+        flavor,
+        "id = ? AND status = 'staged' AND kind = ?",
+        &[&id, &UI_DOC],
+    )?
+    .into_iter()
+    .next()
+    .ok_or_else(|| AppError::NotFound("that UI, or it was already decided".into()))?;
+    body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
+    let target = uidoc::from_pick(db, flavor, pick)?;
+    uidoc::use_for(db, flavor, s.id, &target, now)?;
+    set_status(db, s.id, "applied", now)
+}
+
 /// Approves or declines one waiting proposal. Approve applies the stored
 /// body through the kind's own code and nothing else; a conflicting note
 /// needs `UseProposed` (or `Decline`, "Keep mine").
@@ -837,8 +860,9 @@ pub fn decide(db: &Db, flavor: &str, id: u32, decision: Decision, now: i64) -> A
             macros::apply(db, flavor, s.id, &b, now)?;
         }
         UI_DOC => {
-            body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
-            uidoc::set_active(db, flavor, Some(s.id))?;
+            // Use this: for whom the agent proposed it (everyone if no one).
+            let b = body::<uidoc::UiDocBody>(&s, UI_DOC).ok_or_else(unreadable)?;
+            uidoc::use_for(db, flavor, s.id, &b.target, now)?;
         }
         _ => {
             return Err(AppError::InvalidSettings(
@@ -1687,7 +1711,8 @@ mod tests {
             keys,
             [
                 crate::sv::LuaValue::str("name"),
-                crate::sv::LuaValue::str("doc")
+                crate::sv::LuaValue::str("doc"),
+                crate::sv::LuaValue::str("docs")
             ]
         );
         // The slot file holds it, within the bridge's caps, and reads back.
@@ -1707,8 +1732,233 @@ mod tests {
         );
 
         // Go back to the standard HUD.
-        uidoc::set_active(&db, FLAVOR, None).unwrap();
+        uidoc::go_back(&db, FLAVOR, None).unwrap();
         assert!(uidoc::active_ui(&db, FLAVOR).unwrap().is_none());
         assert!(uidoc::slot_entries(&db, FLAVOR).unwrap().is_empty());
+    }
+
+    /// UI3: documents for whom: the slot lists them most specific first,
+    /// `for` by GUID; a new one for the same `for` replaces the old; old
+    /// addons get everyone's as `doc`, or nothing when there's none; at most
+    /// eight; a deep document still fits the bridge's depth.
+    #[test]
+    fn ui_documents_for_characters_and_classes_go_most_specific_first() {
+        let (tmp, db) = setup();
+        db.with_conn(|c| {
+            c.execute(
+                "UPDATE characters SET guid = 'Player-1-' || name, class = 'ROGUE'",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let base: serde_json::Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let mut at = NOW;
+        let mut use_one = |name: &str, target: serde_json::Value, doc: &serde_json::Value| {
+            let mut ui = json!({ "name": name, "why": "w", "doc": doc });
+            if !target.is_null() {
+                ui["for"] = target;
+            }
+            drop_file(tmp.path(), UI_DOC, ui);
+            ingest(&db, tmp.path(), FLAVOR, true, at).unwrap();
+            let a = list(&db, FLAVOR, at).unwrap();
+            let Some(w) = a.waiting.first() else {
+                let why: Vec<_> = a
+                    .decided
+                    .iter()
+                    .filter_map(|d| d.status_reason.clone())
+                    .collect();
+                panic!("{name} not queued: {why:?}");
+            };
+            let id = w.id;
+            at += 1;
+            decide(&db, FLAVOR, id, Decision::Approve, at)
+        };
+        use_one("Rogues", json!({ "classes": ["rogue"] }), &base).unwrap();
+        use_one(
+            "Velyra",
+            json!({ "characters": ["Velyra Duskmane"] }),
+            &base,
+        )
+        .unwrap();
+        use_one(
+            "Rogues again",
+            json!({ "classes": ["ROGUE", "rogue"] }),
+            &base,
+        )
+        .unwrap();
+
+        let names = |db: &Db| -> Vec<String> {
+            uidoc::in_use(db, FLAVOR)
+                .unwrap()
+                .into_iter()
+                .map(|u| u.body.name)
+                .collect()
+        };
+        assert_eq!(
+            names(&db),
+            ["Velyra", "Rogues again"],
+            "replaced, and in order"
+        );
+        let entries = uidoc::slot_entries(&db, FLAVOR).unwrap();
+        assert_eq!(entries.len(), 1, "no everyone's: old addons get nothing");
+        let built = crate::bridge::build(&db, FLAVOR, NOW, &[crate::bridge::Slot::Ui]).unwrap();
+        let text = String::from_utf8(built.slots[0].1.clone()).unwrap();
+        assert!(text.contains("Player-1-Velyra"), "{text}");
+        let velyra = text.find("Player-1-Velyra").unwrap();
+        assert!(velyra < text.find("\"ROGUE\"").unwrap(), "{text}");
+
+        use_one("Everyone", serde_json::Value::Null, &base).unwrap();
+        assert_eq!(names(&db), ["Velyra", "Rogues again", "Everyone"]);
+        assert_eq!(uidoc::slot_entries(&db, FLAVOR).unwrap().len(), 3);
+        // As deep as render_ui's limits let a document be (16 keys down),
+        // stored as is: it still fits the bridge's depth inside `docs`.
+        let mut deep = json!(1);
+        for _ in 0..13 {
+            deep = json!([deep]);
+        }
+        let changed = db
+            .with_conn(|c| {
+                Ok(c.execute(
+                    "UPDATE proposals SET body = json_set(body, '$.doc.parts[0].deep', json(?1))
+                     WHERE kind = 'ui_doc'",
+                    [deep.to_string()],
+                )?)
+            })
+            .unwrap();
+        assert_eq!(changed, 4);
+        assert_eq!(
+            uidoc::in_use(&db, FLAVOR).unwrap()[0].body.doc["parts"][0]["deep"],
+            deep
+        );
+        crate::bridge::build(&db, FLAVOR, NOW, &[crate::bridge::Slot::Ui])
+            .expect("a deep document fits the bridge's depth inside docs");
+
+        for i in 0..5 {
+            use_one(&format!("Spec {i}"), json!({ "specs": [100 + i] }), &base).unwrap();
+        }
+        let e = use_one("One too many", json!({ "specs": [999] }), &base).unwrap_err();
+        assert!(e.to_string().contains("8 UIs are in use"), "{e}");
+        uidoc::go_back(
+            &db,
+            FLAVOR,
+            Some(&uidoc::in_use(&db, FLAVOR).unwrap()[0].target),
+        )
+        .unwrap();
+        assert_eq!(uidoc::in_use(&db, FLAVOR).unwrap().len(), 7);
+        assert!(!names(&db).contains(&"Velyra".to_string()));
+    }
+
+    /// UI3's card: what Use this and Stop using would do, character by
+    /// character, then Use this for whom the player picked.
+    #[test]
+    fn the_card_says_what_a_ui_does_to_each_character_then_uses_the_pick() {
+        let (tmp, db) = setup();
+        db.with_conn(|c| {
+            c.execute_batch(
+                "UPDATE characters SET guid = 'Player-1-' || name;
+                 UPDATE characters SET class = 'ROGUE' WHERE name = 'Coinpurse';
+                 UPDATE characters SET class = 'MAGE' WHERE name = 'Velyra';",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let doc: serde_json::Value = serde_json::from_str(crate::preview::ui::EXAMPLE).unwrap();
+        let mut at = NOW;
+        let mut stage = |name: &str, target: serde_json::Value| -> u32 {
+            let mut ui = json!({ "name": name, "why": "w", "doc": doc });
+            if !target.is_null() {
+                ui["for"] = target;
+            }
+            drop_file(tmp.path(), UI_DOC, ui);
+            at += 1;
+            ingest(&db, tmp.path(), FLAVOR, true, at).unwrap();
+            list(&db, FLAVOR, at).unwrap().waiting[0].id
+        };
+        let plain = stage("Plain", serde_json::Value::Null);
+        decide(&db, FLAVOR, plain, Decision::Approve, NOW + 10).unwrap();
+        let timers = stage("Rogue timers", json!({ "classes": ["ROGUE"] }));
+        decide(&db, FLAVOR, timers, Decision::Approve, NOW + 11).unwrap();
+        let halo = stage("Halo", json!({ "characters": ["Coinpurse"] }));
+
+        let chars = uidoc::characters(&db, FLAVOR).unwrap();
+        let coinpurse = chars.iter().find(|c| c.name == "Coinpurse").unwrap().id;
+        let a = list(&db, FLAVOR, NOW).unwrap();
+        let proposed = &a.waiting[0].ui_doc.as_ref().unwrap().target;
+        assert_eq!(
+            proposed.characters,
+            [coinpurse],
+            "the card starts from the agent's pick"
+        );
+
+        let line =
+            |e: Vec<uidoc::UiEffect>| -> Vec<(String, Option<String>, Option<String>, bool)> {
+                e.into_iter()
+                    .map(|e| (e.character.name, e.now, e.then, e.in_for))
+                    .collect()
+            };
+        let s = |x: &str| Some(x.to_string());
+        let pick = uidoc::UiForPick {
+            characters: vec![coinpurse],
+            ..Default::default()
+        };
+        let using = uidoc::UiChange::Use {
+            id: halo,
+            target: pick.clone(),
+        };
+        assert_eq!(
+            line(uidoc::effect(&db, FLAVOR, &using, NOW + 20).unwrap()),
+            [("Coinpurse".into(), s("Rogue timers"), s("Halo"), true)],
+            "Velyra keeps Plain, so isn't named"
+        );
+        let everyone = uidoc::UiChange::Use {
+            id: halo,
+            target: uidoc::UiForPick::default(),
+        };
+        let e = line(uidoc::effect(&db, FLAVOR, &everyone, NOW + 20).unwrap());
+        assert!(
+            e.contains(&("Velyra Duskmane".into(), s("Plain"), s("Halo"), true)),
+            "{e:?}"
+        );
+        assert!(
+            e.contains(&(
+                "Coinpurse".into(),
+                s("Rogue timers"),
+                s("Rogue timers"),
+                true
+            )),
+            "the rogue keeps its class UI: {e:?}"
+        );
+
+        // Use this for Velyra instead of whom the agent said.
+        let velyra = chars
+            .iter()
+            .find(|c| c.name == "Velyra Duskmane")
+            .unwrap()
+            .id;
+        let mine = uidoc::UiForPick {
+            characters: vec![velyra],
+            ..Default::default()
+        };
+        use_ui(&db, FLAVOR, halo, &mine, NOW + 30).unwrap();
+        let listed = uidoc::listed(&db, FLAVOR).unwrap();
+        let order: Vec<&str> = listed.iter().map(|u| u.name.as_str()).collect();
+        assert_eq!(order, ["Halo", "Rogue timers", "Plain"]);
+        assert_eq!(listed[0].target.characters, [velyra]);
+        assert!(
+            use_ui(&db, FLAVOR, halo, &mine, NOW + 31).is_err(),
+            "decided already"
+        );
+
+        // Stop using Rogue timers: Coinpurse goes to Plain.
+        let stop = uidoc::UiChange::Stop {
+            key: listed[1].key.clone(),
+        };
+        assert_eq!(
+            line(uidoc::effect(&db, FLAVOR, &stop, NOW + 40).unwrap()),
+            [("Coinpurse".into(), s("Rogue timers"), s("Plain"), true)]
+        );
+        uidoc::stop(&db, FLAVOR, &listed[1].key).unwrap();
+        assert_eq!(uidoc::listed(&db, FLAVOR).unwrap().len(), 2);
     }
 }

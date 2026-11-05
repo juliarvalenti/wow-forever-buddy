@@ -145,8 +145,33 @@ export const commands = {
 	id: number,
 	name: string,
 } | null>("ui_doc_active"),
-	/**  UI1: "Go back to the standard HUD": no document in use, sent to the game. */
+	/**
+	 *  UI1: "Go back to the standard HUD": no document in use for anyone, sent
+	 *  to the game.
+	 */
 	uiDocGoBack: () => __TAURI_INVOKE<null>("ui_doc_go_back"),
+	/**
+	 *  UI3: "Your UIs in the game", in the order each character's game picks
+	 *  from.
+	 */
+	uiDocsInUse: () => __TAURI_INVOKE<UiInUse[]>("ui_docs_in_use"),
+	/**
+	 *  UI3: the characters the card's For row can name (the ones the addon has
+	 *  seen).
+	 */
+	uiDocCharacters: () => __TAURI_INVOKE<UiCharacter[]>("ui_doc_characters"),
+	/**
+	 *  UI3: what Use this or Stop using would do, character by character, for
+	 *  the card's line in names.
+	 */
+	uiDocEffect: (change: UiChange) => __TAURI_INVOKE<UiEffect[]>("ui_doc_effect", { change }),
+	/**  UI3: Use this, for whom the card's For row says. */
+	uiDocUse: (id: number, target: UiForPick) => __TAURI_INVOKE<null>("ui_doc_use", { id, target }),
+	/**
+	 *  UI3: Stop using one UI in use (by its `key` from `ui_docs_in_use`);
+	 *  those characters get the next that fits them.
+	 */
+	uiDocStop: (key: string) => __TAURI_INVOKE<null>("ui_doc_stop", { key }),
 	/**
 	 *  The Ledger for the active flavor: tiles, the daily gold chart and the
 	 *  journal, over `range`, in the user's time zone.
@@ -2639,6 +2664,24 @@ export type TrialChange = {
 
 export type Trigger = "manual" | "app_start" | "game_exit" | "scheduled" | "pre_write" | "pre_restore";
 
+/**  A change to what's in use, to see what it does before doing it. */
+export type UiChange = 
+/**  Use proposal `id` for `for`. */
+{ kind: "use"; id: number; for: UiForPick } | 
+/**  Stop using one in use, by its `key`. */
+{ kind: "stop"; key: string };
+
+/**
+ *  A character a UI can be for: one the addon has seen, so the game can
+ *  tell it's them (by GUID).
+ */
+export type UiCharacter = {
+	id: number,
+	name: string,
+	/**  The class file token, `ROGUE`. */
+	class: string | null,
+};
+
 /**
  *  A document as Approvals shows it (its picture comes from
  *  `ui_doc_picture`).
@@ -2647,7 +2690,12 @@ export type UiDocView = {
 	name: string,
 	why: string,
 	words: string | null,
-	/**  It's the UI in use now. */
+	/**
+	 *  UI3: whom the agent proposed it for, the card's For row to start
+	 *  with (all empty: everyone).
+	 */
+	for: UiForPick,
+	/**  It's a UI in use now. */
 	active: boolean,
 };
 
@@ -2664,6 +2712,43 @@ export type UiDraft = {
 	created_at: string,
 	/**  Each change: our label, and what it is now and would be. */
 	changes: SettingView[],
+};
+
+/**
+ *  What a change does to one character: the UI it has at its next login
+ *  now and after (`None` is the standard HUD), and whether the change's
+ *  `for` takes it in (so "your rogues keep Rogue timers" can be said).
+ */
+export type UiEffect = {
+	character: UiCharacter,
+	now: string | null,
+	then: string | null,
+	in_for: boolean,
+};
+
+/**
+ *  A `for` as the app shows and picks it (the Approvals card's For row):
+ *  characters by the app's own id.
+ */
+export type UiForPick = {
+	characters: number[],
+	classes: string[],
+	/**  Kept from the agent's proposal; the card doesn't pick specs. */
+	specs: number[],
+};
+
+/**
+ *  One document in use as "Your UIs in the game" lists it, in the order
+ *  the game picks from.
+ */
+export type UiInUse = {
+	/**  Which entry, for Stop using and its effect. */
+	key: string,
+	/**  The proposal: its picture is `ui_doc_picture`'s. */
+	id: number,
+	name: string,
+	for: UiForPick,
+	since: string,
 };
 
 export type VerifyReport = {

@@ -36,6 +36,7 @@ const MIGRATION_LIST: &[M<'_>] = &[
     M::up(include_str!("migrations/021_addon_settings.sql")),
     M::up(include_str!("migrations/022_macro_queue.sql")),
     M::up(include_str!("migrations/023_addon_others.sql")),
+    M::up(include_str!("migrations/024_ui_in_use.sql")),
 ];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 /// The schema version this build migrates to (`PRAGMA user_version`, which
@@ -291,6 +292,33 @@ mod tests {
         MIGRATIONS.validate().unwrap();
     }
 
+    /// UI3: UI1's one document in use (meta `ui_doc:<flavor>`) becomes
+    /// everyone's in `ui_in_use`.
+    #[test]
+    fn migration_024_keeps_the_ui_in_use_as_everyones() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut conn, 23).unwrap();
+        conn.execute_batch(
+            "INSERT INTO meta (key, value) VALUES ('ui_doc:_classic_beta_', '7'), ('other', 'x');",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut conn).unwrap();
+        let row: (String, String, i64) = conn
+            .query_row("SELECT flavor, target, proposal FROM ui_in_use", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(row, ("_classic_beta_".into(), "{}".into(), 7));
+        let left: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM meta WHERE key LIKE 'ui_doc:%' OR key = 'other'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 1, "only the other key stays");
+    }
+
     /// BUG-ADV: migration 020 drops a stored login burst (the whole bags
     /// "gained" in the first second they loaded) and keeps real loot, gains
     /// with a `how`, and a small early loot.
@@ -381,6 +409,7 @@ mod tests {
                 "quest_plans",
                 "recipe_reagents",
                 "snapshots",
+                "ui_in_use",
                 "write_audit"
             ]
         );
@@ -416,7 +445,7 @@ mod tests {
         std::fs::write(&path, vec![0xAB; 8192]).unwrap();
 
         let db = Db::open(&path).unwrap();
-        assert_eq!(tables(&db).len(), 41);
+        assert_eq!(tables(&db).len(), 42);
         assert_eq!(
             db.get_meta(RESTORED_FROM_COPY).unwrap(),
             None,
@@ -589,7 +618,7 @@ mod tests {
         std::fs::write(&path, bytes).unwrap();
 
         let db = Db::open(&path).expect("starts instead of failing");
-        assert_eq!(tables(&db).len(), 41);
+        assert_eq!(tables(&db).len(), 42);
         assert_eq!(db.get_meta(NEEDS_REINDEX).unwrap().as_deref(), Some("1"));
         let quarantined = std::fs::read_dir(tmp.path()).unwrap().flatten().any(|e| {
             e.file_name()

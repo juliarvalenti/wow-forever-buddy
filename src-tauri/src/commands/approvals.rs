@@ -119,12 +119,71 @@ pub fn ui_doc_active(state: State<'_, AppState>) -> AppResult<Option<proposals::
     proposals::uidoc::active_ui(&core.db, &core.active_game()?.flavor)
 }
 
-/// UI1: "Go back to the standard HUD": no document in use, sent to the game.
+/// UI1: "Go back to the standard HUD": no document in use for anyone, sent
+/// to the game.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn ui_doc_go_back(state: State<'_, AppState>) -> AppResult<()> {
     let core = &state.core;
-    proposals::uidoc::set_active(&core.db, &core.active_game()?.flavor, None)?;
+    proposals::uidoc::go_back(&core.db, &core.active_game()?.flavor, None)?;
+    let _ = core.send_to_game();
+    Ok(())
+}
+
+/// UI3: "Your UIs in the game", in the order each character's game picks
+/// from.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_docs_in_use(state: State<'_, AppState>) -> AppResult<Vec<proposals::uidoc::UiInUse>> {
+    let core = &state.core;
+    proposals::uidoc::listed(&core.db, &core.active_game()?.flavor)
+}
+
+/// UI3: the characters the card's For row can name (the ones the addon has
+/// seen).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_characters(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<proposals::uidoc::UiCharacter>> {
+    let core = &state.core;
+    proposals::uidoc::characters(&core.db, &core.active_game()?.flavor)
+}
+
+/// UI3: what Use this or Stop using would do, character by character, for
+/// the card's line in names.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_effect(
+    state: State<'_, AppState>,
+    change: proposals::uidoc::UiChange,
+) -> AppResult<Vec<proposals::uidoc::UiEffect>> {
+    let core = &state.core;
+    proposals::uidoc::effect(&core.db, &core.active_game()?.flavor, &change, now())
+}
+
+/// UI3: Use this, for whom the card's For row says.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_use(
+    state: State<'_, AppState>,
+    id: u32,
+    target: proposals::uidoc::UiForPick,
+) -> AppResult<()> {
+    let core = &state.core;
+    proposals::use_ui(&core.db, &core.active_game()?.flavor, id, &target, now())?;
+    let _ = core.send_to_game();
+    Ok(())
+}
+
+/// UI3: Stop using one UI in use (by its `key` from `ui_docs_in_use`);
+/// those characters get the next that fits them.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn ui_doc_stop(state: State<'_, AppState>, key: String) -> AppResult<()> {
+    let core = &state.core;
+    let flavor = core.active_game()?.flavor;
+    proposals::uidoc::stop(&core.db, &flavor, &key)?;
     let _ = core.send_to_game();
     Ok(())
 }
