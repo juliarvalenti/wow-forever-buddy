@@ -120,7 +120,7 @@ local function build()
     if not frame.TitleText then
         title:SetPoint("TOP", 0, -5)
     end
-    title:SetText("ForeverBuddy Lite")
+    title:SetText("ForeverBuddy Lite  " .. GREY .. ns.versionString() .. "|r")
 
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusText:SetPoint("TOPLEFT", 16, -34)
@@ -157,7 +157,8 @@ ns.listen("changed", refresh)
 ns.on("PLAYER_REGEN_DISABLED", refresh)
 ns.on("PLAYER_REGEN_ENABLED", refresh)
 
-ns.command({ name = "status", help = "print what's been captured and when", fn = function()
+ns.command({ name = "status", help = "print what's been captured and when, and which build this is", fn = function()
+    ns.say("build " .. ns.versionString())
     for _, line in ipairs(ns.statusLines()) do
         if line ~= "" then
             print(line)
