@@ -25,7 +25,7 @@ local function loadStats(found, list, tries)
     for id, src in pairs(found) do
         local _, itemType, subType, equipLoc, _, classID, subClassID = read("C_Item.GetItemInfoInstant", id)
         local tip = ns.statLines(nil, id)
-        local name, _, quality, _, minLevel = ns.itemInfo(id)
+        local name, _, quality, _, minLevel, _, _, _, _, _, sellPrice = ns.itemInfo(id)
         if read("C_Item.DoesItemExistByID", id) == false then
             -- in Questie's data but not in this client: nothing to load
         elseif not tip or #tip == 0 or not name then
@@ -34,7 +34,7 @@ local function loadStats(found, list, tries)
         elseif src.quests or (num(quality) or 0) >= 2 then -- drops: green and better only
             list[tostring(id)] = { id = id, link = "item:" .. id, name = name, quality = quality, slot = equipLoc,
                 type = itemType, subtype = subType, class = classID, subclass = subClassID, req = num(minLevel), tip = tip,
-                quests = src.quests, drops = src.drops, at = now() }
+                quests = src.quests, drops = src.drops, sell = num(sellPrice), at = now() } -- sell: vendor price, copper
         end
     end
     if next(left) and tries < 10 then
