@@ -154,7 +154,8 @@ test("AH scan stored packed (CBOR, deflated, base64) reads like the plain one", 
   assert.equal(unpackAh({ items: { a: 1 } }).items.a, 1);
 
   const file = path.join(os.tmpdir(), `fbl-packed-${process.pid}.lua`);
-  fs.writeFileSync(file, fs.readFileSync(env.FBL_FILE, "utf8").replace(/\["ah"\] = \{[\s\S]*?\n\t\},\n\t\["characters"\]/,
+  // The fixture may come out of git with CRLF line endings on Windows.
+  fs.writeFileSync(file, fs.readFileSync(env.FBL_FILE, "utf8").replace(/\r\n/g, "\n").replace(/\["ah"\] = \{[\s\S]*?\n\t\},\n\t\["characters"\]/,
     `["ah"] = { ["at"] = 1794600000, ["complete"] = false, ["packed"] = "${packed}" },\n\t["ahError"] = "browse failed",\n\t["characters"]`));
   const u = call("upgrades", { character: "Testmage" }, { FBL_FILE: file });
   fs.unlinkSync(file);

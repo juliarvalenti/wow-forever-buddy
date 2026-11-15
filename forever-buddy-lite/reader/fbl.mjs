@@ -541,20 +541,26 @@ export const TOOLS = {
     },
   },
   quests: {
-    description: "The quest log with objectives and progress, plus how many quests are completed overall.",
+    description: "The quest log with objectives and progress, plus how many quests are completed overall, reward gold and XP, and what each quest's reward items sell to a vendor for (when /fbl items saw them).",
     args: { character: "Name (optional)" },
-    run: ({ chars }, a) => {
+    run: ({ chars, items }, a) => {
       const c = pick(chars, a.character);
       const log = list(c.quests?.log);
+      // Reward items by quest, from /fbl items; you pick one, so the best vendor price is what it's worth in coin.
+      const choices = {};
+      for (const it of Object.values(items || {})) for (const q of list(it.quests)) (choices[q.id] ||= []).push(it);
+      const bestSell = (q) => Math.max(0, ...(choices[q.id] || []).map((it) => it.sell || 0));
       const sum = (f) => log.reduce((t, q) => t + (q[f] || 0), 0);
       const ready = log.filter((q) => q.complete || q.ready);
       return { ...header(c), completed_count: list(c.quests?.completed).length,
         // Reward gold and XP, when the addon could read them (quests in the log only).
         rewards: log.some((q) => q.money != null) ? { gold_all: money(sum("money")), gold_ready: money(ready.reduce((t, q) => t + (q.money || 0), 0)),
+          vendor_all: money(log.reduce((t, q) => t + bestSell(q), 0)), vendor_ready: money(ready.reduce((t, q) => t + bestSell(q), 0)),
           xp_all: sum("xp"), xp_ready: ready.reduce((t, q) => t + (q.xp || 0), 0) } : undefined,
         log: log.map((q) => ({
         id: q.id, title: q.title, level: q.level, group: q.suggested_group, complete: !!(q.complete || q.ready), failed: q.failed,
         gold: q.money ? money(q.money) : undefined, xp: q.xp || undefined,
+        reward_items: choices[q.id] ? choices[q.id].map((it) => `${it.name}${it.sell ? ` (vendor ${money(it.sell)})` : ""}`) : undefined,
         objectives: list(q.objectives).map((o) => `${o.done ? "[x]" : "[ ]"} ${o.text ?? ""}`.trim()) })) };
     },
   },
