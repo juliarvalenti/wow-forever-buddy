@@ -8,7 +8,7 @@ It covers what Claude kept needing while helping in game: gear, bags, bank, mail
 
 ## In game
 
-Copy `addon/ForeverBuddyLite` into `World of Warcraft/_forever_/Interface/AddOns/`, then enable it at character select. After an update that adds files, restart the game once (a `/reload` doesn't load new files).
+Run `node forever-buddy-lite/addon/install.mjs` (or copy `addon/ForeverBuddyLite` into `World of Warcraft/_forever_/Interface/AddOns/`), then enable it at character select. The window title shows the version and a build hash of the code, so you can tell which build you're on; `node forever-buddy-lite/addon/stamp.mjs` updates the hash after a change. After an update that adds files, restart the game once (a `/reload` doesn't load new files).
 
 `/fbl` opens a window: what's been captured and when, and a button for each action below. `/fbl help` lists the commands:
 

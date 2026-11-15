@@ -56,3 +56,6 @@ jobs:
         with:
           persist-credentials: false
       - run: node --version && node --test forever-buddy-lite/reader/test/fbl.test.mjs
+      # Core.lua carries a hash of the addon's code, shown in /fbl; it must match the code.
+      - name: Build hash is current (node forever-buddy-lite/addon/stamp.mjs to update)
+        run: node forever-buddy-lite/addon/stamp.mjs --check

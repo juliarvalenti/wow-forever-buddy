@@ -5,7 +5,7 @@
 local _, ns = ...
 
 ns.command({ name = "help", aliases = { "?" }, help = "this list", fn = function()
-    ns.say("/fbl opens the window. Commands:")
+    ns.say("build " .. ns.versionString() .. ". /fbl opens the window. Commands:")
     for _, c in ipairs(ns.commands) do
         local aliases = c.aliases and #c.aliases > 0 and (" (" .. table.concat(c.aliases, ", ") .. ")") or ""
         print(string.format("  |cffffd200/fbl %s%s|r%s  %s", c.name, c.args and (" " .. c.args) or "", aliases, c.help or ""))
