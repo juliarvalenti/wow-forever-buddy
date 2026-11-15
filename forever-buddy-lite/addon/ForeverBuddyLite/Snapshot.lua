@@ -502,6 +502,9 @@ local bankOpen, mailOpen = false, false
 local function capture(c, name, fn)
     local good, result = pcall(fn)
     if good and ns.commit(c, name, result, BLANK[name]) then
+        if c.errors then
+            c.errors[name] = nil
+        end
         return true
     end
     c.errors = c.errors or {}
@@ -534,8 +537,51 @@ function ns.snapshot()
     return ok
 end
 
--- Several events arrive in a burst; one snapshot a few seconds later covers them.
-local soon = ns.debounce(3, ns.snapshot)
+-- During play only what changed is read again: looting re-reads bags, not the
+-- spellbook, reputations and every gear tooltip. Changes collect for a few
+-- seconds and are read together, never in combat.
+local SECTION = { bank = bank, mail = mail }
+for _, s in ipairs(SECTIONS) do
+    SECTION[s[1]] = s[2]
+end
+
+local dirty, waiting = {}, false
+
+local function flush()
+    if InCombatLockdown() then
+        waiting = "combat" -- PLAYER_REGEN_ENABLED flushes
+        return
+    end
+    waiting = false
+    local c = ns.char()
+    if not c or not next(dirty) then
+        return
+    end
+    for name in pairs(dirty) do
+        if (name ~= "bank" or bankOpen) and (name ~= "mail" or mailOpen) then
+            capture(c, name, SECTION[name])
+        end
+    end
+    dirty = {}
+    c.saved_at = now()
+    ns.fire("changed")
+end
+
+local function refresh(...)
+    for i = 1, select("#", ...) do
+        dirty[select(i, ...)] = true
+    end
+    if not waiting then
+        waiting = "timer"
+        C_Timer.After(5, flush)
+    end
+end
+
+ns.on("PLAYER_REGEN_ENABLED", function()
+    if waiting == "combat" then
+        flush()
+    end
+end)
 
 ns.on("PLAYER_ENTERING_WORLD", function()
     C_Timer.After(3, ns.snapshot) -- bags and quests fill in a moment after login
@@ -549,21 +595,30 @@ ns.on("PLAYER_LOGOUT", function()
     end
 end)
 
--- Keep the save fresh during play, so a logout loses nothing.
-for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_MONEY", "PLAYER_EQUIPMENT_CHANGED", "SKILL_LINES_CHANGED",
-    "PLAYER_LEVEL_UP", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "LEARNED_SPELL_IN_TAB", "CHARACTER_POINTS_CHANGED",
-    "PLAYER_TALENT_UPDATE" }) do
-    ns.on(e, soon)
+-- Keep the save fresh during play, so a logout loses nothing: each event
+-- re-reads only the sections it can change.
+local CHANGES = {
+    BAG_UPDATE_DELAYED = { "bags", "bank" }, -- bank only while it's open
+    PLAYER_MONEY = { "identity" },
+    PLAYER_EQUIPMENT_CHANGED = { "gear", "stats", "identity" },
+    SKILL_LINES_CHANGED = { "skills" },
+    PLAYER_LEVEL_UP = { "identity", "stats", "spells", "talents", "skills" },
+    QUEST_LOG_UPDATE = { "quests" },
+    QUEST_TURNED_IN = { "quests", "identity" },
+    LEARNED_SPELL_IN_TAB = { "spells" },
+    CHARACTER_POINTS_CHANGED = { "talents" },
+    PLAYER_TALENT_UPDATE = { "talents" },
+    PLAYERBANKSLOTS_CHANGED = { "bank" },
+}
+for event, sections in pairs(CHANGES) do
+    ns.on(event, function()
+        refresh(unpack(sections))
+    end)
 end
 
 ns.on("BANKFRAME_OPENED", function()
     bankOpen = true
-    soon()
-end)
-ns.on("PLAYERBANKSLOTS_CHANGED", function()
-    if bankOpen then
-        soon()
-    end
+    refresh("bank", "bags")
 end)
 ns.on("BANKFRAME_CLOSED", function()
     local c = ns.char()
@@ -579,7 +634,7 @@ ns.on("MAIL_SHOW", function()
 end)
 ns.on("MAIL_INBOX_UPDATE", function()
     if mailOpen then
-        soon()
+        refresh("mail")
     end
 end)
 ns.on("MAIL_CLOSED", function()
