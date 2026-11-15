@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: ForeverBuddy Lite
+## Notes: Captures your characters (gear, bags, bank, mail, quests, skills, talents, professions), auction house gear and quest rewards for the fbl reader. /fbl opens its window.
+## Author: WoW Forever Buddy
+## Version: 2
+## SavedVariables: ForeverBuddyLiteDB
+## OptionalDeps: WeakAuras, QuestieDB
+
+Core.lua
+Data.lua
+Snapshot.lua
+Professions.lua
+AuctionHouse.lua
+QuestItems.lua
+Auras.lua
+UI.lua
+Commands.lua

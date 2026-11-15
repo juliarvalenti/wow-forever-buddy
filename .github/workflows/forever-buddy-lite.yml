@@ -1,0 +1,58 @@
+# ForeverBuddy Lite (forever-buddy-lite/): the data-only addon and its reader.
+# - the addon compiles on Lua 5.1 and runs headless through WOWAPI (the
+#   Forever client emulator) with no Lua errors or blocked actions;
+# - the reader's tests (node --test) pass against the fixture file.
+name: ForeverBuddy Lite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "forever-buddy-lite/**"
+      - ".github/workflows/forever-buddy-lite.yml"
+  push:
+    branches: [main]
+    paths:
+      - "forever-buddy-lite/**"
+      - ".github/workflows/forever-buddy-lite.yml"
+
+concurrency:
+  group: fbl-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends lua5.1
+
+      - name: Compiles
+        run: luac5.1 -p forever-buddy-lite/addon/ForeverBuddyLite/*.lua
+
+      - name: Fetch WOWAPI's data at the vendored commit
+        run: tools/wowapi/fetch-data.sh
+
+      # Our own code only, so it may run here (tools/addon-smoke/README.md).
+      - name: Runs headless on the Forever emulator
+        run: |
+          OUT="$RUNNER_TEMP/fbl-smoke.md"
+          lua5.1 tools/addon-smoke/smoke.lua forever-buddy-lite/addon --md "$OUT"
+          cat "$OUT" >> "$GITHUB_STEP_SUMMARY"
+          # Loaded, no Lua errors, nothing blocked. Unknown globals are only
+          # reported: the addon reads optional APIs through pcall on purpose.
+          grep -qE '^\| ForeverBuddyLite \| yes \| 0 \| 0 \|' "$OUT" || { echo "::error::ForeverBuddyLite failed the smoke run"; exit 1; }
+
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: node --version && node --test forever-buddy-lite/reader/test/fbl.test.mjs
