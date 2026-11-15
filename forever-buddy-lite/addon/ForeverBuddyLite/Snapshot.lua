@@ -209,6 +209,9 @@ local function quests()
                 complete = read("C_QuestLog.IsComplete", id) or nil,
                 ready = read("C_QuestLog.ReadyForTurnIn", id) or nil,
                 failed = info.isFailed or nil,
+                -- Reward gold in copper and XP, by quest id (the modern calls; nothing selected in the log).
+                money = num(read("GetQuestLogRewardMoney", id)) or nil,
+                xp = num(read("GetQuestLogRewardXP", id)) or nil,
                 objectives = {},
             }
             for _, o in ipairs(read("C_QuestLog.GetQuestObjectives", id) or {}) do

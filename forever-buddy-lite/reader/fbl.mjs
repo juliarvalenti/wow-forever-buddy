@@ -545,8 +545,16 @@ export const TOOLS = {
     args: { character: "Name (optional)" },
     run: ({ chars }, a) => {
       const c = pick(chars, a.character);
-      return { ...header(c), completed_count: list(c.quests?.completed).length, log: list(c.quests?.log).map((q) => ({
+      const log = list(c.quests?.log);
+      const sum = (f) => log.reduce((t, q) => t + (q[f] || 0), 0);
+      const ready = log.filter((q) => q.complete || q.ready);
+      return { ...header(c), completed_count: list(c.quests?.completed).length,
+        // Reward gold and XP, when the addon could read them (quests in the log only).
+        rewards: log.some((q) => q.money != null) ? { gold_all: money(sum("money")), gold_ready: money(ready.reduce((t, q) => t + (q.money || 0), 0)),
+          xp_all: sum("xp"), xp_ready: ready.reduce((t, q) => t + (q.xp || 0), 0) } : undefined,
+        log: log.map((q) => ({
         id: q.id, title: q.title, level: q.level, group: q.suggested_group, complete: !!(q.complete || q.ready), failed: q.failed,
+        gold: q.money ? money(q.money) : undefined, xp: q.xp || undefined,
         objectives: list(q.objectives).map((o) => `${o.done ? "[x]" : "[ ]"} ${o.text ?? ""}`.trim()) })) };
     },
   },
