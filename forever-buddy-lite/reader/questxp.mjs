@@ -1,6 +1,7 @@
 // XP-dense zones, hubs and chains for a character, from the QuestieDB addon's Forever data (read-only):
 // quest XP, levels, races, classes, where quests start and end. Needs Questie installed in game.
 //   node questxp.mjs [character (default: the last played)] [minQuestLevel] [maxQuestLevel] [zone name: every hub and quest there]
+//   node questxp.mjs [character] --chain "Quest name"   the whole chain it's in: steps, XP left, travel, rewards
 //   (QUESTIEDB_DIR to point elsewhere)
 import fs from "node:fs";
 import { decodeCbor, call } from "./fbl.mjs";
@@ -15,7 +16,10 @@ const vals = (t) => (Array.isArray(t) ? t : Object.values(t || {}));
 const XP = {};
 for (const m of fs.readFileSync(`${ROOT}/support/Forever/QuestXP/xpDB-classic.lua`, "utf8").matchAll(/\[(\d+)\] = \{(\d+), (\d+)\}/g)) XP[m[1]] = { level: +m[2], xp: +m[3] };
 
-const [whoArg, lo = "33", hi = "42", only] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const ci = argv.indexOf("--chain");
+const chainName = ci >= 0 ? argv.splice(ci, 2)[1] : undefined;
+const [whoArg, lo = "33", hi = "42", only] = argv;
 const who = whoArg || call("characters")[0].character; // default: the most recently played
 const me = call("raw", { character: who });
 const level = me.identity.level;
@@ -43,6 +47,51 @@ const place = (field, q) => {
   const pt = vals(pts)[0] || [];
   return { name: s[1], zone: z != null ? +z : s[npc != null ? 9 : 5], x: pt[0], y: pt[1] };
 };
+
+// --chain: walk back to the first quest and forward to the last, with what each step pays.
+if (chainName) {
+  const want = chainName.toLowerCase();
+  const allowed = (sc) => (!sc[6] || (sc[6] % 2048) & 1101) && (!sc[7] || sc[7] & 8); // Alliance, rogue
+  let start;
+  for (const k of meta.keys()) {
+    const m = /^X-Quest-(\d+)-S$/.exec(k); if (!m) continue;
+    const sc = F("Quest-", m[1], "S") || {};
+    if (String(sc[1]).toLowerCase() === want && allowed(sc)) { start = +m[1]; if (inLog.has(start) || !done.has(start)) break; }
+  }
+  if (!start) { console.log(`No quest named "${chainName}" for you in Questie's data.`); process.exit(1); }
+  const before = (q) => vals(F("Quest-", q, 13))[0] ?? vals(F("Quest-", q, 12))[0];
+  const after = (q) => (F("Quest-", q, "S") || {})[22] ?? vals(F("Quest-", q, 14))[0];
+  let first = start;
+  for (let g = 0, p; g < 20 && (p = before(first)); g++) first = p;
+  const steps = [];
+  for (let q = first, g = 0; q && g < 25; q = after(q), g++) steps.push(q);
+  // Reward items by quest, and how much each beats what you wear (when /fbl items saved its stats).
+  const rewards = {};
+  for (const k of meta.keys()) {
+    const m = /^X-Item-(\d+)-6$/.exec(k); if (!m) continue;
+    for (const q of vals(F("Item-", m[1], 6))) if (steps.includes(q)) (rewards[q] ||= []).push((F("Item-", m[1], "S") || {})[1]);
+  }
+  const gains = {};
+  try {
+    const u = call("upgrades", { character: who, source: "items", ahead: "15", per_slot: "20" });
+    for (const rows of Object.values(u.upgrades)) for (const r of rows) gains[r.name] = Math.max(gains[r.name] || 0, r.gain);
+  } catch { /* no quest gear saved yet */ }
+  let left = 0, best = 0;
+  const zones = new Set();
+  for (const q of steps) {
+    const sc = F("Quest-", q, "S") || {}, x = XP[q], st = place(2, q), en = place(3, q);
+    const status = done.has(q) ? "done" : inLog.has(q) ? "in log" : "";
+    const xp = x ? earn(sc[5], x.xp) : 0;
+    if (!done.has(q)) { left += xp; for (const p of [st, en]) if (p?.zone != null) zones.add(zname(p.zone)); }
+    const loot = (rewards[q] || []).map((n) => { const g = gains[n]; if (g > best && !done.has(q)) best = g; return g ? `${n} (+${g})` : n; });
+    console.log(`${status.padEnd(6)} ${sc[1]} (${sc[5]}${sc[4] ? `, needs ${sc[4]}` : ""}) ${xp} XP`
+      + `${st ? `  from ${st.name}, ${zname(st.zone)}` : ""}${en ? `  to ${en.name}, ${zname(en.zone)}` : ""}`
+      + `${DUNGEON[sc[17]] ? `  [${DUNGEON[sc[17]]}]` : ""}${loot.length ? `\n         rewards: ${loot.join(", ")}` : ""}`);
+  }
+  console.log(`\n${steps.length} steps, ${steps.filter((q) => !done.has(q)).length} left: ${left} XP across ${[...zones].join(", ") || "-"}`
+    + `${best ? `; best reward +${best} over your gear` : ""}`);
+  process.exit(0);
+}
 
 const quests = [];
 for (const k of meta.keys()) {
