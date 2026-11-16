@@ -108,6 +108,16 @@ table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 10px;
 .opp h3{display:flex;gap:8px;align-items:baseline}.opp h3 .n{color:var(--text-muted);font-weight:400;font-size:12px}
 .opp .why{font-size:12px;color:var(--text-muted);margin-top:-4px}
 .opp tr[data-id]{cursor:pointer}.opp tr[data-id]:hover td{background:var(--surface-0)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid var(--line);white-space:nowrap}
+.pill.gap{color:var(--up);border-color:var(--up)}.pill.todo{color:var(--series-1);border-color:var(--series-1)}
+.pill.big,.pill.stale{color:var(--text-secondary)}.pill.tight,.pill.yours,.pill.empty{color:var(--text-muted)}
+.check td:nth-child(-n+3),.check th:nth-child(-n+3),.check th:last-child{text-align:left}.check td.plan{white-space:normal;text-align:left;max-width:460px}.check .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{font:inherit;font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface-0);color:var(--text-primary);cursor:pointer}
+.btn:hover{border-color:var(--series-1)}
+.lad{display:grid;grid-template-columns:auto 1fr auto;gap:3px 10px;font-size:12px;font-variant-numeric:tabular-nums;align-items:center}
+.lad .p{text-align:right;white-space:nowrap}.lad .q{color:var(--text-secondary);white-space:nowrap}
+.lad .bar{height:12px;border-radius:0 4px 4px 0;background:var(--text-muted);opacity:.45;min-width:2px}
+.lad .bar.buy{background:var(--series-1);opacity:1}.lad .mark{grid-column:1/-1;font-size:11px;color:var(--up);border-top:1px dashed var(--up);padding-top:2px}
 .flash{animation:flash 1.2s ease-out}@keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
 @media (max-width:760px){.app{grid-template-columns:1fr;height:auto}aside{max-height:60vh}}
 </style></head><body>
@@ -180,11 +190,34 @@ const SECTIONS=[
  ["sell","Sell what you hold","Things on your characters (bags, bank, mail) that sell above their usual today.",[["You have",r=>r.held],["Now",r=>money(r.now)],["Usual",r=>money(r.usual)],["vs usual",r=>pct(r.now/r.usual-1)],["After cut",r=>money(r.worth)]]],
  ["squeeze","Squeeze","Supply falling while the price rises: sellers can ask more.",[["Price",r=>pct(r.dp)],["Supply",r=>pct(r.dq)],["Now",r=>money(r.now)],["You have",r=>r.held||""]]],
  ["flood","Flood","Supply rising while the price falls: do not hold these; buy later.",[["Price",r=>pct(r.dp)],["Supply",r=>pct(r.dq)],["Now",r=>money(r.now)],["You have",r=>r.held||""]]],
- ["gaps","Gaps","From items you (or Point Blank Sniper) searched in the last few hours: buy the cheapest levels, relist 1c under the next level up. After the 5% cut and one 1s deposit.",[["Buy",r=>r.qty+" up to "+money(r.upTo)],["Costs",r=>money(r.cost)],["Relist at",r=>money(r.relist)],["Profit",r=>money(r.profit)],["Usual",r=>r.usual?money(r.usual):"–"],["Searched",r=>Math.max(0,Math.round((Date.now()/1000-r.at)/60))+"m ago"]]],
  ["swingy","Swingy","The widest range today on busy markets: buy near the low, list near the high.",[["Today low",r=>money(r.low)],["Today high",r=>money(r.high)],["Now",r=>money(r.now)],["Listed",r=>r.qty.toLocaleString()]]],
 ];
+// The worklist: today's picks and searched items, each with what its latest ladder says.
+const KIND={gap:"Good gap",big:"Too big",tight:"Tight",yours:"Yours",stale:"Search again",todo:"Search it",empty:"Empty"};
+const ago=(t)=>{if(!t)return"–";const m=Math.max(0,Math.round((Date.now()/1000-t)/60));return m<60?m+"m ago":Math.round(m/60)+"h ago"};
+function checkCard(){const list=OPPS.check||[];if(!list.length)return"";
+  const todo=list.filter(c=>c.kind==="todo"||c.kind==="stale"),good=list.filter(c=>c.kind==="gap");
+  return '<div class="card opp check"><h3>Check these ladders<span class="n">'+good.length+' good · '+todo.length+' to search</span></h3>'
+   +'<div class="why">Search each at the AH (open it in Auctionator or the Buy tab), then Save prices &amp; reload: every search records the item\u2019s whole ladder and the verdict updates here. Good gap = buy the cheap levels, relist 1c under the next one, after the 5% cut and a deposit, within your budget.</div>'
+   +'<div class="tools"><button class="btn" type="button" id="copyTodo"'+(todo.length?"":" disabled")+'>Copy the '+todo.length+' to search as an Auctionator list</button><span class="muted" id="copyNote"></span></div>'
+   +'<table><thead><tr><th>Verdict</th><th>Item</th><th>Why</th><th>Searched</th><th>Plan</th></tr></thead><tbody>'
+   +list.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td><td class="muted">'+ago(c.at)+'</td><td class="plan">'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td></tr>').join("")
+   +'</tbody></table></div>'}
+// Auctionator's shopping-list import: Name^"item";;;;;;;;;;;#;;^... (exact names).
+document.addEventListener("click",async(e)=>{if(!e.target.closest("#copyTodo"))return;
+  const names=(OPPS.check||[]).filter(c=>c.kind==="todo"||c.kind==="stale").map(c=>c.name);
+  const line="FBL check^"+names.map(n=>'"'+n.replace(/"/g,"")+'";;;;;;;;;;;#;;').join("^");
+  try{await navigator.clipboard.writeText(line);$("copyNote").textContent="Copied. In Auctionator: Shopping, Import, paste."}catch(err){prompt("Copy this, then Auctionator: Shopping, Import:",line)}});
+// One item's ladder: a bar per price level; the buy zone in color, a line where you'd relist.
+function ladderCard(it){const L=OPPS&&OPPS.ladders&&OPPS.ladders[it.id];if(!L)return'<div class="card"><h3>Price ladder</h3><div class="sub">Not searched yet: open this item at the AH, then Save prices &amp; reload.</div></div>';
+  const c=(OPPS.check||[]).find(x=>x.id===it.id),g=c&&c.gap,buyN=g&&c.verdict==="gap"?g.levels:0;
+  const lv=L.levels.slice(0,20),max=Math.max(...lv.map(l=>l.qty));let cum=0,rows="";
+  lv.forEach((l,i)=>{cum+=l.qty;if(buyN&&i===buyN)rows+='<div class="mark">relist at '+money(g.relist)+'</div>';
+    rows+='<div class="p">'+money(l.price)+'</div><div><div class="bar'+(i<buyN?" buy":"")+'" style="width:'+Math.max(1,l.qty/max*100)+'%"></div></div><div class="q">'+l.qty.toLocaleString()+(l.mine?" yours":"")+' <span class="muted">· '+cum.toLocaleString()+'</span></div>'});
+  return '<div class="card"><h3>Price ladder'+(c?' <span class="pill '+c.kind+'">'+KIND[c.kind]+'</span>':"")+'</h3><div class="sub">Searched '+ago(L.at)+' · '+L.total.toLocaleString()+' listed · each level: price, how many, running total'+(c?' · '+esc(c.text):"")+'</div><div class="lad">'+rows+'</div></div>'}
 function showOpps(){if(!OPPS){$("main").innerHTML=tabs()+'<div class="empty">No opportunities in this file: run node live.mjs, or rebuild with dashboard.mjs.</div>';return}
   $("main").innerHTML=tabs()+'<div class="sub muted">'+OPPS.busy.toLocaleString()+' busy items ('+OPPS.minListed+'+ listed) of '+OPPS.items.toLocaleString()+'; buys up to '+money(OPPS.budget)+'.</div>'
+   +checkCard()
    +SECTIONS.map(([key,title,why,cols])=>{const rows=(OPPS[key]||[]).slice(0,15);
      return '<div class="card opp"><h3>'+title+'<span class="n">'+(OPPS[key]||[]).length+'</span></h3><div class="why">'+why+'</div>'
       +(rows.length?'<table><thead><tr><th>Item</th>'+cols.map(c=>'<th>'+c[0]+'</th>').join("")+'</tr></thead><tbody>'
@@ -220,6 +253,7 @@ function show(it){if(!it){$("main").innerHTML=tabs()+'<div class="empty">Pick an
    +'<div class="tile"><div class="lab">Change</div><div class="val">'+c+'</div><div class="note">first to last day</div></div>'
    +'<div class="tile"><div class="lab">Listed</div><div class="val">'+it.listed.toLocaleString()+'</div><div class="note">quantity, latest day</div></div>'
    +'<div class="tile"><div class="lab">Snipe at or under</div><div class="val">'+(it.snipe>0?money(it.snipe):"–")+'</div><div class="note">'+(it.snipe>0?"80% of floor, clears 1s deposit + 2s":"too cheap to flip singly")+'</div></div></div>'
+   +ladderCard(it)
    +'<div class="card" id="pc"><h3>Lowest price by day</h3><div class="sub">Line: the day\\'s lowest listing. Band: lowest to highest cheapest listing seen that day.</div>'+chart(it,"price")+'<div class="tip"></div></div>'
    +'<div class="card" id="qc"><h3>Quantity listed by day</h3>'+chart(it,"qty")+'<div class="tip"></div></div>'
    +'<div class="card"><h3>Values</h3><table><thead><tr><th>Day</th><th>Lowest</th><th>Highest</th><th>Listed</th></tr></thead><tbody>'+it.h.map(d=>'<tr><td>'+d[0]+'</td><td>'+money(d[1])+'</td><td>'+money(d[2])+'</td><td>'+d[3].toLocaleString()+'</td></tr>').join("")+'</tbody></table></div>';
