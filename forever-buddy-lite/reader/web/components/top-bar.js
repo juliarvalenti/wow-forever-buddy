@@ -23,14 +23,14 @@ class TopBar extends Component {
     const selected = items.find((it) => it.id === prefs.selectedId);
     const inRound = round.step !== "done" && round.scanAt;
     const { picks, checked } = roundPicks(round, opps);
-    const updated = lastUpdate && ` · updated ${lastUpdate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    const updated = lastUpdate && `, updated ${lastUpdate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 
     return html`
       <nav class="top-bar" aria-label="Views">
         <button class="chip" type="button" data-view="opportunities" aria-pressed="${prefs.view === "opportunities"}">Opportunities</button>
         ${selected && html`<button class="chip" type="button" data-view="item" aria-pressed="${prefs.view === "item"}">${selected.n}</button>`}
-        ${inRound && html`<button class="btn" type="button" data-open-round>Round ${clockTime(round.scanAt)} · ${checked.length}/${picks.length} checked</button>`}
-        <span class="status"><span class="live-dot" aria-hidden="true"></span>live · scans through ${stamp}${updated}</span>
+        ${inRound && html`<button class="btn" type="button" data-open-round>Scan of ${clockTime(round.scanAt)}: ${checked.length} of ${picks.length} searched</button>`}
+        <span class="status"><span class="live-dot" aria-hidden="true"></span>Live. Prices through ${stamp}${updated}</span>
       </nav>`;
   }
 }

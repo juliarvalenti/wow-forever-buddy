@@ -5,9 +5,10 @@ import { Component, define } from "../lib/component.js";
 import { store } from "../lib/store.js";
 import { html } from "../lib/html.js";
 import { clockTime } from "../lib/format.js";
-import { roundPicks, byVerdict, auctionatorList } from "../lib/round.js";
+import { roundPicks, auctionatorList } from "../lib/round.js";
 import { copyText } from "../lib/api.js";
-import { verdictPill, planText, hideButton } from "./bits.js";
+import { hideButton } from "./bits.js";
+import { verdictGroups } from "./verdict-groups.js";
 
 class RoundDialog extends Component {
   watch(s) {
@@ -55,8 +56,8 @@ class RoundDialog extends Component {
     return html`
       <dialog class="round" aria-labelledby="round-title">
         <header class="round-head">
-          <h2 id="round-title">${round.step === "check" ? "New price scan" : "Ladders are in"}</h2>
-          <span class="muted">scan finished ${clockTime(round.scanAt)}</span>
+          <h2 id="round-title" tabindex="-1" autofocus>${round.step === "check" ? "New price scan" : "Ladders are in"}</h2>
+          <span class="muted">scan finished at ${clockTime(round.scanAt)}</span>
           <button class="btn" type="button" data-action="minimize">Minimize</button>
         </header>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${picks.length}" aria-valuenow="${checked.length}">
@@ -73,60 +74,30 @@ class RoundDialog extends Component {
   }
 }
 
-// Still searching: what's left first, then what's already in, with its verdict so far.
+// Still searching: what's left to open, then what's already in, grouped like the worklist.
 function checkStep(round, opps, picks, left) {
-  const done = picks.filter((row) => !left.includes(row)).sort(byVerdict);
+  const done = picks.filter((row) => !left.includes(row));
   return html`
     <ol class="steps">
-      <li><button class="btn primary" type="button" data-action="copy">Copy the ${left.length} to search</button> then in Auctionator: Shopping, Import, paste.</li>
-      <li>In that list, <b>click each item</b> so its listings open. Running the list search alone isn’t enough: only opening an item gives its ladder.</li>
-      <li>Save prices &amp; reload (or /fbl r). This page picks it up by itself.</li>
+      <li><button class="btn primary" type="button" data-action="copy">Copy ${left.length} to search</button> then in Auctionator: Shopping, Import, paste.</li>
+      <li>In that list, <b>click each item</b> so its listings open. Running the list search alone isn’t enough: only opening an item records its ladder.</li>
+      <li>Save prices &amp; reload, or type /fbl r. This page updates by itself.</li>
     </ol>
-    <p class="waiting"><span class="pulse" aria-hidden="true"></span>Waiting for your save…</p>
-    <table>
-      <tbody>
-        ${left.map(
-          (row) => html`
-            <tr>
-              <td><span class="muted" aria-label="not searched yet">○</span></td>
-              <td>${row.name}</td>
-              <td class="muted">${row.why.join(", ")}</td>
-              <td>${hideButton(row)}</td>
-            </tr>`,
-        )}
-        ${done.map(
-          (row) => html`
-            <tr data-id="${row.id}" class="clickable">
-              <td>${verdictPill(row.kind)}</td>
-              <td>${row.name}</td>
-              <td>${planText(row)}</td>
-              <td>${hideButton(row)}</td>
-            </tr>`,
-        )}
-      </tbody>
-    </table>
+    <p class="waiting"><span class="pulse" aria-hidden="true"></span>Waiting for your save</p>
+    ${left.length > 0 &&
+    html`<ul class="to-search">
+      ${left.map((row) => html`<li><span class="item-name">${row.name}</span><span class="muted">${row.why.join(", ")}</span>${hideButton(row)}</li>`)}
+    </ul>`}
+    ${verdictGroups(done, { searched: false })}
     ${done.length > 0 && html`<div class="tools"><button class="btn" type="button" data-action="results">Done searching: show results</button></div>`}`;
 }
 
 function resultsStep(checked, left) {
   return html`
-    <table>
-      <thead><tr><th>Verdict</th><th>Item</th><th>Plan</th><th></th></tr></thead>
-      <tbody>
-        ${[...checked].sort(byVerdict).map(
-          (row) => html`
-            <tr data-id="${row.id}" class="clickable">
-              <td>${verdictPill(row.kind)}</td>
-              <td>${row.name}</td>
-              <td>${planText(row)}</td>
-              <td>${hideButton(row)}</td>
-            </tr>`,
-        )}
-      </tbody>
-    </table>
-    ${left.length > 0 && html`<p class="muted">Not searched yet: ${left.map((row) => row.name).join(", ")}</p>`}
+    ${verdictGroups(checked, { searched: false })}
+    ${left.length > 0 && html`<p class="muted">Not searched: ${left.map((row) => row.name).join(", ")}</p>`}
     <div class="tools">
-      ${left.length > 0 && html`<button class="btn" type="button" data-action="copy">Copy the ${left.length} not searched</button>`}
+      ${left.length > 0 && html`<button class="btn" type="button" data-action="copy">Copy ${left.length} not searched</button>`}
       <button class="btn primary" type="button" data-action="finish">Finish round</button>
     </div>`;
 }

@@ -2,7 +2,8 @@
 
 import { Component, define } from "../lib/component.js";
 import { html } from "../lib/html.js";
-import { money, percent, count } from "../lib/format.js";
+import { percent, count } from "../lib/format.js";
+import { coins } from "../lib/coins.js";
 import "./ladder-chart.js";
 import "./day-chart.js";
 
@@ -13,12 +14,13 @@ class ItemView extends Component {
 
   render({ items, prefs }) {
     const item = items.find((it) => it.id === prefs.selectedId);
+    if (!items.length) return html`<p class="empty">Loading prices…</p>`;
     if (!item) return html`<p class="empty">Pick an item on the left.</p>`;
 
     return html`
       <header>
         <h2>${item.n}</h2>
-        <p class="sub">${item.k} · item ${item.id}</p>
+        <p class="sub">${item.k}, item ${item.id}</p>
       </header>
       <div class="tiles">${tiles(item)}</div>
       <ladder-chart></ladder-chart>
@@ -36,7 +38,7 @@ class ItemView extends Component {
         <table>
           <thead><tr><th>Day</th><th>Lowest</th><th>Highest</th><th>Listed</th></tr></thead>
           <tbody>
-            ${item.h.map(([day, low, high, listed]) => html`<tr><td>${day}</td><td>${money(low)}</td><td>${money(high)}</td><td>${count(listed)}</td></tr>`)}
+            ${item.h.map(([day, low, high, listed]) => html`<tr><td>${day}</td><td>${coins(low)}</td><td>${coins(high)}</td><td>${count(listed)}</td></tr>`)}
           </tbody>
         </table>
       </section>`;
@@ -56,11 +58,11 @@ function tiles(item) {
   const change = item.h.length > 1 ? html`<span class="${direction}">${percent(item.change)}</span>` : "–";
   const snipe = item.snipe > 0;
   return [
-    tile("Cheapest now", money(item.now), "latest scan"),
-    tile("Usual", money(item.usual), "median daily price"),
+    tile("Cheapest now", coins(item.now), "latest scan"),
+    tile("Usual", coins(item.usual), "median daily price"),
     tile("Change", change, "first to last day"),
     tile("Listed", count(item.listed), "quantity, latest day"),
-    tile("Snipe at or under", snipe ? money(item.snipe) : "–", snipe ? "80% of floor, clears 1s deposit + 2s" : "too cheap to flip singly"),
+    tile("Snipe at or under", snipe ? coins(item.snipe) : "–", snipe ? "80% of floor, clears 1s deposit + 2s" : "too cheap to flip singly"),
   ];
 }
 

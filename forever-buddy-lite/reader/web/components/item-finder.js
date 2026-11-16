@@ -5,7 +5,8 @@
 import { Component, define } from "../lib/component.js";
 import { store } from "../lib/store.js";
 import { html } from "../lib/html.js";
-import { money, percent, count } from "../lib/format.js";
+import { percent, count } from "../lib/format.js";
+import { coins } from "../lib/coins.js";
 import { filterItems, countBy, kindsByCount, TRENDS, SORTS } from "../lib/model.js";
 
 const MAX_ROWS = 400; // thousands of rows make typing sluggish
@@ -18,7 +19,7 @@ class ItemFinder extends Component {
   setup() {
     this.innerHTML = String(html`
       <header class="finder-head">
-        <h1>Auction House Prices</h1>
+        <h1>Auction house</h1>
         <p class="sub" data-ref="summary"></p>
       </header>
       <div class="filters">
@@ -73,14 +74,14 @@ class ItemFinder extends Component {
   }
 
   rendered({ items, prefs, stamp }) {
-    this.ref("summary").textContent = `Auctionator scans through ${stamp || "…"} · ${count(items.length)} named items`;
+    this.ref("summary").textContent = `${count(items.length)} items, prices through ${stamp || "…"}`;
 
     this.ref("kinds").innerHTML = String(html`${chips("kinds", kindsByCount(items), countBy(items, "k"), prefs.kinds)}`);
     this.ref("trends").innerHTML = String(html`${chips("trends", TRENDS, countBy(items, "trend"), prefs.trends)}`);
 
     const matches = filterItems(items, prefs);
     this.ref("count").textContent =
-      `${count(matches.length)} items` + (matches.length > MAX_ROWS ? ` · showing ${MAX_ROWS}` : "");
+      `${count(matches.length)} match` + (matches.length > MAX_ROWS ? `, first ${MAX_ROWS} shown` : "");
     this.ref("list").innerHTML = String(html`${matches.slice(0, MAX_ROWS).map((it) => itemRow(it, it.id === prefs.selectedId))}`);
   }
 }
@@ -101,8 +102,8 @@ function itemRow(item, selected) {
   return html`
     <div class="item-row" role="option" data-id="${item.id}" aria-selected="${selected}">
       <div class="name">${item.n}</div>
-      <div class="price">${money(item.now)}</div>
-      <div class="meta">${item.k} · ${count(item.listed)} listed</div>
+      <div class="price">${coins(item.now)}</div>
+      <div class="meta">${item.k}, ${count(item.listed)} listed</div>
       <div class="change ${direction}">${item.h.length > 1 ? percent(item.change) : "new"}</div>
     </div>`;
 }
