@@ -71,7 +71,7 @@ export function bestGap(levels, budget) {
 // tight (no gap; the wall is the real price), empty. With "sell" when you hold some: where to relist.
 export function ladderVerdict(levels, { budget, usual = null, held = 0 } = {}) {
   const m = money, out = {};
-  if (!levels.length) return { kind: "empty", text: "nothing listed" };
+  if (!levels.length) return { kind: "empty", text: held ? `nobody is selling: list at your price${usual ? ` (usual ${m(usual)})` : ""}` : "nothing listed" };
   // Where to sell: 1c under the first level near the wall (the biggest of the cheapest few), so a stray
   // cheap listing (buy that instead) doesn't set your price.
   const wallPrice = levels.slice(0, 6).reduce((a, b) => (b.qty > a.qty ? b : a)).price;
@@ -96,7 +96,8 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   const nameOf = (id) => nm.get(id) || known.get(id) || `item ${id}`;
   const rows = [];
   let lastDay = 0;
-  for (const data of Object.values(loadPrices().realms)) for (const [id, e] of Object.entries(data)) {
+  const prices = loadPrices();
+  for (const data of Object.values(prices.realms)) for (const [id, e] of Object.entries(data)) {
     if (id === "version" || !e?.h || !e.m) continue;
     const days = Object.keys(e.h).map(Number).sort((a, b) => a - b);
     lastDay = Math.max(lastDay, days.at(-1));
@@ -148,7 +149,7 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   }).sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (b.gap?.profit || 0) - (a.gap?.profit || 0));
   return {
     date: new Date(Date.UTC(2020, 0, 1) + lastDay * 864e5).toISOString().slice(0, 10),
-    items: rows.length, busy: busy.length, budget, minListed,
+    items: rows.length, busy: busy.length, budget, minListed, scanAt: prices.scanAt || null,
     buy: busy.map((r) => ({ ...r, profit: Math.floor(Math.min(r.usual, r.high) * CUT) - DEPOSIT - r.now }))
       .filter((r) => r.now <= r.usual * 0.8 && r.profit >= MIN_PROFIT && r.now <= budget)
       .sort((a, b) => b.profit * Math.log10(b.qty) - a.profit * Math.log10(a.qty)),
