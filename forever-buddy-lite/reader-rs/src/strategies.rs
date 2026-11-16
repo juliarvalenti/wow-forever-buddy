@@ -148,6 +148,14 @@ pub struct CheckItem {
     pub sell: Option<SellAdvice>,
 }
 
+/// The sorted sections the worklist draws its picks from.
+#[derive(Debug, Clone, Default)]
+pub struct RulePicks {
+    pub buy: Vec<Pick>,
+    pub sell: Vec<SellPick>,
+    pub swingy: Vec<ItemMarket>,
+}
+
 /// The latest ladder for one item.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LadderView {
@@ -236,21 +244,17 @@ fn descending(a: f64, b: f64) -> Ordering {
 
 /// Buy: a stray cheap listing on a busy market. The cheapest now is well under usual, and you'd
 /// resell at the usual price or today's high, whichever is lower (today's high shows the market
-/// didn't move: the cheap one is a stray, not a new price). Rows in input order; see `buy`.
-pub fn buy_candidates(rows: &[ItemMarket], budget: i64, cfg: &Config) -> Vec<Pick> {
-    rows.iter()
+/// didn't move: the cheap one is a stray, not a new price). Best first.
+pub fn buy(rows: &[ItemMarket], budget: i64, cfg: &Config) -> Vec<Pick> {
+    let mut picks: Vec<Pick> = rows
+        .iter()
         .filter(|r| r.is_busy(cfg))
         .map(|r| Pick { item: r.clone(), profit: cfg.proceeds(r.usual.min(r.high)) - cfg.deposit - r.now })
         .filter(|p| {
             let r = &p.item;
             r.now as f64 <= r.usual as f64 * cfg.cheap_factor && p.profit >= cfg.min_profit && r.now <= budget
         })
-        .collect()
-}
-
-/// `buy_candidates`, best first.
-pub fn buy(rows: &[ItemMarket], budget: i64, cfg: &Config) -> Vec<Pick> {
-    let mut picks = buy_candidates(rows, budget, cfg);
+        .collect();
     picks.sort_by(|a, b| descending(busy_weighted(a.profit, a.item.qty), busy_weighted(b.profit, b.item.qty)));
     picks
 }
@@ -372,16 +376,10 @@ pub fn latest_ladders(inputs: &MarketInputs, cfg: &Config) -> BTreeMap<u32, Ladd
 
 /// The worklist: what to search at the auction house today, and what each searched ladder says.
 ///
-/// Items come from the rules (the first few picks of buy, sell and swingy, in item order) and from
-/// recent searches. Each gets the verdict of its latest ladder; one older than `ladder_stale_hours`
-/// is marked stale, and so is one whose floor doesn't match the price scan.
-pub fn check_list(
-    inputs: &MarketInputs,
-    rows: &[ItemMarket],
-    ladders: &BTreeMap<u32, LadderView>,
-    budget: i64,
-    cfg: &Config,
-) -> Vec<CheckItem> {
+/// Items come from the rules (the best few of buy, sell and swingy) and from recent searches. Each
+/// gets the verdict of its latest ladder; one older than `ladder_stale_hours` is marked stale, and so
+/// is one whose floor doesn't match the price scan.
+pub fn check_list(inputs: &MarketInputs, rows: &[ItemMarket], picks: &RulePicks, ladders: &BTreeMap<u32, LadderView>, budget: i64, cfg: &Config) -> Vec<CheckItem> {
     // (id, name, reasons), in the order first wanted.
     let mut wanted: Vec<(u32, String, Vec<Reason>)> = Vec::new();
     fn want(wanted: &mut Vec<(u32, String, Vec<Reason>)>, id: u32, name: &str, why: Reason) {
@@ -391,14 +389,13 @@ pub fn check_list(
             None => wanted.push((id, name.to_string(), vec![why])),
         }
     }
-    // The JS took the first picks in item order, not the best ones; kept so the two agree.
-    for p in buy_candidates(rows, budget, cfg).iter().take(cfg.check_cheap) {
+    for p in picks.buy.iter().take(cfg.check_cheap) {
         want(&mut wanted, p.item.id, &p.item.name, Reason::CheapNow);
     }
-    for r in rows.iter().filter(|r| sells_high(r, cfg)).take(cfg.check_held) {
-        want(&mut wanted, r.id, &r.name, Reason::YouHoldIt);
+    for p in picks.sell.iter().take(cfg.check_held) {
+        want(&mut wanted, p.item.id, &p.item.name, Reason::YouHoldIt);
     }
-    for r in rows.iter().filter(|r| swings(r, budget, cfg)).take(cfg.check_swingy) {
+    for r in picks.swingy.iter().take(cfg.check_swingy) {
         want(&mut wanted, r.id, &r.name, Reason::Swingy);
     }
     let by_id: HashMap<u32, &ItemMarket> = rows.iter().map(|r| (r.id, r)).collect();
@@ -457,6 +454,8 @@ fn read_ladder(row: Option<&ItemMarket>, ladder: Option<&LadderView>, now: f64, 
 pub fn analyze(inputs: &MarketInputs, budget: i64, cfg: &Config) -> Analysis {
     let (rows, last_day, skipped_vendor) = market_rows(inputs);
     let ladders = latest_ladders(inputs, cfg);
+    let picks = RulePicks { buy: buy(&rows, budget, cfg), sell: sell(&rows, cfg), swingy: swingy(&rows, budget, cfg) };
+    let check = check_list(inputs, &rows, &picks, &ladders, budget, cfg);
     Analysis {
         date: crate::format::auctionator_date(last_day),
         items: rows.len(),
@@ -470,14 +469,14 @@ pub fn analyze(inputs: &MarketInputs, budget: i64, cfg: &Config) -> Analysis {
             .map(|(&id, h)| (id, h.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| inputs.names.of(id))))
             .collect(),
         scan_at: inputs.prices.scan_at,
-        buy: buy(&rows, budget, cfg),
         dips: dips(&rows, budget, cfg),
-        sell: sell(&rows, cfg),
         squeeze: squeeze(&rows, cfg),
         flood: flood(&rows, cfg),
-        swingy: swingy(&rows, budget, cfg),
         gaps: gaps(inputs, &rows, budget, cfg),
-        check: check_list(inputs, &rows, &ladders, budget, cfg),
+        buy: picks.buy,
+        sell: picks.sell,
+        swingy: picks.swingy,
+        check,
         ladders,
     }
 }
