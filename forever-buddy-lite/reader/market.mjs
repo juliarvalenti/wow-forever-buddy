@@ -13,10 +13,12 @@
 //   squeeze   supply falling while the price rises (someone's buying up; sellers can ask more)
 //   flood     supply rising while the price falls (don't hold these; buy later)
 //   swingy    the widest daily ranges on busy markets: room to buy the low and list near the high
+//   gaps      from price ladders (items searched at the AH, see Ladders.lua): buy the cheapest few levels,
+//             relist 1c under the next level up; only searches from the last few hours count
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodeCbor, loadPrices, load, call } from "./fbl.mjs";
+import { decodeCbor, loadPrices, load, call, parseLadder } from "./fbl.mjs";
 
 const DEPOSIT = 100, CUT = 0.95, MIN_PROFIT = 200;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
@@ -49,7 +51,23 @@ function holdings() {
   return { held, known };
 }
 
-export function analyze({ budget = 5, minListed = 100 } = {}) {
+// The best "buy the bottom k levels, relist under level k+1" on one ladder, or null. One deposit per
+// relisting; the profit has to be MIN_PROFIT and 15% of what you spend.
+export function bestGap(levels, budget) {
+  let best = null, qty = 0, cost = 0;
+  for (let k = 0; k < Math.min(levels.length - 1, 6); k++) {
+    if (levels[k].mine) break; // your own listing: buying it back makes no sense
+    qty += levels[k].qty; cost += levels[k].price * levels[k].qty;
+    if (cost > budget) break;
+    const relist = levels[k + 1].price - 1;
+    const profit = qty * Math.floor(relist * CUT) - cost - DEPOSIT;
+    if (profit >= MIN_PROFIT && profit >= cost * 0.15 && (!best || profit > best.profit))
+      best = { levels: k + 1, qty, cost, upTo: levels[k].price, relist, profit, next: levels[k + 1].qty };
+  }
+  return best;
+}
+
+export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   budget *= 10000;
   const nm = names(), { held, known } = holdings();
   const nameOf = (id) => nm.get(id) || known.get(id) || `item ${id}`;
@@ -67,6 +85,15 @@ export function analyze({ budget = 5, minListed = 100 } = {}) {
   const busy = rows.filter((r) => r.qty >= minListed && r.days >= 2);
   const moves = busy.filter((r) => r.qty0 > 0 && r.low0 > 0).map((r) => ({ ...r, dq: r.qty / r.qty0 - 1, dp: r.low / r.low0 - 1 }));
   const resell = (r) => Math.floor(r.usual * CUT) - DEPOSIT - r.now;
+  const usualOf = new Map(rows.map((r) => [r.id, r.usual]));
+  const gaps = [];
+  for (const [key, log] of Object.entries(load().ladders || {})) {
+    const last = log.at(-1); if (!last?.at || Date.now() / 1000 - last.at > ladderHours * 3600) continue;
+    const g = bestGap(parseLadder(last.levels), budget); if (!g) continue;
+    const id = +key.split(":")[0];
+    gaps.push({ ...g, id, key, name: nameOf(id), at: last.at, total: last.total, usual: usualOf.get(id) ?? null });
+  }
+  gaps.sort((a, b) => b.profit - a.profit);
   return {
     date: new Date(Date.UTC(2020, 0, 1) + lastDay * 864e5).toISOString().slice(0, 10),
     items: rows.length, busy: busy.length, budget, minListed,
@@ -79,6 +106,7 @@ export function analyze({ budget = 5, minListed = 100 } = {}) {
       .map((r) => ({ ...r, worth: Math.floor(r.now * CUT) * r.held })).sort((a, b) => b.worth - a.worth),
     squeeze: moves.filter((r) => r.dq <= -0.2 && r.dp >= 0.15).sort((a, b) => (b.dp - b.dq) - (a.dp - a.dq)),
     flood: moves.filter((r) => r.dq >= 0.3 && r.dp <= -0.15).sort((a, b) => (a.dp - a.dq) - (b.dp - b.dq)),
+    gaps,
     swingy: busy.filter((r) => r.high >= r.low * 1.5 && r.high - r.low >= 300 && r.low <= budget && r.high <= r.usual * 2)
       .sort((a, b) => (b.high - b.low) * Math.log10(b.qty) - (a.high - a.low) * Math.log10(a.qty)),
   };
@@ -96,6 +124,8 @@ export function report(a, top = 12) {
   show("SELL what you hold (above usual today)", a.sell, (r) => `${r.name.padEnd(32)} you have ${String(r.held).padStart(4)}  now ${g(r.now).padStart(8)}  usual ${g(r.usual).padStart(8)}  ${pct(r.now / r.usual - 1).padStart(5)}  ~${g(r.worth)} after cut`);
   show("SQUEEZE (supply down, price up: sellers can ask more)", a.squeeze, (r) => `${r.name.padEnd(32)} price ${pct(r.dp).padStart(5)}  supply ${pct(r.dq).padStart(5)}  now ${g(r.now)}${r.held ? `  (you have ${r.held})` : ""}`);
   show("FLOOD (supply up, price down: don't hold, buy later)", a.flood, (r) => `${r.name.padEnd(32)} price ${pct(r.dp).padStart(5)}  supply ${pct(r.dq).padStart(5)}  now ${g(r.now)}${r.held ? `  (you have ${r.held})` : ""}`);
+  const ago = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
+  show("GAPS (from searched ladders: buy the bottom, relist under the next level)", a.gaps, (r) => `${r.name.padEnd(32)} buy ${String(r.qty).padStart(3)} up to ${g(r.upTo).padStart(8)} (${g(r.cost)})  relist ${g(r.relist).padStart(8)}  +${g(r.profit)}${r.usual ? `  usual ${g(r.usual)}` : ""}  searched ${ago(r.at)}`);
   show("SWINGY (wide range today: buy near the low, list near the high)", a.swingy, (r) => `${r.name.padEnd(32)} today ${g(r.low).padStart(8)} to ${g(r.high).padStart(8)}  now ${g(r.now).padStart(8)}  listed ${r.qty}`);
   return out.join("\n");
 }

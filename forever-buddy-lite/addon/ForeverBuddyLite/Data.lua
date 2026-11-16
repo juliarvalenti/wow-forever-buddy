@@ -5,7 +5,7 @@
 --   schema = 2,                          -- the data's shape, not the addon version
 --   characters = { ["Name-Realm"] = { saved_at, addon_version, errors, identity, stats, gear, bags,
 --                  bank, mail, quests, skills, talents, spells, reputation, lockouts, buffs, professions } },
---   ah = {...}, items = {...}, trainers = {...},   -- account-wide; the reader reads these keys
+--   ah = {...}, items = {...}, trainers = {...}, ladders = {...},   -- account-wide; the reader reads these keys
 --   debug = { ah_error, ah_seen, items_missed, skill_info_keys },
 --   ui = { point = {...} },
 -- }

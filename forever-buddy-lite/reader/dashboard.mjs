@@ -180,6 +180,7 @@ const SECTIONS=[
  ["sell","Sell what you hold","Things on your characters (bags, bank, mail) that sell above their usual today.",[["You have",r=>r.held],["Now",r=>money(r.now)],["Usual",r=>money(r.usual)],["vs usual",r=>pct(r.now/r.usual-1)],["After cut",r=>money(r.worth)]]],
  ["squeeze","Squeeze","Supply falling while the price rises: sellers can ask more.",[["Price",r=>pct(r.dp)],["Supply",r=>pct(r.dq)],["Now",r=>money(r.now)],["You have",r=>r.held||""]]],
  ["flood","Flood","Supply rising while the price falls: do not hold these; buy later.",[["Price",r=>pct(r.dp)],["Supply",r=>pct(r.dq)],["Now",r=>money(r.now)],["You have",r=>r.held||""]]],
+ ["gaps","Gaps","From items you (or Point Blank Sniper) searched in the last few hours: buy the cheapest levels, relist 1c under the next level up. After the 5% cut and one 1s deposit.",[["Buy",r=>r.qty+" up to "+money(r.upTo)],["Costs",r=>money(r.cost)],["Relist at",r=>money(r.relist)],["Profit",r=>money(r.profit)],["Usual",r=>r.usual?money(r.usual):"–"],["Searched",r=>Math.max(0,Math.round((Date.now()/1000-r.at)/60))+"m ago"]]],
  ["swingy","Swingy","The widest range today on busy markets: buy near the low, list near the high.",[["Today low",r=>money(r.low)],["Today high",r=>money(r.high)],["Now",r=>money(r.now)],["Listed",r=>r.qty.toLocaleString()]]],
 ];
 function showOpps(){if(!OPPS){$("main").innerHTML=tabs()+'<div class="empty">No opportunities in this file: run node live.mjs, or rebuild with dashboard.mjs.</div>';return}

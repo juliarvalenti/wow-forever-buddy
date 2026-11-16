@@ -140,7 +140,7 @@ export function findFiles(env = process.env) {
 }
 
 export function load(env = process.env) {
-  const chars = {}, trainers = {}, items = {};
+  const chars = {}, trainers = {}, items = {}, ladders = {};
   let ah;
   const files = findFiles(env);
   for (const f of files) {
@@ -151,13 +151,26 @@ export function load(env = process.env) {
       try { ah = { ...unpackAh(db.ah), error }; } catch (e) { ah = { at: db.ah.at, error: e.message }; }
     }
     Object.assign(items, db.items || {});
+    // Price ladders from item searches: { key: [{ at, total, levels: "price:qty;...", "*" = yours }] }, newest last.
+    for (const [key, log] of Object.entries(db.ladders || {})) {
+      const list = Array.isArray(log) ? log : Object.values(log);
+      if (!ladders[key] || (list.at(-1)?.at || 0) > (ladders[key].at(-1)?.at || 0)) ladders[key] = list;
+    }
     for (const [npc, t] of Object.entries(db.trainers || {})) if (!trainers[npc] || (t.at || 0) > (trainers[npc].at || 0)) trainers[npc] = t;
     const written = fs.statSync(f).mtime.toISOString();
     for (const [key, c] of Object.entries(db.characters || {})) {
       if (!chars[key] || (c.saved_at || 0) > (chars[key].saved_at || 0)) chars[key] = { ...c, _key: key, _file: f, _written: written };
     }
   }
-  return { files, chars, ah, trainers, items };
+  return { files, chars, ah, trainers, items, ladders };
+}
+
+// "price:qty;price:qty*" -> [{ price, qty, mine }], cheapest first.
+export function parseLadder(s) {
+  return String(s || "").split(";").filter(Boolean).map((p) => {
+    const m = /^(\d+):(\d+)(\*?)$/.exec(p);
+    return m && { price: +m[1], qty: +m[2], mine: !!m[3] };
+  }).filter(Boolean);
 }
 
 // The addon stores the AH items packed: CBOR, deflated, base64
