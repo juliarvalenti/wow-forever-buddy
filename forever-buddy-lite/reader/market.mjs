@@ -16,6 +16,7 @@
 //   gaps      from price ladders (items searched at the AH, see Ladders.lua): buy the cheapest few levels,
 //             relist 1c under the next level up; only searches from the last few hours count
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeCbor, loadPrices, load, call, parseLadder } from "./fbl.mjs";
@@ -24,18 +25,35 @@ const DEPOSIT = 100, CUT = 0.95, MIN_PROFIT = 200;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
 
 // Item names (QuestieDB, then the gear scan and your characters' items), read once.
-let questieNames;
+let questieNames, vendorItems;
 function names() {
   if (!questieNames) {
-    questieNames = new Map();
+    questieNames = new Map(); vendorItems = new Set();
     const toc = path.join(process.env.QUESTIEDB_DIR || "C:/Program Files (x86)/World of Warcraft/_forever_/Interface/AddOns/QuestieDB", "QuestieDB_Forever.toc");
     if (fs.existsSync(toc)) for (const l of fs.readFileSync(toc, "utf8").split(/\r?\n/)) {
+      // Field 14 lists the NPCs that sell it. Limited-supply sellers (Darkmoon Faire leather, a herbalist's
+      // few Peacebloom) are one to a handful; unlimited goods (water, thread, vials, arrows, spices) dozens.
+      const vm = /^## X-Item-(\d+)-14: (.*)$/.exec(l);
+      if (vm) { try { const v = decodeCbor(Buffer.from(vm[2], "base64")); if (Array.isArray(v) && v.length >= 15) vendorItems.add(+vm[1]); } catch {} continue; }
       const m = /^## X-Item-(\d+)-S: (.*)$/.exec(l); if (!m) continue;
       const v = decodeCbor(Buffer.from(m[2], "base64"))[1];
       questieNames.set(+m[1], Buffer.isBuffer(v) ? v.toString("utf8") : v);
     }
   }
   return questieNames;
+}
+
+// Items you've hidden (the dashboard's Hide button): never suggested. A JSON file next to the scan archive.
+export const hiddenFile = () => process.env.FBL_HIDDEN || path.join(os.homedir(), "Documents", "FBL Market", "hidden.json");
+export function loadHidden() {
+  try { const j = JSON.parse(fs.readFileSync(hiddenFile(), "utf8")); return new Map(Object.entries(j.items || {}).map(([k, v]) => [+k, v])); } catch { return new Map(); }
+}
+export function setHidden(id, name, on) {
+  const h = loadHidden();
+  if (on) h.set(+id, { name: name || null, at: new Date().toISOString() }); else h.delete(+id);
+  fs.mkdirSync(path.dirname(hiddenFile()), { recursive: true });
+  fs.writeFileSync(hiddenFile(), JSON.stringify({ items: Object.fromEntries(h) }, null, 2));
+  return h;
 }
 
 // What your characters hold to sell (bags, bank, mail; not worn, not soulbound), and names they know.
@@ -92,13 +110,16 @@ export function ladderVerdict(levels, { budget, usual = null, held = 0 } = {}) {
 
 export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   budget *= 10000;
-  const nm = names(), { held, known } = holdings();
+  const nm = names(), { held, known } = holdings(), hidden = loadHidden();
+  let skippedVendor = 0;
   const nameOf = (id) => nm.get(id) || known.get(id) || `item ${id}`;
   const rows = [];
   let lastDay = 0;
   const prices = loadPrices();
   for (const data of Object.values(prices.realms)) for (const [id, e] of Object.entries(data)) {
-    if (id === "version" || !e?.h || !e.m) continue;
+    if (id === "version" || !e?.h || !e.m || hidden.has(+id)) continue;
+    // Sold by a vendor: unlimited at a fixed price, so the AH can't be traded (water, thread, vials).
+    if (vendorItems.has(+id)) { skippedVendor++; continue; }
     const days = Object.keys(e.h).map(Number).sort((a, b) => a - b);
     lastDay = Math.max(lastDay, days.at(-1));
     const lows = days.map((d) => e.l?.[d] ?? e.h[d]), highs = days.map((d) => e.h[d]), qty = days.map((d) => e.a?.[d] ?? 0);
@@ -135,7 +156,7 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   for (const r of buyList.slice(0, 12)) want(r, "cheap now");
   for (const r of rows.filter((r) => r.held && r.days >= 2 && r.now >= r.usual * 1.15 && r.qty >= 20).slice(0, 6)) want(r, "you hold it");
   for (const r of busy.filter((r) => r.high >= r.low * 1.5 && r.high - r.low >= 300 && r.low <= budget && r.high <= r.usual * 2).slice(0, 6)) want(r, "swingy");
-  for (const id of Object.keys(ladders).map(Number)) if (Date.now() / 1000 - ladders[id].at < 6 * 3600 && !check.has(id)) want({ id, name: byId.get(id)?.name || nameOf(id) }, "searched");
+  for (const id of Object.keys(ladders).map(Number)) if (Date.now() / 1000 - ladders[id].at < 6 * 3600 && !check.has(id) && !hidden.has(id) && !vendorItems.has(id)) want({ id, name: byId.get(id)?.name || nameOf(id) }, "searched");
   const ORDER = { gap: 0, todo: 1, stale: 2, big: 3, yours: 4, tight: 5, empty: 6 };
   const checkList = [...check.values()].map((c) => {
     const r = byId.get(c.id), L = ladders[c.id];
@@ -149,7 +170,8 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
   }).sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (b.gap?.profit || 0) - (a.gap?.profit || 0));
   return {
     date: new Date(Date.UTC(2020, 0, 1) + lastDay * 864e5).toISOString().slice(0, 10),
-    items: rows.length, busy: busy.length, budget, minListed, scanAt: prices.scanAt || null,
+    items: rows.length, busy: busy.length, budget, minListed, skippedVendor,
+    hidden: [...hidden].map(([id, v]) => ({ id, name: v.name || nameOf(id) })), scanAt: prices.scanAt || null,
     buy: busy.map((r) => ({ ...r, profit: Math.floor(Math.min(r.usual, r.high) * CUT) - DEPOSIT - r.now }))
       .filter((r) => r.now <= r.usual * 0.8 && r.profit >= MIN_PROFIT && r.now <= budget)
       .sort((a, b) => b.profit * Math.log10(b.qty) - a.profit * Math.log10(a.qty)),

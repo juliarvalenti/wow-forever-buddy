@@ -127,6 +127,8 @@ table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 10px;
 .flow .wait b{width:8px;height:8px;border-radius:50%;background:var(--series-1);animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
 .btn.primary{background:var(--series-1);border-color:var(--series-1);color:#fff}.btn[disabled]{opacity:.5;cursor:default}
+.hide{font:inherit;font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:none;color:var(--text-muted);cursor:pointer}
+.hide:hover{color:var(--down);border-color:var(--down)}
 .flash{animation:flash 1.2s ease-out}@keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
 @media (max-width:760px){.app{grid-template-columns:1fr;height:auto}aside{max-height:60vh}}
 </style></head><body>
@@ -210,9 +212,17 @@ function checkCard(){const list=OPPS.check||[];if(!list.length)return"";
   return '<div class="card opp check"><h3>Check these ladders<span class="n">'+good.length+' good · '+todo.length+' to search</span></h3>'
    +'<div class="why">Search each at the AH (open it in Auctionator or the Buy tab), then Save prices &amp; reload: every search records the item\u2019s whole ladder and the verdict updates here. Good gap = buy the cheap levels, relist 1c under the next one, after the 5% cut and a deposit, within your budget.</div>'
    +'<div class="tools"><button class="btn" type="button" id="copyTodo"'+(todo.length?"":" disabled")+'>Copy the '+todo.length+' to search as an Auctionator list</button><span class="muted" id="copyNote"></span></div>'
-   +'<table><thead><tr><th>Verdict</th><th>Item</th><th>Why</th><th>Searched</th><th>Plan</th></tr></thead><tbody>'
-   +list.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td><td class="muted">'+ago(c.at)+'</td><td class="plan">'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td></tr>').join("")
-   +'</tbody></table></div>'}
+   +'<table><thead><tr><th>Verdict</th><th>Item</th><th>Why</th><th>Searched</th><th>Plan</th><th></th></tr></thead><tbody>'
+   +list.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td><td class="muted">'+ago(c.at)+'</td><td class="plan">'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td><td>'+hideBtn(c)+'</td></tr>').join("")
+   +'</tbody></table>'+hiddenNote()+'</div>'}
+// Hide: never suggest this item again (live.mjs keeps the list). Only when served live.
+const hideBtn=(c)=>LIVE?'<button class="hide" type="button" data-hide="'+c.id+'" data-name="'+esc(c.name)+'" title="Never suggest this item">Hide</button>':"";
+function hiddenNote(){const h=OPPS.hidden||[];const v=OPPS.skippedVendor?OPPS.skippedVendor.toLocaleString()+" items that vendors sell without limit left out (water, thread, vials, arrows). ":"";
+  return '<div class="muted" style="font-size:12px">'+v+(h.length?'Hidden: '+h.map(x=>esc(x.name)+(LIVE?' <button class="hide" type="button" data-unhide="'+x.id+'" data-name="'+esc(x.name)+'">Show</button>':"")).join(" \u00B7 "):"")+'</div>'}
+async function setHide(id,name,on){if(!LIVE)return;try{await fetch("/hide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,name,on})})}catch(e){}}
+document.addEventListener("click",(e)=>{const b=e.target.closest("[data-hide],[data-unhide]");if(!b)return;e.stopPropagation();
+  const on=b.hasAttribute("data-hide"),id=+(b.dataset.hide||b.dataset.unhide);b.disabled=true;b.textContent=on?"Hiding\u2026":"Showing\u2026";
+  if(on)flow.picks=flow.picks.filter(x=>x!==id),saveFlow();setHide(id,b.dataset.name,on)},true);
 // Auctionator's shopping-list import: Name^"item";;;;;;;;;;;#;;^... (exact names).
 document.addEventListener("click",async(e)=>{if(!e.target.closest("#copyTodo"))return;
   const names=(OPPS.check||[]).filter(c=>c.kind==="todo"||c.kind==="stale").map(c=>c.name);
@@ -254,10 +264,10 @@ function drawFlow(){const el=$("flow"),bar=$("flowbar");if(!el)return;
      +'<li>In that list, <b>click each item</b> so its listings open. Running the list search alone isn\u2019t enough: only opening an item gives its ladder.</li>'
      +'<li>Save prices &amp; reload (or /fbl r). This page picks it up by itself.</li></ol>'
      +'<div class="wait"><b></b>Waiting for your save\u2026</div>'
-     +'<table><tbody>'+picks.map(c=>'<tr><td>'+(checkedNow(c.id)?'<span class="up">\u2713</span>':'<span class="muted">\u25CB</span>')+'</td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td></tr>').join("")+'</tbody></table>'}
+     +'<table><tbody>'+picks.map(c=>'<tr><td>'+(checkedNow(c.id)?'<span class="up">\u2713</span>':'<span class="muted">\u25CB</span>')+'</td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td><td>'+hideBtn(c)+'</td></tr>').join("")+'</tbody></table>'}
   else{const sorted=[...done].sort((a,b)=>(FORDER[a.kind]??9)-(FORDER[b.kind]??9)||(b.gap&&b.gap.profit||0)-(a.gap&&a.gap.profit||0));
-    h+='<table><thead><tr><th>Verdict</th><th>Item</th><th>Plan</th></tr></thead><tbody>'
-     +sorted.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td>'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td></tr>').join("")+'</tbody></table>'
+    h+='<table><thead><tr><th>Verdict</th><th>Item</th><th>Plan</th><th></th></tr></thead><tbody>'
+     +sorted.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td>'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td><td>'+hideBtn(c)+'</td></tr>').join("")+'</tbody></table>'
      +(left.length?'<div class="muted">Not searched yet: '+left.map(c=>esc(c.name)).join(", ")+'</div>':"")
      +'<div class="tools">'+(left.length?'<button class="btn" type="button" data-flow="copy">Copy the '+left.length+' not searched</button>':"")+'<button class="btn primary" type="button" data-flow="finish">Finish round</button></div>'}
   el.innerHTML=h+'</div>'}

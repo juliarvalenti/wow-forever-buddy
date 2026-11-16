@@ -10,7 +10,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import crypto from "node:crypto";
 import { loadPrices, findFiles } from "./fbl.mjs";
-import { analyze, report, money } from "./market.mjs";
+import { analyze, report, money, setHidden } from "./market.mjs";
 import { buildItems, page, openInBrowser } from "./dashboard.mjs";
 
 const argv = process.argv.slice(2);
@@ -79,6 +79,20 @@ http.createServer((req, res) => {
     res.write(": hello\n\n");
     clients.add(res);
     req.on("close", () => clients.delete(res));
+    return;
+  }
+  if (req.url === "/hide" && req.method === "POST") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", () => {
+      try {
+        const { id, name, on } = JSON.parse(body);
+        if (!Number.isInteger(id)) throw new Error("bad id");
+        setHidden(id, typeof name === "string" ? name.slice(0, 100) : null, !!on);
+        rebuild(`${on ? "hid" : "unhid"} ${name || id}`);
+        res.writeHead(200, { "Content-Type": "application/json" }).end("{}");
+      } catch (e) { res.writeHead(400).end(e.message); }
+    });
     return;
   }
   if (req.url === "/data.json") { res.writeHead(200, { "Content-Type": "application/json" }).end(state.json); return; }
