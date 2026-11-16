@@ -61,6 +61,8 @@ function ns.statusLines()
     for _, t in pairs(db.trainers or {}) do
         trainersAt = math.max(trainersAt, t.at or 0)
     end
+    local nLadders, laddersAt = ns.ladderCount()
+    add("Price ladders", nLadders > 0 and string.format("%s, %d items", seen(laddersAt), nLadders) or GREY .. "search an item at the AH|r")
     add("Trainers", count(db.trainers) > 0 and string.format("%s, %d seen", seen(trainersAt), count(db.trainers)) or nil)
     local m = ns.market or {}
     add("Prices", m.state == "scanning" and string.format("scanning, %d%%", math.floor((m.progress or 0) * 100))

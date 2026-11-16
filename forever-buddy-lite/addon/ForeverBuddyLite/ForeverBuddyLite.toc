@@ -11,6 +11,7 @@ Data.lua
 Snapshot.lua
 Professions.lua
 AuctionHouse.lua
+Ladders.lua
 QuestItems.lua
 Auras.lua
 UI.lua

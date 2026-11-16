@@ -43,7 +43,7 @@ function archive() {
   return file;
 }
 
-let previousBuys = new Set();
+let previousBuys = new Set(), previousGaps = new Set();
 function rebuild(reason) {
   const t0 = Date.now();
   const { items, stamp } = buildItems();
@@ -54,6 +54,9 @@ function rebuild(reason) {
   const fresh = opps.buy.filter((r) => !previousBuys.has(r.id));
   previousBuys = new Set(opps.buy.map((r) => r.id));
   console.log(`\n===== ${time()} · ${reason} · ${items.length} items in ${Date.now() - t0} ms${saved ? ` · archived ${path.basename(saved)}` : ""}`);
+  const freshGaps = opps.gaps.filter((r) => !previousGaps.has(`${r.key}@${r.at}`));
+  previousGaps = new Set(opps.gaps.map((r) => `${r.key}@${r.at}`));
+  if (freshGaps.length) console.log(`NEW GAPS: ${freshGaps.slice(0, 6).map((r) => `${r.name}: buy ${r.qty} up to ${money(r.upTo)}, relist ${money(r.relist)} (+${money(r.profit)})`).join("; ")}`);
   if (fresh.length) console.log(`NEW BUYS: ${fresh.slice(0, 6).map((r) => `${r.name} at ${money(r.now)} (usual ${money(r.usual)}, +${money(r.profit)} each)`).join("; ")}`);
   console.log(report(opps, 8));
   for (const res of clients) res.write(`event: update\ndata: ${Date.now()}\n\n`);
