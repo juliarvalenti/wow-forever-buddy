@@ -88,13 +88,14 @@ local ACTIONS = {
     { "Save & Reload", function() ns.run("r") end },
     { "Scan AH", function() ns.run("ah") end, function() return ns.ahIsOpen() end },
     { "Find quest gear", function() ns.run("items") end },
+    { "Price scan", function() ns.run("market") end, function() return ns.ahIsOpen() or ns.marketReady() end },
     { "Buff reminders", function() ns.run("wa") end, function(inCombat) return ns.aurasAvailable() and not inCombat end },
     { "Rogue bars", function() ns.run("wa", "bars") end, function(inCombat) return ns.aurasAvailable() and not inCombat end },
 }
 
 local function build()
     frame = CreateFrame("Frame", "ForeverBuddyLiteFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(380, 330)
+    frame:SetSize(380, 360)
     frame:SetFrameStrata("DIALOG")
     local point = ns.db and ns.db.ui.point
     if type(point) == "table" and point[1] then

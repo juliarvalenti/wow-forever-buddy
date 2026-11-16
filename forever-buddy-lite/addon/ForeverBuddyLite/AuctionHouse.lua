@@ -389,3 +389,55 @@ end)
 
 ns.command({ name = "ah", aliases = { "scan" }, help = "with the auction house open: scan every weapon and armor listing",
     fn = scanStart })
+
+-- /fbl market: one key for a price scan. First press starts Auctionator's full
+-- scan (its own button's code: browse or replicate, as its settings say); when
+-- Auctionator says its prices are in, the next press saves and reloads, which
+-- writes Auctionator's data and ours to disk. The game only sends the AH our
+-- requests from a key or click, so this stays one action per press.
+local marketReady = false
+
+local function auctionatorScan()
+    local A = _G.Auctionator
+    local state = A and A.State
+    if not state then
+        say("Auctionator isn't loaded.")
+        return
+    end
+    local replicate = A.Config and A.Config.Get and A.Config.Options and read(A.Config.Get, A.Config.Options.REPLICATE_SCAN)
+    local frame = replicate and state.FullScanFrameRef or state.IncrementalScanFrameRef
+    if not frame or not frame.InitiateScan then
+        say("Auctionator's scanner isn't ready; open its tab in the auction house once.")
+        return
+    end
+    frame:InitiateScan()
+    say("Auctionator scan started. Press again when it says it's done, to save.")
+end
+
+ns.on("PLAYER_LOGIN", function()
+    local api = _G.Auctionator and Auctionator.API and Auctionator.API.v1
+    if api and api.RegisterForDBUpdate then
+        pcall(api.RegisterForDBUpdate, "ForeverBuddyLite", function()
+            if not marketReady then
+                marketReady = true
+                say("Auctionator's prices are in. /fbl market again (or Save & Reload) writes them to disk.")
+                ns.fire("changed")
+            end
+        end)
+    end
+end)
+
+function ns.marketReady()
+    return marketReady
+end
+
+ns.command({ name = "market", aliases = { "mk" }, help = "one key for prices: start Auctionator's scan, press again when done to save",
+    fn = function()
+        if marketReady then
+            ns.run("r")
+        elseif ns.ahIsOpen() then
+            auctionatorScan()
+        else
+            say("open the auction house first.")
+        end
+    end })
