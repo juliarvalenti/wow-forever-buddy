@@ -68,7 +68,9 @@ local function commodity(itemID)
     store(tostring(itemID), rows)
 end
 
--- Other items (gear, bags): per item and suffix; price per unit of a stack.
+-- Other items (gear, bags): per item and suffix. A row groups identical
+-- auctions: buyoutAmount is the price of one (as Auctionator reads it),
+-- quantity how many.
 local function item(itemKey)
     local A = C_AuctionHouse
     local n = A.GetNumItemSearchResults(itemKey) or 0
@@ -76,7 +78,7 @@ local function item(itemKey)
     for i = 1, n do
         local r = A.GetItemSearchResultInfo(itemKey, i)
         if r and r.buyoutAmount and r.quantity and r.quantity > 0 then
-            rows[#rows + 1] = { price = math.floor(r.buyoutAmount / r.quantity), qty = r.quantity, mine = r.containsOwnerItem }
+            rows[#rows + 1] = { price = r.buyoutAmount, qty = r.quantity, mine = r.containsOwnerItem }
         end
     end
     local suffix = itemKey.itemSuffix or 0
