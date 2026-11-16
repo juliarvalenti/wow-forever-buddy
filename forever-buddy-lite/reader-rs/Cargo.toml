@@ -1,0 +1,21 @@
+[package]
+name = "fbl-reader"
+version = "0.1.0"
+edition = "2021"
+description = "Reads ForeverBuddy Lite and Auctionator SavedVariables: character tools, market picks and a backtest (a Rust port of forever-buddy-lite/reader)."
+publish = false
+
+[lib]
+name = "fbl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fbl-rs"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+flate2 = "1"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

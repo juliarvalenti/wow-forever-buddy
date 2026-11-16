@@ -59,3 +59,17 @@ jobs:
       # Core.lua carries a hash of the addon's code, shown in /fbl; it must match the code.
       - name: Build hash is current (node forever-buddy-lite/addon/stamp.mjs to update)
         run: node forever-buddy-lite/addon/stamp.mjs --check
+
+  # The experimental Rust port of the reader: its tests, then the same output as the Node reader.
+  reader-rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forever-buddy-lite/reader-rs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: cargo --version && cargo test --locked
+      - name: Same output as the Node reader
+        run: cargo build --locked && node parity/parity.mjs
