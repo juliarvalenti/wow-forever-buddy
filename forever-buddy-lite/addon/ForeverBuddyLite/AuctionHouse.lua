@@ -389,3 +389,95 @@ end)
 
 ns.command({ name = "ah", aliases = { "scan" }, help = "with the auction house open: scan every weapon and armor listing",
     fn = scanStart })
+
+-- /fbl market: one key for a price scan. First press starts Auctionator's full
+-- scan (its own button's code: browse or replicate, as its settings say); when
+-- Auctionator says its prices are in, the next press saves and reloads, which
+-- writes Auctionator's data and ours to disk. The game only sends the AH our
+-- requests from a key or click, so this stays one action per press.
+-- ns.market is the state the window shows: idle, scanning (with progress), ready.
+ns.market = { state = "idle", progress = 0 }
+
+local function setMarket(state, progress)
+    ns.market.state, ns.market.progress = state, progress or ns.market.progress
+    if state == "ready" then
+        ns.market.at = now()
+    end
+    ns.fire("changed")
+end
+
+function ns.marketReady()
+    return ns.market.state == "ready"
+end
+
+-- When Auctionator last scanned, by its own record (browse or replicate).
+function ns.lastPriceScan()
+    local s = _G.Auctionator and Auctionator.SavedState
+    return ns.market.at or (s and (s.TimeOfLastBrowseScan or s.TimeOfLastReplicateScan))
+end
+
+local function auctionatorScan()
+    local A = _G.Auctionator
+    local state = A and A.State
+    if not state then
+        say("Auctionator isn't loaded.")
+        return
+    end
+    local replicate = A.Config and A.Config.Get and A.Config.Options and read(A.Config.Get, A.Config.Options.REPLICATE_SCAN)
+    local frame = replicate and state.FullScanFrameRef or state.IncrementalScanFrameRef
+    if not frame or not frame.InitiateScan then
+        say("Auctionator's scanner isn't ready; open its tab in the auction house once.")
+        return
+    end
+    frame:InitiateScan()
+    setMarket("scanning", 0)
+end
+
+-- Auctionator's event bus: start, progress, done (prices written to its database), failed.
+ns.on("PLAYER_LOGIN", function()
+    local A = _G.Auctionator
+    if not (A and A.EventBus and A.IncrementalScan and A.IncrementalScan.Events) then
+        return
+    end
+    local I, F = A.IncrementalScan.Events, A.FullScan and A.FullScan.Events or {}
+    local events = {}
+    for _, e in ipairs({ I.ScanStart, I.ScanProgress, I.PricesProcessed, I.ScanFailed, F.ScanStart, F.ScanProgress, F.ScanComplete, F.ScanFailed }) do
+        if e then
+            events[#events + 1] = e
+        end
+    end
+    pcall(A.EventBus.Register, A.EventBus, {
+        ReceiveEvent = function(_, event, progress)
+            if event == I.ScanStart or event == F.ScanStart then
+                setMarket("scanning", 0)
+            elseif event == I.ScanProgress or event == F.ScanProgress then
+                setMarket("scanning", ns.num(progress) or ns.market.progress)
+            elseif event == I.PricesProcessed or event == F.ScanComplete then
+                setMarket("ready", 1)
+                say("Auctionator's prices are in. Press again (or Save prices & reload) to write them to disk.")
+            elseif event == I.ScanFailed or event == F.ScanFailed then
+                setMarket("idle", 0)
+                say("Auctionator's scan failed; try again in a moment.")
+            end
+        end,
+    }, events)
+end)
+
+ns.on("AUCTION_HOUSE_CLOSED", function()
+    if ns.market.state == "scanning" then
+        setMarket("idle", 0) -- Auctionator stops when the AH closes
+    end
+end)
+
+ns.command({ name = "market", aliases = { "mk" }, help = "one key for prices: start Auctionator's scan, press again when done to save",
+    fn = function()
+        if ns.market.state == "ready" then
+            ns.run("r")
+        elseif ns.market.state == "scanning" then
+            say(string.format("still scanning (%d%%).", math.floor((ns.market.progress or 0) * 100)))
+        elseif ns.ahIsOpen() then
+            auctionatorScan()
+        else
+            say("open the auction house first.")
+        end
+    end })
