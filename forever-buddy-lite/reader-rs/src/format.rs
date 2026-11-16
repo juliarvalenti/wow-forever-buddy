@@ -1,41 +1,38 @@
 //! Formatting shared by the commands and the report: money, dates and ages.
 
-use crate::json::{js_round, number_string};
 use serde_json::{json, Value};
+
+/// Whole copper, split: (sign, gold, silver, copper).
+fn coins(copper: f64) -> (&'static str, i64, i64, i64) {
+    let c = copper.round() as i64;
+    let sign = if c < 0 { "-" } else { "" };
+    let c = c.abs();
+    (sign, c / 10_000, c % 10_000 / 100, c % 100)
+}
 
 /// Copper as "1g 2s 3c", always all three parts (the character commands' style).
 pub fn money_long(copper: f64) -> String {
-    let gold = (copper / 10000.0).floor();
-    let silver = ((copper % 10000.0) / 100.0).floor();
-    let rest = copper % 100.0;
-    format!("{}g {}s {}c", number_string(gold), number_string(silver), number_string(rest))
-}
-
-/// `money_long` for an optional amount: none stays none (absent in JSON).
-pub fn money_long_opt(copper: Option<f64>) -> Option<String> {
-    copper.map(money_long)
+    let (sign, g, s, c) = coins(copper);
+    format!("{sign}{g}g {s}s {c}c")
 }
 
 /// Copper as briefly as it reads: "2g 5s", "5s 07c", "42c" (the market report's style; copper is
 /// left off gold amounts, it doesn't matter at that size).
 pub fn money_short(copper: f64) -> String {
-    let c = js_round(copper);
-    let gold = (c / 1e4).floor();
-    let silver = ((c % 1e4) / 100.0).floor();
-    let rest = c % 100.0;
-    if gold != 0.0 {
-        format!("{}g {}s", number_string(gold), number_string(silver))
-    } else if silver != 0.0 {
-        format!("{}s {:0>2}c", number_string(silver), number_string(rest))
+    let (sign, g, s, c) = coins(copper);
+    if g != 0 {
+        format!("{sign}{g}g {s}s")
+    } else if s != 0 {
+        format!("{sign}{s}s {c:02}c")
     } else {
-        format!("{}c", number_string(rest))
+        format!("{sign}{c}c")
     }
 }
 
 /// A change as a signed whole percentage: "+12%", "-30%", "0%".
 pub fn percent_change(x: f64) -> String {
-    let sign = if x > 0.0 { "+" } else { "" };
-    format!("{sign}{}%", number_string(js_round(x * 100.0) + 0.0))
+    let pct = (x * 100.0).round() as i64;
+    format!("{}{pct}%", if pct > 0 { "+" } else { "" })
 }
 
 /// The current time in seconds since 1970.
@@ -83,13 +80,13 @@ pub fn auctionator_date(day: i64) -> String {
 
 /// How long ago, roughly: "5 min ago", "3 h ago", "4 days ago".
 pub fn age(sec: f64, now: f64) -> String {
-    let minutes = js_round((now - sec) / 60.0);
+    let minutes = ((now - sec) / 60.0).round();
     if minutes < 60.0 {
-        format!("{} min ago", number_string(minutes))
+        format!("{minutes} min ago")
     } else if minutes < 2880.0 {
-        format!("{} h ago", number_string(js_round(minutes / 60.0)))
+        format!("{} h ago", (minutes / 60.0).round())
     } else {
-        format!("{} days ago", number_string(js_round(minutes / 1440.0)))
+        format!("{} days ago", (minutes / 1440.0).round())
     }
 }
 

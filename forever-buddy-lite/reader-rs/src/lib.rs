@@ -1,17 +1,18 @@
 //! ForeverBuddy Lite reader: reads the addon's SavedVariables and Auctionator's price database, and
-//! answers questions about your characters and the auction house. A Rust port of
-//! `forever-buddy-lite/reader` (the Node scripts).
+//! answers questions about your characters and the auction house.
 //!
 //! Layers, from the files up:
 //! - [`lua`], [`cbor`]: parsers for the two formats the game writes.
-//! - [`json`]: where parsed tables become JSON, and the JS conventions the output keeps.
+//! - [`json`]: where parsed tables become JSON.
 //! - [`sources`]: typed data from each file: characters, the gear scan, price ladders, Auctionator's
-//!   daily prices, QuestieDB names and vendors, the hidden-items list.
+//!   daily prices, QuestieDB, the hidden-items list.
 //! - [`config`]: every market threshold, with its reason.
 //! - [`model`]: small pure pricing functions: usual price, ladder gaps, ladder verdicts.
 //! - [`strategies`]: one function per market rule, and `analyze` to run them all.
-//! - [`report`]: the analysis as text.
+//! - [`report`]: the analysis as text; [`dashboard`] and [`catalog`]: as the web dashboard reads it.
+//! - [`live`]: the watcher and web server behind the dashboard.
 //! - [`backtest`]: replays rules on past days against a control.
+//! - [`snipes`], [`skillup`], [`questxp`], [`bis`]: planning tools.
 //! - [`tools`], [`mcp`]: the character commands, on the CLI and as an MCP server.
 
 pub mod backtest;

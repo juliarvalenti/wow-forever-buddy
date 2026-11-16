@@ -446,7 +446,7 @@ fn render(
     mining: f64,
     to: f64,
 ) -> String {
-    let n = crate::json::number_string;
+    let n = |x: f64| x.to_string();
     let mut out = vec![format!("{} {} -> {}, Mining {}", data.profession, n(start), n(to), n(mining))];
     let window = match &g.known {
         Some(k) => format!("{} known recipes (window seen)", k.len()),
@@ -465,13 +465,8 @@ fn render(
     for (k, cap) in data.caps.iter().enumerate().skip(1) {
         let at = data.caps[k - 1].cap;
         if at >= start && at < to {
-            out.push(format!(
-                "  at {}: train {} ({}, {})",
-                n(at),
-                cap.rank,
-                cap.needs.as_deref().unwrap_or("?"),
-                gs(cap.cost.unwrap_or(0.0))
-            ));
+            let needs = cap.needs.as_deref().map_or(String::new(), |s| format!("{s}, "));
+            out.push(format!("  at {}: train {} ({needs}{})", n(at), cap.rank, gs(cap.cost.unwrap_or(0.0))));
         }
     }
     let mut total = 0.0;
@@ -513,14 +508,7 @@ fn render(
     for (k, b) in bought {
         let count = b.n.ceil();
         spend += count * b.each;
-        out.push(format!(
-            "  {:>4} {:<24} {:<6} @ {}s  = {}",
-            count,
-            k,
-            b.how,
-            crate::json::to_fixed(b.each / 100.0, 2),
-            gs(count * b.each)
-        ));
+        out.push(format!("  {:>4} {:<24} {:<6} @ {:.2}s  = {}", count, k, b.how, b.each / 100.0, gs(count * b.each)));
     }
     out.push(format!("  to spend ~{}", gs(spend)));
     out.join("\n")

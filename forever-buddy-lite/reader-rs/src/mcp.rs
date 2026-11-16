@@ -22,7 +22,7 @@ fn args_of(v: Option<&Value>) -> Args {
         .filter_map(|(k, v)| {
             let text = match v {
                 Value::String(s) => s.clone(),
-                Value::Number(n) => n.as_f64().map(crate::json::number_string)?,
+                Value::Number(n) => n.as_f64().map(|x| x.to_string())?,
                 Value::Bool(b) => b.to_string(),
                 _ => return None,
             };

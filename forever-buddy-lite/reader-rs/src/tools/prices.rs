@@ -1,15 +1,19 @@
 //! Commands that use auction prices: `prices`, `flips`, `value` (Auctionator) and `upgrades` (the
 //! addon's gear scan).
 
-use super::upgrades::{can_use, js_number, parse_stats, profile, required_level, score, slots_for};
-use super::{pick, Args, Ctx, Obj};
+use super::upgrades::{can_use, parse_stats, profile, required_level, score, slots_for};
+use super::{number_arg, pick, Args, Ctx, Obj};
 use crate::format::{auctionator_date, money_long};
-use crate::json::{js_round, number, number_string};
+use crate::json::number;
+use crate::model::usual_price;
 use crate::sources::addon::{ItemRecord, Places, SLOT_NAMES};
 use crate::sources::auctionator::{self, PriceDb, PriceEntry};
 use crate::sources::links::parse_link;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
+
+/// How many days of history the price commands look at.
+const RECENT_DAYS: usize = 14;
 
 fn load_prices(ctx: &Ctx, hint: &str) -> Result<PriceDb, String> {
     let db = auctionator::load(ctx.env)?;
@@ -19,41 +23,38 @@ fn load_prices(ctx: &Ctx, hint: &str) -> Result<PriceDb, String> {
     Ok(db)
 }
 
-/// An item's recent prices: the latest cheapest, a 14-day median of daily lows, and the days.
-struct PriceSummary {
-    last: Option<f64>,
-    median_14d: Option<f64>,
-    history: Vec<Value>,
+/// The last `RECENT_DAYS` days of an item's history.
+fn recent(entry: &PriceEntry) -> &[auctionator::DayPrice] {
+    &entry.days[entry.days.len().saturating_sub(RECENT_DAYS)..]
 }
 
-fn price_summary(entry: &PriceEntry) -> PriceSummary {
-    let recent = &entry.days[entry.days.len().saturating_sub(14)..];
-    // A day's low can't be above its high (Auctionator sometimes records one that is).
-    let low = |d: &auctionator::DayPrice| d.cheapest().min(d.high);
-    let history = recent
+/// The days as JSON: date, the day's low and high cheapest, and how many were up.
+fn history(entry: &PriceEntry) -> Vec<Value> {
+    recent(entry)
         .iter()
-        .map(|d| Obj::new().set("day", auctionator_date(d.day)).set("low", low(d)).set("high", d.high).opt("listed", d.listed).build())
-        .collect();
-    let mut lows: Vec<f64> = recent.iter().map(low).collect();
-    lows.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    // The upper middle, unlike the market's lower middle.
-    PriceSummary { last: entry.now, median_14d: lows.get(lows.len() / 2).copied(), history }
+        // A day's low can't be above its high (Auctionator sometimes records one that is).
+        .map(|d| {
+            Obj::new()
+                .set("day", auctionator_date(d.day))
+                .set("low", d.cheapest().min(d.high))
+                .set("high", d.high)
+                .opt("listed", d.listed)
+                .build()
+        })
+        .collect()
 }
 
-/// Item ids to names, from every item any character has (first seen first).
-fn names_from_characters(ctx: &Ctx, need_name: bool) -> Vec<(f64, Option<String>)> {
-    let mut out: Vec<(f64, Option<String>)> = Vec::new();
-    let mut at: HashMap<u64, usize> = HashMap::new();
+/// Item ids to names, from every item any character has (first seen first; a later name wins).
+fn names_from_characters(ctx: &Ctx) -> Vec<(u32, Option<String>)> {
+    let mut out: Vec<(u32, Option<String>)> = Vec::new();
+    let mut at: HashMap<u32, usize> = HashMap::new();
     for c in ctx.data.characters.values() {
         for r in c.item_rows(Places::ALL) {
-            let Some(id) = r.id.filter(|&id| id != 0.0 && !id.is_nan()) else { continue };
-            if need_name && r.name.is_none() {
-                continue;
-            }
-            match at.get(&id.to_bits()) {
-                Some(&i) => out[i].1 = r.name.clone(),
+            let Some(id) = r.id.filter(|&id| id > 0.0).map(|id| id as u32) else { continue };
+            match at.get(&id) {
+                Some(&i) => out[i].1 = r.name.clone().or(out[i].1.take()),
                 None => {
-                    at.insert(id.to_bits(), out.len());
+                    at.insert(id, out.len());
                     out.push((id, r.name.clone()));
                 }
             }
@@ -65,13 +66,12 @@ fn names_from_characters(ctx: &Ctx, need_name: bool) -> Vec<(f64, Option<String>
 pub fn prices(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
     let query = query.ok_or("query is required")?;
     let db = load_prices(ctx, "Install Auctionator, run a full scan at the auction house, then /reload.")?;
-    let ids = names_from_characters(ctx, false);
-    let name_of = |id: f64| ids.iter().find(|(i, _)| *i == id).and_then(|(_, n)| n.clone());
+    let ids = names_from_characters(ctx);
+    let name_of = |id: u32| ids.iter().find(|(i, _)| *i == id).and_then(|(_, n)| n.clone());
     let q = query.to_lowercase();
-    let wanted: Vec<f64> = if !q.is_empty() && q.bytes().all(|b| b.is_ascii_digit()) {
-        vec![js_number(&q)]
-    } else {
-        ids.iter().filter(|(_, n)| n.as_deref().unwrap_or("").to_lowercase().contains(&q)).map(|(id, _)| *id).collect()
+    let wanted: Vec<u32> = match q.parse::<u32>() {
+        Ok(id) => vec![id],
+        Err(_) => ids.iter().filter(|(_, n)| n.as_deref().unwrap_or("").to_lowercase().contains(&q)).map(|(id, _)| *id).collect(),
     };
     if wanted.is_empty() {
         return Err(format!("No item named like \"{query}\" in your characters' items; ask by item id instead."));
@@ -79,16 +79,14 @@ pub fn prices(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
     let mut out = Vec::new();
     for realm in &db.realms {
         for &id in &wanted {
-            let row = Obj::new().set("realm", realm.realm.as_str()).set("id", number(id)).opt("name", name_of(id));
-            out.push(match realm.get(&number_string(id)) {
-                Some(entry) => {
-                    let p = price_summary(entry);
-                    row.opt("last", p.last.map(money_long))
-                        .opt("last_copper", p.last)
-                        .opt("median_14d", p.median_14d.map(money_long))
-                        .set("history", p.history)
-                        .build()
-                }
+            let row = Obj::new().set("realm", realm.realm.as_str()).set("id", id).opt("name", name_of(id));
+            out.push(match realm.get(&id.to_string()) {
+                Some(entry) => row
+                    .opt("last", entry.now.map(money_long))
+                    .opt("last_copper", entry.now)
+                    .opt("usual", usual_price(recent(entry)).map(|u| money_long(u as f64)))
+                    .set("history", history(entry))
+                    .build(),
                 None => row.set("last", Value::Null).set("note", "not seen on the auction house").build(),
             });
         }
@@ -98,82 +96,72 @@ pub fn prices(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
 
 /// `flips` options, from the tool's arguments.
 struct FlipOptions {
+    /// The most to pay, copper.
     budget: f64,
+    /// Now at most this share of usual.
     ratio: f64,
-    min_days: f64,
+    /// Days of history an item needs.
+    min_days: usize,
+    /// The least profit per item after the cut, copper.
     min_profit: f64,
     limit: usize,
 }
 
 impl FlipOptions {
-    fn from_args(args: &Args) -> FlipOptions {
-        let arg = |k: &str| args.get(k).map(String::as_str).filter(|s| !s.is_empty());
-        FlipOptions {
-            budget: arg("budget").map_or(f64::INFINITY, |b| js_number(b) * 10000.0),
-            ratio: arg("ratio").map_or(0.7, js_number),
-            min_days: arg("min_days").map_or(3.0, js_number),
-            // An explicit "0" means no minimum (unlike the other options, where blank means default).
-            min_profit: args.get("min_profit").map_or(0.2, |p| js_number(p)) * 10000.0,
-            limit: arg("limit").map_or(25.0, js_number).max(0.0) as usize,
-        }
+    fn from_args(args: &Args) -> Result<FlipOptions, String> {
+        Ok(FlipOptions {
+            budget: number_arg(args, "budget", f64::INFINITY)? * 10000.0,
+            ratio: number_arg(args, "ratio", 0.7)?,
+            min_days: number_arg(args, "min_days", 3.0)?.max(1.0) as usize,
+            min_profit: number_arg(args, "min_profit", 0.2)? * 10000.0,
+            limit: number_arg(args, "limit", 25.0)?.max(0.0) as usize,
+        })
     }
 }
 
-/// Bargains: the cheapest now is well under the item's usual daily low, it's listed often, and the
+/// Bargains: the cheapest now is well under the item's usual price, it's listed often, and the
 /// resale clears the cut.
 pub fn flips(ctx: &Ctx, args: &Args) -> Result<Value, String> {
     let db = load_prices(ctx, "Run a full scan at the auction house, then /reload.")?;
-    let o = FlipOptions::from_args(args);
-    let mut names: HashMap<u64, String> = HashMap::new();
-    for (id, name) in names_from_characters(ctx, true) {
-        names.insert(id as u64, name.unwrap());
-    }
+    let o = FlipOptions::from_args(args)?;
+    let mut names: HashMap<u32, String> = names_from_characters(ctx).into_iter().filter_map(|(id, n)| Some((id, n?))).collect();
     for (_, it) in ctx.data.ah.iter().flat_map(|ah| ah.items.iter().flatten()) {
-        if let (Some(id), Some(name)) = (it.id.filter(|&i| i != 0.0), it.name.as_ref().filter(|n| !n.is_empty())) {
-            names.entry(id as u64).or_insert_with(|| name.clone());
+        if let (Some(id), Some(name)) = (it.id.filter(|&i| i > 0.0), it.name.as_ref().filter(|n| !n.is_empty())) {
+            names.entry(id as u32).or_insert_with(|| name.clone());
         }
     }
     let mut found: Vec<(f64, Value)> = Vec::new();
     let mut deepest = 0;
     for realm in &db.realms {
         for e in realm.items.iter().filter(|e| e.has_history) {
-            let days = &e.days[e.days.len().saturating_sub(14)..];
+            let days = recent(e);
             deepest = deepest.max(days.len());
-            let Some(now) = e.now.filter(|&m| m != 0.0) else { continue };
-            if (days.len() as f64) < o.min_days || now > o.budget {
+            let (Some(now), Some(id)) = (e.now.filter(|&m| m != 0.0), e.id()) else { continue };
+            if days.len() < o.min_days.max(2) || now > o.budget {
                 continue;
             }
-            // The usual price: the lower median of each day's lowest listing, today left out (a short
-            // history can't inflate it).
-            let mut past: Vec<f64> = days[..days.len().saturating_sub(1)].iter().map(|d| d.cheapest()).collect();
-            if past.is_empty() {
-                continue;
-            }
-            past.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let usual = past[(past.len() - 1) / 2];
+            let Some(usual) = usual_price(days).map(|u| u as f64) else { continue };
             let avg_listed = days.iter().map(|d| d.listed.unwrap_or(0.0)).sum::<f64>() / days.len() as f64;
             let profit = (usual * 0.95).floor() - now;
             if now > usual * o.ratio || profit < o.min_profit || avg_listed < 3.0 {
                 continue;
             }
-            let id = e.key.parse::<f64>().unwrap_or(f64::NAN);
             let row = Obj::new()
                 .set("realm", realm.realm.as_str())
-                .set("id", number(id))
-                .opt("name", names.get(&(id as u64)).cloned())
+                .set("id", id)
+                .opt("name", names.get(&id).cloned())
                 .set("now", money_long(now))
                 .set("usual", money_long(usual))
                 .set("profit", money_long(profit))
-                .set("share", format!("{}%", number_string(js_round(now / usual * 100.0))))
+                .set("share", format!("{}%", (now / usual * 100.0).round()))
                 .set("days", days.len())
-                .set("avg_listed", number(js_round(avg_listed)));
+                .set("avg_listed", number(avg_listed.round()));
             found.push((profit, row.build()));
         }
     }
-    found.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let note = (deepest < o.min_days as usize).then(|| {
-        format!("Only {deepest} day(s) of scans so far; flips need {}. Run a full Auctionator scan once a day.", number_string(o.min_days))
-    });
+    found.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let note = (deepest < o.min_days)
+        .then(|| format!("Only {deepest} day(s) of scans so far; flips need {}. Run a full Auctionator scan once a day.", o.min_days));
     Ok(Obj::new()
         .opt("full_scan", ctx.when(db.scan_at))
         .set("days_of_history", deepest)
@@ -194,14 +182,14 @@ pub fn value(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
         each: f64,
         places: Vec<&'static str>,
     }
-    // By id, in id order (as the JS object kept them).
+    // By id, in id order.
     let mut held: BTreeMap<i64, Holding> = BTreeMap::new();
     for r in c.item_rows(Places { bank: true, mail: false, worn: false }) {
         let Some(id) = r.id.filter(|&i| i != 0.0) else { continue };
         if r.is_bound() {
             continue;
         }
-        let Some(each) = realm.get(&number_string(id)).and_then(|e| e.now).filter(|&p| p != 0.0) else { continue };
+        let Some(each) = realm.get(&id.to_string()).and_then(|e| e.now).filter(|&p| p != 0.0) else { continue };
         let h = held.entry(id as i64).or_insert(Holding { name: r.name.clone(), count: 0.0, each, places: Vec::new() });
         h.count += if r.count != 0.0 { r.count } else { 1.0 };
         let place = if matches!(r.place, crate::sources::addon::Place::Bank { .. }) { "bank" } else { "bags" };
@@ -252,21 +240,31 @@ struct Candidate {
 /// "Quest Name (21) / Other Quest (24)": the quests that reward the item.
 fn quest_sources(it: &ItemRecord) -> Option<String> {
     let quests = it.quests.as_ref()?;
-    let names: Vec<String> =
-        quests.iter().map(|q| format!("{} ({})", q.name.as_deref().unwrap_or("?"), q.level.map_or("?".into(), number_string))).collect();
+    let names: Vec<String> = quests
+        .iter()
+        .map(|q| {
+            let name = q.name.clone().unwrap_or_else(|| q.id.map_or("a quest".into(), |id| format!("quest {id}")));
+            q.level.map_or(name.clone(), |level| format!("{name} ({level})"))
+        })
+        .collect();
     Some(names.join(" / "))
 }
 
 /// "Boss (Dungeon) / ...": who drops the item, each once.
 fn drop_sources(it: &ItemRecord) -> Option<String> {
     let show = |v: &Option<Value>| match v {
-        Some(Value::String(s)) => s.clone(),
-        Some(v) => v.to_string(),
-        None => "?".into(),
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Null) | None => None,
+        Some(v) => Some(v.to_string()),
     };
     let mut lines: Vec<String> = Vec::new();
     for d in it.drops.as_ref()? {
-        let line = format!("{} ({})", show(&d.npc), show(&d.dungeon));
+        let line = match (show(&d.npc), show(&d.dungeon)) {
+            (Some(npc), Some(dungeon)) => format!("{npc} ({dungeon})"),
+            (Some(npc), None) => npc,
+            (None, Some(dungeon)) => dungeon,
+            (None, None) => continue,
+        };
         if !lines.contains(&line) {
             lines.push(line);
         }
@@ -298,9 +296,9 @@ pub fn upgrades(ctx: &Ctx, args: &Args) -> Result<Value, String> {
     };
     let p = profile(c, arg("weights"));
     let level = c.identity.level.filter(|l| *l != 0.0).unwrap_or(60.0);
-    let ahead = arg("ahead").map_or(0.0, js_number);
-    let budget = arg("budget").map_or(f64::INFINITY, |b| js_number(b) * 10000.0);
-    let per_slot = arg("per_slot").map_or(3.0, js_number).max(0.0) as usize;
+    let ahead = number_arg(args, "ahead", 0.0)?;
+    let budget = number_arg(args, "budget", f64::INFINITY)? * 10000.0;
+    let per_slot = number_arg(args, "per_slot", 3.0)?.max(0.0) as usize;
     let want_slot = arg("slot").map(str::to_lowercase);
 
     let mut worn: HashMap<usize, Worn> = HashMap::new();
@@ -354,7 +352,7 @@ pub fn upgrades(ctx: &Ctx, args: &Args) -> Result<Value, String> {
         if two_hander && matches!(inv, "INVTYPE_WEAPONOFFHAND" | "INVTYPE_HOLDABLE" | "INVTYPE_SHIELD") {
             continue;
         }
-        let gain = js_round((sc - current) * 10.0) / 10.0;
+        let gain = ((sc - current) * 10.0).round() / 10.0;
         if gain <= 0.0 {
             continue;
         }

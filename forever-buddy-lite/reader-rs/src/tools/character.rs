@@ -3,15 +3,16 @@
 use super::talents::talent_trees;
 use super::{pick, Ctx, Obj};
 use crate::format::{iso_from_seconds, money_long};
-use crate::json::{self, number, number_string, to_fixed};
+use crate::json::{self, number};
 use crate::sources::addon::{Character, ItemRow, Place, Places};
 use crate::sources::links::parse_link;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// Copper as gold with `digits` decimals: 123456 -> 12.35.
-fn gold(copper: Option<f64>, digits: usize) -> Option<Value> {
-    copper.map(|c| number(to_fixed(c / 10000.0, digits).parse().unwrap_or(f64::NAN)))
+fn gold(copper: Option<f64>, digits: i32) -> Option<Value> {
+    let scale = 10f64.powi(digits);
+    copper.map(|c| number((c / 10000.0 * scale).round() / scale))
 }
 
 pub fn characters(ctx: &Ctx) -> Value {
@@ -40,7 +41,7 @@ pub fn summary(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
     let c = pick(ctx.data, name)?;
     let id = &c.identity;
     let xp_pct = id.xp_max.filter(|m| *m != 0.0).map(|max| {
-        let pct = json::js_round(id.xp.unwrap_or(f64::NAN) / max * 1000.0) / 10.0;
+        let pct = (id.xp.unwrap_or(0.0) / max * 1000.0).round() / 10.0;
         number(pct)
     });
     let unspent = c.raw.get("talents").and_then(|t| t.get("unspent")).cloned();
@@ -69,13 +70,13 @@ pub fn gear(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
     let c = pick(ctx.data, name)?;
     let pieces = c.gear.iter().map(|(slot, g)| {
         let durability = match g.durability.as_slice() {
-            [now, max, ..] => Some(format!("{}/{}", number_string(*now), number_string(*max))),
+            [now, max, ..] => Some(format!("{now}/{max}")),
             _ => None,
         };
         let fields = link_fields(g.link.as_deref()).opt("id", g.id).opt("durability", durability);
         (crate::sources::addon::slot_name(slot), fields.build())
     });
-    Ok(ctx.header(c).set("gear", Value::Object(json::js_object(pieces))).build())
+    Ok(ctx.header(c).set("gear", Value::Object(pieces.collect())).build())
 }
 
 /// An item row as JSON; `with_link` keeps the full link.
@@ -101,9 +102,7 @@ fn matches(query: Option<&str>) -> impl Fn(&ItemRow) -> bool + '_ {
     let q = query.map(str::to_lowercase);
     move |r| match &q {
         None => true,
-        Some(q) => {
-            r.name.as_deref().unwrap_or("").to_lowercase().contains(q.as_str()) || r.id.map_or("undefined".to_string(), number_string) == *q
-        }
+        Some(q) => r.name.as_deref().unwrap_or("").to_lowercase().contains(q.as_str()) || r.id.is_some_and(|id| id.to_string() == *q),
     }
 }
 
@@ -137,13 +136,13 @@ pub fn quests(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
     let log = &c.quests.log;
     // Reward items by quest id, from /fbl items. You pick one reward, so the best vendor price is
     // what the quest is worth in coin.
-    let mut rewards: HashMap<String, Vec<&crate::sources::addon::ItemRecord>> = HashMap::new();
+    let mut rewards: HashMap<u64, Vec<&crate::sources::addon::ItemRecord>> = HashMap::new();
     for item in ctx.data.items.values() {
-        for q in item.quests.iter().flatten() {
-            rewards.entry(q.id.map_or("undefined".into(), number_string)).or_default().push(item);
+        for id in item.quests.iter().flatten().filter_map(|q| q.id) {
+            rewards.entry(id as u64).or_default().push(item);
         }
     }
-    let rewards_of = |q: &crate::sources::addon::QuestEntry| rewards.get(&q.id.map_or("undefined".into(), number_string));
+    let rewards_of = |q: &crate::sources::addon::QuestEntry| q.id.and_then(|id| rewards.get(&(id as u64)));
     let best_sell =
         |q: &crate::sources::addon::QuestEntry| rewards_of(q).into_iter().flatten().map(|it| it.sell.unwrap_or(0.0)).fold(0.0, f64::max);
     let done: Vec<_> = log.iter().filter(|q| q.is_done()).collect();
@@ -165,7 +164,7 @@ pub fn quests(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
                 items
                     .iter()
                     .map(|it| {
-                        let name = it.name.clone().unwrap_or_else(|| "?".into());
+                        let name = it.name.clone().unwrap_or_else(|| it.id.map_or("an item".into(), |id| format!("item {id}")));
                         match it.sell.filter(|s| *s != 0.0) {
                             Some(s) => format!("{name} (vendor {})", money_long(s)),
                             None => name,
@@ -198,12 +197,10 @@ pub fn quests(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
 pub fn completed(ctx: &Ctx, name: Option<&str>, ids: Option<&str>) -> Result<Value, String> {
     let c = pick(ctx.data, name)?;
     let done = &c.quests.completed;
-    let asked: Vec<f64> = ids
-        .unwrap_or("")
-        .split(|ch: char| ch.is_whitespace() || ch == ',')
-        .filter(|s| !s.is_empty())
-        .map(super::upgrades::js_number)
-        .collect();
+    let mut asked: Vec<f64> = Vec::new();
+    for word in ids.unwrap_or("").split(|ch: char| ch.is_whitespace() || ch == ',').filter(|s| !s.is_empty()) {
+        asked.push(super::upgrades::parse_number(word).ok_or_else(|| format!("\"{word}\" isn't a quest id"))?);
+    }
     let h = ctx.header(c);
     if asked.is_empty() {
         let mut unique: Vec<f64> = Vec::new();
@@ -214,24 +211,24 @@ pub fn completed(ctx: &Ctx, name: Option<&str>, ids: Option<&str>) -> Result<Val
         }
         return Ok(h.set("completed", unique.into_iter().map(number).collect::<Vec<_>>()).build());
     }
-    let answers = json::js_object(asked.iter().map(|q| (number_string(*q), Value::Bool(done.contains(q)))));
+    let answers = asked.iter().map(|q| (q.to_string(), Value::Bool(done.contains(q)))).collect();
     Ok(h.set("quests", Value::Object(answers)).build())
 }
 
 pub fn skills(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
     let c = pick(ctx.data, name)?;
-    let show = |n: Option<f64>| n.map_or("?".into(), number_string);
     let lines: Vec<String> = c
         .skills
         .iter()
-        .map(|s| {
-            let name = s.name.as_deref().unwrap_or("?");
+        .filter_map(|s| {
+            let name = s.name.as_deref()?;
             if s.collapsed.0 {
-                return format!("{name}: (collapsed in the skill window, not read)");
+                return Some(format!("{name}: (collapsed in the skill window, not read)"));
             }
-            let bonus = s.bonus.filter(|b| *b != 0.0).map_or(String::new(), |b| format!("(+{})", number_string(b)));
-            let max = s.max.filter(|m| *m != 0.0).map_or(String::new(), |m| format!("/{}", number_string(m)));
-            format!("{name} {}{bonus}{max}", show(s.rank))
+            let rank = s.rank.map_or(String::new(), |r| format!(" {r}"));
+            let bonus = s.bonus.filter(|b| *b != 0.0).map_or(String::new(), |b| format!("(+{b})"));
+            let max = s.max.filter(|m| *m != 0.0).map_or(String::new(), |m| format!("/{m}"));
+            Some(format!("{name}{rank}{bonus}{max}"))
         })
         .collect();
     Ok(ctx.header(c).set("skills", lines).build())
@@ -265,13 +262,17 @@ pub fn spells(ctx: &Ctx, name: Option<&str>, query: Option<&str>) -> Result<Valu
 
 pub fn reputation(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
     let c = pick(ctx.data, name)?;
-    let show = |n: Option<f64>| n.map_or("?".into(), number_string);
     let lines: Vec<String> = c
         .reputation
         .iter()
-        .map(|f| {
-            let progress = f.max.filter(|m| *m != 0.0).map_or(String::new(), |m| format!(" {}/{}", show(f.value), number_string(m)));
-            format!("{}: {}{progress}", f.name.as_deref().unwrap_or("?"), f.standing.as_deref().unwrap_or("?"))
+        .filter_map(|f| {
+            let name = f.name.as_deref()?;
+            let standing = f.standing.as_deref().map_or(String::new(), |s| format!(": {s}"));
+            let progress = match (f.value, f.max.filter(|m| *m != 0.0)) {
+                (Some(value), Some(max)) => format!(" {value}/{max}"),
+                _ => String::new(),
+            };
+            Some(format!("{name}{standing}{progress}"))
         })
         .collect();
     Ok(ctx.header(c).set("factions", lines).build())
@@ -338,7 +339,7 @@ pub fn trainers(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
     let q = query.unwrap_or("").to_lowercase();
     let text = |v: Option<&Value>| match v {
         Some(Value::String(s)) => s.to_lowercase(),
-        Some(v) if json::truthy(v) => v.as_f64().map_or_else(|| v.to_string(), number_string).to_lowercase(),
+        Some(v) if json::truthy(v) => v.to_string().to_lowercase(),
         _ => String::new(),
     };
     let mut out = Vec::new();

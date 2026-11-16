@@ -1,6 +1,5 @@
 //! Talent trees: classic tabs as saved, or the newer traits UI split back into its three trees.
 
-use crate::json::number_string;
 use crate::sources::addon::{Character, TalentNode};
 use serde::Serialize;
 use serde_json::Value;
@@ -42,13 +41,13 @@ pub struct Tree {
     pub talents: Vec<String>,
 }
 
-/// A number as shown in text; "?" when missing.
-fn show(n: Option<f64>) -> String {
-    n.map_or_else(|| "?".into(), number_string)
-}
-
+/// "Arcane Focus 5/5" (the rank alone when the maximum wasn't saved).
 fn talent_label(name: &str, node: &TalentNode) -> String {
-    format!("{name} {}/{}", show(node.rank), show(node.max))
+    match (node.rank, node.max) {
+        (Some(rank), Some(max)) => format!("{name} {rank}/{max}"),
+        (Some(rank), None) => format!("{name} {rank}"),
+        _ => name.to_string(),
+    }
 }
 
 /// A node's name, or its spell id when the name wasn't saved.
@@ -56,8 +55,8 @@ fn node_name(node: &TalentNode) -> String {
     match (&node.name, &node.spell) {
         (Some(n), _) if !n.is_empty() => n.clone(),
         (_, Some(Value::String(s))) => format!("spell {s}"),
-        (_, Some(v)) => format!("spell {}", v.as_f64().map_or_else(|| v.to_string(), number_string)),
-        _ => "spell ?".into(),
+        (_, Some(v)) => format!("spell {v}"),
+        _ => "unnamed talent".into(),
     }
 }
 
@@ -74,7 +73,7 @@ pub fn talent_trees(c: &Character) -> Option<TalentSummary> {
             .map(|tab| Tree {
                 name: tab.name.clone(),
                 points: tab.points,
-                talents: tab.talents.iter().filter(|x| taken(x)).map(|x| talent_label(x.name.as_deref().unwrap_or("?"), x)).collect(),
+                talents: tab.talents.iter().filter(|x| taken(x)).map(|x| talent_label(&node_name(x), x)).collect(),
             })
             .collect();
         return Some(TalentSummary { system: t.system.clone(), unspent: t.unspent.clone(), trees, legacy: None });

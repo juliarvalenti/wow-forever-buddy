@@ -617,6 +617,17 @@ mod tests {
     }
 
     #[test]
+    fn the_worklist_takes_each_rules_best_picks() {
+        // Two cheap items; item 2 pays more. With room for one pick, item 2 makes the list, not item 1.
+        let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let inputs = inputs_with(json!({"version": 2, "1": busy(7900), "2": busy(5000)}), &[], 0.0);
+        let cfg = Config { check_cheap: 1, ..Config::default() };
+        let a = analyze(&inputs, 50_000, &cfg);
+        assert_eq!(a.buy.iter().map(|p| p.item.id).collect::<Vec<_>>(), [2, 1]);
+        assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [2]);
+    }
+
+    #[test]
     fn a_ladder_far_under_the_scan_is_a_bad_capture() {
         let cfg = Config::default();
         let r = row(1, 10_000, 10_000, 10_000, 10_000, 200);

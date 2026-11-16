@@ -1,7 +1,7 @@
 //! The market analysis as text, one section per rule.
 
 use crate::format::{money_short as money, percent_change as pct};
-use crate::json::js_round;
+
 use crate::model::{SellAdvice, StaleReason, Verdict};
 use crate::strategies::{Analysis, CheckItem, ItemMarket, Pick, SellPick, Trend};
 
@@ -25,7 +25,7 @@ pub fn verdict_text(v: &Verdict) -> String {
             money(g.profit as f64)
         ),
         Verdict::Tight { floor, wall, under_usual } => {
-            let dip = under_usual.map_or(String::new(), |u| format!("; floor {}% under usual, a dip bet at best", js_round(u * 100.0)));
+            let dip = under_usual.map_or(String::new(), |u| format!("; floor {}% under usual, a dip bet at best", (u * 100.0).round()));
             format!("no gap: floor {}, wall of {} at {}{dip}", money(*floor as f64), wall.qty, money(wall.price as f64))
         }
         Verdict::Yours { price } => format!("you're the cheapest at {}", money(*price as f64)),

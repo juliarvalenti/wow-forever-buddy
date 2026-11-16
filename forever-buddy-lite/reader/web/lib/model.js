@@ -22,7 +22,7 @@ export function enrichItem(item) {
   const highs = days.map((d) => d[2]);
 
   // Usual price: the median of the daily highs, today left out. A day's low is often one stray
-  // cheap listing; its high is where the floor sat most of the day. Same rule as market.mjs.
+  // cheap listing; its high is where the floor sat most of the day. Same rule as the reader (reader-rs model::usual_price).
   const usual = median(highs.length > 1 ? highs.slice(0, -1) : highs);
 
   const first = lows[0];

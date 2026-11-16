@@ -6,7 +6,6 @@
 //! items too cheap for that drop out. The cap is `ratio` x the lower of usual and the cheapest listing
 //! now: a market that has fallen isn't a snipe, only a listing under today's floor is.
 
-use crate::json::to_fixed;
 use crate::sources::addon::{AddonData, Places};
 use crate::sources::auctionator::PriceDb;
 use crate::sources::questie::QuestieItems;
@@ -84,8 +83,7 @@ pub fn names(addon: &AddonData, recipe_items: &HashMap<String, u32>, questie: &Q
 pub fn snipes(prices: &PriceDb, names: &HashMap<u32, String>, o: &SnipeOptions) -> Vec<Snipe> {
     let mut rows = Vec::new();
     for e in prices.realms.iter().flat_map(|r| r.items.iter()).filter(|e| e.has_history && !e.days.is_empty()) {
-        let lows: Vec<i64> = e.days.iter().map(|d| d.cheapest() as i64).collect();
-        let Some(usual) = crate::model::lower_median(&lows).map(|u| u as f64) else { continue };
+        let Some(usual) = crate::model::usual_price(&e.days).map(|u| u as f64) else { continue };
         let listed = e.days.iter().map(|d| d.listed.unwrap_or(0.0)).sum::<f64>() / e.days.len() as f64;
         let floor = usual.min(e.now.filter(|&n| n != 0.0).unwrap_or(usual));
         let max = (floor * o.ratio).min(floor * 0.95 - o.deposit - o.min_profit).floor();
@@ -95,7 +93,7 @@ pub fn snipes(prices: &PriceDb, names: &HashMap<u32, String>, o: &SnipeOptions) 
         // Names with a quote can't go in Auctionator's list format.
         let Some(name) = e.id().and_then(|id| names.get(&id)).filter(|n| !n.contains('"')) else { continue };
         let single = (floor * 0.95 - o.deposit - max).floor();
-        rows.push(Snipe { name: name.clone(), usual, now: e.now, listed: crate::json::js_round(listed), max, days: e.days.len(), single });
+        rows.push(Snipe { name: name.clone(), usual, now: e.now, listed: f64::round(listed), max, days: e.days.len(), single });
     }
     let worth = |s: &Snipe| s.usual * s.listed.sqrt();
     rows.sort_by(|a, b| worth(b).total_cmp(&worth(a)));
@@ -105,7 +103,7 @@ pub fn snipes(prices: &PriceDb, names: &HashMap<u32, String>, o: &SnipeOptions) 
 
 /// Gold with up to four decimals, trailing zeros dropped: 2500 -> "0.25".
 fn gold(copper: f64) -> String {
-    let s = to_fixed(copper / 10000.0, 4);
+    let s = format!("{:.4}", copper / 10000.0);
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
@@ -117,14 +115,14 @@ pub fn shopping_list(list_name: &str, snipes: &[Snipe]) -> String {
 
 /// One line per snipe, for the console.
 pub fn describe(s: &Snipe) -> String {
-    let silver = |c: f64| format!("{}s", to_fixed(c / 100.0, 2));
+    let silver = |c: f64| format!("{:.2}s", c / 100.0);
     format!(
         "{:<30} max {:>8}  floor {:>8}  one-item profit {:>7}  listed ~{}",
         s.name,
         silver(s.max),
         silver(s.floor()),
         silver(s.single),
-        crate::json::number_string(s.listed)
+        s.listed
     )
 }
 

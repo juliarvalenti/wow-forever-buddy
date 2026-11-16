@@ -97,3 +97,58 @@ pub fn opps_json(a: &Analysis) -> Value {
 pub fn data_json(catalog: &Catalog, a: &Analysis) -> Value {
     json!({ "items": catalog.items, "opps": opps_json(a), "stamp": catalog.stamp })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::sources::addon::LadderSnapshot;
+    use crate::sources::auctionator::realm_from_json;
+    use crate::strategies::{analyze, MarketInputs};
+
+    /// The field names web/lib and web/components read.
+    #[test]
+    fn opps_carry_the_fields_the_web_app_reads() {
+        let now = 1_000_000.0;
+        let mut inputs = MarketInputs { now, ..MarketInputs::default() };
+        let busy = json!({"m": 5000, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        inputs.prices.realms.push(realm_from_json("Realm", &json!({"version": 2, "10": busy})));
+        inputs
+            .ladders
+            .insert("10".into(), vec![LadderSnapshot { at: Some(now - 60.0), total: Some(25.0), levels: "5000:5;9000:20".into() }]);
+        let opps = opps_json(&analyze(&inputs, 50_000, &Config::default()));
+        let top = [
+            "date",
+            "items",
+            "busy",
+            "budget",
+            "minListed",
+            "skippedVendor",
+            "hidden",
+            "scanAt",
+            "buy",
+            "dips",
+            "sell",
+            "squeeze",
+            "flood",
+            "swingy",
+            "gaps",
+            "check",
+            "ladders",
+        ];
+        for key in top {
+            assert!(opps.get(key).is_some(), "{key}");
+        }
+        for key in ["id", "name", "now", "usual", "qty", "held", "low", "high", "profit"] {
+            assert!(opps["buy"][0].get(key).is_some(), "buy.{key}");
+        }
+        let check = &opps["check"][0];
+        assert_eq!(check["kind"], "gap");
+        assert_eq!(check["verdict"], "gap");
+        assert_eq!(check["why"], json!(["cheap now"]));
+        assert_eq!(check["gap"]["upTo"], 5000);
+        assert!(check["text"].as_str().unwrap().starts_with("buy 5 up to"));
+        assert_eq!(opps["ladders"]["10"]["levels"][1], json!({"price": 9000, "qty": 20, "mine": false}));
+        assert_eq!(opps["gaps"][0]["key"], "10");
+    }
+}

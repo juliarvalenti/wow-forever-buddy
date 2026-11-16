@@ -108,7 +108,7 @@ fn dungeon_name(zone: u32) -> Option<&'static str> {
 fn zname(zone: Option<u32>) -> String {
     match zone {
         Some(z) => zone_name(z).or_else(|| dungeon_name(z)).map_or_else(|| format!("zone {z}"), String::from),
-        None => "zone ?".into(),
+        None => "an unknown zone".into(),
     }
 }
 
@@ -208,7 +208,7 @@ impl<'a> QuestXp<'a> {
         let over = self.level - quest_level;
         let share =
             if over <= 5.0 { 1.0 } else { [0.8, 0.6, 0.4, 0.2].get((over - 6.0) as usize).copied().filter(|_| over >= 6.0).unwrap_or(0.1) };
-        crate::json::js_round(xp * share)
+        f64::round(xp * share)
     }
 
     fn record(&self, id: u32) -> Option<Value> {
@@ -284,7 +284,7 @@ impl<'a> QuestXp<'a> {
 
     /// Zones, hubs and chains, as printed.
     pub fn overview(&self, who: &str, lo: f64, hi: f64, only: Option<&str>) -> String {
-        let n = crate::json::number_string;
+        let n = |x: f64| x.to_string();
         let quests = self.quests(lo, hi);
         struct Hub {
             name: String,
@@ -308,7 +308,7 @@ impl<'a> QuestXp<'a> {
             // Turn-ins within ~8 map units of each other count as one place.
             let near = zone.3.iter().position(|h| h.zone == q.end.zone && (h.x - q.end.x).hypot(h.y - q.end.y) < 8.0);
             let hi = near.unwrap_or_else(|| {
-                let name = format!("{} ({}, {})", q.end.name, n(crate::json::js_round(q.end.x)), n(crate::json::js_round(q.end.y)));
+                let name = format!("{} ({}, {})", q.end.name, n(f64::round(q.end.x)), n(f64::round(q.end.y)));
                 zone.3.push(Hub { name, zone: q.end.zone, x: q.end.x, y: q.end.y, xp: 0.0, quests: vec![] });
                 zone.3.len() - 1
             });
@@ -369,7 +369,7 @@ impl<'a> QuestXp<'a> {
 
     /// The chain a quest is in, start to end. `gains`: reward item name -> score gain over your gear.
     pub fn chain(&self, quest_name: &str, gains: &HashMap<String, f64>) -> Result<String, String> {
-        let n = crate::json::number_string;
+        let n = |x: f64| x.to_string();
         let want = quest_name.to_lowercase();
         let mut start = None;
         for qid in self.db.ids_with("Quest", "S") {

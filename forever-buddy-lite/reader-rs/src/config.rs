@@ -1,6 +1,6 @@
 //! Every market threshold in one place. Prices are in copper (100 copper = 1 silver, 100 silver = 1 gold).
 
-/// Thresholds for the market analysis. `Config::default()` is what the JS reader used.
+/// Thresholds for the market analysis, with the defaults the market commands use.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     // ------------------------------------------------------------ costs of trading

@@ -85,7 +85,7 @@ mod tests {
         assert_eq!(parse_link(Some("|Hitem:9999|h[Leather Cap]|h")).name.as_deref(), Some("Leather Cap"));
         assert_eq!(parse_link(None), ParsedLink::default());
         assert_eq!(parse_link(Some("|cff9D9D9D|Hitem:1|h[Junk]|h")).quality, Some("poor"));
-        // The JS only knew a lowercase "ff" alpha prefix; an uppercase one reads as an unknown colour.
+        // Only a lowercase "ff" alpha prefix is recognised; the client writes it that way.
         assert_eq!(parse_link(Some("|cFF9D9D9D|Hitem:1|h[Junk]|h")).quality, None);
     }
 }

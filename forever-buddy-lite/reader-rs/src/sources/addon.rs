@@ -52,7 +52,7 @@ pub struct Character {
     pub mail: Option<Mailbox>,
     pub professions: Vec<(String, Profession)>,
     /// The character's table as saved, for commands that show sections untouched (stats, buffs,
-    /// lockouts, raw). Includes `_key`, `_file` and `_written`, as the JS reader's did.
+    /// lockouts, raw). Includes `_key`, `_file` and `_written` (where it came from).
     pub raw: Value,
 }
 
@@ -492,7 +492,7 @@ pub fn load(env: &Env) -> Result<AddonData, String> {
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| format::iso_from_millis((d.as_nanos() as f64 / 1e6).round())) // Node rounds to the millisecond
+            .map(|d| format::iso_from_millis(d.as_millis() as f64))
             .unwrap_or_default();
         merge_file(&mut data, &db, &file, &written);
     }
@@ -547,7 +547,8 @@ fn merge_ah(data: &mut AddonData, db: &Value) {
         .or_else(|| db.get("ahError"))
         .and_then(|v| v.as_str().map(String::from));
     data.ah = Some(match unpack_ah(ah) {
-        Ok(scan) => AhScan { error: logged_error, ..scan },
+        // The error the addon logged; else the one the scan itself kept.
+        Ok(scan) => AhScan { error: logged_error.or(scan.error.clone()), ..scan },
         Err(e) => AhScan { at, error: Some(e), ..AhScan::default() },
     });
 }
@@ -696,5 +697,19 @@ mod tests {
     fn unpacks_a_plain_items_table() {
         let scan = unpack_ah(&serde_json::json!({"items": {"a": {"id": 1}}})).unwrap();
         assert_eq!(scan.items.unwrap()[0].1.id, Some(1.0));
+    }
+
+    #[test]
+    fn the_scan_error_is_the_logged_one_else_the_scans_own() {
+        let error_of = |db: Value| {
+            let mut data = AddonData::default();
+            merge_ah(&mut data, &db);
+            data.ah.unwrap().error
+        };
+        let scan = serde_json::json!({"at": 1, "items": {}, "error": "scan stopped"});
+        assert_eq!(error_of(serde_json::json!({"ah": scan})).as_deref(), Some("scan stopped"));
+        assert_eq!(error_of(serde_json::json!({"ah": scan, "debug": {"ah_error": "browse failed"}})).as_deref(), Some("browse failed"));
+        assert_eq!(error_of(serde_json::json!({"ah": scan, "ahError": "old schema"})).as_deref(), Some("old schema"));
+        assert_eq!(error_of(serde_json::json!({"ah": {"at": 1, "items": {}}})), None);
     }
 }

@@ -1,5 +1,5 @@
-//! The JS reader's tests (forever-buddy-lite/reader/test/fbl.test.mjs), case for case, against the
-//! same fixture.
+//! The commands end to end against a fixture file (tests/fixture/ForeverBuddyLite.lua): two
+//! characters, a gear scan, and Auctionator files written per test.
 
 use base64::Engine;
 use fbl::sources::Env;
@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../reader/test/fixture/ForeverBuddyLite.lua")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixture/ForeverBuddyLite.lua")
 }
 
 fn env() -> Env {
@@ -99,7 +99,7 @@ fn cbor(v: &Value) -> Vec<u8> {
     }
 }
 
-/// The JS test's blob: { version = 2, ["2589"] = { m = 125, h = { ["2509"] = 130 } }, ["5201"] = { m = 2500000 } }.
+/// A small price database: { version = 2, ["2589"] = { m = 125, h = { ["2509"] = 130 } }, ["5201"] = { m = 2500000 } }.
 fn auctionator_blob() -> Vec<u8> {
     let mut b = vec![0xa3, 0x67];
     b.extend(b"version");

@@ -176,6 +176,32 @@ mod tests {
     }
 
     #[test]
+    fn named_items_with_their_days() {
+        use crate::sources::auctionator::realm_from_json;
+        use serde_json::json;
+        let mut prices = PriceDb::default();
+        prices.realms.push(realm_from_json(
+            "R",
+            &json!({"version": 2,
+            "2589": {"m": 120, "h": {"2509": 130, "2510": 125}, "l": {"2509": 100}, "a": {"2509": 400}},
+            "9999": {"m": 1, "h": {"2509": 1}}}),
+        ));
+        let mut questie = QuestieItems::default();
+        questie.items.insert(2589, info("Linen Cloth", Some(7), Some(5)));
+        let c = build(&AddonData::default(), &prices, &questie);
+        assert_eq!(c.items.len(), 1); // 9999 has no name
+        let expected = CatalogItem {
+            id: 2589,
+            n: "Linen Cloth".into(),
+            k: "Cloth".into(),
+            now: Some(120),
+            h: vec![("11-14".into(), 100, 130, 400), ("11-15".into(), 125, 125, 0)],
+        };
+        assert_eq!(c.items[0], expected);
+        assert_eq!(c.stamp, "2026-11-15");
+    }
+
+    #[test]
     fn names_sort_case_insensitively() {
         let mut names = vec!["linen", "Bolt", "apple", "Apple"];
         names.sort_by(|a, b| name_order(a, b));

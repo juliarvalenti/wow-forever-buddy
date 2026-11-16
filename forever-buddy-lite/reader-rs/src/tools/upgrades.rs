@@ -2,7 +2,7 @@
 //! leveling weights, checks the character can use it, and compares with what's worn.
 
 use super::talents::talent_trees;
-use crate::json::number_string;
+
 use crate::sources::addon::{Character, ItemRecord};
 use regex::Regex;
 use std::sync::OnceLock;
@@ -32,7 +32,7 @@ impl ItemStats {
 
     /// "sta 6, int 7".
     pub fn summary(&self) -> String {
-        self.values.iter().map(|(k, v)| format!("{k} {}", number_string(*v))).collect::<Vec<_>>().join(", ")
+        self.values.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", ")
     }
 }
 
@@ -236,14 +236,9 @@ impl Profile {
     }
 }
 
-/// JavaScript's `Number(text)` for user input: blank is 0, junk is NaN.
-pub fn js_number(text: &str) -> f64 {
-    let t = text.trim();
-    if t.is_empty() {
-        0.0
-    } else {
-        t.parse().unwrap_or(f64::NAN)
-    }
+/// A number typed by the user ("0.8", " 2 "); None when it isn't one.
+pub fn parse_number(text: &str) -> Option<f64> {
+    text.trim().parse().ok().filter(|x: &f64| x.is_finite())
 }
 
 /// The profile from class and talents, with `overrides` like "int=1,sta=1,sp=0.8" applied.
@@ -262,11 +257,9 @@ pub fn profile(c: &Character, overrides: Option<&str>) -> Profile {
     let mut weights = role.weights();
     for part in overrides.unwrap_or("").split(',').filter(|p| !p.is_empty()) {
         let mut kv = part.split('=');
-        let (Some(k), Some(v)) = (kv.next(), kv.next()) else { continue };
-        if k.is_empty() {
-            continue;
-        }
-        let (k, v) = (k.trim().to_string(), js_number(v));
+        // "name=number"; anything else is ignored.
+        let (Some(k), Some(v)) = (kv.next().map(str::trim).filter(|k| !k.is_empty()), kv.next().and_then(parse_number)) else { continue };
+        let k = k.to_string();
         match weights.iter_mut().find(|(name, _)| *name == k) {
             Some(slot) => slot.1 = v,
             None => weights.push((k, v)),
@@ -290,7 +283,7 @@ pub fn score(stats: &ItemStats, p: &Profile) -> f64 {
             v * weight
         })
         .sum();
-    crate::json::js_round(total * 10.0) / 10.0
+    f64::round(total * 10.0) / 10.0
 }
 
 /// Item subtypes named differently in the skill list.
@@ -319,7 +312,7 @@ pub fn can_use(c: &Character, item: &ItemRecord, stats: &ItemStats) -> Result<()
     for (name, rank) in &stats.skill_req {
         let have = c.skills.iter().find(|s| s.name.as_deref() == Some(name.as_str()));
         if have.is_none_or(|s| s.rank.unwrap_or(0.0) < *rank) {
-            return Err(format!("needs {name} {}", number_string(*rank)));
+            return Err(format!("needs {name} {rank}"));
         }
     }
     if let Some(first) = stats.other_req.first() {
@@ -329,7 +322,8 @@ pub fn can_use(c: &Character, item: &ItemRecord, stats: &ItemStats) -> Result<()
     if skills.is_empty() || item.slot.as_deref().is_some_and(|s| ANYONE.contains(&s)) {
         return Ok(());
     }
-    let subtype = item.subtype.as_deref().unwrap_or("?");
+    // Without a subtype there's no skill to check.
+    let Some(subtype) = item.subtype.as_deref() else { return Ok(()) };
     if item.class == Some(4.0) && (subtype == "Miscellaneous" || subtype == "Cosmetic") {
         return Ok(()); // armor anyone can wear: rings, trinkets, shirts
     }
@@ -422,7 +416,7 @@ mod tests {
         assert_eq!(p.weights.iter().find(|(k, _)| k == "sp").unwrap().1, 2.0);
         assert_eq!(p.weights.iter().find(|(k, _)| k == " sta").map(|w| w.1), None); // keys are trimmed
         assert_eq!(p.weights.iter().find(|(k, _)| k == "sta").unwrap().1, 3.0);
-        assert_eq!(p.weights.iter().find(|(k, _)| k == "x").unwrap().1, 0.0); // blank is 0, as in JS
+        assert!(p.weights.iter().all(|(k, _)| k != "x" && !k.is_empty())); // no number, no name: ignored
         p.schools = &["fire"];
         p.weights.push(("sp_main".into(), 0.5));
         let s = parse_stats(&lines(&[

@@ -1,4 +1,4 @@
-// The Opportunities tab: the ladder worklist first, then one card per market.mjs section.
+// The Opportunities tab: the ladder worklist first, then one card per market section.
 // Clicking a row opens that item.
 
 import { Component, define } from "../lib/component.js";
@@ -12,7 +12,7 @@ const ROWS_PER_SECTION = 15;
 const vsUsual = (r) => percent(r.now / r.usual - 1);
 const listed = (r) => count(r.qty);
 
-// What each market.mjs section means, and the columns that show it.
+// What each market section means, and the columns that show it.
 const SECTIONS = [
   {
     key: "buy",

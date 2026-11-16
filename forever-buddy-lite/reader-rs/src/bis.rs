@@ -251,27 +251,23 @@ pub fn report(c: &Character, db: &Value, levels: &[i64], all: bool) -> String {
                 let verdict = if b <= worn_score {
                     "   keep".to_string()
                 } else if worn_score > 0.0 {
-                    format!("{:>7}", format!("+{}%", crate::json::js_round((b - worn_score) / worn_score * 100.0)))
+                    format!("{:>7}", format!("+{}%", f64::round((b - worn_score) / worn_score * 100.0)))
                 } else {
                     "    new".to_string()
                 };
                 let slot_label = if slots.len() > 1 { format!("{name} {}", k + 1) } else { name.to_string() };
                 lines.push(format!(
                     "  {slot_label:<11} {worn_name:<30} {:>4}  ->  {:<32} {:>4}  {verdict}  req {}  {}",
-                    crate::json::to_fixed(worn_score, 0),
+                    format!("{worn_score:.0}"),
                     text(Some(best), "name").unwrap_or("?"),
-                    crate::json::to_fixed(b, 0),
+                    format!("{b:.0}"),
                     required_level(best),
                     source(best, &zones)
                 ));
             }
         }
-        let gain = crate::json::js_round((best_total - current) / current.max(1.0) * 100.0);
-        out.push(format!(
-            "Level {level}: total {} now -> {} best (+{gain}%)",
-            crate::json::to_fixed(current, 0),
-            crate::json::to_fixed(best_total, 0)
-        ));
+        let gain = f64::round((best_total - current) / current.max(1.0) * 100.0);
+        out.push(format!("Level {level}: total {current:.0} now -> {best_total:.0} best (+{gain}%)"));
         out.push(lines.join("\n") + "\n");
     }
     out.join("\n")

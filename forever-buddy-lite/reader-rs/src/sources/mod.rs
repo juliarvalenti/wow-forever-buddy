@@ -1,7 +1,7 @@
 //! Where the data comes from, typed. Each submodule reads one kind of file and returns structs; past
 //! this layer nothing looks things up by string key except pass-through display data.
 //!
-//! Files are found the way the JS reader finds them, from environment variables:
+//! Files are found from environment variables:
 //! - `FBL_FILE`: one ForeverBuddyLite.lua; otherwise every `WTF/Account/*/SavedVariables/ForeverBuddyLite.lua`
 //!   under `FBL_WTF` (default: the usual Forever install).
 //! - `FBL_AUCTIONATOR`: one Auctionator.lua; otherwise the one next to each addon file.
@@ -144,7 +144,7 @@ impl Env {
 }
 
 /// A joined path with the platform's separators throughout (the default game folder is written with
-/// forward slashes; Node's path.join normalizes them on Windows, so the paths shown match).
+/// forward slashes, which would show mixed with backslashes on Windows).
 fn native(p: PathBuf) -> PathBuf {
     if cfg!(windows) {
         PathBuf::from(p.to_string_lossy().replace('/', "\\"))

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// A value that only matters as true/false, read with JavaScript truthiness (`1`, `"yes"` and tables
+/// A value that only matters as true/false, read loosely (`1`, `"yes"` and tables
 /// count as true; `0`, `""` and nil as false).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Truthy(pub bool);
@@ -55,7 +55,7 @@ pub fn lua_keyed<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result
 }
 
 /// A map that remembers insertion order, for merging several accounts' files: a key seen again keeps
-/// its first position (as a JS object does) and may take the new value.
+/// its first position and may take the new value.
 #[derive(Debug, Clone)]
 pub struct OrderedMap<V> {
     entries: Vec<(String, V)>,

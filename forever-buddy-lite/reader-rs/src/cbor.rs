@@ -170,7 +170,7 @@ impl Value {
         match self {
             Value::Unsigned(n) => n.to_string(),
             Value::Negative(n) => n.to_string(),
-            Value::Float(f) => json::number_string(*f),
+            Value::Float(f) => json::number_key(*f),
             Value::Text(s) => s.clone(),
             Value::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
             Value::Bool(b) => b.to_string(),
@@ -188,7 +188,7 @@ impl Value {
         }
     }
 
-    /// Map entries with property-name keys, in JS object order (integer keys first, ascending).
+    /// Map entries with property-name keys, in the order written.
     pub fn map_entries(&self) -> Vec<(String, &Value)> {
         let Value::Map(entries) = self else { return Vec::new() };
         let mut out: Vec<(String, &Value)> = Vec::with_capacity(entries.len());
@@ -203,8 +203,6 @@ impl Value {
                 }
             }
         }
-        // Integer keys first, ascending (a stable sort keeps the others in written order).
-        out.sort_by_key(|(k, _)| json::array_index(k).map_or((1, 0), |n| (0, n)));
         out
     }
 
@@ -217,9 +215,7 @@ impl Value {
             Value::Bool(b) => Json::Bool(*b),
             Value::Null => Json::Null,
             Value::Array(items) => Json::Array(items.iter().map(Value::to_lua_json).collect()),
-            Value::Map(entries) => {
-                json::object_or_sequence(json::js_object(entries.iter().map(|(k, v)| (k.key_string(), v.to_lua_json()))))
-            }
+            Value::Map(entries) => json::table(entries.iter().map(|(k, v)| (k.key_string(), v.to_lua_json()))),
         }
     }
 }
@@ -277,7 +273,7 @@ pub mod tests {
         }
     }
 
-    /// The JS test's blob: { version = 2, ["2589"] = { m = 125, h = { ["2509"] = 130 } }, ["5201"] = { m = 2500000 } }.
+    /// A small price database: { version = 2, ["2589"] = { m = 125, h = { ["2509"] = 130 } }, ["5201"] = { m = 2500000 } }.
     pub fn auctionator_blob() -> Vec<u8> {
         let mut b = vec![0xa3, 0x67];
         b.extend(b"version");

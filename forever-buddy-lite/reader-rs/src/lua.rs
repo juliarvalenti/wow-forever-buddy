@@ -11,7 +11,7 @@
 //! go to the CBOR decoder untouched. Everything else is text and is read as UTF-8 at the JSON boundary.
 
 use crate::json;
-use serde_json::{Map, Value as Json};
+use serde_json::Value as Json;
 use std::fmt;
 
 /// A parsed Lua value.
@@ -80,10 +80,10 @@ impl Table {
 }
 
 impl Key {
-    /// The key as a JS object would spell it ("16", "-1", "name").
+    /// The key as a JSON property ("16", "-1", "name").
     pub fn to_property(&self) -> String {
         match self {
-            Key::Number(n) => json::number_string(*n),
+            Key::Number(n) => json::number_key(*n),
             Key::Str(s) => String::from_utf8_lossy(s).into_owned(),
             Key::Bool(b) => b.to_string(),
         }
@@ -106,12 +106,12 @@ impl Value {
 
 impl Table {
     pub fn to_json(&self) -> Json {
-        let all_numeric = self.entries.iter().all(|(k, _)| matches!(k, Key::Number(_)));
-        let map: Map<String, Json> = json::js_object(self.entries.iter().map(|(k, v)| (k.to_property(), v.to_json())));
-        if all_numeric {
-            json::object_or_sequence(map)
+        let entries = self.entries.iter().map(|(k, v)| (k.to_property(), v.to_json()));
+        // Only number keys make a list: `["1"] = x` is a string key.
+        if self.entries.iter().all(|(k, _)| matches!(k, Key::Number(_))) {
+            json::table(entries)
         } else {
-            Json::Object(map)
+            Json::Object(entries.collect())
         }
     }
 }
@@ -242,7 +242,7 @@ impl<'a> Parser<'a> {
                     self.i += 1;
                     digits += 1;
                 }
-                // Lua rejects codes over 255; the JS reader kept the low byte, and so do we.
+                // Lua rejects codes over 255; keep the low byte rather than fail on one bad escape.
                 s.push((code & 0xff) as u8);
                 continue;
             }
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn parses_what_the_client_writes() {
-        // The JS test case: escapes, an explicit index, a nested sequence with a comment, two globals.
+        // Escapes, an explicit index, a nested list with a comment, two globals.
         let db = parse_json("X = {\n[\"a\"] = \"q\\\"uote\\\\\",\n[3] = true,\n{ 1, 2, -- [2]\n},\n}\nY = 5");
         assert_eq!(db["X"]["a"], "q\"uote\\");
         assert_eq!(db["X"]["3"], true);
@@ -467,8 +467,8 @@ two" }"#,
             "DB = {\n\t[\"chars\"] = {\n\t\t[\"A-Realm\"] = { [\"bags\"] = { [0] = { [\"free\"] = 3 }, [-1] = {}, [2] = { [\"free\"] = 1 } } },\n\t},\n\tbare = false,\n\t[true] = 1,\n}",
         );
         let bags = &db["DB"]["chars"]["A-Realm"]["bags"];
-        // JS object order: integer keys ascending, then the rest ("-1" isn't an array index).
-        assert_eq!(bags.as_object().unwrap().keys().collect::<Vec<_>>(), ["0", "2", "-1"]);
+        // Keys in the order written.
+        assert_eq!(bags.as_object().unwrap().keys().collect::<Vec<_>>(), ["0", "-1", "2"]);
         assert_eq!(bags["0"]["free"], 3);
         assert_eq!(bags["-1"], json!({}));
         assert_eq!(db["DB"]["bare"], false);

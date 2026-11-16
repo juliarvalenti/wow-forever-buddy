@@ -7,7 +7,7 @@
 //! - patient: the next day's high cheapest (you wait for the floor to clear; optimistic).
 
 use crate::config::Config;
-use crate::json::to_fixed;
+
 use crate::sources::auctionator::{DayPrice, PriceDb};
 
 /// Which trades count.
@@ -133,22 +133,21 @@ pub fn outcome(trades: &[Trade], profit: impl Fn(&Trade) -> f64) -> Outcome {
 }
 
 fn signed_percent(x: f64) -> String {
-    format!("{}{}%", if x > 0.0 { "+" } else { "" }, to_fixed(x * 100.0, 1))
+    format!("{}{:.1}%", if x > 0.0 { "+" } else { "" }, x * 100.0)
 }
 
 fn columns(o: Outcome) -> String {
-    format!("{:>4}%  {:>6}  {:>8}", to_fixed(100.0 * o.win_rate, 0), signed_percent(o.median_return), signed_percent(o.return_on_gold))
+    format!("{:>4}%  {:>6}  {:>8}", format!("{:.0}", 100.0 * o.win_rate), signed_percent(o.median_return), signed_percent(o.return_on_gold))
 }
 
 /// The backtest table.
 pub fn report(trades: &[(Rule, Vec<Trade>)], opts: &BacktestOptions) -> String {
-    let js = crate::json::number_string;
     let mut out = vec![
         format!(
             "Busy ({}+ listed), buy price {}s to {}g; one unit per signal.\n",
-            js(opts.min_listed),
-            js(opts.min_price / 100.0),
-            js(opts.max_price / 1e4)
+            opts.min_listed,
+            opts.min_price / 100.0,
+            opts.max_price / 1e4
         ),
         "rule          trades | undercut: win%  median  return on gold | patient: win%  median  return on gold".into(),
     ];

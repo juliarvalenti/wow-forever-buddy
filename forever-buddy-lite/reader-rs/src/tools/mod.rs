@@ -1,5 +1,5 @@
-//! The character commands (`characters`, `gear`, `quests`, `upgrades`, `prices`...): the same tools the
-//! JS reader offers on its CLI and over MCP. Each returns JSON.
+//! The character commands (`characters`, `gear`, `quests`, `upgrades`, `prices`...), the same
+//! on the command line and over MCP. Each returns JSON.
 
 mod character;
 mod prices;
@@ -36,8 +36,8 @@ pub const TOOLS: &[ToolInfo] = &[
     ToolInfo { name: "lockouts", description: "Saved dungeon and raid lockouts with reset times.", args: &[("character", "Name (optional)")] },
     ToolInfo { name: "buffs", description: "Buffs on the character when it was saved, with seconds left.", args: &[("character", "Name (optional)")] },
     ToolInfo { name: "mail", description: "The mailbox as of the last visit: sender, subject, money, attachments, days left.", args: &[("character", "Name (optional)")] },
-    ToolInfo { name: "prices", description: "Auction house prices from Auctionator's scans: the last lowest buyout, the 14-day median and daily lows. Query by item id, or by name for items any character has carried.", args: &[("query", "Item id or name part")] },
-    ToolInfo { name: "flips", description: "Auction house bargains from Auctionator's daily scans: items whose cheapest listing now is well under their usual daily low, that are listed often enough to resell. Needs a few days of full scans to mean anything.", args: &[("budget", "Max buy price in gold (optional)"), ("ratio", "Now at most this share of the usual price (optional, default 0.7)"), ("min_days", "Days of history an item needs (optional, default 3)"), ("min_profit", "Least profit per item in gold after the 5% cut (optional, default 0.2)"), ("limit", "How many (optional, default 25)")] },
+    ToolInfo { name: "prices", description: "Auction house prices from Auctionator's scans: the last lowest buyout, the usual price (the median of each day's floor over 14 days, today left out) and the daily lows and highs. Query by item id, or by name for items any character has carried.", args: &[("query", "Item id or name part")] },
+    ToolInfo { name: "flips", description: "Auction house bargains from Auctionator's daily scans: items whose cheapest listing now is well under their usual price, that are listed often enough to resell. Needs a few days of full scans to mean anything.", args: &[("budget", "Max buy price in gold (optional)"), ("ratio", "Now at most this share of the usual price (optional, default 0.7)"), ("min_days", "Days of history an item needs (optional, default 3)"), ("min_profit", "Least profit per item in gold after the 5% cut (optional, default 0.2)"), ("limit", "How many (optional, default 25)")] },
     ToolInfo { name: "value", description: "What a character's bags (and bank, if seen) would fetch on the auction house, priced from Auctionator, most valuable first. Soulbound items are left out.", args: &[("character", "Name (optional)")] },
     ToolInfo { name: "upgrades", description: "Auction house upgrades for a character, from the gear ForeverBuddy Lite kept during the last full scan. Any class: it checks armor and weapon skills, class restrictions and level, scores stats with the class's (or the top talent tree's) leveling weights, and compares with what's worn in that slot. Best gain per slot.", args: &[("character", "Name (optional)"), ("slot", "Only this slot, e.g. head, finger, main_hand (optional)"), ("budget", "Max price in gold (optional)"), ("ahead", "Also show items up to this many levels above you (optional, default 0)"), ("weights", "Override weights, e.g. int=1,sta=1,sp=0.8 (optional)"), ("per_slot", "How many per slot (optional, default 3)"), ("source", "ah (default) or items: the stats /fbl items saved for the ids in Wishlist.lua, e.g. quest rewards (optional)")] },
     ToolInfo { name: "recipes", description: "Recipes a character knows in a profession, as of the last time its window was open: colour then, reagents, tools (an anvil shows as a tool).", args: &[("character", "Name (optional)"), ("profession", "Profession name (optional: all)"), ("query", "Recipe name part (optional)")] },
@@ -47,6 +47,14 @@ pub const TOOLS: &[ToolInfo] = &[
 
 /// Tool arguments by name (all text, as on the command line).
 pub type Args = HashMap<String, String>;
+
+/// A number argument: its default when not given, an error when it isn't a number.
+pub fn number_arg(args: &Args, name: &str, default: f64) -> Result<f64, String> {
+    match args.get(name).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        None => Ok(default),
+        Some(text) => upgrades::parse_number(text).ok_or_else(|| format!("{name} wants a number, not \"{text}\"")),
+    }
+}
 
 /// What every command works from.
 pub struct Ctx<'a> {
@@ -145,8 +153,7 @@ pub fn pick<'a>(data: &'a AddonData, name: Option<&str>) -> Result<&'a Character
     Err(format!("{kind} character \"{name}\". Known: {}", known.join(", ")))
 }
 
-/// A JSON object built field by field; `opt` leaves a field out when there's no value (as JS leaves
-/// out `undefined`).
+/// A JSON object built field by field; `opt` leaves a field out when there is no value.
 #[derive(Debug, Default, Clone)]
 pub struct Obj(Map<String, Value>);
 
@@ -172,7 +179,7 @@ impl Obj {
         self
     }
 
-    /// Copies in every field of `other` when it's an object (JS `{ ...other }`).
+    /// Copies in every field of `other` when it is an object.
     pub fn spread(mut self, other: Option<&Value>) -> Obj {
         if let Some(Value::Object(o)) = other {
             for (k, v) in o {

@@ -2,7 +2,7 @@
 name = "fbl-reader"
 version = "0.1.0"
 edition = "2021"
-description = "Reads ForeverBuddy Lite and Auctionator SavedVariables: character tools, market picks and a backtest (a Rust port of forever-buddy-lite/reader)."
+description = "Reads ForeverBuddy Lite and Auctionator SavedVariables: character commands, an MCP server, market picks, a live dashboard and planning tools."
 publish = false
 
 [lib]
