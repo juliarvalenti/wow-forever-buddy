@@ -62,6 +62,10 @@ function ns.statusLines()
         trainersAt = math.max(trainersAt, t.at or 0)
     end
     add("Trainers", count(db.trainers) > 0 and string.format("%s, %d seen", seen(trainersAt), count(db.trainers)) or nil)
+    local m = ns.market or {}
+    add("Prices", m.state == "scanning" and string.format("scanning, %d%%", math.floor((m.progress or 0) * 100))
+        or m.state == "ready" and (GOLD .. "scan done, save to write it to disk|r")
+        or ns.lastPriceScan and ns.lastPriceScan() and ("Auctionator scan " .. ago(ns.lastPriceScan())) or nil)
     -- The game writes the file only on reload or logout.
     if ns.loadedAt and newest > ns.loadedAt then
         lines[#lines + 1] = ""
@@ -70,13 +74,34 @@ function ns.statusLines()
     return lines
 end
 
-local frame, statusText, buttons
+local frame, statusText, buttons, priceButton, priceBar
+
+-- The price button's face for each state: label, clickable, tooltip.
+local function priceFace()
+    local m = ns.market or {}
+    if m.state == "ready" then
+        return "Save prices & reload", true, "Auctionator's scan is done. This saves it and ours to disk (reloads the UI)."
+    elseif m.state == "scanning" then
+        return string.format("Scanning prices... %d%%", math.floor((m.progress or 0) * 100)), false,
+            "Auctionator is scanning. Keep the auction house open."
+    elseif ns.ahIsOpen() then
+        return "Start price scan", true, "Runs Auctionator's full scan. When it's done, this button saves it."
+    end
+    return "Start price scan", false, "Open the auction house to scan prices."
+end
 
 local function refresh()
     if not frame or not frame:IsShown() then
         return
     end
     statusText:SetText(table.concat(ns.statusLines(), "\n"))
+    local label, on, tip = priceFace()
+    priceButton:SetText(label)
+    priceButton:SetEnabled(on)
+    priceButton.tip = tip
+    local m = ns.market or {}
+    priceBar:SetValue(m.state == "ready" and 1 or m.state == "scanning" and (m.progress or 0) or 0)
+    priceBar:SetShown(m.state ~= "idle")
     local inCombat = InCombatLockdown()
     for _, b in ipairs(buttons) do
         b:SetEnabled(not b.enabled or b.enabled(inCombat))
@@ -88,14 +113,13 @@ local ACTIONS = {
     { "Save & Reload", function() ns.run("r") end },
     { "Scan AH", function() ns.run("ah") end, function() return ns.ahIsOpen() end },
     { "Find quest gear", function() ns.run("items") end },
-    { "Price scan", function() ns.run("market") end, function() return ns.ahIsOpen() or ns.marketReady() end },
     { "Buff reminders", function() ns.run("wa") end, function(inCombat) return ns.aurasAvailable() and not inCombat end },
     { "Rogue bars", function() ns.run("wa", "bars") end, function(inCombat) return ns.aurasAvailable() and not inCombat end },
 }
 
 local function build()
     frame = CreateFrame("Frame", "ForeverBuddyLiteFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(380, 360)
+    frame:SetSize(380, 420)
     frame:SetFrameStrata("DIALOG")
     local point = ns.db and ns.db.ui.point
     if type(point) == "table" and point[1] then
@@ -132,11 +156,43 @@ local function build()
 
     buttons = {}
     local w, h = 165, 24
+    local rows = math.ceil(#ACTIONS / 2)
+
+    -- Prices: one wide button that walks through scan -> scanning -> save, with a bar under it.
+    priceButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    priceButton:SetSize(w * 2 + 8, 28)
+    priceButton:SetPoint("BOTTOMLEFT", 16, 14 + rows * (h + 6) + 14)
+    priceButton:SetScript("OnClick", function()
+        ns.run("market")
+        refresh()
+    end)
+    priceButton:SetMotionScriptsWhileDisabled(true)
+    priceButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(self.tip or "", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    priceButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    priceBar = CreateFrame("StatusBar", nil, frame)
+    priceBar:SetSize(w * 2 + 8, 4)
+    priceBar:SetPoint("TOPLEFT", priceButton, "BOTTOMLEFT", 0, -3)
+    priceBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    priceBar:SetStatusBarColor(0.25, 0.55, 0.95)
+    priceBar:SetMinMaxValues(0, 1)
+    local barBack = priceBar:CreateTexture(nil, "BACKGROUND")
+    barBack:SetAllPoints()
+    barBack:SetColorTexture(1, 1, 1, 0.08)
+    local priceLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    priceLabel:SetPoint("BOTTOMLEFT", priceButton, "TOPLEFT", 2, 4)
+    priceLabel:SetText("Prices")
+
     for i, a in ipairs(ACTIONS) do
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         b:SetSize(w, h)
         local row, col = math.floor((i - 1) / 2), (i - 1) % 2
-        b:SetPoint("BOTTOMLEFT", 16 + col * (w + 8), 14 + (math.ceil(#ACTIONS / 2) - 1 - row) * (h + 6))
+        b:SetPoint("BOTTOMLEFT", 16 + col * (w + 8), 14 + (rows - 1 - row) * (h + 6))
         b:SetText(a[1])
         b:SetScript("OnClick", function()
             a[2]()
