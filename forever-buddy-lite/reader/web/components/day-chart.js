@@ -6,6 +6,7 @@
 
 import { html } from "../lib/html.js";
 import { money, count } from "../lib/format.js";
+import { coins } from "../lib/coins.js";
 
 const WIDTH = 640;
 const HEIGHT = 200;
@@ -30,7 +31,7 @@ class DayChart extends HTMLElement {
 
     const grid = ticks.map(
       (t) => html`
-        <line x1="${PAD.left}" x2="${WIDTH - PAD.right}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" />
+        <line x1="${PAD.left}" x2="${WIDTH - PAD.right}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rule-soft)" />
         <text x="${PAD.left - 8}" y="${y(t) + 4}" text-anchor="end">${label(t)}</text>`,
     );
     const dayLabels = days.map((d, i) => html`<text x="${x(i)}" y="${HEIGHT - 6}" text-anchor="middle">${d[0]}</text>`);
@@ -61,7 +62,7 @@ class DayChart extends HTMLElement {
       const [day, low, high, listed] = this.item.h[Number(target.dataset.day)];
       tip.innerHTML = String(
         this.getAttribute("kind") === "price"
-          ? html`<b>${day}</b><br />Low ${money(low)}<br />High ${money(high)}`
+          ? html`<b>${day}</b><br />Low ${coins(low)}<br />High ${coins(high)}`
           : html`<b>${day}</b><br />${count(listed)} listed`,
       );
       const box = this.getBoundingClientRect();
@@ -86,9 +87,9 @@ function priceMarks(days, x, y) {
       .join("L")}Z" />`;
   const line =
     n > 1 &&
-    html`<path fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" d="M${days.map((d, i) => `${x(i)},${y(d[1])}`).join("L")}" />`;
+    html`<path fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" d="M${days.map((d, i) => `${x(i)},${y(d[1])}`).join("L")}" />`;
   const dots = days.map(
-    (d, i) => html`<circle cx="${x(i)}" cy="${y(d[1])}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2" />`,
+    (d, i) => html`<circle cx="${x(i)}" cy="${y(d[1])}" r="4" fill="var(--series)" stroke="var(--panel)" stroke-width="2" />`,
   );
   return html`${band}${line}${dots}`;
 }
@@ -99,7 +100,7 @@ function listedMarks(days, x, y, slot, baseline) {
   return days.map((d, i) => {
     const top = y(d[3]);
     const left = x(i) - barW / 2;
-    return html`<path fill="var(--series-1)" d="M${left},${baseline}V${top + 4}q0,-4 4,-4H${left + barW - 4}q4,0 4,4V${baseline}Z" />`;
+    return html`<path fill="var(--series)" d="M${left},${baseline}V${top + 4}q0,-4 4,-4H${left + barW - 4}q4,0 4,4V${baseline}Z" />`;
   });
 }
 

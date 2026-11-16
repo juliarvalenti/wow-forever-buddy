@@ -30,7 +30,7 @@ export function hiddenNote(opps) {
       ${hidden.length > 0 &&
       html`Hidden:
       ${hidden.map(
-        (item, i) => html`${i > 0 && " · "}${item.name}
+        (item, i) => html`${i > 0 && ", "}${item.name}
           <button class="hide-button" type="button" data-unhide="${item.id}" data-name="${item.name}">Show</button>`,
       )}`}
     </p>`;
