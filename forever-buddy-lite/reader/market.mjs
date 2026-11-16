@@ -150,12 +150,25 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
     if (!last?.at) continue;
     if (!ladders[id] || last.at > ladders[id].at) ladders[id] = { at: last.at, total: last.total, levels: parseLadder(last.levels).slice(0, 25) };
   }
+  const byBusyProfit = (a, b) => b.profit * Math.log10(b.qty) - a.profit * Math.log10(a.qty);
+  const sections = {
+    buy: busy.map((r) => ({ ...r, profit: Math.floor(Math.min(r.usual, r.high) * CUT) - DEPOSIT - r.now }))
+      .filter((r) => r.now <= r.usual * 0.8 && r.profit >= MIN_PROFIT && r.now <= budget)
+      .sort(byBusyProfit),
+    dips: busy.filter((r) => r.days >= 3 && r.now <= r.usual * 0.75 && r.high <= r.usual * 0.9 && r.now <= budget && resell(r) >= MIN_PROFIT)
+      .map((r) => ({ ...r, profit: resell(r) })).sort(byBusyProfit),
+    sell: rows.filter((r) => r.held && r.days >= 2 && r.now >= r.usual * 1.15 && r.qty >= 20)
+      .map((r) => ({ ...r, worth: Math.floor(r.now * CUT) * r.held })).sort((a, b) => b.worth - a.worth),
+    squeeze: moves.filter((r) => r.dq <= -0.2 && r.dp >= 0.15).sort((a, b) => (b.dp - b.dq) - (a.dp - a.dq)),
+    flood: moves.filter((r) => r.dq >= 0.3 && r.dp <= -0.15).sort((a, b) => (a.dp - a.dq) - (b.dp - b.dq)),
+    swingy: busy.filter((r) => r.high >= r.low * 1.5 && r.high - r.low >= 300 && r.low <= budget && r.high <= r.usual * 2)
+      .sort((a, b) => (b.high - b.low) * Math.log10(b.qty) - (a.high - a.low) * Math.log10(a.qty)),
+  };
   const want = (r, why) => { const c = check.get(r.id) || { id: r.id, name: r.name, why: [] }; if (!c.why.includes(why)) c.why.push(why); check.set(r.id, c); };
-  const buyList = busy.map((r) => ({ ...r, profit: Math.floor(Math.min(r.usual, r.high) * CUT) - DEPOSIT - r.now }))
-    .filter((r) => r.now <= r.usual * 0.8 && r.profit >= MIN_PROFIT && r.now <= budget);
-  for (const r of buyList.slice(0, 12)) want(r, "cheap now");
-  for (const r of rows.filter((r) => r.held && r.days >= 2 && r.now >= r.usual * 1.15 && r.qty >= 20).slice(0, 6)) want(r, "you hold it");
-  for (const r of busy.filter((r) => r.high >= r.low * 1.5 && r.high - r.low >= 300 && r.low <= budget && r.high <= r.usual * 2).slice(0, 6)) want(r, "swingy");
+  // The best of each section (they're sorted), not the first by item id.
+  for (const r of sections.buy.slice(0, 12)) want(r, "cheap now");
+  for (const r of sections.sell.slice(0, 6)) want(r, "you hold it");
+  for (const r of sections.swingy.slice(0, 6)) want(r, "swingy");
   for (const id of Object.keys(ladders).map(Number)) if (Date.now() / 1000 - ladders[id].at < 6 * 3600 && !check.has(id) && !hidden.has(id) && !vendorItems.has(id)) want({ id, name: byId.get(id)?.name || nameOf(id) }, "searched");
   const ORDER = { gap: 0, todo: 1, stale: 2, big: 3, yours: 4, tight: 5, empty: 6 };
   const checkList = [...check.values()].map((c) => {
@@ -172,18 +185,8 @@ export function analyze({ budget = 5, minListed = 100, ladderHours = 3 } = {}) {
     date: new Date(Date.UTC(2020, 0, 1) + lastDay * 864e5).toISOString().slice(0, 10),
     items: rows.length, busy: busy.length, budget, minListed, skippedVendor,
     hidden: [...hidden].map(([id, v]) => ({ id, name: v.name || nameOf(id) })), scanAt: prices.scanAt || null,
-    buy: busy.map((r) => ({ ...r, profit: Math.floor(Math.min(r.usual, r.high) * CUT) - DEPOSIT - r.now }))
-      .filter((r) => r.now <= r.usual * 0.8 && r.profit >= MIN_PROFIT && r.now <= budget)
-      .sort((a, b) => b.profit * Math.log10(b.qty) - a.profit * Math.log10(a.qty)),
-    dips: busy.filter((r) => r.days >= 3 && r.now <= r.usual * 0.75 && r.high <= r.usual * 0.9 && r.now <= budget && resell(r) >= MIN_PROFIT)
-      .map((r) => ({ ...r, profit: resell(r) })).sort((a, b) => b.profit * Math.log10(b.qty) - a.profit * Math.log10(a.qty)),
-    sell: rows.filter((r) => r.held && r.days >= 2 && r.now >= r.usual * 1.15 && r.qty >= 20)
-      .map((r) => ({ ...r, worth: Math.floor(r.now * CUT) * r.held })).sort((a, b) => b.worth - a.worth),
-    squeeze: moves.filter((r) => r.dq <= -0.2 && r.dp >= 0.15).sort((a, b) => (b.dp - b.dq) - (a.dp - a.dq)),
-    flood: moves.filter((r) => r.dq >= 0.3 && r.dp <= -0.15).sort((a, b) => (a.dp - a.dq) - (b.dp - b.dq)),
+    ...sections,
     gaps, check: checkList, ladders,
-    swingy: busy.filter((r) => r.high >= r.low * 1.5 && r.high - r.low >= 300 && r.low <= budget && r.high <= r.usual * 2)
-      .sort((a, b) => (b.high - b.low) * Math.log10(b.qty) - (a.high - a.low) * Math.log10(a.qty)),
   };
 }
 
