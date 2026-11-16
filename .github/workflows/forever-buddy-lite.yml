@@ -1,7 +1,7 @@
 # ForeverBuddy Lite (forever-buddy-lite/): the data-only addon and its reader.
 # - the addon compiles on Lua 5.1 and runs headless through WOWAPI (the
 #   Forever client emulator) with no Lua errors or blocked actions;
-# - the reader's tests (node --test) pass against the fixture file.
+# - the reader (forever-buddy-lite/reader-rs, Rust) is formatted, lint-free, and its tests pass.
 name: ForeverBuddy Lite
 
 on:
@@ -55,7 +55,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - run: node --version && node --test forever-buddy-lite/reader/test/fbl.test.mjs
       # Core.lua carries a hash of the addon's code, shown in /fbl; it must match the code.
       - name: Build hash is current (node forever-buddy-lite/addon/stamp.mjs to update)
         run: node forever-buddy-lite/addon/stamp.mjs --check
+      - name: Formatted
+        working-directory: forever-buddy-lite/reader-rs
+        run: cargo --version && cargo fmt --check
+      - name: Lints
+        working-directory: forever-buddy-lite/reader-rs
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests
+        working-directory: forever-buddy-lite/reader-rs
+        run: cargo test --locked

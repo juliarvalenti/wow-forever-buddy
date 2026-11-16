@@ -1,4 +1,4 @@
-// Talking to live.mjs: the data, live updates, hiding items.
+// Talking to the live server (fbl-rs live): the data, live updates, hiding items.
 
 export async function fetchData() {
   const response = await fetch("/data.json", { cache: "no-store" });

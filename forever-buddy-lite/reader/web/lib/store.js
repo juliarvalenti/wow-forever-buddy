@@ -5,7 +5,7 @@
 //
 // state = {
 //   items:  [enriched item, ...]       every named item with its daily history (see model.js)
-//   opps:   {...} | null               market.mjs analyze(): sections, worklist, ladders, scanAt
+//   opps:   {...} | null               the market analysis (reader-rs dashboard.rs): sections, worklist, ladders, scanAt
 //   stamp:  "2026-11-16"               last day the scans cover
 //   lastUpdate: Date | null            when the server last pushed new data
 //   prefs:  {...}                      filters, selection, view: remembered in this browser

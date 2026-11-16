@@ -1,4 +1,4 @@
-// Entry point: loads the data from live.mjs, keeps it current, and wires the few app-wide actions.
+// Entry point: loads the data from the live server (fbl-rs live), keeps it current, and wires the few app-wide actions.
 
 import "./components/item-finder.js";
 import "./components/top-bar.js";
@@ -52,6 +52,6 @@ window.addEventListener("focus", () => {
 });
 
 loadData({ pushed: false }).catch((error) => {
-  document.querySelector("main-view").textContent = `Couldn't load the data (${error.message}). Is live.mjs running?`;
+  document.querySelector("main-view").textContent = `Couldn't load the data (${error.message}). Is fbl-rs live running?`;
 });
 onServerUpdate(() => loadData({ pushed: true }).catch(() => {}));

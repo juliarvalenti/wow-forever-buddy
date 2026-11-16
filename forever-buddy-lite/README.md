@@ -2,7 +2,7 @@
 
 It has two parts:
 - a small addon that captures your characters to SavedVariables, with a status window;
-- a zero-dependency reader that Claude (or you) can query, as a CLI or as an MCP server.
+- a reader (`reader-rs`, one Rust binary, `fbl-rs`) that Claude (or you) can query, as a CLI or as an MCP server, plus a live auction house dashboard.
 
 It covers what Claude kept needing while helping in game: gear, bags, bank, mail, quest log and completed quests, skills (Lockpicking, weapon skills, professions), talents, spells, stats (spell power by school, crit, mana), reputation, lockouts, buffs and position; recipes and trainers; auction house gear; quest rewards and dungeon drops with their stats.
 
@@ -46,13 +46,22 @@ It never changes game state and sends nothing to the server.
 
 ## The reader
 
+Build it once (needs Rust: https://rustup.rs):
+
 ```sh
-node reader/fbl.mjs characters
-node reader/fbl.mjs gear Mymage
-node reader/fbl.mjs find "linen cloth"
-node reader/fbl.mjs completed Myrogue 78676 78699
-node reader/fbl.mjs talents
-node reader/fbl.mjs help
+cd forever-buddy-lite/reader-rs
+cargo build --release          # the binary is target/release/fbl-rs (fbl-rs.exe on Windows)
+```
+
+Then (`cargo run --release -- <command>` works too):
+
+```sh
+fbl-rs characters
+fbl-rs gear Mymage
+fbl-rs find "linen cloth"
+fbl-rs completed Myrogue 78676 78699
+fbl-rs talents
+fbl-rs help
 ```
 
 Commands, each also an MCP tool:
@@ -74,31 +83,55 @@ Commands, each also an MCP tool:
 | `lockouts` | Instance lockouts |
 | `buffs` | Active buffs |
 | `mail` | Mailbox contents |
+| `prices`, `flips`, `value` | Auction prices from Auctionator: an item's usual price, bargains, what your bags are worth |
+| `upgrades` | Gear upgrades from the auction house scan (or quest rewards) |
+| `recipes`, `trainers` | Profession recipes and what trainers teach |
 | `raw` | The saved data as stored |
 
 The character is optional: it defaults to the one saved most recently. Every result includes `saved`, which says when the game wrote that character.
+
+More commands (not MCP tools):
+
+| Command | What it does |
+|---|---|
+| `live [--port 4747] [--budget 5] [--min-listed 100] [--no-open] [--archive dir]` | The auction house dashboard (below) |
+| `market [--budget 5] [--min-listed 100] [--top 12] [--json]` | The same analysis once, as text |
+| `backtest` | Replays the market rules on past days against a control |
+| `snipes [--cap 0.25] [--out file \| --dir folder]` | A Point Blank Sniper shopping list |
+| `skillup [character] [profession] [--to 225]` | The cheapest way up a profession at today's prices |
+| `questxp [character] [min] [max] [zone]`, `questxp [character] --chain "Quest"` | XP-dense zones, hubs and chains (needs QuestieDB) |
+| `bis [character] [--levels 40,45,50,60]` | Best in slot by level for an agility melee (needs the WoWSims Forever database, `$WOWSIMS_DB`) |
+
+**The dashboard.** Run `fbl-rs live` and leave it running; it opens http://localhost:4747 (this machine only). After every price scan or save that reaches disk (Auctionator's scan plus `/reload`, or `/fbl r`) it rebuilds, archives the scan to `Documents/FBL Market/scans`, prints new gaps and buys in the terminal, and pushes the update to the page. The page itself is `reader/web`; Hide on the page keeps an item out of every suggestion (`Documents/FBL Market/hidden.json`, or `$FBL_HIDDEN`).
 
 **Where it reads from:**
 - `$FBL_FILE` if you set it;
 - otherwise every `WTF/Account/*/SavedVariables/ForeverBuddyLite.lua` under `$FBL_WTF`;
 - by default, under `C:/Program Files (x86)/World of Warcraft/_forever_/WTF`.
+- Auctionator's prices: `$FBL_AUCTIONATOR`, else the `Auctionator.lua` next to each addon file. QuestieDB: `$QUESTIEDB_DIR`, else the game's AddOns folder.
+
+It only reads the game's files; it writes only its own (the scan archive, the hidden list, snipe lists).
 
 **As an MCP server in Claude Code:**
 
 ```sh
-claude mcp add forever-buddy-lite -- node /path/to/forever-buddy-lite/reader/fbl.mjs mcp
+claude mcp add forever-buddy-lite -- /path/to/forever-buddy-lite/reader-rs/target/release/fbl-rs mcp
 ```
 
 ## Develop
 
 ```sh
-node --test forever-buddy-lite/reader/test/fbl.test.mjs
+cd forever-buddy-lite/reader-rs
+cargo test
+cargo clippy --all-targets
 ```
+
+The reader's modules: `lua` and `cbor` (the file formats), `sources` (typed data per file), `config` (every market threshold, with its reason), `model` (usual price, ladder gaps and verdicts), `strategies` (one function per market rule), `report`, `dashboard` and `catalog` (what the page reads), `live` (the watcher and server), `tools` (the commands), `mcp`. Tests run against `reader-rs/tests/fixture/ForeverBuddyLite.lua`.
 
 CI (`.github/workflows/forever-buddy-lite.yml`) does three things:
 1. compiles the addon on Lua 5.1;
 2. runs it headless through WOWAPI with `tools/addon-smoke`, and fails on any Lua error or blocked action;
-3. runs the reader tests.
+3. checks the reader: `cargo fmt --check`, `cargo clippy`, `cargo test`.
 
 The addon reads APIs that may be missing through `pcall`, and it prefers the ones other addons already use on Forever:
 - `C_Traits` for talents, as Leatrix Plus and Questie do;
