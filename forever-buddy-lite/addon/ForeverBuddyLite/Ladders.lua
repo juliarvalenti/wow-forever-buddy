@@ -14,11 +14,17 @@ local KEEP = 24          -- searches kept per item
 local LEVELS = 40        -- price levels kept per search
 local MAX_AGE = 14 * 86400
 
-local function store(key, rows)
+-- An empty search is kept too (total 0): "nobody's selling" is an answer, and the reader needs to see the
+-- item was checked. debug.ladders counts what came in, to tell "never searched" from "not captured".
+local function store(key, rows, kind)
     local db = ns.db
-    if not db or #rows == 0 then
+    if not db then
         return
     end
+    local d = db.debug.ladders or { commodity = 0, item = 0 }
+    d[kind] = (d[kind] or 0) + 1
+    d.last = { key = key, rows = #rows, at = ns.now(), kind = kind }
+    db.debug.ladders = d
     -- Group by unit price (several auctions can share one), cheapest first.
     local byPrice, prices, total = {}, {}, 0
     for _, r in ipairs(rows) do
@@ -65,7 +71,7 @@ local function commodity(itemID)
             rows[#rows + 1] = { price = r.unitPrice, qty = r.quantity, mine = r.containsOwnerItem }
         end
     end
-    store(tostring(itemID), rows)
+    store(tostring(itemID), rows, "commodity")
 end
 
 -- Other items (gear, bags): per item and suffix. A row groups identical
@@ -82,7 +88,7 @@ local function item(itemKey)
         end
     end
     local suffix = itemKey.itemSuffix or 0
-    store(itemKey.itemID .. (suffix ~= 0 and (":" .. suffix) or ""), rows)
+    store(itemKey.itemID .. (suffix ~= 0 and (":" .. suffix) or ""), rows, "item")
 end
 
 -- Results arrive in pieces; read each item once they've settled.

@@ -118,6 +118,15 @@ table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 10px;
 .lad .p{text-align:right;white-space:nowrap}.lad .q{color:var(--text-secondary);white-space:nowrap}
 .lad .bar{height:12px;border-radius:0 4px 4px 0;background:var(--text-muted);opacity:.45;min-width:2px}
 .lad .bar.buy{background:var(--series-1);opacity:1}.lad .mark{grid-column:1/-1;font-size:11px;color:var(--up);border-top:1px dashed var(--up);padding-top:2px}
+.flow{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.flow.open{display:flex}.flow .box{background:var(--surface-1);border:1px solid var(--line);border-radius:12px;width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:18px 20px;display:grid;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.flow .fhead{display:flex;gap:10px;align-items:baseline}.flow .fhead h2{margin:0;font-size:18px}.flow .fhead .x{margin-left:auto}
+.flow .prog{height:6px;border-radius:3px;background:var(--grid);overflow:hidden}.flow .prog div{height:100%;background:var(--series-1);border-radius:3px}
+.flow ol.steps{margin:0;padding-left:20px;display:grid;gap:6px}.flow td{text-align:left}
+.flow .wait{display:flex;gap:8px;align-items:center;color:var(--text-secondary);font-size:13px}
+.flow .wait b{width:8px;height:8px;border-radius:50%;background:var(--series-1);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+.btn.primary{background:var(--series-1);border-color:var(--series-1);color:#fff}.btn[disabled]{opacity:.5;cursor:default}
 .flash{animation:flash 1.2s ease-out}@keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
 @media (max-width:760px){.app{grid-template-columns:1fr;height:auto}aside{max-height:60vh}}
 </style></head><body>
@@ -140,6 +149,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 10px;
   </div>
   <div class="list" id="list" role="listbox" aria-label="Items"></div>
 </aside>
+<div id="flow" class="flow"></div>
 <main id="main"><div class="empty">Pick an item on the left.</div></main>
 </div>
 <script>
@@ -173,14 +183,14 @@ function filtered(){const q=st.q.trim().toLowerCase(),pmin=st.pmin===""?null:+st
 const pct=(x)=>(x>0?"+":"")+Math.round(x*100)+"%";
 function render(){store.set("fbl-dash",st);const r=filtered();$("count").textContent=r.length.toLocaleString()+" items"+(r.length>400?" · showing 400":"");
   $("list").innerHTML=r.slice(0,400).map(it=>'<div class="item" role="option" data-id="'+it.id+'" aria-selected="'+(it.id===st.sel)+'"><div class="nm">'+esc(it.n)+'</div><div class="pr">'+money(it.now)+'</div><div class="k">'+esc(it.k)+' · '+it.listed.toLocaleString()+' listed</div><div class="ch '+(it.chg>0.1?"up":it.chg<-0.1?"down":"muted")+'">'+(it.h.length>1?pct(it.chg):"new")+'</div></div>').join("");
-  if(st.view==="opps")showOpps();else show(ITEMS.find(i=>i.id===st.sel))}
+  if(st.view==="opps")showOpps();else show(ITEMS.find(i=>i.id===st.sel));drawFlow()}
 $("list").onclick=(e)=>{const el=e.target.closest(".item");if(!el)return;st.sel=+el.dataset.id;st.view="item";render()};
 // Tabs over the right side: the opportunities, or the item picked on the left.
 let lastUpdate=null;
 function tabs(){const it=ITEMS.find(i=>i.id===st.sel);
   return '<div class="tabs"><button class="chip" type="button" data-view="opps" aria-pressed="'+(st.view==="opps")+'">Opportunities</button>'
    +(it?'<button class="chip" type="button" data-view="item" aria-pressed="'+(st.view==="item")+'">'+esc(it.n)+'</button>':"")
-   +'<span class="live">'+(LIVE?'<b></b>live · ':"")+'scans through '+esc(STAMP)+(lastUpdate?' · updated '+lastUpdate:"")+'</span></div>'}
+   +'<span id="flowbar"></span><span class="live">'+(LIVE?'<b></b>live · ':"")+'scans through '+esc(STAMP)+(lastUpdate?' · updated '+lastUpdate:"")+'</span></div>'}
 $("main").addEventListener("click",(e)=>{const t=e.target.closest("[data-view]");if(t){st.view=t.dataset.view;render();return}
   const r=e.target.closest("tr[data-id]");if(r){st.sel=+r.dataset.id;st.view="item";render()}});
 // The sections market.mjs finds, one card each; a row opens the item.
@@ -215,6 +225,52 @@ function ladderCard(it){const L=OPPS&&OPPS.ladders&&OPPS.ladders[it.id];if(!L)re
   lv.forEach((l,i)=>{cum+=l.qty;if(buyN&&i===buyN)rows+='<div class="mark">relist at '+money(g.relist)+'</div>';
     rows+='<div class="p">'+money(l.price)+'</div><div><div class="bar'+(i<buyN?" buy":"")+'" style="width:'+Math.max(1,l.qty/max*100)+'%"></div></div><div class="q">'+l.qty.toLocaleString()+(l.mine?" yours":"")+' <span class="muted">· '+cum.toLocaleString()+'</span></div>'});
   return '<div class="card"><h3>Price ladder'+(c?' <span class="pill '+c.kind+'">'+KIND[c.kind]+'</span>':"")+'</h3><div class="sub">Searched '+ago(L.at)+' · '+L.total.toLocaleString()+' listed · each level: price, how many, running total'+(c?' · '+esc(c.text):"")+'</div><div class="lad">'+rows+'</div></div>'}
+// A round per price scan: the scan's picks to search at the AH, then their verdicts once your save brings
+// the ladders in. A pick counts as checked when its latest ladder is newer than the scan.
+const TITLE=document.title,FLOW_KEY="fbl-flow";
+let flow=store.get(FLOW_KEY,{round:0,step:"done",picks:[],open:false});
+const saveFlow=()=>store.set(FLOW_KEY,flow);
+const fmtTime=(t)=>new Date(t*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+const checkedNow=(id)=>{const L=OPPS&&OPPS.ladders&&OPPS.ladders[id];return!!(L&&L.at>=flow.round)};
+const auctionatorList=(names)=>"FBL check^"+names.map(n=>'"'+n.replace(/"/g,"")+'";;;;;;;;;;;#;;').join("^");
+function flowPicks(){const byId=new Map((OPPS.check||[]).map(c=>[c.id,c]));return flow.picks.map(id=>byId.get(id)).filter(Boolean)}
+function flowSync(fromUpdate){if(!OPPS||!OPPS.scanAt)return;
+  if(OPPS.scanAt>flow.round){
+    flow={round:OPPS.scanAt,step:"check",open:true,picks:(OPPS.check||[]).filter(c=>c.why.some(w=>w!=="searched")).map(c=>c.id)};
+    saveFlow();if(fromUpdate)document.title="\u25CF New price scan \u00B7 "+TITLE}
+  else if(flow.step==="check"&&flow.picks.some(checkedNow)){flow.step="results";flow.open=true;saveFlow();if(fromUpdate)document.title="\u25CF Ladders in \u00B7 "+TITLE}
+  drawFlow()}
+const FORDER={gap:0,big:1,yours:2,tight:3,empty:4,stale:5,todo:6};
+function drawFlow(){const el=$("flow"),bar=$("flowbar");if(!el)return;
+  if(!OPPS||!flow.round||flow.step==="done"){el.classList.remove("open");el.innerHTML="";if(bar)bar.innerHTML="";return}
+  const picks=flowPicks(),done=picks.filter(c=>checkedNow(c.id)),left=picks.filter(c=>!checkedNow(c.id));
+  if(bar)bar.innerHTML='<button class="btn" type="button" data-flow="open">Round '+fmtTime(flow.round)+' \u00B7 '+done.length+'/'+picks.length+' checked</button>';
+  el.classList.toggle("open",!!flow.open);if(!flow.open){el.innerHTML="";return}
+  let h='<div class="box" role="dialog" aria-modal="true" aria-labelledby="flowT"><div class="fhead"><h2 id="flowT">'+(flow.step==="check"?"New price scan":"Ladders are in")+'</h2><span class="muted">scan finished '+fmtTime(flow.round)+'</span><button class="btn x" type="button" data-flow="hide">Minimize</button></div>'
+   +'<div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="'+picks.length+'" aria-valuenow="'+done.length+'"><div style="width:'+(picks.length?done.length/picks.length*100:0)+'%"></div></div>'
+   +'<div class="muted">'+done.length+' of '+picks.length+' picks searched since this scan</div>';
+  if(flow.step==="check"){
+    h+='<ol class="steps"><li><button class="btn primary" type="button" data-flow="copy">Copy the '+left.length+' to search</button> then in Auctionator: Shopping, Import, paste.</li>'
+     +'<li>In that list, <b>click each item</b> so its listings open. Running the list search alone isn\u2019t enough: only opening an item gives its ladder.</li>'
+     +'<li>Save prices &amp; reload (or /fbl r). This page picks it up by itself.</li></ol>'
+     +'<div class="wait"><b></b>Waiting for your save\u2026</div>'
+     +'<table><tbody>'+picks.map(c=>'<tr><td>'+(checkedNow(c.id)?'<span class="up">\u2713</span>':'<span class="muted">\u25CB</span>')+'</td><td>'+esc(c.name)+'</td><td class="muted">'+esc(c.why.join(", "))+'</td></tr>').join("")+'</tbody></table>'}
+  else{const sorted=[...done].sort((a,b)=>(FORDER[a.kind]??9)-(FORDER[b.kind]??9)||(b.gap&&b.gap.profit||0)-(a.gap&&a.gap.profit||0));
+    h+='<table><thead><tr><th>Verdict</th><th>Item</th><th>Plan</th></tr></thead><tbody>'
+     +sorted.map(c=>'<tr data-id="'+c.id+'"><td><span class="pill '+c.kind+'">'+KIND[c.kind]+'</span></td><td>'+esc(c.name)+'</td><td>'+esc(c.text)+(c.sell?'<br><span class="up">'+esc(c.sell.text)+'</span>':"")+'</td></tr>').join("")+'</tbody></table>'
+     +(left.length?'<div class="muted">Not searched yet: '+left.map(c=>esc(c.name)).join(", ")+'</div>':"")
+     +'<div class="tools">'+(left.length?'<button class="btn" type="button" data-flow="copy">Copy the '+left.length+' not searched</button>':"")+'<button class="btn primary" type="button" data-flow="finish">Finish round</button></div>'}
+  el.innerHTML=h+'</div>'}
+document.addEventListener("click",async(e)=>{const b=e.target.closest("[data-flow]");
+  if(!b){if(e.target.id==="flow"){flow.open=false;saveFlow();drawFlow()}
+    else{const r=e.target.closest("#flow tr[data-id]");if(r){flow.open=false;saveFlow();st.sel=+r.dataset.id;st.view="item";render()}}return}
+  const a=b.dataset.flow;
+  if(a==="copy"){const names=flowPicks().filter(c=>!checkedNow(c.id)).map(c=>c.name);
+    try{await navigator.clipboard.writeText(auctionatorList(names));b.textContent="Copied "+names.length+": paste in Auctionator, Shopping, Import"}catch(err){prompt("Copy this, then Auctionator: Shopping, Import:",auctionatorList(names))}return}
+  if(a==="open")flow.open=true;else if(a==="hide")flow.open=false;else if(a==="finish"){flow.step="done";flow.open=false}
+  saveFlow();document.title=TITLE;drawFlow()});
+document.addEventListener("keydown",(e)=>{if(e.key==="Escape"&&flow.open){flow.open=false;saveFlow();drawFlow()}});
+window.addEventListener("focus",()=>{document.title=TITLE});
 function showOpps(){if(!OPPS){$("main").innerHTML=tabs()+'<div class="empty">No opportunities in this file: run node live.mjs, or rebuild with dashboard.mjs.</div>';return}
   $("main").innerHTML=tabs()+'<div class="sub muted">'+OPPS.busy.toLocaleString()+' busy items ('+OPPS.minListed+'+ listed) of '+OPPS.items.toLocaleString()+'; buys up to '+money(OPPS.budget)+'.</div>'
    +checkCard()
@@ -226,7 +282,7 @@ function showOpps(){if(!OPPS){$("main").innerHTML=tabs()+'<div class="empty">No 
 // Live: the server says when a scan lands; fetch the new data and redraw, keeping filters and selection.
 if(LIVE&&window.EventSource){const ev=new EventSource("/events");ev.addEventListener("update",async()=>{
   try{const d=await (await fetch("/data.json",{cache:"no-store"})).json();ITEMS=prep(d.items);OPPS=d.opps;STAMP=d.stamp;
-    lastUpdate=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});facets();render();$("main").classList.remove("flash");void $("main").offsetWidth;$("main").classList.add("flash")}catch(e){}})}
+    lastUpdate=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});facets();render();flowSync(true);$("main").classList.remove("flash");void $("main").offsetWidth;$("main").classList.add("flash")}catch(e){}})}
 // Charts: one measure per chart (no dual axis). Price: daily low as the line, the day's low-to-high as a band.
 function chart(it,kind){const W=640,H=200,L=56,R=12,T=12,B=26,w=W-L-R,h=H-T-B,n=it.h.length;
   const ys=kind==="price"?it.h.flatMap(d=>[d[1],d[2]]):it.h.map(d=>d[3]);const max=Math.max(...ys)*1.08||1,min=kind==="price"?Math.min(...ys)*0.92:0;
@@ -260,6 +316,7 @@ function show(it){if(!it){$("main").innerHTML=tabs()+'<div class="empty">Pick an
   hover($("pc"),it,"price");hover($("qc"),it,"qty")}
 if(st.sel==null){const m=ITEMS.find(i=>i.n==="Mageweave Cloth");st.sel=m?m.id:null}
 if(!OPPS&&st.view==="opps")st.view="item";
+setTimeout(()=>flowSync(false),0);
 render();
 </script></body></html>`;
 }

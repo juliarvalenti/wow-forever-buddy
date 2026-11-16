@@ -264,7 +264,9 @@ export function loadPrices(env = process.env) {
     const sv = parseSavedVariables(fs.readFileSync(f, "latin1"));
     const db = sv.AUCTIONATOR_PRICE_DATABASE;
     if (!db || db.__dbversion !== 8) continue;
-    scanAt = sv.AUCTIONATOR_SAVEDVARS?.TimeOfLastReplicateScan || scanAt;
+    // When the last price scan finished: browse (the incremental scan) or replicate, whichever is newer.
+    const sv0 = sv.AUCTIONATOR_SAVEDVARS || {};
+    scanAt = Math.max(scanAt || 0, sv0.TimeOfLastBrowseScan || 0, sv0.TimeOfLastReplicateScan || 0) || scanAt;
     for (const [realm, v] of Object.entries(db)) {
       if (realm.startsWith("__")) continue;
       let data = v;
