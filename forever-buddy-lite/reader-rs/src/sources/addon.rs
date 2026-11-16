@@ -67,6 +67,8 @@ pub struct Identity {
     /// Copper.
     pub money: Option<f64>,
     pub zone: Option<String>,
+    /// "Alliance" or "Horde".
+    pub faction: Option<String>,
     pub subzone: Option<String>,
     pub xp: Option<f64>,
     pub xp_max: Option<f64>,
@@ -412,6 +414,8 @@ pub struct ItemRecord {
     pub class: Option<f64>,
     /// "Cloth", "Staves", "Miscellaneous"...
     pub subtype: Option<String>,
+    /// The subclass number (for trade goods: 5 cloth, 9 herbs...).
+    pub subclass: Option<f64>,
     /// Cheapest buyout in copper (auction scan).
     pub buyout: Option<f64>,
     pub listings: Option<Value>,

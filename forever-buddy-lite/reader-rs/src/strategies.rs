@@ -379,7 +379,14 @@ pub fn latest_ladders(inputs: &MarketInputs, cfg: &Config) -> BTreeMap<u32, Ladd
 /// Items come from the rules (the best few of buy, sell and swingy) and from recent searches. Each
 /// gets the verdict of its latest ladder; one older than `ladder_stale_hours` is marked stale, and so
 /// is one whose floor doesn't match the price scan.
-pub fn check_list(inputs: &MarketInputs, rows: &[ItemMarket], picks: &RulePicks, ladders: &BTreeMap<u32, LadderView>, budget: i64, cfg: &Config) -> Vec<CheckItem> {
+pub fn check_list(
+    inputs: &MarketInputs,
+    rows: &[ItemMarket],
+    picks: &RulePicks,
+    ladders: &BTreeMap<u32, LadderView>,
+    budget: i64,
+    cfg: &Config,
+) -> Vec<CheckItem> {
     // (id, name, reasons), in the order first wanted.
     let mut wanted: Vec<(u32, String, Vec<Reason>)> = Vec::new();
     fn want(wanted: &mut Vec<(u32, String, Vec<Reason>)>, id: u32, name: &str, why: Reason) {

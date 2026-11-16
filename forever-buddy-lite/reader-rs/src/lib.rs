@@ -15,14 +15,21 @@
 //! - [`tools`], [`mcp`]: the character commands, on the CLI and as an MCP server.
 
 pub mod backtest;
+pub mod bis;
+pub mod catalog;
 pub mod cbor;
 pub mod config;
+pub mod dashboard;
 pub mod format;
 pub mod json;
+pub mod live;
 pub mod lua;
 pub mod mcp;
 pub mod model;
+pub mod questxp;
 pub mod report;
+pub mod skillup;
+pub mod snipes;
 pub mod sources;
 pub mod strategies;
 pub mod tools;

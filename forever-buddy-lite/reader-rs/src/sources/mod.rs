@@ -23,8 +23,19 @@ use std::path::{Path, PathBuf};
 /// Everything the market analysis reads: Auctionator's prices, the addon's ladders and what your
 /// characters hold, QuestieDB's names and vendor lists, and your hidden list.
 pub fn market_inputs(env: &Env, cfg: &Config, now: f64) -> Result<MarketInputs, String> {
+    let questie = questie::load_items(&env.questiedb_dir(), cfg.vendor_cutoff);
     let addon = addon::load(env)?;
-    let questie = questie::load(&env.questiedb_dir(), cfg.vendor_cutoff);
+    Ok(market_inputs_from(&addon, auctionator::load(env)?, &questie, hidden::load(&env.hidden_file()), now))
+}
+
+/// `market_inputs` from data already read (the live server keeps QuestieDB's between rebuilds).
+pub fn market_inputs_from(
+    addon: &addon::AddonData,
+    prices: auctionator::PriceDb,
+    questie: &questie::QuestieItems,
+    hidden: std::collections::BTreeMap<u32, hidden::HiddenItem>,
+    now: f64,
+) -> MarketInputs {
     let mut known: HashMap<u32, String> = HashMap::new();
     let mut held: HashMap<u32, i64> = HashMap::new();
     let scanned = addon.ah.iter().flat_map(|ah| ah.items.iter().flatten());
@@ -47,15 +58,16 @@ pub fn market_inputs(env: &Env, cfg: &Config, now: f64) -> Result<MarketInputs, 
             *held.entry(id as u32).or_insert(0) += count as i64;
         }
     }
-    Ok(MarketInputs {
-        prices: auctionator::load(env)?,
-        ladders: addon.ladders,
-        names: ItemNames { questie: questie.names, known },
-        vendor_items: questie.vendor_items,
-        hidden: hidden::load(&env.hidden_file()),
+    let questie_names = questie.items.iter().filter_map(|(&id, item)| Some((id, item.name.clone()?))).collect();
+    MarketInputs {
+        prices,
+        ladders: addon.ladders.clone(),
+        names: ItemNames { questie: questie_names, known },
+        vendor_items: questie.vendor_items.clone(),
+        hidden,
         held,
         now,
-    })
+    }
 }
 
 const DEFAULT_GAME_DIR: &str = "C:/Program Files (x86)/World of Warcraft/_forever_";

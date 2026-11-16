@@ -4,7 +4,7 @@
 //   node parity/parity.mjs --real    your own files (default env: FBL_WTF etc.), read only
 // Build first: cargo build (or set FBL_RS to the binary).
 // Character commands are compared as parsed JSON (key order aside); market and backtest as text.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -68,7 +68,14 @@ function syntheticEnv() {
 }
 
 // ---------------------------------------------------------------- running both
-const extra = real ? {} : syntheticEnv();
+// Real files: a copy of the hidden list, so /hide checks never touch yours.
+function realEnv() {
+  const mine = path.join(os.homedir(), "Documents", "FBL Market", "hidden.json");
+  const copy = path.join(tmp, "hidden.json");
+  if (fs.existsSync(mine)) fs.copyFileSync(mine, copy);
+  return { FBL_HIDDEN: copy };
+}
+const extra = real ? realEnv() : syntheticEnv();
 const envFor = { ...process.env, ...extra };
 const runNode = (script, args) => spawnSync(process.execPath, [path.join(reader, script), ...args], { env: envFor, encoding: "utf8", maxBuffer: 1 << 28 });
 const runRust = (args) => spawnSync(exe, args, { env: envFor, encoding: "utf8", maxBuffer: 1 << 28 });
@@ -133,6 +140,87 @@ compareText("market", "market.mjs", []);
 compareText("market --budget 1 --min-listed 20 --top 3", "market.mjs", ["--budget", "1", "--min-listed", "20", "--top", "3"]);
 compareText("backtest", "backtest.mjs", []);
 compareText("backtest --min-listed 10 --min 1 --max 100000", "backtest.mjs", ["--min-listed", "10", "--min", "1", "--max", "100000"]);
+
+// ---------------------------------------------------------------- the other scripts
+// Same text, with the snipe list's random tag blanked out.
+function compareScript(label, script, args, rustCommand) {
+  const n = runNode(script, args), r = runRust([rustCommand, ...args]);
+  const tagless = (s) => s.replace(/FBL Snipes [0-9a-f]{6}/g, "FBL Snipes ######");
+  // Both refusing (no skills, no database) counts as the same; the messages differ.
+  const bothFail = n.status !== 0 && r.status !== 0;
+  const same = bothFail || (n.status === r.status && tagless(n.stdout) === tagless(r.stdout) && n.stderr.trim() === r.stderr.trim());
+  if (process.argv.includes("--show")) console.log(r.stdout, r.stderr);
+  const nl = (n.stdout + n.stderr).split("\n"), rl = (r.stdout + r.stderr).split("\n");
+  const i = nl.findIndex((l, k) => tagless(l) !== tagless(rl[k] ?? ""));
+  report(label, same, `  line ${i + 1}:\n  node: ${nl[i]}\n  rust: ${rl[i]}`);
+}
+// skillup.mjs reads its recipes from reader/data; the crate now carries them.
+const nodeData = path.join(reader, "data");
+const hadData = fs.existsSync(path.join(nodeData, "engineering.json"));
+if (!hadData) { fs.mkdirSync(nodeData, { recursive: true }); fs.copyFileSync(path.join(here, "..", "data", "engineering.json"), path.join(nodeData, "engineering.json")); }
+compareScript("snipes", "snipes.mjs", [], "snipes");
+compareScript("snipes --cap 1 --min-listed 50 --count 5", "snipes.mjs", ["--cap", "1", "--min-listed", "50", "--count", "5"], "snipes");
+for (const c of chars) {
+  compareScript(`skillup ${c}`, "skillup.mjs", [c], "skillup");
+  compareScript(`skillup ${c} --to 150 --craft 0`, "skillup.mjs", [c, "engineering", "--to", "150", "--craft", "0"], "skillup");
+  compareScript(`bis ${c}`, "bis.mjs", [c], "bis");
+  if (real) {
+    compareScript(`questxp ${c}`, "questxp.mjs", [c], "questxp");
+    compareScript(`questxp ${c} 20 30`, "questxp.mjs", [c, "20", "30"], "questxp");
+  }
+}
+if (real && process.env.PARITY_CHAIN) compareScript("questxp --chain", "questxp.mjs", [chars[0], "--chain", process.env.PARITY_CHAIN], "questxp");
+if (!hadData) fs.rmSync(nodeData, { recursive: true, force: true });
+
+// ---------------------------------------------------------------- the live server
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function fetchUntil(url, tries = 100) {
+  for (let k = 0; k < tries; k++) {
+    try { const r = await fetch(url); if (r.ok) return r; } catch { /* not up yet */ }
+    await sleep(200);
+  }
+  throw new Error(`no answer from ${url}`);
+}
+const archive = path.join(tmp, "scans");
+const nodeLive = spawn(process.execPath, [path.join(reader, "live.mjs"), "--port", "4791", "--no-open", "--archive", path.join(archive, "node")], { env: envFor, stdio: "ignore" });
+const rustLive = spawn(exe, ["live", "--port", "4792", "--no-open", "--archive", path.join(archive, "rust")], { env: envFor, stdio: "ignore" });
+try {
+  const [a, b] = await Promise.all([fetchUntil("http://127.0.0.1:4791/data.json"), fetchUntil("http://127.0.0.1:4792/data.json")]);
+  const [n, r] = [await a.json(), await b.json()];
+  // Items are sorted by name with the platform's collation in Node; compare them by id.
+  const byId = (items) => [...items].sort((x, y) => x.id - y.id);
+  report("live /data.json items", isDeepStrictEqual(byId(n.items), byId(r.items)), "  " + firstDiff(byId(n.items), byId(r.items)));
+  report("live /data.json opps", isDeepStrictEqual(n.opps, r.opps), "  " + firstDiff(n.opps, r.opps));
+  report("live /data.json stamp", n.stamp === r.stamp, `  ${n.stamp} vs ${r.stamp}`);
+  const page = await fetch("http://127.0.0.1:4792/");
+  report("live serves the page", page.ok && (page.headers.get("content-type") || "").startsWith("text/html"));
+  const js = await fetch("http://127.0.0.1:4792/lib/api.js");
+  report("live serves scripts as JavaScript", js.ok && (js.headers.get("content-type") || "").startsWith("text/javascript"));
+  for (const bad of ["/../live.mjs", "/%2e%2e/live.mjs", "/..%5Clive.mjs", "/nope.js"]) {
+    const res = await fetch("http://127.0.0.1:4792" + bad);
+    report(`live refuses ${bad}`, res.status === 404, `  status ${res.status}`);
+  }
+  // /hide rebuilds and pushes an update.
+  const events = await fetch("http://127.0.0.1:4792/events");
+  const reader = events.body.getReader();
+  const first = r.opps.buy[0] || r.opps.check[0];
+  if (first) {
+    const hid = await fetch("http://127.0.0.1:4792/hide", { method: "POST", body: JSON.stringify({ id: first.id, name: first.name, on: true }) });
+    let got = "";
+    for (let k = 0; k < 20 && !got.includes("event: update"); k++) got += new TextDecoder().decode((await reader.read()).value);
+    const after = await (await fetch("http://127.0.0.1:4792/data.json")).json();
+    report("live /hide hides and pushes an update", hid.ok && got.includes("event: update") && after.opps.hidden.some((h) => h.id === first.id));
+    await fetch("http://127.0.0.1:4792/hide", { method: "POST", body: JSON.stringify({ id: first.id, on: false }) });
+  }
+  reader.cancel();
+  const bad = await fetch("http://127.0.0.1:4792/hide", { method: "POST", body: "{\"id\":\"x\"}" });
+  report("live /hide rejects a bad id", bad.status === 400);
+  const archived = fs.readdirSync(path.join(archive, "rust"));
+  report("live archives the scan", archived.length >= 1 && archived.every((f) => f.endsWith(".json.gz")));
+} finally {
+  nodeLive.kill();
+  rustLive.kill();
+}
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failures ? `\n${failures} difference(s)` : "\nall the same");
