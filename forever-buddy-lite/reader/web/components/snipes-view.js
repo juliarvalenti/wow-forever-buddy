@@ -1,4 +1,7 @@
-// The Snipes page: build a Point Blank Sniper list. Point Blank Sniper watches an Auctionator
+// The Snipes page: build a Point Blank Sniper list, picked one of two ways:
+//   usual    by the daily usual price (Auctionator's days)
+//   dips     items that keep dipping in your own scans and getting bought back (dips.rs)
+// The rest of the header: Point Blank Sniper watches an Auctionator
 // shopping list and buys any listing at or under each item's price; this picks busy items and caps
 // each under its floor so even a single item resold covers the cut, the deposit and some profit.
 //
@@ -8,7 +11,7 @@
 import { Component, define } from "../lib/component.js";
 import { store } from "../lib/store.js";
 import { html } from "../lib/html.js";
-import { count } from "../lib/format.js";
+import { count, ago } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
 import { copyText, fetchSnipes } from "../lib/api.js";
 
@@ -22,7 +25,24 @@ const FIELDS = [
   ["minListed", "Busy markets only", "listed per day on average, at least", { min: 0, step: 50 }],
 ];
 
-export const DEFAULT_SNIPES = { cap: 25, ratio: 80, minProfit: 2, deposit: 1, count: 50, minListed: 300, name: "FBL Snipes" };
+// Only for the "seen dipping" pick.
+const DIP_FIELDS = [
+  ["days", "Look back", "days of your scans", { min: 0.5, max: 30, step: 0.5 }],
+  ["depth", "A dip is at least", "% under the recent median price", { min: 5, max: 90, step: 5 }],
+  ["minBought", "Bought back at least", "times: dips that were gone by the next change", { min: 1, max: 50, step: 1 }],
+];
+
+export const DEFAULT_SNIPES = {
+  mode: "usual", cap: 25, ratio: 80, minProfit: 2, deposit: 1, count: 50, minListed: 300, name: "FBL Snipes",
+  days: 3, depth: 25, minBought: 2,
+};
+
+const field = (s) => ([key, label, help, attrs]) => html`
+  <label class="field">
+    <span class="field-label">${label}</span>
+    <input type="number" data-setting="${key}" value="${s[key]}" min="${attrs.min}" ${attrs.max ? html`max="${attrs.max}"` : ""} step="${attrs.step}" />
+    <span class="field-help">${help}</span>
+  </label>`;
 
 function settings() {
   return { ...DEFAULT_SNIPES, ...(store.state.prefs.snipes || {}) };
@@ -42,15 +62,16 @@ class SnipesView extends Component {
       </header>
       <section class="card">
         <h3>Settings</h3>
+        <fieldset class="pick-mode">
+          <legend>Pick items by</legend>
+          <label><input type="radio" name="snipe-mode" data-setting="mode" value="usual" ${s.mode === "usual" ? "checked" : ""} />
+            Usual price <span class="muted">(Auctionator’s daily prices)</span></label>
+          <label><input type="radio" name="snipe-mode" data-setting="mode" value="dips" ${s.mode === "dips" ? "checked" : ""} />
+            Seen dipping <span class="muted">(your scans: cheap listings that keep turning up and getting bought)</span></label>
+        </fieldset>
+        <div class="snipe-form" data-ref="dip-form" ${s.mode === "dips" ? "" : "hidden"}>${DIP_FIELDS.map(field(s))}</div>
         <div class="snipe-form">
-          ${FIELDS.map(
-            ([key, label, help, attrs]) => html`
-              <label class="field">
-                <span class="field-label">${label}</span>
-                <input type="number" data-setting="${key}" value="${s[key]}" min="${attrs.min}" ${attrs.max ? html`max="${attrs.max}"` : ""} step="${attrs.step}" />
-                <span class="field-help">${help}</span>
-              </label>`,
-          )}
+          ${FIELDS.map(field(s))}
           <label class="field">
             <span class="field-label">List name</span>
             <input type="text" data-setting="name" value="${s.name}" maxlength="40" />
@@ -75,14 +96,19 @@ class SnipesView extends Component {
     this.addEventListener("input", (event) => {
       const key = event.target.dataset.setting;
       if (!key) return;
-      const value = key === "name" ? event.target.value : Number(event.target.value);
+      const value = key === "name" || key === "mode" ? event.target.value : Number(event.target.value);
       store.setPrefs({ snipes: { ...settings(), [key]: value } });
+      if (key === "mode") this.ref("dip-form").hidden = value !== "dips";
       this.#schedule();
     });
     this.addEventListener("click", async (event) => {
       if (event.target.closest("[data-reset]")) {
         store.setPrefs({ snipes: { ...DEFAULT_SNIPES } });
-        for (const input of this.querySelectorAll("[data-setting]")) input.value = DEFAULT_SNIPES[input.dataset.setting];
+        for (const input of this.querySelectorAll("[data-setting]")) {
+          if (input.type === "radio") input.checked = input.value === DEFAULT_SNIPES.mode;
+          else input.value = DEFAULT_SNIPES[input.dataset.setting];
+        }
+        this.ref("dip-form").hidden = true;
         this.#schedule(0);
         return;
       }
@@ -122,6 +148,7 @@ class SnipesView extends Component {
         count: s.count,
         min_listed: s.minListed,
         name: s.name,
+        ...(s.mode === "dips" ? { mode: "dips", days: s.days, depth: s.depth, min_bought: s.minBought } : {}),
       });
       this.#error = null;
     } catch (error) {
@@ -141,16 +168,21 @@ class SnipesView extends Component {
       return;
     }
     const items = this.#data.items;
+    const dips = settings().mode === "dips";
     this.ref("count").textContent = `${items.length} items`;
     copy.disabled = items.length === 0;
     results.innerHTML = String(
       items.length === 0
-        ? html`<p class="sub">Nothing fits these settings. Raise “Buy at most”, or lower “Profit per item” or “Busy markets only”.</p>`
+        ? html`<p class="sub">${dips
+            ? "Nothing has dipped and been bought back that often yet. Look back further, lower “Bought back at least”, or scan more often: the archive only sees what your scans catch."
+            : "Nothing fits these settings. Raise “Buy at most”, or lower “Profit per item” or “Busy markets only”."}</p>`
         : html`
             <div class="table-scroll">
               <table class="worklist">
                 <thead>
-                  <tr><th>Item</th><th class="num">Buy at or under</th><th class="num">Floor</th><th class="num">Usual</th><th class="num">Profit on one</th><th class="num">Listed a day</th></tr>
+                  <tr><th>Item</th><th class="num">Buy at or under</th>${dips
+                    ? html`<th class="num">Recent median</th><th class="num">Dips</th><th class="num">Bought back</th><th class="num">Deepest</th><th class="num">Last dip</th>`
+                    : html`<th class="num">Floor</th><th class="num">Usual</th>`}<th class="num">Profit on one</th><th class="num">${dips ? "Listed now" : "Listed a day"}</th></tr>
                 </thead>
                 <tbody>
                   ${items.map(
@@ -158,8 +190,10 @@ class SnipesView extends Component {
                       <tr>
                         <td class="item-cell"><button class="row-link" type="button" data-open-item="${it.id}">${it.name}</button></td>
                         <td class="num">${coins(it.max)}</td>
-                        <td class="num">${coins(it.floor)}</td>
-                        <td class="num">${coins(it.usual)}</td>
+                        ${dips
+                          ? html`<td class="num">${coins(it.floor)}</td><td class="num">${it.dips}</td><td class="num">${it.bought}</td>
+                              <td class="num">-${Math.round(it.deepest * 100)}%</td><td class="num muted">${ago(it.lastDip)}</td>`
+                          : html`<td class="num">${coins(it.floor)}</td><td class="num">${coins(it.usual)}</td>`}
                         <td class="num profit">${coins(it.single, { signed: true })}</td>
                         <td class="num">${count(it.listed)}</td>
                       </tr>`,

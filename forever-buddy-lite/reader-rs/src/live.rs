@@ -6,7 +6,7 @@
 //! - `GET /data.json`: `{ items, opps, stamp }` (see `dashboard`);
 //! - `GET /events`: server-sent events, "update" after each rebuild;
 //! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
-//! - `GET /snipes.json?cap=&ratio=&deposit=&min_profit=&count=&min_listed=&name=`: a Point Blank
+//! - `GET /snipes.json?cap=&ratio=&deposit=&min_profit=&count=&min_listed=&name=[&mode=dips&days=&depth=&min_bought=]`: a Point Blank
 //!   Sniper list (copper for prices), leaving out hidden items and unlimited vendor goods;
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
@@ -338,6 +338,18 @@ impl Live {
         let data: crate::skillup::ProfessionData =
             serde_json::from_str(crate::skillup::recipe_file("engineering").unwrap_or("{}")).map_err(|e| e.to_string())?;
         let names = crate::snipes::names(&addon, &data.items, &self.questie);
+        // mode=dips: items that keep dipping in your scans and getting bought back (see `dips`).
+        if param("mode").as_deref() == Some("dips") {
+            let defaults = crate::dips::DipOptions::default();
+            let dip = crate::dips::DipOptions {
+                window: number("days", defaults.window / 86400.0)?.clamp(0.25, 30.0) * 86400.0,
+                depth: number("depth", defaults.depth * 100.0)?.clamp(5.0, 95.0) / 100.0,
+                min_bought: number("min_bought", defaults.min_bought as f64)?.clamp(1.0, 100.0) as usize,
+                ..defaults
+            };
+            let targets = crate::dips::targets(&self.history.lock().unwrap(), &names, &o, &dip, crate::format::now_seconds());
+            return Ok(crate::dips::targets_json(&list_name, &targets).to_string());
+        }
         let picks = crate::snipes::snipes(&auctionator::load(&self.env)?, &names, &o);
         Ok(crate::snipes::snipes_json(&list_name, &picks).to_string())
     }

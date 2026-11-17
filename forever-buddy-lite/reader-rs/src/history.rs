@@ -58,6 +58,11 @@ impl ScanHistory {
         self.scans
     }
 
+    /// Every item with its points, in no particular order.
+    pub fn items(&self) -> impl Iterator<Item = (u32, &[Point])> {
+        self.by_item.iter().map(|(id, points)| (*id, points.as_slice()))
+    }
+
     pub fn points(&self, id: u32) -> &[Point] {
         self.by_item.get(&id).map_or(&[], Vec::as_slice)
     }

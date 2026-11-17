@@ -107,7 +107,7 @@ pub fn snipes(prices: &PriceDb, names: &HashMap<u32, String>, o: &SnipeOptions) 
 }
 
 /// Gold with up to four decimals, trailing zeros dropped: 2500 -> "0.25".
-fn gold(copper: f64) -> String {
+pub fn gold(copper: f64) -> String {
     let s = format!("{:.4}", copper / 10000.0);
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }

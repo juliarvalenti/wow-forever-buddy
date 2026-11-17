@@ -21,6 +21,7 @@ pub mod catalog;
 pub mod cbor;
 pub mod config;
 pub mod dashboard;
+pub mod dips;
 pub mod format;
 pub mod history;
 pub mod json;
