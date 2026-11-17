@@ -11,6 +11,7 @@ class MainView extends Component {
   render({ prefs }) {
     if (prefs.view === "items") return html`<items-view></items-view>`;
     if (prefs.view === "wealth") return html`<wealth-view></wealth-view>`;
+    if (prefs.view === "snipes") return html`<snipes-view></snipes-view>`;
     return html`<opportunities-view></opportunities-view>`;
   }
 

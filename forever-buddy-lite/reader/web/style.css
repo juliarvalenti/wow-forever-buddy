@@ -1033,3 +1033,31 @@ dialog.round .verdict-group.tone-quiet { background: transparent; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- Snipes page -------------------------------------------------------------------------- */
+
+.snipe-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 14px 18px;
+}
+.snipe-form .field-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+.snipe-form .field-help {
+  color: var(--ink-3);
+}
+.snipe-form input[type="text"] {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--ink);
+}
+.snipe-form .field {
+  align-content: start; /* a wrapped help line mustn't stretch the inputs beside it */
+}

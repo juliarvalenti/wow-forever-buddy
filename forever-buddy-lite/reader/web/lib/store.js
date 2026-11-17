@@ -28,11 +28,12 @@ export const DEFAULT_PREFS = {
   selectedId: null,
   filtersOpen: false, // the item finder's Filters panel
   chartRange: "24h", // the item page's time range: one of RANGES in item-view.js
+  snipes: null, // the Snipes page's settings (see DEFAULT_SNIPES in snipes-view.js)
   view: "opportunities", // one of VIEWS
 };
 
 // The pages in the header's navigation.
-export const VIEWS = ["opportunities", "items", "wealth"];
+export const VIEWS = ["opportunities", "items", "snipes", "wealth"];
 
 // A view saved by an older version ("item" was one item's page), or anything unknown: map it.
 function knownView(view) {

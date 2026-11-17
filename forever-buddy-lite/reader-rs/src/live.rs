@@ -6,6 +6,8 @@
 //! - `GET /data.json`: `{ items, opps, stamp }` (see `dashboard`);
 //! - `GET /events`: server-sent events, "update" after each rebuild;
 //! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
+//! - `GET /snipes.json?cap=&ratio=&deposit=&min_profit=&count=&min_listed=&name=`: a Point Blank
+//!   Sniper list (copper for prices), leaving out hidden items and unlimited vendor goods;
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
 //!   the scan archive.
@@ -267,6 +269,10 @@ impl Live {
                 Ok(()) => Reply::new(200, "application/json", b"{}".to_vec()),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/snipes.json") => match self.snipes(&request.path) {
+                Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
+                Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
+            },
             (_, "/history.json") => {
                 let id = request
                     .path
@@ -298,6 +304,42 @@ impl Live {
             },
         };
         let _ = reply.send(&mut stream);
+    }
+
+    /// A Point Blank Sniper list from the query's settings (see `snipes::SnipeOptions`).
+    fn snipes(&self, path: &str) -> Result<String, String> {
+        let query = path.split_once('?').map_or("", |(_, q)| q);
+        let param = |key: &str| {
+            query
+                .split('&')
+                .find_map(|kv| kv.split_once('=').filter(|(k, _)| *k == key).map(|(_, v)| v.replace('+', " ")))
+                .and_then(|v| percent_decode(&v))
+        };
+        let number = |key: &str, default: f64| match param(key) {
+            None => Ok(default),
+            Some(v) => v.parse::<f64>().map_err(|_| format!("{key} wants a number, not \"{v}\"")),
+        };
+        let mut exclude: std::collections::HashSet<u32> = self.questie.vendor_items.clone();
+        exclude.extend(hidden::load(&self.env.hidden_file()).keys().copied());
+        let defaults = crate::snipes::SnipeOptions::default();
+        let o = crate::snipes::SnipeOptions {
+            cap: number("cap", defaults.cap)?,
+            ratio: number("ratio", defaults.ratio)?,
+            deposit: number("deposit", defaults.deposit)?,
+            min_profit: number("min_profit", defaults.min_profit)?,
+            count: number("count", defaults.count as f64)?.clamp(1.0, 500.0) as usize,
+            min_listed: number("min_listed", defaults.min_listed)?,
+            exclude,
+        };
+        let name =
+            param("name").filter(|n| !n.trim().is_empty() && !n.contains('^') && !n.contains('"')).unwrap_or_else(|| "FBL Snipes".into());
+        let list_name = format!("{} {}", name.trim(), crate::snipes::random_tag());
+        let addon = addon::load(&self.env)?;
+        let data: crate::skillup::ProfessionData =
+            serde_json::from_str(crate::skillup::recipe_file("engineering").unwrap_or("{}")).map_err(|e| e.to_string())?;
+        let names = crate::snipes::names(&addon, &data.items, &self.questie);
+        let picks = crate::snipes::snipes(&auctionator::load(&self.env)?, &names, &o);
+        Ok(crate::snipes::snipes_json(&list_name, &picks).to_string())
     }
 
     /// `{ id, name, on }`: hide (on) or show an item, then rebuild.
