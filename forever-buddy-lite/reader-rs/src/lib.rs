@@ -37,6 +37,7 @@ pub mod skillup;
 pub mod snipes;
 pub mod sources;
 pub mod strategies;
+pub mod thinning;
 pub mod tools;
 pub mod wealth;
 pub mod zones;

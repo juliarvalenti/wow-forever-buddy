@@ -9,6 +9,7 @@ import "./components/round-dialog.js";
 import "./components/wealth-view.js";
 import "./components/snipes-view.js";
 import "./components/trades-view.js";
+import "./components/thinning-card.js";
 
 import { store } from "./lib/store.js";
 import { fetchData, fetchWealth, onServerUpdate, setHidden } from "./lib/api.js";

@@ -73,6 +73,7 @@ class OpportunitiesView extends Component {
         <p class="sub">${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.</p>
       </header>
       <check-list></check-list>
+      <thinning-card></thinning-card>
       <section class="market" aria-labelledby="market-title">
         <header class="section-head">
           <h2 id="market-title">Market today</h2>

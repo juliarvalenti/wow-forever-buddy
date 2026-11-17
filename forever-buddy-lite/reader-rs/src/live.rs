@@ -8,6 +8,8 @@
 //! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
 //! - `GET /snipes.json?cap=&ratio=&deposit=&min_profit=&count=&min_listed=&name=[&mode=dips&days=&depth=&min_bought=]`: a Point Blank
 //!   Sniper list (copper for prices), leaving out hidden items and unlimited vendor goods;
+//! - `GET /thinning.json`: items whose supply is well under the same hour yesterday at a steady price,
+//!   with the rule's track record on your past scans (see `thinning`);
 //! - `GET /journal.json`: the trade ledger from AH mail invoices (see `journal`);
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
@@ -278,6 +280,10 @@ impl Live {
                 Ok(()) => Reply::new(200, "application/json", b"{}".to_vec()),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/thinning.json") => match self.thinning() {
+                Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
+                Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
+            },
             (_, "/journal.json") => match self.journal() {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
@@ -330,6 +336,21 @@ impl Live {
     }
 
     /// A Point Blank Sniper list from the query's settings (see `snipes::SnipeOptions`).
+    fn thinning(&self) -> Result<String, String> {
+        let addon = addon::load(&self.env)?;
+        let data: crate::skillup::ProfessionData =
+            serde_json::from_str(crate::skillup::recipe_file("engineering").unwrap_or("{}")).map_err(|e| e.to_string())?;
+        let names = crate::snipes::names(&addon, &data.items, &self.questie);
+        let mut exclude: std::collections::HashSet<u32> = self.questie.vendor_items.clone();
+        exclude.extend(hidden::load(&self.env.hidden_file()).keys().copied());
+        let o = crate::thinning::ThinOptions::default();
+        let history = self.history.lock().unwrap();
+        let mut list = crate::thinning::current(&history, &names, &o);
+        list.retain(|t| !exclude.contains(&t.id));
+        let record = crate::thinning::track_record(&history, &o);
+        Ok(crate::thinning::thinning_json(&list, &record, history.scans()).to_string())
+    }
+
     fn snipes(&self, path: &str) -> Result<String, String> {
         let query = path.split_once('?').map_or("", |(_, q)| q);
         let param = |key: &str| {
