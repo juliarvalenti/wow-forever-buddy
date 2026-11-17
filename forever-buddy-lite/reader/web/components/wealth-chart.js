@@ -44,11 +44,9 @@ class WealthChart extends HTMLElement {
     // Gold steps carry on to now.
     const goldLine = gold.length ? [...gold, [end, gold.at(-1)[1]]] : [];
     const values = [...goldLine, ...total].map((p) => p[1]);
-    const low = Math.min(...values);
-    const high = Math.max(...values);
-    const pad = Math.max((high - low) * 0.1, 500); // never a flat line pressed to the edge
-    const min = Math.max(0, low - pad);
-    const max = high + pad;
+    // The axis starts at zero gold: cut off above zero, small moves would look big.
+    const min = 0;
+    const max = Math.max(...values) * 1.08 || 1;
 
     const plotW = WIDTH - PAD.left - PAD.right;
     const plotH = HEIGHT - PAD.top - PAD.bottom;
