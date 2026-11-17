@@ -134,7 +134,7 @@ h3 {
 
 /* Custom elements are inline by default. */
 item-finder, top-bar, main-view, opportunities-view, check-list, item-view,
-ladder-chart, day-chart, round-dialog {
+ladder-chart, day-chart, round-dialog, wealth-view, wealth-chart {
   display: block;
 }
 
@@ -202,7 +202,8 @@ main {
 
 main-view,
 opportunities-view,
-item-view {
+item-view,
+wealth-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
@@ -513,6 +514,7 @@ tr.clickable:hover td { background: var(--panel-raised); }
 
 /* ---- Item page --------------------------------------------------------------------------- */
 
+wealth-view header h2,
 item-view header h2 {
   font-size: var(--step-3);
   font-weight: 700;
@@ -546,7 +548,26 @@ svg {
 }
 svg text { fill: var(--ink-3); font: 11px var(--font); }
 
-day-chart { position: relative; }
+day-chart,
+wealth-chart { position: relative; }
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.swatch-gold { background: var(--gold); }
+.swatch-series { background: var(--series); }
 
 .tooltip {
   position: absolute;

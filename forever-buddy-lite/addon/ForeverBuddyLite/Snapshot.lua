@@ -619,6 +619,38 @@ for event, sections in pairs(CHANGES) do
     end)
 end
 
+-- Gold over time: each change with when it happened, for the reader's wealth chart. Changes within
+-- a minute of each other merge into one entry (looting a pack, vendoring a bag); the newest 2000
+-- are kept, which is weeks of play.
+local MONEY_LOG_MAX, MONEY_MERGE_SECONDS = 2000, 60
+
+local function logMoney()
+    local c = ns.char()
+    local money = num(read(GetMoney))
+    if not c or not money then
+        return
+    end
+    c.money_log = type(c.money_log) == "table" and c.money_log or {}
+    local log, t = c.money_log, now()
+    local last = log[#log]
+    if last and last.m == money then
+        return
+    end
+    if last and #log > 1 and t - last.t < MONEY_MERGE_SECONDS then
+        last.t, last.m = t, money
+    else
+        log[#log + 1] = { t = t, m = money }
+    end
+    while #log > MONEY_LOG_MAX do
+        table.remove(log, 1)
+    end
+end
+
+ns.on("PLAYER_MONEY", logMoney)
+ns.on("PLAYER_ENTERING_WORLD", function()
+    C_Timer.After(2, logMoney) -- where the log starts, and anything earned while logged out
+end)
+
 ns.on("BANKFRAME_OPENED", function()
     bankOpen = true
     refresh("bank", "bags")

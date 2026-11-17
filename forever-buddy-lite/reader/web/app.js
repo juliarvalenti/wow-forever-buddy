@@ -7,9 +7,10 @@ import "./components/opportunities-view.js";
 import "./components/check-list.js";
 import "./components/item-view.js";
 import "./components/round-dialog.js";
+import "./components/wealth-view.js";
 
 import { store } from "./lib/store.js";
-import { fetchData, onServerUpdate, setHidden } from "./lib/api.js";
+import { fetchData, fetchWealth, onServerUpdate, setHidden } from "./lib/api.js";
 import { enrichItem } from "./lib/model.js";
 import { nextRound } from "./lib/round.js";
 
@@ -17,9 +18,9 @@ const PAGE_TITLE = document.title;
 const DEFAULT_ITEM = "Mageweave Cloth"; // something to show before you pick
 
 async function loadData({ pushed }) {
-  const data = await fetchData();
+  const [data, wealth] = await Promise.all([fetchData(), fetchWealth().catch(() => null)]);
   const items = data.items.map(enrichItem);
-  store.set({ items, opps: data.opps, stamp: data.stamp, lastUpdate: pushed ? new Date() : store.state.lastUpdate });
+  store.set({ items, opps: data.opps, stamp: data.stamp, wealth, lastUpdate: pushed ? new Date() : store.state.lastUpdate });
 
   if (store.state.prefs.selectedId == null) {
     const first = items.find((it) => it.n === DEFAULT_ITEM) || items[0];

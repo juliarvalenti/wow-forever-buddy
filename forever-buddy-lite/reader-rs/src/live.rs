@@ -5,7 +5,9 @@
 //! Dashboard: http://localhost:4747 (this machine only). It serves the page in reader/web plus:
 //! - `GET /data.json`: `{ items, opps, stamp }` (see `dashboard`);
 //! - `GET /events`: server-sent events, "update" after each rebuild;
-//! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back.
+//! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
+//! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
+//!   the scan archive.
 //!
 //! Archived scans keep each item's cheapest price and quantity per scan, which Auctionator itself
 //! folds into one low/high per day.
@@ -13,7 +15,7 @@
 use crate::config::Config;
 use crate::format::{iso_from_millis, money_short as money};
 use crate::sources::{addon, auctionator, hidden, questie, Env};
-use crate::{catalog, dashboard, report, strategies};
+use crate::{catalog, dashboard, report, strategies, wealth};
 use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -55,8 +57,9 @@ impl LiveOptions {
 /// What changes between rebuilds.
 #[derive(Default)]
 struct State {
-    /// The current `/data.json`.
+    /// The current `/data.json` and `/wealth.json`.
     data: Arc<String>,
+    wealth: Arc<String>,
     last_archive: Option<u64>,
     seen_buys: HashSet<u32>,
     seen_gaps: HashSet<String>,
@@ -101,6 +104,7 @@ impl Live {
         let catalog = catalog::build(&addon, &prices, &self.questie);
         let now = crate::format::now_seconds();
         let archived = self.archive_scan(&prices)?;
+        let wealth = self.record_wealth(&addon, &prices, now);
         let inputs = crate::sources::market_inputs_from(&addon, prices, &self.questie, hidden::load(&self.env.hidden_file()), now);
         let analysis = strategies::analyze(&inputs, self.opts.budget, &self.cfg);
         let data = dashboard::data_json(&catalog, &analysis).to_string();
@@ -116,6 +120,7 @@ impl Live {
         let news = {
             let mut state = self.state.lock().unwrap();
             state.data = Arc::new(data);
+            state.wealth = Arc::new(wealth);
             news(&mut state, &analysis)
         };
         for line in news {
@@ -159,6 +164,21 @@ impl Live {
             .and_then(|bytes| std::fs::write(&file, bytes))
             .map_err(|e| e.to_string())?;
         Ok(Some(file))
+    }
+
+    /// Where the wealth history lives: wealth.jsonl next to the scans folder.
+    fn wealth_file(&self) -> PathBuf {
+        self.opts.archive_dir.parent().unwrap_or(&self.opts.archive_dir).join("wealth.jsonl")
+    }
+
+    /// Records every character's gold and item value (when changed) and returns `/wealth.json`.
+    fn record_wealth(&self, addon: &addon::AddonData, prices: &auctionator::PriceDb, now: f64) -> String {
+        let chars: Vec<addon::Character> = addon.characters.values().cloned().collect();
+        let snapshot = wealth::Snapshot::of(now, &wealth::characters_now(&chars, prices));
+        if let Err(e) = wealth::record(&self.wealth_file(), &snapshot) {
+            eprintln!("wealth history: {e}");
+        }
+        wealth::wealth_json(&chars, prices, &self.wealth_file()).to_string()
     }
 
     fn broadcast(&self) {
@@ -233,6 +253,10 @@ impl Live {
                 Ok(()) => Reply::new(200, "application/json", b"{}".to_vec()),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/wealth.json") => {
+                let wealth = Arc::clone(&self.state.lock().unwrap().wealth);
+                Reply::new(200, "application/json", wealth.as_bytes().to_vec()).cache("no-store")
+            }
             (_, "/data.json") => {
                 let data = Arc::clone(&self.state.lock().unwrap().data);
                 Reply::new(200, "application/json", data.as_bytes().to_vec()).cache("no-store")

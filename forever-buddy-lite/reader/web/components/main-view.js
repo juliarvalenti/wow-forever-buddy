@@ -9,7 +9,9 @@ class MainView extends Component {
   }
 
   render({ prefs }) {
-    return prefs.view === "item" ? html`<item-view></item-view>` : html`<opportunities-view></opportunities-view>`;
+    if (prefs.view === "item") return html`<item-view></item-view>`;
+    if (prefs.view === "wealth") return html`<wealth-view></wealth-view>`;
+    return html`<opportunities-view></opportunities-view>`;
   }
 }
 
