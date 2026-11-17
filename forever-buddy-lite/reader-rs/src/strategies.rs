@@ -344,7 +344,7 @@ pub fn gaps(inputs: &MarketInputs, rows: &[ItemMarket], budget: i64, cfg: &Confi
     let usual: HashMap<u32, i64> = rows.iter().map(|r| (r.id, r.usual)).collect();
     let mut picks = Vec::new();
     for (key, log) in inputs.ladders.iter() {
-        let Some(last) = log.last() else { continue };
+        let Some(last) = latest_search(log) else { continue };
         let Some(at) = last.at.filter(|&at| at != 0.0) else { continue };
         if inputs.now - at > cfg.gap_fresh_hours * 3600.0 {
             continue;
@@ -358,10 +358,27 @@ pub fn gaps(inputs: &MarketInputs, rows: &[ItemMarket], budget: i64, cfg: &Confi
 }
 
 /// The latest ladder per item id (an item can have several keys, one per suffix).
+/// The latest real search in an item's log. The AH window empties its list for a moment while it
+/// refreshes, and older addon builds saved those blinks as "nothing listed": an empty search within
+/// `BLINK_SECONDS` of a real one is skipped for the real one before it.
+const BLINK_SECONDS: f64 = 30.0;
+
+pub fn latest_search(log: &[LadderSnapshot]) -> Option<&LadderSnapshot> {
+    let last = log.last()?;
+    if !last.levels.is_empty() {
+        return Some(last);
+    }
+    let real = log.iter().rev().find(|s| !s.levels.is_empty());
+    match (real, last.at) {
+        (Some(real), Some(at)) if real.at.is_some_and(|r| at - r < BLINK_SECONDS) => Some(real),
+        _ => Some(last),
+    }
+}
+
 pub fn latest_ladders(inputs: &MarketInputs, cfg: &Config) -> BTreeMap<u32, LadderView> {
     let mut out: BTreeMap<u32, LadderView> = BTreeMap::new();
     for (key, log) in inputs.ladders.iter() {
-        let Some(last) = log.last() else { continue };
+        let Some(last) = latest_search(log) else { continue };
         let (Some(at), Some(id)) = (last.at.filter(|&at| at != 0.0), ladder_id(key)) else { continue };
         if out.get(&id).is_none_or(|old| at > old.at) {
             let mut levels = parse_ladder(&last.levels);
@@ -646,6 +663,17 @@ mod tests {
         let a = analyze(&inputs, 50_000, &Config::default());
         assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [4]);
         assert_eq!(a.ladders[&1].levels.len(), 2); // the item page still has its ladder
+    }
+
+    #[test]
+    fn a_blank_right_after_a_real_search_is_a_blink() {
+        let snap = |at: f64, levels: &str| LadderSnapshot { at: Some(at), total: None, levels: levels.into() };
+        // Real, then the window's refresh blink a second later: the real one stands.
+        let log = [snap(100.0, "2999:72;3099:96"), snap(101.0, "")];
+        assert_eq!(latest_search(&log).unwrap().levels, "2999:72;3099:96");
+        // An empty search well after the last real one is an answer: nothing listed.
+        let log = [snap(100.0, "2999:72"), snap(500.0, "")];
+        assert_eq!(latest_search(&log).unwrap().levels, "");
     }
 
     #[test]
