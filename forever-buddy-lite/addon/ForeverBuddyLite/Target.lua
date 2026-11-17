@@ -119,14 +119,9 @@ button:SetScript("PreClick", function(self, mouse, down)
     if InCombatLockdown() then
         return -- the fallback macro set up before combat does it
     end
-    -- A key bound to the button sends a down and an up; act on the one the game's own action
-    -- buttons use. A mouse click acts on release.
-    local acts
-    if mouse == "Keybind" then
-        acts = down == GetCVarBool("ActionButtonUseKeyDown")
-    else
-        acts = not down
-    end
+    -- A click or key sends a down and an up. The game's secure button acts only on the edge its
+    -- ActionButtonUseKeyDown setting names (down, by default), for mouse clicks too; prepare that one.
+    local acts = (down and true or false) == GetCVarBool("ActionButtonUseKeyDown")
     if not acts then
         self:SetAttribute("type", nil)
         return
@@ -355,9 +350,36 @@ end)
 BINDING_NAME_FBL_TARGET_TOGGLE = "Show or hide the target box"
 _G["BINDING_NAME_CLICK FBLTargetButton:Keybind"] = "Target the name in the target box (press again to cycle)"
 
-ns.command({ name = "target", aliases = { "tar", "t" }, args = "[name]",
+-- /fbl t debug: what the addon can read of each nameplate, to tell an empty list from hidden names.
+local function debugPlates()
+    local secret = rawget(_G, "issecretvalue")
+    local n = 0
+    for i = 1, MAX_PLATES do
+        local unit = "nameplate" .. i
+        if UnitExists(unit) then
+            n = n + 1
+            local ok, name = pcall(UnitName, unit)
+            local hidden = ok and secret and secret(name)
+            local readable = ok and not hidden and pcall(function()
+                return name:lower()
+            end)
+            say(string.format("%s: %s", unit, not ok and "UnitName failed"
+                or hidden and "name is hidden (secret value)"
+                or readable and ("\"" .. tostring(name) .. "\"")
+                or "name unreadable"))
+        end
+    end
+    say(string.format("%d nameplates. Distance setting %s yd. Act on key down: %s.", n, plateRange(),
+        tostring(GetCVarBool("ActionButtonUseKeyDown"))))
+end
+
+ns.command({ name = "target", aliases = { "tar", "t" }, args = "[name | debug]",
     help = "a box and a Target button: targets the name you type; press again to cycle",
     fn = function(rest_)
+        if rest_ == "debug" then
+            debugPlates()
+            return
+        end
         if rest_ ~= "" then
             store().text = rest_
             if box then
