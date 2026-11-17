@@ -17,4 +17,5 @@ QuestItems.lua
 Auras.lua
 UI.lua
 Groups.lua
+Target.lua
 Commands.lua
