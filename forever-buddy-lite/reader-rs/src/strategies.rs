@@ -349,8 +349,8 @@ pub fn gaps(inputs: &MarketInputs, rows: &[ItemMarket], budget: i64, cfg: &Confi
         if inputs.now - at > cfg.gap_fresh_hours * 3600.0 {
             continue;
         }
-        let Some(gap) = model::best_gap(&parse_ladder(&last.levels), Some(budget), cfg) else { continue };
         let Some(id) = ladder_id(key) else { continue };
+        let Some(gap) = model::best_gap(&parse_ladder(&last.levels), Some(budget), usual.get(&id).copied(), cfg) else { continue };
         picks.push(GapPick { gap, id, key: key.clone(), name: inputs.names.of(id), at, total: last.total, usual: usual.get(&id).copied() });
     }
     picks.sort_by_key(|p| std::cmp::Reverse(p.gap.profit));

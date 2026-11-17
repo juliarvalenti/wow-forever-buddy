@@ -57,6 +57,9 @@ pub struct Config {
     // ------------------------------------------------------------ price ladders
     /// A gap buys at most the cheapest this many levels.
     pub gap_max_levels: usize,
+    /// ...and relists at most this far over the usual price (25%): listings far above usual are
+    /// wishful, and "relist under them" is a profit only on paper.
+    pub gap_max_over_usual: f64,
     /// The "wall" (the real price) is the biggest of the cheapest this many levels.
     pub wall_levels: usize,
     /// Relist under the first level at least 90% of the wall's price, so a stray cheap listing
@@ -106,6 +109,7 @@ impl Default for Config {
             swing_min_spread: 300,
             swing_max_over_usual: 2.0,
             gap_max_levels: 6,
+            gap_max_over_usual: 1.25,
             wall_levels: 6,
             wall_near: 0.9,
             under_usual_note: 0.8,

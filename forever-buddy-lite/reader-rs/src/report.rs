@@ -171,7 +171,7 @@ mod tests {
     fn verdict_lines() {
         let cfg = Config::default();
         let levels = parse_ladder("2100:5;3800:20;3900:40");
-        let gap = best_gap(&levels, Some(50_000), &cfg).unwrap();
+        let gap = best_gap(&levels, Some(50_000), None, &cfg).unwrap();
         assert_eq!(verdict_text(&Verdict::Gap(gap.clone())), "buy 5 up to 21s 00c (1g 5s), relist 37s 99c: +74s 45c");
         assert_eq!(verdict_text(&Verdict::TooBig(gap)), "gap needs 1g 5s: buy 5 up to 21s 00c, relist 37s 99c (+74s 45c)");
         let tight = ladder_verdict(&parse_ladder("1000:3;1010:50"), 50_000, Some(2000), 0, &cfg).verdict;
