@@ -69,6 +69,33 @@ pub fn iso_from_seconds(sec: f64) -> String {
     iso_from_millis(sec * 1000.0)
 }
 
+/// A (year, month, day) date to days since 1970-01-01: the inverse of `civil_from_days`.
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if month > 2 { month - 3 } else { month + 9 } as i64;
+    let doy = (153 * mp + 2) / 5 + day as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// ISO 8601 UTC ("2026-11-16T20:34:03.000Z", fraction and Z optional) to seconds since 1970.
+pub fn seconds_from_iso(s: &str) -> Option<f64> {
+    let num = |range: std::ops::Range<usize>| s.get(range)?.parse::<i64>().ok();
+    let (y, mo, d) = (num(0..4)?, num(5..7)? as u32, num(8..10)? as u32);
+    let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let fraction = s.get(19..).and_then(|f| f.strip_prefix('.')).map_or(0.0, |f| {
+        let digits: String = f.chars().take_while(char::is_ascii_digit).collect();
+        if digits.is_empty() {
+            0.0
+        } else {
+            digits.parse::<f64>().unwrap_or(0.0) / 10f64.powi(digits.len() as i32)
+        }
+    });
+    Some((days_from_civil(y, mo, d) * 86_400 + h * 3600 + mi * 60 + sec) as f64 + fraction)
+}
+
 /// The first day Auctionator counts from: its price history is keyed by days since 2020-01-01.
 const AUCTIONATOR_DAY0: i64 = 18262; // days from 1970-01-01 to 2020-01-01
 

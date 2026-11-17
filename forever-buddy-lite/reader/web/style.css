@@ -169,7 +169,7 @@ a {
 
 /* Custom elements are inline by default. */
 app-header, main-view, opportunities-view, check-list, items-view, item-finder, item-view,
-ladder-chart, day-chart, round-dialog, wealth-view, wealth-chart {
+ladder-chart, time-chart, round-dialog, wealth-view, wealth-chart {
   display: block;
 }
 
@@ -801,8 +801,26 @@ svg {
 }
 svg text { fill: var(--ink-3); font: 11px var(--font); }
 
-day-chart,
+time-chart,
 wealth-chart { position: relative; }
+
+/* The item page's "Over time" card: title and range buttons on one line, a small title per chart. */
+.chart-head {
+  display: flex;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.range {
+  display: flex;
+  gap: 4px;
+}
+.chart-title {
+  margin: 10px 0 0;
+  font-size: var(--step-0);
+  font-weight: 600;
+}
 
 .chart-legend {
   display: flex;

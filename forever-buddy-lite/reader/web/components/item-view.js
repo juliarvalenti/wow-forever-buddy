@@ -1,15 +1,49 @@
-// One item: headline numbers, its price ladder, price and quantity by day, and the raw values.
+// One item: headline numbers, its price ladder, price and quantity over time (scan by scan, from
+// the live server's archive, over Auctionator's daily ranges), and the daily values.
 
 import { Component, define } from "../lib/component.js";
+import { store } from "../lib/store.js";
+import { fetchHistory } from "../lib/api.js";
 import { html } from "../lib/html.js";
 import { percent, count } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
 import "./ladder-chart.js";
-import "./day-chart.js";
+import "./time-chart.js";
+
+// The time ranges the charts offer, in seconds (null: everything there is).
+const RANGES = [
+  ["6h", 6 * 3600],
+  ["24h", 24 * 3600],
+  ["3d", 3 * 86400],
+  ["7d", 7 * 86400],
+  ["All", null],
+];
+
+// An item's daily rows as time spans. Auctionator's days are UTC; the row only has "MM-DD", so the
+// year comes from the latest day (a December row seen in January is last year's).
+function daySpans(item, stamp) {
+  const year = Number((stamp || "").slice(0, 4)) || new Date().getUTCFullYear();
+  const lastMonth = Number((stamp || "").slice(5, 7)) || 12;
+  return item.h.map(([day, low, high, listed]) => {
+    const [month, date] = day.split("-").map(Number);
+    const start = Date.UTC(month > lastMonth ? year - 1 : year, month - 1, date) / 1000;
+    return { start, end: start + 86400, low, high, listed };
+  });
+}
 
 class ItemView extends Component {
+  // Scans per item, fetched once per server update.
+  #history = new Map(); // id -> { stamp, points }
+
   watch(s) {
-    return [s.items, s.prefs.selectedId, s.opps];
+    return [s.items, s.prefs.selectedId, s.prefs.chartRange, s.opps, s.lastUpdate];
+  }
+
+  setup() {
+    this.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-range]");
+      if (button) store.setPrefs({ chartRange: button.dataset.range });
+    });
   }
 
   render({ items, prefs }) {
@@ -25,13 +59,18 @@ class ItemView extends Component {
       <div class="tiles">${tiles(item)}</div>
       <ladder-chart></ladder-chart>
       <section class="card">
-        <h3>Lowest price by day</h3>
-        <p class="sub">Line: the day’s lowest listing. Band: lowest to highest cheapest listing seen that day.</p>
-        <day-chart kind="price"></day-chart>
-      </section>
-      <section class="card">
-        <h3>Quantity listed by day</h3>
-        <day-chart kind="listed"></day-chart>
+        <div class="chart-head">
+          <h3>Over time</h3>
+          <div class="range" role="group" aria-label="Time range">
+            ${RANGES.map(([name]) => html`<button class="chip" type="button" data-range="${name}" aria-pressed="${prefs.chartRange === name}">${name}</button>`)}
+          </div>
+        </div>
+        <p class="sub" data-ref="scan-note">Loading scans…</p>
+        <h4 class="chart-title">Cheapest listing</h4>
+        <p class="sub">Steps: the cheapest at each scan. Band: each day’s lowest to highest cheapest, from Auctionator.</p>
+        <time-chart kind="price"></time-chart>
+        <h4 class="chart-title">Quantity listed</h4>
+        <time-chart kind="listed"></time-chart>
       </section>
       <section class="card">
         <h3>Values</h3>
@@ -49,7 +88,35 @@ class ItemView extends Component {
     if (!item) return;
     const verdict = opps?.check?.find((row) => row.id === item.id);
     this.querySelector("ladder-chart").show(item, opps?.ladders?.[item.id], verdict);
-    for (const chart of this.querySelectorAll("day-chart")) chart.show(item);
+    this.#drawCharts(item);
+  }
+
+  async #drawCharts(item) {
+    const { lastUpdate, stamp, prefs } = store.state;
+    let cached = this.#history.get(item.id);
+    if (!cached || cached.stamp !== lastUpdate) {
+      try {
+        const data = await fetchHistory(item.id);
+        cached = { stamp: lastUpdate, points: data.points, scans: data.scans };
+      } catch {
+        cached = { stamp: lastUpdate, points: [], scans: 0 };
+      }
+      this.#history.set(item.id, cached);
+      if (store.state.prefs.selectedId !== item.id) return; // moved on meanwhile
+    }
+    const days = daySpans(item, stamp);
+    const end = Date.now() / 1000;
+    const range = (RANGES.find(([name]) => name === prefs.chartRange) || RANGES[1])[1];
+    const first = Math.min(cached.points[0]?.[0] ?? Infinity, days[0]?.start ?? Infinity);
+    const start = range ? end - range : Number.isFinite(first) ? first : end - 86400;
+    const note = this.querySelector('[data-ref="scan-note"]');
+    if (note) {
+      const inRange = cached.points.filter((p) => p[0] >= start).length;
+      note.textContent = cached.points.length
+        ? `${inRange} of ${cached.points.length} saved scans in this range.`
+        : "No saved scans for this item yet: they start once fbl-rs live is running when you scan.";
+    }
+    for (const chart of this.querySelectorAll("time-chart")) chart.show({ points: cached.points, days, start, end });
   }
 }
 
