@@ -27,6 +27,7 @@ export const DEFAULT_PREFS = {
   sort: "name",
   selectedId: null,
   filtersOpen: false, // the item finder's Filters panel
+  chartRange: "24h", // the item page's time range: one of RANGES in item-view.js
   view: "opportunities", // one of VIEWS
 };
 

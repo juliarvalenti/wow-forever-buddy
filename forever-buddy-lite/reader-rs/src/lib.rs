@@ -10,7 +10,7 @@
 //! - [`model`]: small pure pricing functions: usual price, ladder gaps, ladder verdicts.
 //! - [`strategies`]: one function per market rule, and `analyze` to run them all.
 //! - [`report`]: the analysis as text; [`dashboard`] and [`catalog`]: as the web dashboard reads it.
-//! - [`live`]: the watcher and web server behind the dashboard; [`wealth`]: gold and item value over time.
+//! - [`live`]: the watcher and web server behind the dashboard ([`history`]: its scans, item by item); [`wealth`]: gold and item value over time.
 //! - [`backtest`]: replays rules on past days against a control.
 //! - [`snipes`], [`skillup`], [`questxp`], [`bis`]: planning tools.
 //! - [`tools`], [`mcp`]: the character commands, on the CLI and as an MCP server.
@@ -22,6 +22,7 @@ pub mod cbor;
 pub mod config;
 pub mod dashboard;
 pub mod format;
+pub mod history;
 pub mod json;
 pub mod live;
 pub mod lua;

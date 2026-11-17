@@ -7,6 +7,13 @@ export async function fetchData() {
 }
 
 // Gold and item value over time: { characters, gold: [[t, copper]], history: [[t, gold, items]] }.
+// One item's cheapest price and quantity at every archived scan: { id, scans, points: [[t, cheapest, listed]] }.
+export async function fetchHistory(id) {
+  const response = await fetch(`/history.json?id=${id}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`history.json: ${response.status}`);
+  return response.json();
+}
+
 export async function fetchWealth() {
   const response = await fetch("/wealth.json", { cache: "no-store" });
   if (!response.ok) throw new Error(`wealth.json: ${response.status}`);

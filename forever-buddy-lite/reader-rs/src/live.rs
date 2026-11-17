@@ -6,6 +6,7 @@
 //! - `GET /data.json`: `{ items, opps, stamp }` (see `dashboard`);
 //! - `GET /events`: server-sent events, "update" after each rebuild;
 //! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
+//! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
 //!   the scan archive.
 //!
@@ -15,7 +16,7 @@
 use crate::config::Config;
 use crate::format::{iso_from_millis, money_short as money};
 use crate::sources::{addon, auctionator, hidden, questie, Env};
-use crate::{catalog, dashboard, report, strategies, wealth};
+use crate::{catalog, dashboard, history, report, strategies, wealth};
 use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -73,12 +74,15 @@ pub struct Live {
     questie: questie::QuestieItems,
     state: Mutex<State>,
     listeners: Mutex<Vec<TcpStream>>,
+    /// Every archived scan, by item, for the intraday charts.
+    history: Mutex<history::ScanHistory>,
 }
 
 impl Live {
     pub fn new(env: Env, cfg: Config, opts: LiveOptions) -> Live {
         let questie = questie::load_items(&env.questiedb_dir(), cfg.vendor_cutoff);
-        Live { env, cfg, opts, questie, state: Mutex::default(), listeners: Mutex::default() }
+        let history = Mutex::new(history::ScanHistory::load(&opts.archive_dir));
+        Live { env, cfg, opts, questie, state: Mutex::default(), listeners: Mutex::default(), history }
     }
 
     /// The files to watch: the addon's, and Auctionator's next to each.
@@ -163,6 +167,8 @@ impl Live {
             .and_then(|_| gz.finish())
             .and_then(|bytes| std::fs::write(&file, bytes))
             .map_err(|e| e.to_string())?;
+        let at_seconds = crate::format::seconds_from_iso(&at).unwrap_or_else(crate::format::now_seconds);
+        self.history.lock().unwrap().add(at_seconds, snapshot.iter().map(|(id, (now, listed))| (*id, *now, *listed)));
         Ok(Some(file))
     }
 
@@ -253,6 +259,20 @@ impl Live {
                 Ok(()) => Reply::new(200, "application/json", b"{}".to_vec()),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/history.json") => {
+                let id = request
+                    .path
+                    .split_once('?')
+                    .and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("id=")))
+                    .and_then(|v| v.parse().ok());
+                match id {
+                    Some(id) => {
+                        let body = self.history.lock().unwrap().item_json(id).to_string();
+                        Reply::new(200, "application/json", body.into_bytes()).cache("no-store")
+                    }
+                    None => Reply::new(400, "text/plain; charset=utf-8", b"history.json wants ?id=<item id>".to_vec()),
+                }
+            }
             (_, "/wealth.json") => {
                 let wealth = Arc::clone(&self.state.lock().unwrap().wealth);
                 Reply::new(200, "application/json", wealth.as_bytes().to_vec()).cache("no-store")
