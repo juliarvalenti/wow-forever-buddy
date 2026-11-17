@@ -117,7 +117,6 @@ pub struct GapPick {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Reason {
     CheapNow,
-    YouHoldIt,
     Swingy,
     Searched,
 }
@@ -126,7 +125,6 @@ impl Reason {
     pub fn label(self) -> &'static str {
         match self {
             Reason::CheapNow => "cheap now",
-            Reason::YouHoldIt => "you hold it",
             Reason::Swingy => "swingy",
             Reason::Searched => "searched",
         }
@@ -376,13 +374,13 @@ pub fn latest_ladders(inputs: &MarketInputs, cfg: &Config) -> BTreeMap<u32, Ladd
 
 /// The worklist: what to search at the auction house today, and what each searched ladder says.
 ///
-/// Items come from the rules (the best few of buy, sell and swingy) and from recent searches. Each
-/// gets the verdict of its latest ladder; one older than `ladder_stale_hours` is marked stale, and so
-/// is one whose floor doesn't match the price scan.
+/// Items come from the rules (the best few of buy and swingy) and from recent searches. Each gets
+/// the verdict of its latest ladder; one older than `ladder_stale_hours` is marked stale, and so is
+/// one whose floor doesn't match the price scan.
 ///
-/// Items you hold never ask to be searched: with a fresh ladder they show its verdict (and where to
-/// relist); with none, or an old one, they're left off (the sell section still lists them). The
-/// worklist is for deciding what to buy, and nagging to re-search your own stock got in the way.
+/// Items you hold are left off: the worklist is for deciding what to buy, and a held item there
+/// either nagged for a fresh search or showed "buy more" for what you were selling. The sell
+/// section lists them, and each item's page keeps its ladder and where to relist.
 pub fn check_list(
     inputs: &MarketInputs,
     rows: &[ItemMarket],
@@ -403,9 +401,6 @@ pub fn check_list(
     for p in picks.buy.iter().take(cfg.check_cheap) {
         want(&mut wanted, p.item.id, &p.item.name, Reason::CheapNow);
     }
-    for p in picks.sell.iter().take(cfg.check_held) {
-        want(&mut wanted, p.item.id, &p.item.name, Reason::YouHoldIt);
-    }
     for r in picks.swingy.iter().take(cfg.check_swingy) {
         want(&mut wanted, r.id, &r.name, Reason::Swingy);
     }
@@ -423,9 +418,7 @@ pub fn check_list(
         .filter_map(|(id, name, why)| {
             let row = by_id.get(&id).copied();
             let ladder = ladders.get(&id);
-            let held = row.map_or(0, |r| r.held) > 0;
-            let fresh = ladder.is_some_and(|l| inputs.now - l.at <= cfg.ladder_stale_hours * 3600.0);
-            if held && !fresh {
+            if row.is_some_and(|r| r.held > 0) {
                 return None;
             }
             let reading = read_ladder(row, ladder, inputs.now, budget, cfg);
@@ -637,12 +630,13 @@ mod tests {
     }
 
     #[test]
-    fn what_you_hold_never_asks_to_be_searched() {
+    fn what_you_hold_stays_off_the_worklist() {
         let now = 1_000_000.0;
         // All cheap now and held. Item 1 searched 30 minutes ago, item 2 five hours ago, item 3 never.
+        // Item 4: cheap now, not held: the only one listed.
         let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
         let mut inputs = inputs_with(
-            json!({"version": 2, "1": busy(5000), "2": busy(5000), "3": busy(5000)}),
+            json!({"version": 2, "1": busy(5000), "2": busy(5000), "3": busy(5000), "4": busy(5000)}),
             &[("1", now - 1800.0, "5000:5;9000:20"), ("2", now - 5.0 * 3600.0, "5000:5;9000:20")],
             now,
         );
@@ -650,10 +644,8 @@ mod tests {
             inputs.held.insert(id, 4);
         }
         let a = analyze(&inputs, 50_000, &Config::default());
-        // 2 (old ladder) and 3 (none) are left off rather than asking for a search.
-        assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [1]);
-        assert!(matches!(a.check[0].verdict, Verdict::Gap(_)));
-        assert_eq!(a.check[0].held, 4);
+        assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [4]);
+        assert_eq!(a.ladders[&1].levels.len(), 2); // the item page still has its ladder
     }
 
     #[test]

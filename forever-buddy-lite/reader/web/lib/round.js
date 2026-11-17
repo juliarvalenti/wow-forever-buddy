@@ -1,7 +1,7 @@
 // A round: what to do after each price scan.
 //
 //   1. A new Auctionator scan lands (opps.scanAt is newer than the round's): the round starts with
-//      that scan's picks (cheap now, you hold it, swingy) and the dialog opens.
+//      that scan's picks (cheap now, swingy; never what you hold) and the dialog opens.
 //   2. You open each pick at the AH; the addon records its ladder. A pick counts as checked when
 //      its latest ladder is newer than the scan.
 //   3. Your save brings those ladders in: the round moves to results and shows the verdicts.
