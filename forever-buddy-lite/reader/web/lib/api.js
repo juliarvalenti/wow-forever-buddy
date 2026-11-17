@@ -6,6 +6,13 @@ export async function fetchData() {
   return response.json(); // { items, opps, stamp }
 }
 
+// Gold and item value over time: { characters, gold: [[t, copper]], history: [[t, gold, items]] }.
+export async function fetchWealth() {
+  const response = await fetch("/wealth.json", { cache: "no-store" });
+  if (!response.ok) throw new Error(`wealth.json: ${response.status}`);
+  return response.json();
+}
+
 // Calls onUpdate whenever a scan or save reaches disk. The browser reconnects by itself.
 export function onServerUpdate(onUpdate) {
   const events = new EventSource("/events");

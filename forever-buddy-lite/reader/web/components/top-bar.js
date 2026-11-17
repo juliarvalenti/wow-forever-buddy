@@ -28,6 +28,7 @@ class TopBar extends Component {
     return html`
       <nav class="top-bar" aria-label="Views">
         <button class="chip" type="button" data-view="opportunities" aria-pressed="${prefs.view === "opportunities"}">Opportunities</button>
+        <button class="chip" type="button" data-view="wealth" aria-pressed="${prefs.view === "wealth"}">Wealth</button>
         ${selected && html`<button class="chip" type="button" data-view="item" aria-pressed="${prefs.view === "item"}">${selected.n}</button>`}
         ${inRound && html`<button class="btn" type="button" data-open-round>Scan of ${clockTime(round.scanAt)}: ${checked.length} of ${picks.length} searched</button>`}
         <span class="status"><span class="live-dot" aria-hidden="true"></span>Live. Prices through ${stamp}${updated}</span>

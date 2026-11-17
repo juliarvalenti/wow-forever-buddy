@@ -7,6 +7,7 @@
 //   items:  [enriched item, ...]       every named item with its daily history (see model.js)
 //   opps:   {...} | null               the market analysis (reader-rs dashboard.rs): sections, worklist, ladders, scanAt
 //   stamp:  "2026-11-16"               last day the scans cover
+//   wealth: {...} | null               gold and item value over time (see api.fetchWealth)
 //   lastUpdate: Date | null            when the server last pushed new data
 //   prefs:  {...}                      filters, selection, view: remembered in this browser
 //   round:  {...}                      the current price-scan round (see round.js): remembered too
@@ -24,7 +25,7 @@ export const DEFAULT_PREFS = {
   listedMin: 0,
   sort: "name",
   selectedId: null,
-  view: "opportunities", // or "item"
+  view: "opportunities", // or "item", "wealth"
 };
 
 export const NO_ROUND = { scanAt: 0, step: "done", picks: [], open: false };

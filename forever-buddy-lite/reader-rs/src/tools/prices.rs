@@ -6,8 +6,8 @@ use super::{number_arg, pick, Args, Ctx, Obj};
 use crate::format::{auctionator_date, money_long};
 use crate::json::number;
 use crate::model::usual_price;
-use crate::sources::addon::{ItemRecord, Places, SLOT_NAMES};
-use crate::sources::auctionator::{self, PriceDb, PriceEntry};
+use crate::sources::addon::{Character, ItemRecord, Places, SLOT_NAMES};
+use crate::sources::auctionator::{self, PriceDb, PriceEntry, RealmPrices};
 use crate::sources::links::parse_link;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -170,19 +170,23 @@ pub fn flips(ctx: &Ctx, args: &Args) -> Result<Value, String> {
         .build())
 }
 
-/// What a character's bags and bank would fetch at today's prices. Soulbound items are left out.
-pub fn value(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
-    let c = pick(ctx.data, name)?;
-    let db = load_prices(ctx, "Run a full scan with Auctionator, then /reload.")?;
+/// One kind of item a character holds, priced at the latest scan's cheapest listing.
+struct Holding {
+    name: Option<String>,
+    count: f64,
+    each: f64,
+    places: Vec<&'static str>,
+}
+
+/// The character's realm in the price data (the first realm when it isn't there).
+fn home_realm<'a>(c: &Character, db: &'a PriceDb) -> &'a RealmPrices {
     let home = c.identity.realm.as_deref().unwrap_or("").to_lowercase();
-    let realm = db.realms.iter().find(|r| r.realm.to_lowercase().starts_with(&home)).unwrap_or(&db.realms[0]);
-    struct Holding {
-        name: Option<String>,
-        count: f64,
-        each: f64,
-        places: Vec<&'static str>,
-    }
-    // By id, in id order.
+    db.realms.iter().find(|r| r.realm.to_lowercase().starts_with(&home)).unwrap_or(&db.realms[0])
+}
+
+/// What a character holds in bags and bank that has an AH price, by item id. Soulbound items are
+/// left out: they can't be sold.
+fn holdings(c: &Character, realm: &RealmPrices) -> BTreeMap<i64, Holding> {
     let mut held: BTreeMap<i64, Holding> = BTreeMap::new();
     for r in c.item_rows(Places { bank: true, mail: false, worn: false }) {
         let Some(id) = r.id.filter(|&i| i != 0.0) else { continue };
@@ -197,7 +201,23 @@ pub fn value(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
             h.places.push(place);
         }
     }
-    let mut rows: Vec<(i64, Holding)> = held.into_iter().collect();
+    held
+}
+
+/// What a character's bags and bank would fetch at the latest prices, in copper (0 without prices).
+pub fn market_value(c: &Character, db: &PriceDb) -> f64 {
+    if db.realms.is_empty() {
+        return 0.0;
+    }
+    holdings(c, home_realm(c, db)).values().map(|h| h.each * h.count).sum()
+}
+
+/// What a character's bags and bank would fetch at today's prices. Soulbound items are left out.
+pub fn value(ctx: &Ctx, name: Option<&str>) -> Result<Value, String> {
+    let c = pick(ctx.data, name)?;
+    let db = load_prices(ctx, "Run a full scan with Auctionator, then /reload.")?;
+    let realm = home_realm(c, &db);
+    let mut rows: Vec<(i64, Holding)> = holdings(c, realm).into_iter().collect();
     let total = |h: &Holding| h.each * h.count;
     rows.sort_by(|a, b| total(&b.1).partial_cmp(&total(&a.1)).unwrap_or(std::cmp::Ordering::Equal));
     let sum: f64 = rows.iter().map(|(_, h)| total(h)).sum();

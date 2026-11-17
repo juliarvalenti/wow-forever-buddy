@@ -2,7 +2,7 @@
 //! on the command line and over MCP. Each returns JSON.
 
 mod character;
-mod prices;
+pub mod prices;
 pub mod talents;
 pub mod upgrades;
 
