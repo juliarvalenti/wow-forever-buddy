@@ -63,6 +63,23 @@ impl ScanHistory {
         self.by_item.iter().map(|(id, points)| (*id, points.as_slice()))
     }
 
+    /// The median cheapest over the scans since `since` (unix seconds), when there are at least
+    /// `min_points` of them: what the item usually went for across your recent scans. Steadier than
+    /// Auctionator's daily low (one stray listing) and high (one partial scan).
+    pub fn recent_median(&self, id: u32, since: f64, min_points: usize) -> Option<f64> {
+        let mut prices: Vec<u32> = self.points(id).iter().filter(|p| p.at as f64 >= since).map(|p| p.price).collect();
+        if prices.len() < min_points {
+            return None;
+        }
+        prices.sort_unstable();
+        Some(prices[(prices.len() - 1) / 2] as f64)
+    }
+
+    /// `recent_median` for every item that has enough scans.
+    pub fn recent_medians(&self, since: f64, min_points: usize) -> HashMap<u32, i64> {
+        self.by_item.keys().filter_map(|&id| Some((id, self.recent_median(id, since, min_points)? as i64))).collect()
+    }
+
     pub fn points(&self, id: u32) -> &[Point] {
         self.by_item.get(&id).map_or(&[], Vec::as_slice)
     }

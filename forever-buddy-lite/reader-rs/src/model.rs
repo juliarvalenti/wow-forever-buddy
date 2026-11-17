@@ -14,13 +14,35 @@ pub fn lower_median(values: &[i64]) -> Option<i64> {
     sorted.get(sorted.len().saturating_sub(1) / 2).copied()
 }
 
-/// What an item usually sells for: the median of each day's *high* cheapest price, today left out
-/// (today is what we're comparing against). A day's low catches one stray cheap listing (Silk at 29c);
-/// its high is what the floor mostly was. With a single day, that day is all there is.
+/// What an item usually sells for, from Auctionator's days: the median of each day's midpoint
+/// (halfway between its lowest and highest cheapest price), today left out (today is what we're
+/// comparing against). A day's low can be one stray cheap listing (Silk at 37c for one scan); its
+/// high can be a partial scan or a first seller's asking price (Elixir of Brute Force at 2g 50s with
+/// five listed). The midpoint leans on neither. With a single day, that day is all there is.
+///
+/// Where your scan archive has enough of an item, `history::ScanHistory::recent_median` is better
+/// and is used instead (see `strategies::MarketInputs::scan_usual`).
 pub fn usual_price(days: &[DayPrice]) -> Option<i64> {
-    let highs: Vec<i64> = days.iter().map(|d| d.high as i64).collect();
-    let past = if highs.len() > 1 { &highs[..highs.len() - 1] } else { &highs[..] };
+    let mids: Vec<i64> = days.iter().map(|d| ((d.cheapest() + d.high) / 2.0) as i64).collect();
+    let past = if mids.len() > 1 { &mids[..mids.len() - 1] } else { &mids[..] };
     lower_median(past)
+}
+
+/// Whether an item's floor is sliding, either way:
+/// - slowly: over the last `steps` days its daily low never rose (more than 2%, noise) and ended at
+///   most `total` of where it started (0.85 = down 15%+). Heavy Scorpid Scale went 43s, 25s,
+///   24s 65c, 17s: a 2% step in the middle, still a slide;
+/// - steeply: down 5% or more on each of the last two days (Torbernite, Blue Sapphire after a flat
+///   start).
+///
+/// A falling market's "cheap" price is its new level, not a dip, so it's no buy.
+pub fn falling(days: &[DayPrice], steps: usize, total: f64) -> bool {
+    let lows_of = |n: usize| -> Option<Vec<f64>> {
+        (n > 0 && days.len() > n).then(|| days[days.len() - n - 1..].iter().map(DayPrice::cheapest).collect())
+    };
+    let slow = lows_of(steps).is_some_and(|lows| lows.windows(2).all(|w| w[1] <= w[0] * 1.02) && lows[lows.len() - 1] <= lows[0] * total);
+    let steep = lows_of(2).is_some_and(|lows| lows.windows(2).all(|w| w[1] <= w[0] * 0.95));
+    slow || steep
 }
 
 /// Buying the bottom of a ladder and relisting under the next level up.
@@ -207,9 +229,24 @@ mod tests {
     }
 
     #[test]
+    fn a_floor_falling_day_after_day_is_falling() {
+        let d = |n: i64, low: f64| DayPrice { day: n, high: low, low: Some(low), listed: None };
+        // Heavy Scorpid Scale: a near-flat step in the middle is still a slide.
+        assert!(falling(&[d(1, 4367.0), d(2, 2518.0), d(3, 2465.0), d(4, 1749.0)], 3, 0.85));
+        assert!(!falling(&[d(1, 300.0), d(2, 250.0), d(3, 260.0), d(4, 255.0)], 3, 0.85)); // bounced back
+        assert!(!falling(&[d(1, 300.0), d(2, 295.0), d(3, 292.0), d(4, 290.0)], 3, 0.85)); // only 3% down
+        assert!(!falling(&[d(1, 300.0), d(2, 250.0)], 3, 0.85)); // too few days to say
+                                                                 // Flat, then two steep days down: falling, though not over the whole three.
+        assert!(falling(&[d(1, 300.0), d(2, 320.0), d(3, 280.0), d(4, 240.0)], 3, 0.85));
+    }
+
+    #[test]
     fn usual_leaves_today_out() {
-        // Today's 100 doesn't count: median of 200, 210, 190.
+        // Today's 100 doesn't count: median of 200, 210, 190 (no lows recorded: midpoint = high).
         assert_eq!(usual_price(&[day(1, 200.0), day(2, 210.0), day(3, 190.0), day(4, 100.0)]), Some(200));
+        // With lows: the midpoint, not the high. (100+300)/2, (200+400)/2, then today.
+        let with_low = |d: i64, low: f64, high: f64| DayPrice { day: d, high, low: Some(low), listed: None };
+        assert_eq!(usual_price(&[with_low(1, 100.0, 300.0), with_low(2, 200.0, 400.0), with_low(3, 1.0, 1.0)]), Some(200));
         assert_eq!(usual_price(&[day(1, 300.0)]), Some(300));
         assert_eq!(usual_price(&[]), None);
     }

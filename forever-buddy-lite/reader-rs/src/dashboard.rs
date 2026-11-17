@@ -111,7 +111,7 @@ mod tests {
     fn opps_carry_the_fields_the_web_app_reads() {
         let now = 1_000_000.0;
         let mut inputs = MarketInputs { now, ..MarketInputs::default() };
-        let busy = json!({"m": 5000, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let busy = json!({"m": 5000, "h": {"2508": 10_000, "2509": 10_000, "2510": 10_000}, "a": {"2508": 200, "2509": 200, "2510": 200}});
         inputs.prices.realms.push(realm_from_json("Realm", &json!({"version": 2, "10": busy})));
         inputs
             .ladders

@@ -35,6 +35,16 @@ pub struct Config {
     pub dip_high_factor: f64,
     /// ...with at least this many days of history.
     pub dip_min_days: usize,
+    /// Buy: at least this many days of history, so "usual" isn't one seller's asking price.
+    pub buy_min_days: usize,
+    /// No buys or dip bets on a falling floor: over the last `falling_days` days the daily low never
+    /// rose and ended at or under `falling_step` of where it started (0.85: down 15%+). The market
+    /// moved; it didn't dip.
+    pub falling_days: usize,
+    pub falling_step: f64,
+    /// Usual from your scans when an item has at least this many in the last `scan_usual_days`.
+    pub scan_usual_min: usize,
+    pub scan_usual_days: f64,
     /// Sell: what you hold is listed at least 15% over its usual today...
     pub sell_factor: f64,
     /// ...on a market with at least this many up (someone is trading it).
@@ -99,6 +109,11 @@ impl Default for Config {
             dip_factor: 0.75,
             dip_high_factor: 0.9,
             dip_min_days: 3,
+            buy_min_days: 3,
+            falling_days: 3,
+            falling_step: 0.85,
+            scan_usual_min: 8,
+            scan_usual_days: 3.0,
             sell_factor: 1.15,
             sell_min_listed: 20,
             squeeze_supply: -0.2,
