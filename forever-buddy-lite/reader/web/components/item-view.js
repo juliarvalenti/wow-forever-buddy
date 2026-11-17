@@ -15,12 +15,12 @@ class ItemView extends Component {
   render({ items, prefs }) {
     const item = items.find((it) => it.id === prefs.selectedId);
     if (!items.length) return html`<p class="empty">Loading prices…</p>`;
-    if (!item) return html`<p class="empty">Pick an item on the left.</p>`;
+    if (!item) return html`<p class="empty">Pick an item from the list.</p>`;
 
     return html`
-      <header>
-        <h2>${item.n}</h2>
-        <p class="sub">${item.k}, item ${item.id}</p>
+      <header class="page-head">
+        <h1>${item.n}</h1>
+        <p class="sub">${item.k} · item ${item.id}</p>
       </header>
       <div class="tiles">${tiles(item)}</div>
       <ladder-chart></ladder-chart>
@@ -35,12 +35,12 @@ class ItemView extends Component {
       </section>
       <section class="card">
         <h3>Values</h3>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Day</th><th>Lowest</th><th>Highest</th><th>Listed</th></tr></thead>
           <tbody>
             ${item.h.map(([day, low, high, listed]) => html`<tr><td>${day}</td><td>${coins(low)}</td><td>${coins(high)}</td><td>${count(listed)}</td></tr>`)}
           </tbody>
-        </table>
+        </table></div>
       </section>`;
   }
 

@@ -14,9 +14,12 @@ export async function fetchWealth() {
 }
 
 // Calls onUpdate whenever a scan or save reaches disk. The browser reconnects by itself.
-export function onServerUpdate(onUpdate) {
+// onLive(true | false) reports the connection going up or down (the header shows it).
+export function onServerUpdate(onUpdate, onLive = () => {}) {
   const events = new EventSource("/events");
   events.addEventListener("update", onUpdate);
+  events.addEventListener("open", () => onLive(true));
+  events.addEventListener("error", () => onLive(events.readyState === EventSource.OPEN));
   return () => events.close();
 }
 

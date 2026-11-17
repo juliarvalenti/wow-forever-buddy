@@ -1,5 +1,5 @@
 // The round dialog (see lib/round.js): after a price scan, what to search; after your save, what
-// the ladders say. A native <dialog>: Esc or a click on the backdrop minimizes it to the top bar.
+// the ladders say. A native <dialog>: Esc or a click on the backdrop minimizes it to the header.
 
 import { Component, define } from "../lib/component.js";
 import { store } from "../lib/store.js";
@@ -40,7 +40,7 @@ class RoundDialog extends Component {
       if (copied) event.target.textContent = `Copied ${left.length}: paste in Auctionator, Shopping, Import`;
       return;
     }
-    if (event.target.closest("button")) return;
+    if (event.target.closest("button:not(.row-link)")) return;
     const row = event.target.closest("tr[data-id]");
     if (row) {
       store.setRound({ open: false });
