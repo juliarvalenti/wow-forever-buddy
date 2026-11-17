@@ -50,7 +50,7 @@ function head(layout, searched) {
 
 function line(row, layout, searched) {
   const when = searched ? html`<td class="num muted">${ago(row.at)}</td>` : "";
-  const name = html`<td class="item-cell"><span class="item-name">${row.name}</span>${row.sell && html`<span class="sell-hint">${row.sell.text}</span>`}</td>`;
+  const name = html`<td class="item-cell"><button class="row-link item-name" type="button">${row.name}</button>${row.sell && html`<span class="sell-hint">${row.sell.text}</span>`}</td>`;
   const hide = html`<td class="row-action">${hideButton(row)}</td>`;
 
   if (layout === "gap" && row.gap) {

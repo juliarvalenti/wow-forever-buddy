@@ -9,6 +9,7 @@
 //   stamp:  "2026-11-16"               last day the scans cover
 //   wealth: {...} | null               gold and item value over time (see api.fetchWealth)
 //   lastUpdate: Date | null            when the server last pushed new data
+//   live:   true | false               whether the live connection (/events) is up
 //   prefs:  {...}                      filters, selection, view: remembered in this browser
 //   round:  {...}                      the current price-scan round (see round.js): remembered too
 // }
@@ -25,8 +26,18 @@ export const DEFAULT_PREFS = {
   listedMin: 0,
   sort: "name",
   selectedId: null,
-  view: "opportunities", // or "item", "wealth"
+  filtersOpen: false, // the item finder's Filters panel
+  view: "opportunities", // one of VIEWS
 };
+
+// The pages in the header's navigation.
+export const VIEWS = ["opportunities", "items", "wealth"];
+
+// A view saved by an older version ("item" was one item's page), or anything unknown: map it.
+function knownView(view) {
+  if (view === "item") return "items";
+  return VIEWS.includes(view) ? view : "opportunities";
+}
 
 export const NO_ROUND = { scanAt: 0, step: "done", picks: [], open: false };
 
@@ -48,13 +59,20 @@ function writeStored(key, value) {
   }
 }
 
+function storedPrefs() {
+  const prefs = readStored(PREFS_KEY, DEFAULT_PREFS);
+  return { ...prefs, view: knownView(prefs.view) };
+}
+
 class Store extends EventTarget {
   state = {
     items: [],
     opps: null,
     stamp: "",
+    wealth: null,
     lastUpdate: null,
-    prefs: readStored(PREFS_KEY, DEFAULT_PREFS),
+    live: true,
+    prefs: storedPrefs(),
     round: readStored(ROUND_KEY, NO_ROUND),
   };
 
@@ -73,9 +91,10 @@ class Store extends EventTarget {
     writeStored(ROUND_KEY, this.state.round);
   }
 
-  // Open one item's page.
+  // Open one item on the Items page, from anywhere. "open-item" lets that page bring it into view.
   openItem(id) {
-    this.setPrefs({ selectedId: id, view: "item" });
+    this.setPrefs({ selectedId: id, view: "items" });
+    this.dispatchEvent(new CustomEvent("open-item", { detail: id }));
   }
 
   subscribe(listener) {

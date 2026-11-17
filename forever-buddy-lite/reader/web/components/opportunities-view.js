@@ -59,7 +59,7 @@ class OpportunitiesView extends Component {
 
   setup() {
     this.addEventListener("click", (event) => {
-      if (event.target.closest("button")) return; // buttons in a row do their own thing
+      if (event.target.closest("button:not(.row-link)")) return; // buttons in a row do their own thing
       const row = event.target.closest("tr[data-id]");
       if (row) store.openItem(Number(row.dataset.id));
     });
@@ -68,9 +68,18 @@ class OpportunitiesView extends Component {
   render({ opps }) {
     if (!opps) return html`<p class="empty">Loading…</p>`;
     return html`
-      <p class="sub">${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.</p>
+      <header class="page-head">
+        <h1>Opportunities</h1>
+        <p class="sub">${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.</p>
+      </header>
       <check-list></check-list>
-      ${SECTIONS.map((section) => sectionCard(section, opps[section.key] || []))}`;
+      <section class="market" aria-labelledby="market-title">
+        <header class="section-head">
+          <h2 id="market-title">Market today</h2>
+          <p class="section-note">From the latest price scan. Click a row to open the item.</p>
+        </header>
+        ${SECTIONS.map((section) => sectionCard(section, opps[section.key] || []))}
+      </section>`;
   }
 }
 
@@ -88,7 +97,7 @@ function sectionCard({ title, why, columns }, rows) {
               </thead>
               <tbody>
                 ${shown.map(
-                  (r) => html`<tr data-id="${r.id}" class="clickable"><td>${r.name}</td>${columns.map(([, value]) => html`<td>${value(r)}</td>`)}</tr>`,
+                  (r) => html`<tr data-id="${r.id}" class="clickable"><td><button class="row-link" type="button">${r.name}</button></td>${columns.map(([, value]) => html`<td>${value(r)}</td>`)}</tr>`,
                 )}
               </tbody>
             </table></div>`

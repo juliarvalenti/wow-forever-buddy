@@ -22,8 +22,8 @@ class WealthView extends Component {
     const thin = wealth.gold.length < 2 && wealth.history.length < 2;
 
     return html`
-      <header>
-        <h2>Wealth</h2>
+      <header class="page-head">
+        <h1>Wealth</h1>
         <p class="sub">Gold on every character, plus what their bags and bank would fetch at the latest AH prices.</p>
       </header>
       <div class="tiles">

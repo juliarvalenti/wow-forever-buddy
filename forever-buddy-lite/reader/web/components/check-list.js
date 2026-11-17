@@ -32,9 +32,9 @@ class CheckList extends Component {
 
     return html`
       <section class="worklist-panel">
-        <header class="panel-head">
+        <header class="section-head">
           <h2>Price ladders</h2>
-          <p class="panel-note">
+          <p class="section-note">
             Every item you open at the AH records its whole ladder. Save prices &amp; reload and the verdicts below update.
           </p>
           ${toSearch.length > 0 &&

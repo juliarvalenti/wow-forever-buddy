@@ -3,26 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction house</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap"
-    />
+    <title>ForeverBuddy Lite</title>
     <link rel="stylesheet" href="style.css" />
     <script type="module" src="app.js"></script>
   </head>
   <body>
-    <div class="app">
-      <aside>
-        <item-finder></item-finder>
-      </aside>
-      <main>
-        <top-bar></top-bar>
-        <main-view></main-view>
-      </main>
-    </div>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <app-header></app-header>
+    <main id="content" class="shell" tabindex="-1">
+      <main-view></main-view>
+    </main>
     <round-dialog></round-dialog>
   </body>
 </html>

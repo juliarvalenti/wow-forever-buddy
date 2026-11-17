@@ -1,11 +1,10 @@
 // Entry point: loads the data from the live server (fbl-rs live), keeps it current, and wires the few app-wide actions.
 
-import "./components/item-finder.js";
-import "./components/top-bar.js";
+import "./components/app-header.js";
 import "./components/main-view.js";
 import "./components/opportunities-view.js";
 import "./components/check-list.js";
-import "./components/item-view.js";
+import "./components/items-view.js";
 import "./components/round-dialog.js";
 import "./components/wealth-view.js";
 
@@ -53,6 +52,18 @@ window.addEventListener("focus", () => {
 });
 
 loadData({ pushed: false }).catch((error) => {
-  document.querySelector("main-view").textContent = `Couldn't load the data (${error.message}). Is fbl-rs live running?`;
+  const view = document.querySelector("main-view");
+  view.textContent = `Couldn't load the data (${error.message}). Is fbl-rs live running?`;
+  view.classList.add("empty");
 });
-onServerUpdate(() => loadData({ pushed: true }).catch(() => {}));
+// The header says Offline only if the connection stays down a few seconds (it reconnects by itself).
+let offlineTimer;
+onServerUpdate(
+  () => loadData({ pushed: true }).catch(() => {}),
+  (live) => {
+    clearTimeout(offlineTimer);
+    if (live) {
+      if (!store.state.live) store.set({ live: true });
+    } else offlineTimer = setTimeout(() => store.set({ live: false }), 3000);
+  },
+);
