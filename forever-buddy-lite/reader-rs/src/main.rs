@@ -142,18 +142,22 @@ fn backtest(cli: &Cli, env: &Env) -> Result<String, String> {
 }
 
 fn snipes_command(cli: &Cli, env: &Env) -> Result<String, String> {
-    let o = SnipeOptions {
+    let mut o = SnipeOptions {
         cap: cli.number("cap", 0.25)? * 10000.0,
         ratio: cli.number("ratio", 0.8)?,
         deposit: cli.number("deposit", 0.01)? * 10000.0,
         min_profit: cli.number("min-profit", 0.02)? * 10000.0,
         count: cli.number("count", 50.0)? as usize,
         min_listed: cli.number("min-listed", 300.0)?,
+        ..SnipeOptions::default()
     };
     let list_name = format!("{} {}", cli.flag("name").unwrap_or("FBL Snipes"), snipes::random_tag());
     let addon = addon::load(env)?;
     let data: skillup::ProfessionData = serde_json::from_str(skillup::recipe_file("engineering").unwrap()).map_err(|e| e.to_string())?;
     let questie = questie::load_items(&env.questiedb_dir(), Config::default().vendor_cutoff);
+    // Never list what you've hidden or what vendors sell without limit (as the dashboard does).
+    o.exclude = questie.vendor_items.clone();
+    o.exclude.extend(sources::hidden::load(&env.hidden_file()).keys().copied());
     let names = snipes::names(&addon, &data.items, &questie);
     let picks = snipes::snipes(&auctionator::load(env)?, &names, &o);
     let line = snipes::shopping_list(&list_name, &picks);

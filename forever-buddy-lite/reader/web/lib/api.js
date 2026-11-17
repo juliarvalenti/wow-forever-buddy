@@ -14,6 +14,14 @@ export async function fetchHistory(id) {
   return response.json();
 }
 
+// A Point Blank Sniper list for these settings (prices in copper): { name, list, items }.
+export async function fetchSnipes(settings) {
+  const query = new URLSearchParams(Object.entries(settings).map(([k, v]) => [k, String(v)]));
+  const response = await fetch(`/snipes.json?${query}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 export async function fetchWealth() {
   const response = await fetch("/wealth.json", { cache: "no-store" });
   if (!response.ok) throw new Error(`wealth.json: ${response.status}`);

@@ -7,6 +7,7 @@ import "./components/check-list.js";
 import "./components/items-view.js";
 import "./components/round-dialog.js";
 import "./components/wealth-view.js";
+import "./components/snipes-view.js";
 
 import { store } from "./lib/store.js";
 import { fetchData, fetchWealth, onServerUpdate, setHidden } from "./lib/api.js";

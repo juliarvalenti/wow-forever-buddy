@@ -7,7 +7,7 @@ import { html } from "../lib/html.js";
 import { clockTime } from "../lib/format.js";
 import { roundPicks } from "../lib/round.js";
 
-const LABELS = { opportunities: "Opportunities", items: "Items", wealth: "Wealth" };
+const LABELS = { opportunities: "Opportunities", items: "Items", snipes: "Snipes", wealth: "Wealth" };
 
 class AppHeader extends Component {
   watch(s) {

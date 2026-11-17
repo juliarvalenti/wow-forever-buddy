@@ -9,7 +9,8 @@
 use crate::sources::addon::{AddonData, Places};
 use crate::sources::auctionator::PriceDb;
 use crate::sources::questie::QuestieItems;
-use std::collections::HashMap;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnipeOptions {
@@ -24,16 +25,19 @@ pub struct SnipeOptions {
     pub count: usize,
     /// Only items with at least this many up on an average day.
     pub min_listed: f64,
+    /// Items never to list: ones you've hidden, and goods vendors sell without limit.
+    pub exclude: HashSet<u32>,
 }
 
 impl Default for SnipeOptions {
     fn default() -> Self {
-        SnipeOptions { cap: 2500.0, ratio: 0.8, deposit: 100.0, min_profit: 200.0, count: 50, min_listed: 300.0 }
+        SnipeOptions { cap: 2500.0, ratio: 0.8, deposit: 100.0, min_profit: 200.0, count: 50, min_listed: 300.0, exclude: HashSet::new() }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snipe {
+    pub id: u32,
     pub name: String,
     pub usual: f64,
     pub now: Option<f64>,
@@ -90,10 +94,11 @@ pub fn snipes(prices: &PriceDb, names: &HashMap<u32, String>, o: &SnipeOptions) 
         if listed < o.min_listed || max <= 0.0 || max > o.cap {
             continue;
         }
+        let Some(id) = e.id().filter(|id| !o.exclude.contains(id)) else { continue };
         // Names with a quote can't go in Auctionator's list format.
-        let Some(name) = e.id().and_then(|id| names.get(&id)).filter(|n| !n.contains('"')) else { continue };
+        let Some(name) = names.get(&id).filter(|n| !n.contains('"')) else { continue };
         let single = (floor * 0.95 - o.deposit - max).floor();
-        rows.push(Snipe { name: name.clone(), usual, now: e.now, listed: f64::round(listed), max, days: e.days.len(), single });
+        rows.push(Snipe { id, name: name.clone(), usual, now: e.now, listed: f64::round(listed), max, days: e.days.len(), single });
     }
     let worth = |s: &Snipe| s.usual * s.listed.sqrt();
     rows.sort_by(|a, b| worth(b).total_cmp(&worth(a)));
@@ -111,6 +116,18 @@ fn gold(copper: f64) -> String {
 pub fn shopping_list(list_name: &str, snipes: &[Snipe]) -> String {
     let terms: Vec<String> = snipes.iter().map(|s| format!("\"{}\";;;;;;;;;{};;#;;", s.name, gold(s.max))).collect();
     format!("{list_name}^{}", terms.join("^"))
+}
+
+/// The list for the dashboard: its name, Auctionator's import line, and each item (prices in copper).
+pub fn snipes_json(list_name: &str, snipes: &[Snipe]) -> Value {
+    let items: Vec<Value> = snipes
+        .iter()
+        .map(|s| {
+            json!({ "id": s.id, "name": s.name, "max": s.max, "floor": s.floor(), "usual": s.usual, "now": s.now,
+                    "listed": s.listed, "single": s.single, "days": s.days })
+        })
+        .collect();
+    json!({ "name": list_name, "list": shopping_list(list_name, snipes), "items": items })
 }
 
 /// One line per snipe, for the console.
