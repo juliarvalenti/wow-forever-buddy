@@ -4,13 +4,12 @@
 -- Targeting is something the game only does from a click or a key press, through a secure button.
 -- The button is one: each press targets, nothing happens on its own.
 --
--- Out of combat, each press looks at the nameplates around you and targets the next one whose
--- name contains the text, so pressing again cycles through them in a fixed order. "Alive only"
--- skips corpses. In combat the game freezes what a secure button does, so it falls back to plain
--- /tar <text> (followed by /cleartarget [dead] with "Alive only"), set up after every press. The
--- fallback is also used out of combat when no nameplate matches: friendly NPCs need friendly
--- nameplates on (Ctrl+Shift+V by default) to be cycled, and anything out of nameplate range is
--- reached by /tar alone.
+-- A press is /tar <text> (followed by /cleartarget [dead] with "Alive only"): the game's own
+-- targeting by name, which reaches far beyond nameplates. Once you're on a match, a press goes
+-- to the next match among the nameplates around you instead, so at a pack pressing again cycles
+-- through them in a fixed order. Nameplates are what an addon can see of units near you (enemy
+-- plates on, up to the game's nameplate distance; friendly NPCs need friendly plates). In combat
+-- the game freezes what a secure button does, so every press there is the plain /tar.
 --
 -- The window also lists what matches near you, live: level, health, dead, tapped by someone else.
 -- Reading those is open to any addon; only acting on them (targeting) needs the press.
@@ -138,24 +137,25 @@ button:SetScript("PreClick", function(self, mouse, down)
         setStatus("Type a name first.")
         return
     end
+    -- Already on a match with others on nameplates: the one after it, wrapping around.
     local list = matches(t, true)
-    if #list == 0 then
-        self:SetAttribute("type", "macro")
-        self:SetAttribute("macrotext", fallback(t))
-        setStatus("No nameplate matches: /tar " .. t)
-        return
-    end
-    -- The one after your current target, wrapping around.
-    local current, pick = UnitGUID("target"), 1
+    local current, pick = UnitGUID("target"), nil
     for i, m in ipairs(list) do
         if m.guid == current then
             pick = i % #list + 1
             break
         end
     end
-    self:SetAttribute("type", "target")
-    self:SetAttribute("unit", list[pick].unit)
-    setStatus(string.format("%d of %d nearby", pick, #list))
+    if pick and #list > 1 then
+        self:SetAttribute("type", "target")
+        self:SetAttribute("unit", list[pick].unit)
+        setStatus(string.format("Next nearby: %d of %d", pick, #list))
+        return
+    end
+    -- Otherwise the game's own targeting by name, at full range.
+    self:SetAttribute("type", "macro")
+    self:SetAttribute("macrotext", fallback(t))
+    setStatus("/tar " .. t)
 end)
 
 button:SetScript("PostClick", rest)
@@ -173,6 +173,11 @@ local function colorOf(m)
     end
     local r = UnitReaction(m.unit, "player") or 4
     return r <= 3 and "|cffff6060" or r == 4 and "|cffffd200" or "|cff40ff40"
+end
+
+local function plateRange()
+    local ok, v = pcall(GetCVar, "nameplateMaxDistance")
+    return ok and tonumber(v) and tostring(math.floor(tonumber(v))) or "?"
 end
 
 local function refreshList()
@@ -195,9 +200,9 @@ local function refreshList()
     if t == "" then
         summary:SetText("")
     elseif #list == 0 then
-        summary:SetText("None on nameplates near you.")
+        summary:SetText(string.format("None on nameplates (they reach %s yd). /tar still finds farther ones.", plateRange()))
     else
-        summary:SetText(string.format("%d near you: %d alive%s, %d dead", #list, alive,
+        summary:SetText(string.format("On nameplates (%s yd): %d alive%s, %d dead", plateRange(), alive,
             tapped > 0 and (" (" .. tapped .. " tapped)") or "", dead))
     end
     local current = UnitGUID("target")
@@ -301,7 +306,7 @@ local function build()
     status:SetPoint("TOPLEFT", 16, -84)
     status:SetPoint("RIGHT", -12, 0)
     status:SetJustifyH("LEFT")
-    status:SetText("Press again to cycle. A key: Key Bindings > AddOns.")
+    status:SetText("Press: /tar at any range. On a match: next one nearby.")
 
     summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", 16, -102)
