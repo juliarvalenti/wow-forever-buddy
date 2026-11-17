@@ -22,6 +22,13 @@ export async function fetchSnipes(settings) {
   return response.json();
 }
 
+// The trade ledger: { totals, items, recent } (copper).
+export async function fetchJournal() {
+  const response = await fetch("/journal.json", { cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 export async function fetchWealth() {
   const response = await fetch("/wealth.json", { cache: "no-store" });
   if (!response.ok) throw new Error(`wealth.json: ${response.status}`);

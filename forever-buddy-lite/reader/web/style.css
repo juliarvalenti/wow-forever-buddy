@@ -169,7 +169,7 @@ a {
 
 /* Custom elements are inline by default. */
 app-header, main-view, opportunities-view, check-list, items-view, item-finder, item-view,
-ladder-chart, time-chart, round-dialog, wealth-view, wealth-chart {
+ladder-chart, time-chart, round-dialog, wealth-view, wealth-chart, snipes-view, trades-view {
   display: block;
 }
 

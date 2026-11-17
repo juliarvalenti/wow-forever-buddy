@@ -20,6 +20,13 @@ local MAX_AGE = 14 * 86400
 -- within EMPTY_GRACE seconds of a real one for the same item is that blink, not an answer.
 -- debug.ladders counts what came in, to tell "never searched" from "not captured".
 local EMPTY_GRACE = 30
+local READ_EVERY = 3 -- seconds between reads of one item's results
+local ONE_PER = 60 -- seconds: searches closer than this share one saved entry
+
+-- The window refreshes on "changed"; while Point Blank Sniper runs, tell it at most every 2 s.
+local changedSoon = ns.debounce(2, function()
+    ns.fire("changed")
+end)
 
 local function store(key, rows, kind)
     local db = ns.db
@@ -60,6 +67,10 @@ local function store(key, rows, kind)
     local last = log[#log]
     if last and last.levels == entry.levels then
         last.at = entry.at -- same ladder, seen again
+    elseif last and entry.at - (last.at or 0) < ONE_PER and (last.total or 0) > 0 and total > 0 then
+        -- Searched again within the minute (Point Blank Sniper does, constantly): the newer
+        -- ladder replaces the last one, so KEEP searches span hours, not one busy minute.
+        last.at, last.total, last.levels = entry.at, entry.total, entry.levels
     else
         log[#log + 1] = entry
         while #log > KEEP do
@@ -67,7 +78,7 @@ local function store(key, rows, kind)
         end
     end
     db.ladders[key] = log
-    ns.fire("changed")
+    changedSoon()
 end
 
 -- Commodities (trade goods, consumables): one ladder per item id.
@@ -101,14 +112,16 @@ local function item(itemKey)
     store(itemKey.itemID .. (suffix ~= 0 and (":" .. suffix) or ""), rows, "item")
 end
 
--- Results arrive in pieces; read each item once they've settled.
+-- Results arrive in pieces, and Point Blank Sniper searches the same items over and over: read
+-- each item at most once per READ_EVERY seconds, at the end of the wait, so the read always has
+-- the latest results (only the states in between are skipped, and those are already stale).
 local pending = {}
 local function later(key, fn, arg)
     if pending[key] then
         return
     end
     pending[key] = true
-    C_Timer.After(0.5, function()
+    C_Timer.After(READ_EVERY, function()
         pending[key] = nil
         pcall(fn, arg)
     end)

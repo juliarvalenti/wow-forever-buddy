@@ -24,6 +24,7 @@ pub mod dashboard;
 pub mod dips;
 pub mod format;
 pub mod history;
+pub mod journal;
 pub mod json;
 pub mod live;
 pub mod lua;
