@@ -15,7 +15,12 @@ local LEVELS = 40        -- price levels kept per search
 local MAX_AGE = 14 * 86400
 
 -- An empty search is kept too (total 0): "nobody's selling" is an answer, and the reader needs to see the
--- item was checked. debug.ladders counts what came in, to tell "never searched" from "not captured".
+-- item was checked. But the AH window empties its list for a moment each time it refreshes (after a
+-- buy, while the Buy dialog is open), and those blanks came in between real searches: an empty result
+-- within EMPTY_GRACE seconds of a real one for the same item is that blink, not an answer.
+-- debug.ladders counts what came in, to tell "never searched" from "not captured".
+local EMPTY_GRACE = 30
+
 local function store(key, rows, kind)
     local db = ns.db
     if not db then
@@ -25,6 +30,11 @@ local function store(key, rows, kind)
     d[kind] = (d[kind] or 0) + 1
     d.last = { key = key, rows = #rows, at = ns.now(), kind = kind }
     db.debug.ladders = d
+    local previous = db.ladders and db.ladders[key]
+    local lastReal = previous and previous[#previous]
+    if #rows == 0 and lastReal and (lastReal.total or 0) > 0 and ns.now() - (lastReal.at or 0) < EMPTY_GRACE then
+        return
+    end
     -- Group by unit price (several auctions can share one), cheapest first.
     local byPrice, prices, total = {}, {}, 0
     for _, r in ipairs(rows) do

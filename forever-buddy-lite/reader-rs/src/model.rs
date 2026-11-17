@@ -44,9 +44,12 @@ pub struct Gap {
 
 /// The most profitable "buy the cheapest k levels, relist 1c under level k+1", or None.
 ///
-/// Stops at your own listing (buying it back makes no sense) and at the budget. One deposit, since you
-/// relist as one stack. The profit must clear `min_profit` and `min_return` of the cost.
-pub fn best_gap(levels: &[LadderLevel], budget: Option<i64>, cfg: &Config) -> Option<Gap> {
+/// Stops at your own listing (buying it back makes no sense), at the budget, and where the relist
+/// price would pass `gap_max_over_usual` times the usual price (when known): listings far above
+/// usual are wishful, not a price anyone pays, and relisting under them only looks profitable. One
+/// deposit, since you relist as one stack. The profit must clear `min_profit` and `min_return`.
+pub fn best_gap(levels: &[LadderLevel], budget: Option<i64>, usual: Option<i64>, cfg: &Config) -> Option<Gap> {
+    let relist_cap = usual.filter(|&u| u > 0).map(|u| (u as f64 * cfg.gap_max_over_usual) as i64);
     let mut best: Option<Gap> = None;
     let (mut qty, mut cost) = (0, 0);
     let last_buyable = levels.len().saturating_sub(1).min(cfg.gap_max_levels);
@@ -62,6 +65,9 @@ pub fn best_gap(levels: &[LadderLevel], budget: Option<i64>, cfg: &Config) -> Op
         }
         let next = levels[k + 1];
         let relist = next.price - 1;
+        if relist_cap.is_some_and(|cap| relist > cap) {
+            break;
+        }
         let profit = qty * cfg.proceeds(relist) - cost - cfg.deposit;
         let worth_it = profit >= cfg.min_profit && profit as f64 >= cost as f64 * cfg.min_return;
         if worth_it && best.as_ref().is_none_or(|b| profit > b.profit) {
@@ -160,9 +166,9 @@ pub fn ladder_verdict(levels: &[LadderLevel], budget: i64, usual: Option<i64>, h
     let sell = if held > 0 { sell_advice(levels, wall, usual, cfg) } else { None };
     let verdict = if levels[0].mine {
         Verdict::Yours { price: levels[0].price }
-    } else if let Some(g) = best_gap(levels, Some(budget), cfg) {
+    } else if let Some(g) = best_gap(levels, Some(budget), usual, cfg) {
         Verdict::Gap(g)
-    } else if let Some(g) = best_gap(levels, None, cfg) {
+    } else if let Some(g) = best_gap(levels, None, usual, cfg) {
         Verdict::TooBig(g)
     } else {
         let floor = levels[0].price;
@@ -213,7 +219,7 @@ mod tests {
         // 21s x5, 38s x20, 39s x40: buy the 5 at 21s (1g 5s), relist at 37s 99c.
         // 5 x floor(3799 x 0.95) = 5 x 3609 = 18045, less 10500 cost and a 1s deposit: 7445.
         let levels = [level(2100, 5), level(3800, 20), level(3900, 40)];
-        let g = best_gap(&levels, Some(50_000), &Config::default()).unwrap();
+        let g = best_gap(&levels, Some(50_000), None, &Config::default()).unwrap();
         assert_eq!(g, Gap { levels: 1, qty: 5, cost: 10_500, up_to: 2100, relist: 3799, profit: 7445, next: 20 });
     }
 
@@ -221,11 +227,11 @@ mod tests {
     fn gap_needs_min_profit_and_min_return() {
         let cfg = Config::default();
         // 1 at 1000, next 1300: floor(1299 x .95) = 1234 - 1000 - 100 = 134 < 2s.
-        assert_eq!(best_gap(&[level(1000, 1), level(1300, 1)], None, &cfg), None);
+        assert_eq!(best_gap(&[level(1000, 1), level(1300, 1)], None, None, &cfg), None);
         // 10 at 10000, next 10500: 10 x 9974 - 100000 - 100 = -360: no.
-        assert_eq!(best_gap(&[level(10_000, 10), level(10_500, 5)], None, &cfg), None);
+        assert_eq!(best_gap(&[level(10_000, 10), level(10_500, 5)], None, None, &cfg), None);
         // 2s profit but under 15% of cost: 1 at 5000, next 5600 -> 5319 - 5100 = 219 < 750.
-        assert_eq!(best_gap(&[level(5000, 1), level(5600, 1)], None, &cfg), None);
+        assert_eq!(best_gap(&[level(5000, 1), level(5600, 1)], None, None, &cfg), None);
     }
 
     #[test]
@@ -233,10 +239,10 @@ mod tests {
         let cfg = Config::default();
         let mut mine = level(2100, 5);
         mine.mine = true;
-        assert_eq!(best_gap(&[mine, level(3800, 20)], None, &cfg), None);
+        assert_eq!(best_gap(&[mine, level(3800, 20)], None, None, &cfg), None);
         let levels = [level(2100, 5), level(3800, 20), level(3900, 40)];
-        assert_eq!(best_gap(&levels, Some(10_000), &cfg), None); // 1g 5s is over a 1g budget
-        assert_eq!(best_gap(&[level(2100, 5)], None, &cfg), None); // nothing to relist under
+        assert_eq!(best_gap(&levels, Some(10_000), None, &cfg), None); // 1g 5s is over a 1g budget
+        assert_eq!(best_gap(&[level(2100, 5)], None, None, &cfg), None); // nothing to relist under
     }
 
     #[test]
@@ -245,9 +251,9 @@ mod tests {
         // Six cheap levels of 1 at 100, then one at 10000: buying all seven would be needed.
         let mut levels: Vec<LadderLevel> = (0..7).map(|_| level(100, 1)).collect();
         levels.push(level(10_000, 1));
-        assert_eq!(best_gap(&levels, None, &cfg), None);
+        assert_eq!(best_gap(&levels, None, None, &cfg), None);
         levels.remove(0);
-        assert_eq!(best_gap(&levels, None, &cfg).unwrap().levels, 6);
+        assert_eq!(best_gap(&levels, None, None, &cfg).unwrap().levels, 6);
     }
 
     #[test]
