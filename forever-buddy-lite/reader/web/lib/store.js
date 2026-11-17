@@ -61,9 +61,23 @@ function writeStored(key, value) {
   }
 }
 
+// The address bar mirrors where you are: #/opportunities, #/items/2589, #/snipes, ... Moving to
+// another page or item (store.navigate) adds a browser history entry, so Back and Forward work
+// and a link opens the same page in a new tab. Other pref changes only keep the address in step.
+export function routeOf(prefs) {
+  return prefs.view === "items" && prefs.selectedId != null ? `#/items/${prefs.selectedId}` : `#/${prefs.view}`;
+}
+
+export function parseRoute(hash) {
+  const match = /^#\/(\w+)(?:\/(\d+))?$/.exec(hash || "");
+  if (!match || !VIEWS.includes(match[1])) return null;
+  return match[2] ? { view: match[1], selectedId: Number(match[2]) } : { view: match[1] };
+}
+
 function storedPrefs() {
   const prefs = readStored(PREFS_KEY, DEFAULT_PREFS);
-  return { ...prefs, view: knownView(prefs.view) };
+  // The address wins over what was remembered: a link or a reload shows the page it names.
+  return { ...prefs, view: knownView(prefs.view), ...parseRoute(location.hash) };
 }
 
 class Store extends EventTarget {
@@ -86,6 +100,15 @@ class Store extends EventTarget {
   setPrefs(patch) {
     this.set({ prefs: { ...this.state.prefs, ...patch } });
     writeStored(PREFS_KEY, this.state.prefs);
+    const route = routeOf(this.state.prefs);
+    if (location.hash !== route) history.replaceState(null, "", route);
+  }
+
+  // Go to another page or item, as a step Back can undo.
+  navigate(patch) {
+    const route = routeOf({ ...this.state.prefs, ...patch });
+    if (location.hash !== route) history.pushState(null, "", route);
+    this.setPrefs(patch);
   }
 
   setRound(patch) {
@@ -95,7 +118,7 @@ class Store extends EventTarget {
 
   // Open one item on the Items page, from anywhere. "open-item" lets that page bring it into view.
   openItem(id) {
-    this.setPrefs({ selectedId: id, view: "items" });
+    this.navigate({ selectedId: id, view: "items" });
     this.dispatchEvent(new CustomEvent("open-item", { detail: id }));
   }
 
@@ -110,3 +133,12 @@ class Store extends EventTarget {
 }
 
 export const store = new Store();
+
+// Back, Forward, or an edited address: show the page it names.
+window.addEventListener("popstate", () => {
+  const route = parseRoute(location.hash);
+  if (!route) return;
+  store.setPrefs(route);
+  if (route.selectedId != null) store.dispatchEvent(new CustomEvent("open-item", { detail: route.selectedId }));
+});
+history.replaceState(null, "", routeOf(store.state.prefs));

@@ -17,9 +17,10 @@ class AppHeader extends Component {
   setup() {
     this.addEventListener("click", (event) => {
       const link = event.target.closest("[data-view]");
-      if (link) {
+      // A plain click moves within the page; Ctrl/middle-click opens the link in a new tab as usual.
+      if (link && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();
-        store.setPrefs({ view: link.dataset.view });
+        store.navigate({ view: link.dataset.view });
       }
       if (event.target.closest("[data-open-round]")) store.setRound({ open: true });
     });
@@ -36,12 +37,12 @@ class AppHeader extends Component {
     return html`
       <header class="app-header">
         <div class="shell header-inner">
-          <a class="brand" href="#" data-view="opportunities">
+          <a class="brand" href="#/opportunities" data-view="opportunities">
             <span class="brand-mark" aria-hidden="true"></span>ForeverBuddy <span class="brand-lite">Lite</span>
           </a>
           <nav class="nav" aria-label="Main">
             ${VIEWS.map(
-              (view) => html`<a class="nav-link" href="#" data-view="${view}" ${prefs.view === view ? html`aria-current="page"` : ""}>${LABELS[view]}</a>`,
+              (view) => html`<a class="nav-link" href="#/${view}" data-view="${view}" ${prefs.view === view ? html`aria-current="page"` : ""}>${LABELS[view]}</a>`,
             )}
           </nav>
           <div class="header-meta">
