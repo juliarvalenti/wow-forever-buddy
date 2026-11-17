@@ -106,7 +106,10 @@ fn market(cli: &Cli, env: &Env) -> Result<String, String> {
     let budget = (cli.number("budget", 5.0)? * 10000.0) as i64;
     let top = cli.number("top", 12.0)? as usize;
     let cfg = Config { min_listed: cli.number("min-listed", 100.0)? as i64, ..Config::default() };
-    let inputs = sources::market_inputs(env, &cfg, format::now_seconds())?;
+    let mut inputs = sources::market_inputs(env, &cfg, format::now_seconds())?;
+    // Usual from your saved scans where there are enough (the dashboard server's archive).
+    let since = inputs.now - cfg.scan_usual_days * 86400.0;
+    inputs.scan_usual = fbl::history::ScanHistory::load(&LiveOptions::default_archive_dir()).recent_medians(since, cfg.scan_usual_min);
     let analysis = strategies::analyze(&inputs, budget, &cfg);
     if cli.has("json") {
         return Ok(json::pretty(&fbl::dashboard::opps_json(&analysis)));

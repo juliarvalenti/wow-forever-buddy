@@ -25,7 +25,9 @@ use std::path::{Path, PathBuf};
 pub fn market_inputs(env: &Env, cfg: &Config, now: f64) -> Result<MarketInputs, String> {
     let questie = questie::load_items(&env.questiedb_dir(), cfg.vendor_cutoff);
     let addon = addon::load(env)?;
-    Ok(market_inputs_from(&addon, auctionator::load(env)?, &questie, hidden::load(&env.hidden_file()), now))
+    let mut inputs = market_inputs_from(&addon, auctionator::load(env)?, &questie, hidden::load(&env.hidden_file()), now);
+    inputs.falling = Some((cfg.falling_days, cfg.falling_step));
+    Ok(inputs)
 }
 
 /// `market_inputs` from data already read (the live server keeps QuestieDB's between rebuilds).
@@ -67,6 +69,8 @@ pub fn market_inputs_from(
         hidden,
         held,
         now,
+        scan_usual: HashMap::new(),
+        falling: None,
     }
 }
 

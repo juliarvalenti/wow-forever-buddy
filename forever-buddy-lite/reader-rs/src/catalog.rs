@@ -26,6 +26,10 @@ pub struct CatalogItem {
     pub now: Option<i64>,
     /// Daily history, oldest first: ("MM-DD", low, high, listed).
     pub h: Vec<(String, i64, i64, i64)>,
+    /// The usual price, as the market analysis judges it (your scans' median where there are
+    /// enough, else Auctionator's days): the dashboard shows this rather than working out its own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub u: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -149,7 +153,8 @@ pub fn build(addon: &AddonData, prices: &PriceDb, questie: &QuestieItems) -> Cat
             .iter()
             .map(|d| (auctionator_date(d.day)[5..].to_string(), d.cheapest() as i64, d.high as i64, d.listed.unwrap_or(0.0) as i64))
             .collect();
-        items.push(CatalogItem { id, n: name, k: kind_of(item).to_string(), now: entry.now.map(|n| n as i64), h });
+        let u = crate::model::usual_price(&entry.days);
+        items.push(CatalogItem { id, n: name, k: kind_of(item).to_string(), now: entry.now.map(|n| n as i64), h, u });
     }
     items.sort_by(|a, b| name_order(&a.n, &b.n));
     Catalog { items, stamp: auctionator_date(last_day) }
@@ -196,6 +201,7 @@ mod tests {
             k: "Cloth".into(),
             now: Some(120),
             h: vec![("11-14".into(), 100, 130, 400), ("11-15".into(), 125, 125, 0)],
+            u: Some(115), // the first day's midpoint; today is left out
         };
         assert_eq!(c.items[0], expected);
         assert_eq!(c.stamp, "2026-11-15");

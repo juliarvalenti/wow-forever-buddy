@@ -23,7 +23,9 @@ export function enrichItem(item) {
 
   // Usual price: the median of the daily highs, today left out. A day's low is often one stray
   // cheap listing; its high is where the floor sat most of the day. Same rule as the reader (reader-rs model::usual_price).
-  const usual = median(highs.length > 1 ? highs.slice(0, -1) : highs);
+  // The server's usual (your scans' median, else Auctionator's daily midpoints); the old daily-high
+  // median only for data from an older server.
+  const usual = item.u ?? median(highs.length > 1 ? highs.slice(0, -1) : highs);
 
   const first = lows[0];
   const last = lows.at(-1);

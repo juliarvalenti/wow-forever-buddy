@@ -108,11 +108,19 @@ impl Live {
         let started = Instant::now();
         let addon = addon::load(&self.env)?;
         let prices = auctionator::load(&self.env)?;
-        let catalog = catalog::build(&addon, &prices, &self.questie);
+        let mut catalog = catalog::build(&addon, &prices, &self.questie);
         let now = crate::format::now_seconds();
         let archived = self.archive_scan(&prices)?;
         let wealth = self.record_wealth(&addon, &prices, now);
-        let inputs = crate::sources::market_inputs_from(&addon, prices, &self.questie, hidden::load(&self.env.hidden_file()), now);
+        let mut inputs = crate::sources::market_inputs_from(&addon, prices, &self.questie, hidden::load(&self.env.hidden_file()), now);
+        inputs.falling = Some((self.cfg.falling_days, self.cfg.falling_step));
+        let since = now - self.cfg.scan_usual_days * 86400.0;
+        inputs.scan_usual = self.history.lock().unwrap().recent_medians(since, self.cfg.scan_usual_min);
+        for item in catalog.items.iter_mut() {
+            if let Some(&u) = inputs.scan_usual.get(&item.id) {
+                item.u = Some(u);
+            }
+        }
         let analysis = strategies::analyze(&inputs, self.opts.budget, &self.cfg);
         let data = dashboard::data_json(&catalog, &analysis).to_string();
 
@@ -628,6 +636,7 @@ mod tests {
             first_qty: 200,
             first_low: 100,
             held: 0,
+            falling: false,
         };
         a.buy.push(strategies::Pick { item, profit: 300 });
         assert_eq!(news(&mut state, &a), ["NEW BUYS: Linen Cloth at 50c (usual 1s 00c, +3s 00c each)"]);

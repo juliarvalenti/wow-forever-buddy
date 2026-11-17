@@ -28,6 +28,11 @@ pub struct MarketInputs {
     pub held: HashMap<u32, i64>,
     /// The time to judge ladder ages by (seconds since 1970).
     pub now: f64,
+    /// Usual prices from your scan archive (median cheapest over the last few days), by item, where
+    /// there were enough scans; others fall back to Auctionator's days (`model::usual_price`).
+    pub scan_usual: HashMap<u32, i64>,
+    /// Days and step for calling a market falling (see `model::falling`); None: never.
+    pub falling: Option<(usize, f64)>,
 }
 
 /// Item names: QuestieDB's first, then names seen in the gear scan and your characters' items.
@@ -64,6 +69,8 @@ pub struct ItemMarket {
     pub first_low: i64,
     /// How many you hold.
     pub held: i64,
+    /// The floor has fallen day after day (see `model::falling`): no buy, no dip bet.
+    pub falling: bool,
 }
 
 impl ItemMarket {
@@ -217,7 +224,8 @@ fn market_row(id: u32, entry: &PriceEntry, inputs: &MarketInputs) -> Option<Item
         id,
         name: inputs.names.of(id),
         now: entry.now? as i64,
-        usual: model::usual_price(&entry.days)?,
+        usual: inputs.scan_usual.get(&id).copied().or_else(|| model::usual_price(&entry.days))?,
+        falling: inputs.falling.is_some_and(|(days, step)| model::falling(&entry.days, days, step)),
         days: entry.days.len(),
         low: today.cheapest() as i64,
         high: today.high as i64,
@@ -242,11 +250,12 @@ fn descending(a: f64, b: f64) -> Ordering {
 
 /// Buy: a stray cheap listing on a busy market. The cheapest now is well under usual, and you'd
 /// resell at the usual price or today's high, whichever is lower (today's high shows the market
-/// didn't move: the cheap one is a stray, not a new price). Best first.
+/// didn't move: the cheap one is a stray, not a new price). Needs `buy_min_days` of history and a
+/// floor that isn't sliding day after day. Best first.
 pub fn buy(rows: &[ItemMarket], budget: i64, cfg: &Config) -> Vec<Pick> {
     let mut picks: Vec<Pick> = rows
         .iter()
-        .filter(|r| r.is_busy(cfg))
+        .filter(|r| r.is_busy(cfg) && r.days >= cfg.buy_min_days && !r.falling)
         .map(|r| Pick { item: r.clone(), profit: cfg.proceeds(r.usual.min(r.high)) - cfg.deposit - r.now })
         .filter(|p| {
             let r = &p.item;
@@ -265,6 +274,7 @@ pub fn dips(rows: &[ItemMarket], budget: i64, cfg: &Config) -> Vec<Pick> {
         .filter(|r| {
             r.is_busy(cfg)
                 && r.days >= cfg.dip_min_days
+                && !r.falling
                 && r.now as f64 <= r.usual as f64 * cfg.dip_factor
                 && r.high as f64 <= r.usual as f64 * cfg.dip_high_factor
                 && r.now <= budget
@@ -514,7 +524,20 @@ mod tests {
     use serde_json::json;
 
     fn row(id: u32, now: i64, usual: i64, low: i64, high: i64, qty: i64) -> ItemMarket {
-        ItemMarket { id, name: format!("item {id}"), now, usual, days: 5, low, high, qty, first_qty: qty, first_low: low, held: 0 }
+        ItemMarket {
+            id,
+            name: format!("item {id}"),
+            now,
+            usual,
+            days: 5,
+            low,
+            high,
+            qty,
+            first_qty: qty,
+            first_low: low,
+            held: 0,
+            falling: false,
+        }
     }
 
     #[test]
@@ -614,7 +637,8 @@ mod tests {
         let now = 1_000_000.0;
         // Item 10: cheap now (5s vs usual 10s), with a fresh gap ladder. Item 20: searched 1h ago, tight.
         // Item 30: cheap now, never searched. Item 40: searched 5h ago: stale.
-        let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let busy =
+            |m: i64| json!({"m": m, "h": {"2508": 10_000, "2509": 10_000, "2510": 10_000}, "a": {"2508": 200, "2509": 200, "2510": 200}});
         let inputs = inputs_with(
             json!({"version": 2, "10": busy(5000), "30": busy(5000)}),
             &[
@@ -638,7 +662,8 @@ mod tests {
     #[test]
     fn the_worklist_takes_each_rules_best_picks() {
         // Two cheap items; item 2 pays more. With room for one pick, item 2 makes the list, not item 1.
-        let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let busy =
+            |m: i64| json!({"m": m, "h": {"2508": 10_000, "2509": 10_000, "2510": 10_000}, "a": {"2508": 200, "2509": 200, "2510": 200}});
         let inputs = inputs_with(json!({"version": 2, "1": busy(7900), "2": busy(5000)}), &[], 0.0);
         let cfg = Config { check_cheap: 1, ..Config::default() };
         let a = analyze(&inputs, 50_000, &cfg);
@@ -651,7 +676,8 @@ mod tests {
         let now = 1_000_000.0;
         // All cheap now and held. Item 1 searched 30 minutes ago, item 2 five hours ago, item 3 never.
         // Item 4: cheap now, not held: the only one listed.
-        let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let busy =
+            |m: i64| json!({"m": m, "h": {"2508": 10_000, "2509": 10_000, "2510": 10_000}, "a": {"2508": 200, "2509": 200, "2510": 200}});
         let mut inputs = inputs_with(
             json!({"version": 2, "1": busy(5000), "2": busy(5000), "3": busy(5000), "4": busy(5000)}),
             &[("1", now - 1800.0, "5000:5;9000:20"), ("2", now - 5.0 * 3600.0, "5000:5;9000:20")],
