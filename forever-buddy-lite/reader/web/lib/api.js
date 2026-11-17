@@ -22,6 +22,13 @@ export async function fetchSnipes(settings) {
   return response.json();
 }
 
+// Supply thinning at a steady price, and how the rule has done: { items, scans, record } (copper).
+export async function fetchThinning() {
+  const response = await fetch("/thinning.json", { cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 // The trade ledger: { totals, items, recent } (copper).
 export async function fetchJournal() {
   const response = await fetch("/journal.json", { cache: "no-store" });
