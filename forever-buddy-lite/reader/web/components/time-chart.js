@@ -53,11 +53,9 @@ class TimeChart extends HTMLElement {
     const valueOf = (p) => (price ? p[1] : p[2]);
     const values = series.map(valueOf);
     if (price) for (const d of shownDays) values.push(d.low, d.high);
-    let low = price ? Math.min(...values) : 0;
-    let high = Math.max(...values);
-    const pad = Math.max((high - low) * 0.08, price ? 50 : 1);
-    low = Math.max(0, low - (price ? pad : 0));
-    high = high + pad;
+    // Both axes start at zero: a money (or quantity) axis cut off above zero makes small moves look big.
+    const low = 0;
+    const high = Math.max(...values) * 1.08 || 1;
 
     const plotW = WIDTH - PAD.left - PAD.right;
     const plotH = HEIGHT - PAD.top - PAD.bottom;
