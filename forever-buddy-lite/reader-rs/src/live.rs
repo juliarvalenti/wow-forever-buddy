@@ -8,6 +8,7 @@
 //! - `POST /hide`: `{ id, name, on }` hides an item from suggestions, or brings it back;
 //! - `GET /snipes.json?cap=&ratio=&deposit=&min_profit=&count=&min_listed=&name=[&mode=dips&days=&depth=&min_bought=]`: a Point Blank
 //!   Sniper list (copper for prices), leaving out hidden items and unlimited vendor goods;
+//! - `GET /journal.json`: the trade ledger from AH mail invoices (see `journal`);
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
 //!   the scan archive.
@@ -19,7 +20,7 @@ use crate::config::Config;
 use crate::format::{iso_from_millis, money_short as money};
 use crate::sources::{addon, auctionator, hidden, questie, Env};
 use crate::{catalog, dashboard, history, report, strategies, wealth};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -269,6 +270,10 @@ impl Live {
                 Ok(()) => Reply::new(200, "application/json", b"{}".to_vec()),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/journal.json") => match self.journal() {
+                Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
+                Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
+            },
             (_, "/snipes.json") => match self.snipes(&request.path) {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(400, "text/plain; charset=utf-8", e.into_bytes()),
@@ -304,6 +309,16 @@ impl Live {
             },
         };
         let _ = reply.send(&mut stream);
+    }
+
+    /// `/journal.json`: the trade ledger (see `journal`), held stock priced at the latest scan.
+    fn journal(&self) -> Result<String, String> {
+        let addon = addon::load(&self.env)?;
+        let prices = auctionator::load(&self.env)?;
+        let catalog = catalog::build(&addon, &prices, &self.questie);
+        let by_name: HashMap<String, (u32, f64)> =
+            catalog.items.iter().map(|it| (it.n.clone(), (it.id, it.now.unwrap_or(0) as f64))).collect();
+        Ok(crate::journal::journal_json(&addon.journal, &by_name).to_string())
     }
 
     /// A Point Blank Sniper list from the query's settings (see `snipes::SnipeOptions`).

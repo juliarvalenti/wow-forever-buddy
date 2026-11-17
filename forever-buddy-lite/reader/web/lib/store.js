@@ -33,7 +33,7 @@ export const DEFAULT_PREFS = {
 };
 
 // The pages in the header's navigation.
-export const VIEWS = ["opportunities", "items", "snipes", "wealth"];
+export const VIEWS = ["opportunities", "items", "snipes", "trades", "wealth"];
 
 // A view saved by an older version ("item" was one item's page), or anything unknown: map it.
 function knownView(view) {

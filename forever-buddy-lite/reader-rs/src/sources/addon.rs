@@ -27,6 +27,30 @@ pub struct AddonData {
     pub items: OrderedMap<ItemRecord>,
     /// Price ladders by item key ("id" or "id:suffix"), oldest search first.
     pub ladders: OrderedMap<Vec<LadderSnapshot>>,
+    /// Auction house buys and sales from mail invoices, oldest first (every file's, together).
+    pub journal: Vec<JournalEntry>,
+}
+
+/// One auction house buy or sale, from the invoice on its mail (see the addon's Journal.lua).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct JournalEntry {
+    /// When the mail was sent (unix seconds).
+    pub t: f64,
+    /// "buy" or "sell".
+    pub kind: String,
+    pub item: String,
+    pub count: f64,
+    /// What was paid, or what it sold for before the cut (copper, for the whole count).
+    pub price: f64,
+    /// A sale's deposit, returned with the money.
+    pub deposit: f64,
+    /// The auction house's cut of a sale.
+    pub cut: f64,
+    /// Gold on the mail.
+    pub money: f64,
+    /// Which character's mailbox it was in.
+    pub char: Option<String>,
 }
 
 /// One character as of its last logout or /reload.
@@ -512,6 +536,10 @@ fn merge_file(data: &mut AddonData, db: &Value, file: &Path, written: &str) {
         if data.ladders.get(&key).is_none_or(|old| newest(&log) > newest(old)) {
             data.ladders.insert(key, log);
         }
+    }
+    if let Some(journal) = db.get("journal") {
+        data.journal.extend(values::<JournalEntry>(journal.get("entries")));
+        data.journal.sort_by(|a, b| a.t.total_cmp(&b.t));
     }
     for (npc, t) in json::entries(db.get("trainers")) {
         let trainer = Trainer {
