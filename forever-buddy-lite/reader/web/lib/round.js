@@ -27,7 +27,8 @@ export function isChecked(opps, itemId, scanAt) {
 export function nextRound(round, opps) {
   if (!opps?.scanAt) return null;
   if (opps.scanAt > round.scanAt) {
-    const picks = (opps.check || []).filter((c) => c.why.some((why) => why !== "searched")).map((c) => c.id);
+    // Things to decide on buying: not what you already hold (that never needs a fresh search).
+    const picks = (opps.check || []).filter((c) => !(c.held > 0) && c.why.some((why) => why !== "searched")).map((c) => c.id);
     return { scanAt: opps.scanAt, step: "check", picks, open: true };
   }
   if (round.step === "check" && round.picks.some((id) => isChecked(opps, id, round.scanAt))) {

@@ -379,6 +379,10 @@ pub fn latest_ladders(inputs: &MarketInputs, cfg: &Config) -> BTreeMap<u32, Ladd
 /// Items come from the rules (the best few of buy, sell and swingy) and from recent searches. Each
 /// gets the verdict of its latest ladder; one older than `ladder_stale_hours` is marked stale, and so
 /// is one whose floor doesn't match the price scan.
+///
+/// Items you hold never ask to be searched: with a fresh ladder they show its verdict (and where to
+/// relist); with none, or an old one, they're left off (the sell section still lists them). The
+/// worklist is for deciding what to buy, and nagging to re-search your own stock got in the way.
 pub fn check_list(
     inputs: &MarketInputs,
     rows: &[ItemMarket],
@@ -416,11 +420,16 @@ pub fn check_list(
     }
     let mut items: Vec<CheckItem> = wanted
         .into_iter()
-        .map(|(id, name, why)| {
+        .filter_map(|(id, name, why)| {
             let row = by_id.get(&id).copied();
             let ladder = ladders.get(&id);
+            let held = row.map_or(0, |r| r.held) > 0;
+            let fresh = ladder.is_some_and(|l| inputs.now - l.at <= cfg.ladder_stale_hours * 3600.0);
+            if held && !fresh {
+                return None;
+            }
             let reading = read_ladder(row, ladder, inputs.now, budget, cfg);
-            CheckItem {
+            Some(CheckItem {
                 id,
                 name,
                 why,
@@ -430,7 +439,7 @@ pub fn check_list(
                 at: ladder.map(|l| l.at),
                 verdict: reading.verdict,
                 sell: reading.sell,
-            }
+            })
         })
         .collect();
     let profit = |c: &CheckItem| c.verdict.gap().map_or(0, |g| g.profit);
@@ -625,6 +634,26 @@ mod tests {
         let a = analyze(&inputs, 50_000, &cfg);
         assert_eq!(a.buy.iter().map(|p| p.item.id).collect::<Vec<_>>(), [2, 1]);
         assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [2]);
+    }
+
+    #[test]
+    fn what_you_hold_never_asks_to_be_searched() {
+        let now = 1_000_000.0;
+        // All cheap now and held. Item 1 searched 30 minutes ago, item 2 five hours ago, item 3 never.
+        let busy = |m: i64| json!({"m": m, "h": {"2509": 10_000, "2510": 10_000}, "a": {"2509": 200, "2510": 200}});
+        let mut inputs = inputs_with(
+            json!({"version": 2, "1": busy(5000), "2": busy(5000), "3": busy(5000)}),
+            &[("1", now - 1800.0, "5000:5;9000:20"), ("2", now - 5.0 * 3600.0, "5000:5;9000:20")],
+            now,
+        );
+        for id in [1, 2, 3] {
+            inputs.held.insert(id, 4);
+        }
+        let a = analyze(&inputs, 50_000, &Config::default());
+        // 2 (old ladder) and 3 (none) are left off rather than asking for a search.
+        assert_eq!(a.check.iter().map(|c| c.id).collect::<Vec<_>>(), [1]);
+        assert!(matches!(a.check[0].verdict, Verdict::Gap(_)));
+        assert_eq!(a.check[0].held, 4);
     }
 
     #[test]
