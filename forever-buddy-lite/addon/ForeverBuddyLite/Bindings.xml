@@ -1,0 +1,5 @@
+<Bindings>
+	<!-- Key Bindings > AddOns > ForeverBuddy Lite. Each press is one search (see Groups.lua). -->
+	<Binding name="FBL_GROUPS_REFRESH" header="FBL">FBL_GroupsRefresh()</Binding>
+	<Binding name="FBL_GROUPS_TOGGLE">FBL_GroupsToggle()</Binding>
+</Bindings>
