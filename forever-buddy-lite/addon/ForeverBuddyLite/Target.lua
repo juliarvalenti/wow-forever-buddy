@@ -1,8 +1,10 @@
--- The target box (/fbl target, /fbl t): type a name (or part of one), then click Target, or press
+-- The target box (/fbl tar, /fbl t): type a name (or part of one), then click Target, or press
 -- the key bound to it, as often as you like.
 --
 -- The button is a secure macro button running /tar <text> (and /cleartarget [dead] with "Alive
--- only"): the game's own targeting by name, at its full range. Only a click or key press runs it.
+-- only", then /ping [@target,exists] with "Ping it"): the game's own targeting by name, at its
+-- full range. It doesn't cycle: /tar takes the nearest match, and an addon can't see units beyond
+-- nameplate range to pick another. Only a click or key press runs it.
 -- The macro is set whenever the text changes (out of combat; a change typed in combat applies when
 -- combat ends), so a press does nothing of ours, in or out of combat.
 --
@@ -51,6 +53,9 @@ local function apply()
     local macro = "/tar " .. t
     if store().alive then
         macro = macro .. "\n/cleartarget [dead]"
+    end
+    if store().ping ~= false then
+        macro = macro .. "\n/ping [@target,exists]"
     end
     button:SetAttribute("type", "macro")
     button:SetAttribute("macrotext", macro)
@@ -154,6 +159,18 @@ local function build()
         apply()
     end)
 
+    local ping = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+    ping:SetSize(22, 22)
+    ping:SetPoint("LEFT", label, "RIGHT", 14, -1)
+    local pingLabel = ping:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pingLabel:SetPoint("LEFT", ping, "RIGHT", 0, 1)
+    pingLabel:SetText("Ping it")
+    ping:SetChecked(s.ping ~= false)
+    ping:SetScript("OnClick", function(self)
+        store().ping = self:GetChecked() and true or false
+        apply()
+    end)
+
     info = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     info:SetPoint("TOPLEFT", 16, -84)
     info:SetPoint("RIGHT", -12, 0)
@@ -189,8 +206,8 @@ end)
 BINDING_NAME_FBL_TARGET_TOGGLE = "Show or hide the target box"
 _G["BINDING_NAME_CLICK FBLTargetButton:Keybind"] = "Target the name in the target box"
 
-ns.command({ name = "target", aliases = { "tar", "t" }, args = "[name]",
-    help = "a box and a Target button: /tar the name you type, as often as you press it",
+ns.command({ name = "tar", aliases = { "target", "t" }, args = "[name]",
+    help = "a box and a Target button: /tar the name you type (and ping it), as often as you press it",
     fn = function(rest)
         if rest ~= "" then
             store().text = rest
