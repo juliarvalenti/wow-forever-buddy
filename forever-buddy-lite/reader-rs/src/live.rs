@@ -206,13 +206,21 @@ impl Live {
         if self.opts.open_browser {
             open_in_browser(&url);
         }
-        let server = Arc::clone(&self);
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                let live = Arc::clone(&server);
-                std::thread::spawn(move || live.handle(stream));
-            }
-        });
+        // "localhost" tries IPv6 (::1) first: listen there too, or every request waits for that
+        // attempt to fail before falling back to 127.0.0.1. Still this machine only.
+        let mut listeners = vec![listener];
+        if let Ok(v6) = TcpListener::bind(("::1", self.opts.port)) {
+            listeners.push(v6);
+        }
+        for listener in listeners {
+            let server = Arc::clone(&self);
+            std::thread::spawn(move || {
+                for stream in listener.incoming().flatten() {
+                    let live = Arc::clone(&server);
+                    std::thread::spawn(move || live.handle(stream));
+                }
+            });
+        }
         self.watch(&watched);
         Ok(())
     }
