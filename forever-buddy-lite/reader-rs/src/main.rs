@@ -10,6 +10,7 @@
 //! fbl-rs skillup [character] [profession] [--to 225] [--from N] [--craft 20]
 //! fbl-rs questxp [character] [min level] [max level] [zone] | [character] --chain "Quest name"
 //! fbl-rs bis [character] [--levels 40,45,50,60] [--all]
+//! fbl-rs npc <name or title> [--zone name] [--json]      where an NPC stands (needs QuestieDB)
 //! fbl-rs mcp                                            the commands as an MCP server on stdio
 //! ```
 //!
@@ -22,7 +23,7 @@ use fbl::live::{Live, LiveOptions};
 use fbl::snipes::{self, SnipeOptions};
 use fbl::sources::{self, addon, auctionator, questie, Env};
 use fbl::tools::{self, Args, TOOLS};
-use fbl::{bis, format, json, mcp, questxp, report, skillup, strategies};
+use fbl::{bis, format, json, mcp, npcs, questxp, report, skillup, strategies};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -93,6 +94,7 @@ fn usage() {
         ("skillup", "The cheapest way up a profession, priced from the last scan."),
         ("questxp", "XP-dense zones, hubs and chains for a character (needs QuestieDB)."),
         ("bis", "Best in slot by level for an agility melee (needs the WoWSims Forever database)."),
+        ("npc", "Where an NPC stands, by name or title (\"first aid\", \"Fahrad\"); --zone narrows it (needs QuestieDB)."),
         ("mcp", "The commands above the line as an MCP server on stdio."),
     ];
     for (name, what) in more {
@@ -232,6 +234,21 @@ fn bis_command(cli: &Cli, env: &Env) -> Result<String, String> {
     Ok(bis::report(c, &db, &levels, cli.has("all")))
 }
 
+/// `npc <query words> [--zone name] [--json]`: every positional word is part of the query.
+fn npc_command(cli: &Cli, env: &Env) -> Result<String, String> {
+    let query = cli.positional.join(" ");
+    if query.trim().is_empty() {
+        return Err("usage: fbl-rs npc <name or title> [--zone name] [--json]".into());
+    }
+    let dir = env.questiedb_dir();
+    let db = questie::QuestieDb::load(&dir).ok_or_else(|| format!("No QuestieDB at {} (set QUESTIEDB_DIR).", dir.display()))?;
+    let found = npcs::search(&db, query.trim(), cli.flag("zone"));
+    if cli.has("json") {
+        return serde_json::to_string_pretty(&found).map_err(|e| e.to_string());
+    }
+    Ok(npcs::report(&found, 25))
+}
+
 /// A character command: positionals fill its arguments in order (`ids` takes the rest).
 fn tool(t: &tools::ToolInfo, cli: &Cli, env: &Env) -> Result<String, String> {
     let mut args: Args = cli.flags.clone();
@@ -270,6 +287,7 @@ fn main() -> ExitCode {
         "skillup" => skillup_command(&cli, &env),
         "questxp" => questxp_command(&cli, &env),
         "bis" => bis_command(&cli, &env),
+        "npc" => npc_command(&cli, &env),
         _ => match TOOLS.iter().find(|t| t.name == cmd) {
             Some(t) => tool(t, &cli, &env),
             None => {
