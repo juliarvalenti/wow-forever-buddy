@@ -1061,3 +1061,21 @@ dialog.round .verdict-group.tone-quiet { background: transparent; }
 .snipe-form .field {
   align-content: start; /* a wrapped help line mustn't stretch the inputs beside it */
 }
+.pick-mode {
+  border: 0;
+  margin: 0 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.pick-mode legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+  padding: 0;
+}
+.pick-mode label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
