@@ -76,9 +76,8 @@ pub struct Config {
     pub ladder_view_levels: usize,
 
     // ------------------------------------------------------------ the worklist
-    /// How many of each rule's picks go on the "check these ladders" list.
+    /// How many of each rule's picks go on the "check these ladders" list (what you hold never does).
     pub check_cheap: usize,
-    pub check_held: usize,
     pub check_swingy: usize,
 }
 
@@ -116,7 +115,6 @@ impl Default for Config {
             bad_capture_factor: 0.3,
             ladder_view_levels: 25,
             check_cheap: 12,
-            check_held: 6,
             check_swingy: 6,
         }
     }
