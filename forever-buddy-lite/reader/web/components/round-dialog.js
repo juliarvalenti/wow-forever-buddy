@@ -7,6 +7,8 @@ import { html } from "../lib/html.js";
 import { clockTime } from "../lib/format.js";
 import { roundPicks, auctionatorList } from "../lib/round.js";
 import { copyText } from "../lib/api.js";
+import { toast } from "../lib/toast.js";
+import { icon, panel, meter, callout, itemIcon } from "../lib/ui.js";
 import { hideButton } from "./bits.js";
 import { verdictGroups } from "./verdict-groups.js";
 
@@ -37,7 +39,11 @@ class RoundDialog extends Component {
     if (action === "copy") {
       const { left } = roundPicks(store.state.round, store.state.opps);
       const copied = await copyText(auctionatorList(left.map((row) => row.name)));
-      if (copied) event.target.textContent = `Copied ${left.length}: paste in Auctionator, Shopping, Import`;
+      if (copied) {
+        const note = `Copied ${left.length}: paste in Auctionator, Shopping, Import`;
+        event.target.closest("[data-action]").textContent = note;
+        toast(note);
+      }
       return;
     }
     if (event.target.closest("button:not(.row-link)")) return;
@@ -51,20 +57,30 @@ class RoundDialog extends Component {
   render({ round, opps }) {
     if (!round.open || round.step === "done" || !opps) return "";
     const { picks, checked, left } = roundPicks(round, opps);
-    const progress = picks.length ? (checked.length / picks.length) * 100 : 0;
+    const check = round.step === "check";
 
     return html`
-      <dialog class="round" aria-labelledby="round-title">
-        <header class="round-head">
-          <h2 id="round-title" tabindex="-1" autofocus>${round.step === "check" ? "New price scan" : "Ladders are in"}</h2>
-          <span class="muted">scan finished at ${clockTime(round.scanAt)}</span>
-          <button class="btn" type="button" data-action="minimize">Minimize</button>
+      <dialog class="dialog wide round" aria-labelledby="round-title">
+        <header class="dialog-head">
+          <span class="dot live" aria-hidden="true"></span>
+          <h2 id="round-title" tabindex="-1" autofocus>${check ? "New price scan" : "Ladders are in"}</h2>
+          <span>scan finished at ${clockTime(round.scanAt)}</span>
+          <div class="actions"><button class="btn small" type="button" data-action="minimize">${icon("min", "sm")}Minimize</button></div>
         </header>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${picks.length}" aria-valuenow="${checked.length}">
-          <div style="width:${progress}%"></div>
+        <div class="dialog-body">
+          <div class="round-progress">
+            ${meter(picks.length ? checked.length / picks.length : 0, { tone: "ember", label: "Picks searched" })}
+            <span>${checked.length} of ${picks.length} picks searched since this scan</span>
+          </div>
+          ${check ? checkStep(picks, left) : resultsStep(checked, left)}
         </div>
-        <p class="muted">${checked.length} of ${picks.length} picks searched since this scan</p>
-        ${round.step === "check" ? checkStep(round, opps, picks, left) : resultsStep(checked, left)}
+        <footer class="dialog-foot">
+          ${check
+            ? html`<span class="waiting"><span class="spinner" aria-hidden="true"></span>Waiting for your save</span>
+                ${picks.length > left.length && html`<button class="btn push" type="button" data-action="results">Done searching: show results</button>`}`
+            : html`${left.length > 0 && html`<button class="btn" type="button" data-action="copy">Copy ${left.length} not searched</button>`}
+                <button class="btn primary push" type="button" data-action="finish">Finish round</button>`}
+        </footer>
       </dialog>`;
   }
 
@@ -75,31 +91,30 @@ class RoundDialog extends Component {
 }
 
 // Still searching: what's left to open, then what's already in, grouped like the worklist.
-function checkStep(round, opps, picks, left) {
+function checkStep(picks, left) {
   const done = picks.filter((row) => !left.includes(row));
   return html`
     <ol class="steps">
-      <li><button class="btn primary" type="button" data-action="copy">Copy ${left.length} to search</button> then in Auctionator: Shopping, Import, paste.</li>
-      <li>In that list, <b>click each item</b> so its listings open. Running the list search alone isn’t enough: only opening an item records its ladder.</li>
-      <li>Save prices &amp; reload, or type /fbl r. This page updates by itself.</li>
+      <li><span><button class="btn primary small" type="button" data-action="copy">${icon("copy", "sm")}Copy ${left.length} to search</button> then in Auctionator: Shopping, Import, paste.</span></li>
+      <li><span>In that list, <b>click each item</b> so its listings open. Running the list search alone isn’t enough: only opening an item records its ladder.</span></li>
+      <li><span>Save prices &amp; reload, or type /fbl r. This page updates by itself.</span></li>
     </ol>
-    <p class="waiting"><span class="pulse" aria-hidden="true"></span>Waiting for your save</p>
     ${left.length > 0 &&
-    html`<ul class="to-search">
-      ${left.map((row) => html`<li><span class="item-name">${row.name}</span><span class="muted">${row.why.join(", ")}</span>${hideButton(row)}</li>`)}
-    </ul>`}
-    ${verdictGroups(done, { searched: false })}
-    ${done.length > 0 && html`<div class="tools"><button class="btn" type="button" data-action="results">Done searching: show results</button></div>`}`;
+    panel({
+      title: "Still to search",
+      level: 3,
+      count: left.length,
+      flush: html`<ul class="rows to-search">
+        ${left.map((row) => html`<li>${itemIcon(row.name)}<span class="main">${row.name}</span>${hideButton(row)}<span class="why">${row.why.join(", ")}</span></li>`)}
+      </ul>`,
+    })}
+    ${verdictGroups(done, { searched: false })}`;
 }
 
 function resultsStep(checked, left) {
   return html`
     ${verdictGroups(checked, { searched: false })}
-    ${left.length > 0 && html`<p class="muted">Not searched: ${left.map((row) => row.name).join(", ")}</p>`}
-    <div class="tools">
-      ${left.length > 0 && html`<button class="btn" type="button" data-action="copy">Copy ${left.length} not searched</button>`}
-      <button class="btn primary" type="button" data-action="finish">Finish round</button>
-    </div>`;
+    ${left.length > 0 && callout(html`<b>Not searched:</b> ${left.map((row) => row.name).join(", ")}`, { icon: "clock" })}`;
 }
 
 define("round-dialog", RoundDialog);

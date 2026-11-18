@@ -19,7 +19,7 @@ class ItemsView extends Component {
   setup() {
     this.innerHTML = `
       <div class="items-layout">
-        <aside class="finder-pane" aria-label="Find an item"><item-finder></item-finder></aside>
+        <aside class="finder-pane panel" aria-label="Find an item"><item-finder></item-finder></aside>
         <div class="detail-pane" data-ref="detail"><item-view></item-view></div>
       </div>`;
     store.addEventListener("open-item", this.#onOpen);

@@ -29,16 +29,18 @@ export const DEFAULT_PREFS = {
   filtersOpen: false, // the item finder's Filters panel
   chartRange: "24h", // the item page's time range: one of RANGES in item-view.js
   snipes: null, // the Snipes page's settings (see DEFAULT_SNIPES in snipes-view.js)
-  view: "opportunities", // one of VIEWS
+  view: "opportunities", // one of PAGES
 };
 
 // The pages in the header's navigation.
 export const VIEWS = ["opportunities", "items", "snipes", "trades", "wealth"];
+// Every page with a route: the navigation's, plus the style guide (linked from the footer).
+export const PAGES = [...VIEWS, "design"];
 
 // A view saved by an older version ("item" was one item's page), or anything unknown: map it.
 function knownView(view) {
   if (view === "item") return "items";
-  return VIEWS.includes(view) ? view : "opportunities";
+  return PAGES.includes(view) ? view : "opportunities";
 }
 
 export const NO_ROUND = { scanAt: 0, step: "done", picks: [], open: false };
@@ -70,7 +72,7 @@ export function routeOf(prefs) {
 
 export function parseRoute(hash) {
   const match = /^#\/(\w+)(?:\/(\d+))?$/.exec(hash || "");
-  if (!match || !VIEWS.includes(match[1])) return null;
+  if (!match || !PAGES.includes(match[1])) return null;
   return match[2] ? { view: match[1], selectedId: Number(match[2]) } : { view: match[1] };
 }
 

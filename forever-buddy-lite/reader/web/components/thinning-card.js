@@ -8,8 +8,10 @@ import { html } from "../lib/html.js";
 import { count, percent, ago } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
 import { fetchThinning } from "../lib/api.js";
+import { panel, table, pill, loadingState, errorState } from "../lib/ui.js";
 
 const ROWS = 15;
+const WHY = "Far fewer listed than at the same hour yesterday, at a price that hasn’t moved yet: buy what’s left before sellers post higher.";
 
 class ThinningCard extends Component {
   #data = null;
@@ -28,37 +30,37 @@ class ThinningCard extends Component {
   }
 
   render() {
-    const head = html`<h3>Supply thinning ${this.#data ? html`<span class="count">${this.#data.items.length}</span>` : ""}</h3>
-      <p class="why">Far fewer listed than at the same hour yesterday, at a price that hasn’t moved yet: buy what’s left before sellers post higher.</p>`;
-    if (this.#error) return html`<section class="card">${head}<p class="muted">Couldn’t load: ${this.#error}</p></section>`;
-    if (!this.#data) return html`<section class="card">${head}<p class="muted">Loading…</p></section>`;
+    const base = { title: "Supply thinning", id: "thinning-title", count: this.#data?.items.length };
+    if (this.#error) return panel({ ...base, body: html`<p class="note">${WHY}</p>${errorState({ title: "Couldn’t load", text: this.#error, compact: true })}` });
+    if (!this.#data) return panel({ ...base, body: html`<p class="note">${WHY}</p>${loadingState("Loading…", { compact: true })}` });
+
     const { items, record: r } = this.#data;
     const rate = (wins, n) => (n ? `${Math.round((wins / n) * 100)}%` : "–");
     const proven = r.signals >= 30 && r.wins / r.signals >= (r.baselineWins / Math.max(1, r.baseline)) * 1.5;
     const score = r.signals
-      ? html`<p class="sub"><b>Track record:</b> ${count(r.signals)} past signals on ${count(r.items)} items, profitable 2–12h later
-          ${rate(r.wins, r.signals)} of the time (any item at any scan: ${rate(r.baselineWins, r.baseline)}).
-          ${proven ? html`<span class="up">Beating the baseline.</span>` : html`<span class="muted">Not proven yet: treat these as a watchlist.</span>`}</p>`
-      : html`<p class="sub muted"><b>Track record:</b> none yet. It needs a day of scans to compare against, then a few hours to see what followed.</p>`;
-    return html`
-      <section class="card">
-        ${head}${score}
-        ${items.length
-          ? html`<div class="table-scroll"><table>
-              <thead><tr><th>Item</th><th>Now</th><th>Recent</th><th>Listed</th><th>Same hour yesterday</th><th>Seen</th></tr></thead>
-              <tbody>
-                ${items.slice(0, ROWS).map(
-                  (t) => html`<tr data-id="${t.id}" class="clickable">
-                    <td><button class="row-link" type="button">${t.name}</button></td>
-                    <td>${coins(t.now)}</td><td>${coins(t.usual)}</td>
-                    <td>${count(t.listed)} <span class="muted">(${percent(t.listed / t.yesterday - 1)})</span></td>
-                    <td>${count(t.yesterday)}</td><td class="muted">${ago(t.at)}</td>
-                  </tr>`,
-                )}
-              </tbody>
-            </table></div>`
-          : html`<p class="muted">Nothing thinning at the latest scan.</p>`}
-      </section>`;
+      ? html`<p class="note"><b>Track record:</b> ${count(r.signals)} past signals on ${count(r.items)} items, profitable 2–12h later
+          ${rate(r.wins, r.signals)} of the time (any item at any scan: ${rate(r.baselineWins, r.baseline)}).</p>`
+      : html`<p class="note"><b>Track record:</b> none yet. It needs a day of scans to compare against, then a few hours to see what followed.</p>`;
+
+    return panel({
+      ...base,
+      meta: r.signals ? (proven ? pill("Beating the baseline", "ok") : pill("Not proven yet: a watchlist", "warn")) : pill("No track record yet", "quiet"),
+      body: html`<p class="note">${WHY}</p>${score}`,
+      flush: table({
+        columns: [{ label: "Item" }, { label: "Now", cls: "num" }, { label: "Recent", cls: "num" }, { label: "Listed", cls: "num" }, { label: "Same hour yesterday", cls: "num" }, { label: "Seen", cls: "num" }],
+        rows: items.slice(0, ROWS),
+        empty: "Nothing thinning at the latest scan.",
+        row: (t) => html`
+          <tr data-id="${t.id}" class="clickable">
+            <td class="item"><button class="row-link" type="button">${t.name}</button></td>
+            <td class="num">${coins(t.now)}</td>
+            <td class="num">${coins(t.usual)}</td>
+            <td class="num">${count(t.listed)} <span class="muted">(${percent(t.listed / t.yesterday - 1)})</span></td>
+            <td class="num">${count(t.yesterday)}</td>
+            <td class="num muted">${ago(t.at)}</td>
+          </tr>`,
+      }),
+    });
   }
 
   async rendered({ lastUpdate }) {

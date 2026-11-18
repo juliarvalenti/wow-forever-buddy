@@ -14,6 +14,8 @@ import { html } from "../lib/html.js";
 import { count, ago } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
 import { copyText, fetchSnipes } from "../lib/api.js";
+import { toast } from "../lib/toast.js";
+import { icon, pageHead, panel, table, loadingState, errorState } from "../lib/ui.js";
 
 // Form fields: settings key, label, help, input attributes. Prices in silver here, copper on the wire.
 const FIELDS = [
@@ -56,42 +58,38 @@ class SnipesView extends Component {
   setup() {
     const s = settings();
     this.innerHTML = String(html`
-      <header class="page-head">
-        <h1>Snipes</h1>
-        <p class="sub">A shopping list for Point Blank Sniper: busy items, each capped under its floor.</p>
-      </header>
-      <section class="card">
-        <h3>Settings</h3>
-        <fieldset class="pick-mode">
-          <legend>Pick items by</legend>
-          <label><input type="radio" name="snipe-mode" data-setting="mode" value="usual" ${s.mode === "usual" ? "checked" : ""} />
-            Usual price <span class="muted">(Auctionator’s daily prices)</span></label>
-          <label><input type="radio" name="snipe-mode" data-setting="mode" value="dips" ${s.mode === "dips" ? "checked" : ""} />
-            Seen dipping <span class="muted">(your scans: cheap listings that keep turning up and getting bought)</span></label>
-        </fieldset>
-        <div class="snipe-form" data-ref="dip-form" ${s.mode === "dips" ? "" : "hidden"}>${DIP_FIELDS.map(field(s))}</div>
-        <div class="snipe-form">
-          ${FIELDS.map(field(s))}
-          <label class="field">
-            <span class="field-label">List name</span>
-            <input type="text" data-setting="name" value="${s.name}" maxlength="40" />
-            <span class="field-help">a short tag is added so each copy is a new list</span>
-          </label>
-        </div>
-        <div class="tools">
-          <button class="btn" type="button" data-reset>Reset to defaults</button>
-        </div>
-      </section>
-      <section class="card">
-        <div class="chart-head">
-          <h3>The list <span class="count" data-ref="count"></span></h3>
-          <div class="tools">
-            <button class="btn primary" type="button" data-copy disabled>Copy for Auctionator</button>
-          </div>
-        </div>
-        <p class="sub" data-ref="note">In game: Auctionator, Shopping, Import, paste. Then pick the list in Point Blank Sniper.</p>
-        <div data-ref="results"><p class="sub">Building…</p></div>
-      </section>`);
+      ${pageHead({
+        title: "Snipes",
+        lede: "A shopping list for Point Blank Sniper: busy items, each capped under its floor.",
+        actions: html`<button class="btn primary" type="button" data-copy disabled>${icon("copy")}Copy for Auctionator</button>`,
+      })}
+      ${panel({
+        title: "Settings",
+        actions: html`<button class="btn quiet small" type="button" data-reset>${icon("refresh", "sm")}Reset to defaults</button>`,
+        body: html`
+          <fieldset class="fieldset">
+            <legend>Pick items by</legend>
+            <label class="radio"><input type="radio" name="snipe-mode" data-setting="mode" value="usual" ${s.mode === "usual" ? "checked" : ""} />
+              Usual price <span class="hint">Auctionator’s daily prices</span></label>
+            <label class="radio"><input type="radio" name="snipe-mode" data-setting="mode" value="dips" ${s.mode === "dips" ? "checked" : ""} />
+              Seen dipping <span class="hint">your scans: cheap listings that keep turning up and getting bought</span></label>
+          </fieldset>
+          <div class="form-grid" data-ref="dip-form" ${s.mode === "dips" ? "" : "hidden"}>${DIP_FIELDS.map(field(s))}</div>
+          <div class="form-grid">
+            ${FIELDS.map(field(s))}
+            <label class="field">
+              <span class="field-label">List name</span>
+              <input type="text" data-setting="name" value="${s.name}" maxlength="40" />
+              <span class="field-help">a short tag is added so each copy is a new list</span>
+            </label>
+          </div>`,
+      })}
+      ${panel({
+        title: "The list",
+        count: html`<span data-ref="count"></span>`,
+        body: html`<p class="note" data-ref="note">In game: Auctionator, Shopping, Import, paste. Then pick the list in Point Blank Sniper.</p>`,
+        flush: html`<div data-ref="results">${loadingState("Building…", { compact: true })}</div>`,
+      })}`);
 
     this.addEventListener("input", (event) => {
       const key = event.target.dataset.setting;
@@ -114,7 +112,11 @@ class SnipesView extends Component {
       }
       if (event.target.closest("[data-copy]") && this.#data) {
         const copied = await copyText(this.#data.list);
-        if (copied) this.ref("note").textContent = `Copied "${this.#data.name}". In game: Auctionator, Shopping, Import, paste; then pick it in Point Blank Sniper.`;
+        if (copied) {
+          const note = `Copied "${this.#data.name}". In game: Auctionator, Shopping, Import, paste; then pick it in Point Blank Sniper.`;
+          this.ref("note").textContent = note;
+          toast(note);
+        }
         return;
       }
       const open = event.target.closest("[data-open-item]");
@@ -163,7 +165,7 @@ class SnipesView extends Component {
     if (!results) return;
     const copy = this.querySelector("[data-copy]");
     if (this.#error) {
-      results.innerHTML = String(html`<p class="sub">Couldn’t build the list: ${this.#error}</p>`);
+      results.innerHTML = String(errorState({ title: "Couldn’t build the list", text: this.#error, compact: true }));
       copy.disabled = true;
       return;
     }
@@ -171,36 +173,33 @@ class SnipesView extends Component {
     const dips = settings().mode === "dips";
     this.ref("count").textContent = `${items.length} items`;
     copy.disabled = items.length === 0;
+    const num = (label) => ({ label, cls: "num" });
     results.innerHTML = String(
-      items.length === 0
-        ? html`<p class="sub">${dips
-            ? "Nothing has dipped and been bought back that often yet. Look back further, lower “Bought back at least”, or scan more often: the archive only sees what your scans catch."
-            : "Nothing fits these settings. Raise “Buy at most”, or lower “Profit per item” or “Busy markets only”."}</p>`
-        : html`
-            <div class="table-scroll">
-              <table class="worklist">
-                <thead>
-                  <tr><th>Item</th><th class="num">Buy at or under</th>${dips
-                    ? html`<th class="num">Recent median</th><th class="num">Dips</th><th class="num">Bought back</th><th class="num">Deepest</th><th class="num">Last dip</th>`
-                    : html`<th class="num">Floor</th><th class="num">Usual</th>`}<th class="num">Profit on one</th><th class="num">${dips ? "Listed now" : "Listed a day"}</th></tr>
-                </thead>
-                <tbody>
-                  ${items.map(
-                    (it) => html`
-                      <tr>
-                        <td class="item-cell"><button class="row-link" type="button" data-open-item="${it.id}">${it.name}</button></td>
-                        <td class="num">${coins(it.max)}</td>
-                        ${dips
-                          ? html`<td class="num">${coins(it.floor)}</td><td class="num">${it.dips}</td><td class="num">${it.bought}</td>
-                              <td class="num">-${Math.round(it.deepest * 100)}%</td><td class="num muted">${ago(it.lastDip)}</td>`
-                          : html`<td class="num">${coins(it.floor)}</td><td class="num">${coins(it.usual)}</td>`}
-                        <td class="num profit">${coins(it.single, { signed: true })}</td>
-                        <td class="num">${count(it.listed)}</td>
-                      </tr>`,
-                  )}
-                </tbody>
-              </table>
-            </div>`,
+      table({
+        columns: [
+          { label: "Item" },
+          num("Buy at or under"),
+          ...(dips ? [num("Recent median"), num("Dips"), num("Bought back"), num("Deepest"), num("Last dip")] : [num("Floor"), num("Usual")]),
+          num("Profit on one"),
+          num(dips ? "Listed now" : "Listed a day"),
+        ],
+        rows: items,
+        sticky: true,
+        empty: dips
+          ? "Nothing has dipped and been bought back that often yet. Look back further, lower “Bought back at least”, or scan more often: the archive only sees what your scans catch."
+          : "Nothing fits these settings. Raise “Buy at most”, or lower “Profit per item” or “Busy markets only”.",
+        row: (it) => html`
+          <tr>
+            <td class="item"><button class="row-link" type="button" data-open-item="${it.id}">${it.name}</button></td>
+            <td class="num strong">${coins(it.max)}</td>
+            ${dips
+              ? html`<td class="num">${coins(it.floor)}</td><td class="num">${it.dips}</td><td class="num">${it.bought}</td>
+                  <td class="num down">-${Math.round(it.deepest * 100)}%</td><td class="num muted">${ago(it.lastDip)}</td>`
+              : html`<td class="num">${coins(it.floor)}</td><td class="num">${coins(it.usual)}</td>`}
+            <td class="num up profit">${coins(it.single, { signed: true })}</td>
+            <td class="num">${count(it.listed)}</td>
+          </tr>`,
+      }),
     );
   }
 }

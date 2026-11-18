@@ -1,0 +1,324 @@
+/* Design tokens: ForeverBuddy Lite in the Forever Buddy app's language "D".
+ *
+ * Ported from the desktop app (src/styles/d.css, design/mocks/round-2/README.md). Every material
+ * has one job:
+ *   stone      the frame, and live data: panels, tiles, tables of current state
+ *   leather    structure: the sidebar and the strap across a panel's head
+ *   parchment  records, things that happened: the trade ledger, wealth over time   (.record)
+ *   bronze     the ONE primary action on a view                                     (.btn.primary)
+ *   ember      live or pending: the connection, a new scan, the selected row, focus
+ *   ribbon     "you are here" in the navigation
+ *   gold       coins only. Nothing else is gold.
+ *
+ * Dark only, like the app. Two layers of names:
+ *   raw     --c-*: the palette, named for what it is. Use them only inside this file.
+ *   roles   everything else: what a component asks for (--text-muted, --surface-well, --up).
+ *           .record (parchment) re-points the roles, so a component written for stone reads
+ *           right on paper without its own rules.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Palette (raw) ------------------------------------------------------------------- */
+
+  /* stone */
+  --c-chalk-hi: #f1e8da;
+  --c-chalk: #ddd5c7;
+  --c-ash: #9a9183;
+  --c-soot: #6a6358;
+  --c-stone-hi: #34312d;
+  --c-stone-a: #2b2926;
+  --c-stone-lo: #24221f;
+  --c-stone-b: #1a1917;
+  --c-hall-a: #1c1b19;
+  --c-hall-b: #141311;
+  --c-floor: #121110;
+  --c-edge: #0a0908;
+  /* leather */
+  --c-hide: #3b2a1e;
+  --c-hide-2: #2a1d14;
+  --c-strap-a: #3e2d20;
+  --c-strap-b: #2b1f16;
+  --c-hide-text: #cdbfa9;
+  --c-hide-head: #ead9bf;
+  --c-hide-mute: #a8977f;
+  --c-hide-dim: #8f7d66;
+  --c-stitch: rgb(214 184 134 / 0.3);
+  /* parchment and its ink */
+  --c-paper: #eadcb8;
+  --c-paper-2: #e0cda2;
+  --c-paper-tip: #f1e6c8;
+  --c-ink: #3a2616;
+  --c-ink-2: #6e5537;
+  --c-ink-3: #9a8162;
+  /* accents */
+  --c-ribbon: #a3231c;
+  --c-ribbon-2: #7a1410;
+  --c-wax: #8e1a16;
+  --c-ember: #ff7a2e;
+  --c-ember-2: #ffb15c;
+  --c-bronze-hi: #c9a26a;
+  --c-bronze: #8a6a3e;
+  --c-bronze-lo: #4e3a20;
+  --c-ok: #9fc27a;
+  --c-ok-ink: #2f6b1e;
+  --c-bad: #e07a5f;
+  --c-bad-ink: #8a1f14;
+  --c-warn: #ffb15c;
+  --c-warn-ink: #a5560f;
+  --c-info: #b9c4d6;
+  --c-info-ink: #1a4f9c;
+  /* coins, as the game draws them */
+  --c-gold: #e9c45a;
+  --c-silver: #c3c7cc;
+  --c-copper: #c27a47;
+  /* class colours, as the app's Characters screen draws them (src/styles/characters.css) */
+  --class-warrior: #c69b6d;
+  --class-paladin: #f48cba;
+  --class-hunter: #aad372;
+  --class-rogue: #fff468;
+  --class-priest: #f0ebe0;
+  --class-shaman: #2a8cff;
+  --class-mage: #3fc7eb;
+  --class-warlock: #8788ee;
+  --class-druid: #ff7c0a;
+  /* chart series (the app's Auction House chart: amber lowest, blue median) */
+  --c-amber: #c9772a;
+  --c-blue: #5a8bd4;
+  --c-moss: #8faa6a;
+  --c-violet: #b58ce6;
+  --c-rose: #d0718f;
+
+  /* procedural textures (SVG noise, no images), straight from the app */
+  --tex-grit: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .32 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --tex-mottle: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='4' seed='9'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .95  0 0 0 0 .85  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23m)'/></svg>");
+  --tex-hide: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='h'><feTurbulence type='turbulence' baseFrequency='.6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .4 0'/></filter><rect width='100%' height='100%' filter='url(%23h)'/></svg>");
+  --tex-fiber: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .22  0 0 0 0 .1  0 0 0 .16 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --tex-stain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='.008' numOctaves='3' seed='4'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .3  0 0 0 0 .12  0 0 0 .55 -.18'/></filter><rect width='100%' height='100%' filter='url(%23s)'/></svg>");
+
+  /* ---- Surfaces ------------------------------------------------------------------------ */
+
+  /* the stone hall, lit unevenly: forge glow low-left, cold light high-right */
+  --surface-page:
+    var(--tex-grit), var(--tex-mottle),
+    radial-gradient(700px 500px at 0% 105%, rgb(255 110 40 / 0.12), transparent 70%),
+    radial-gradient(900px 500px at 90% -20%, rgb(150 165 190 / 0.06), transparent 60%),
+    linear-gradient(180deg, var(--c-hall-a), var(--c-hall-b));
+  --surface-page-flat: var(--c-floor);
+  /* a stone slab: panels, tiles, dialogs */
+  --surface-panel: var(--tex-grit), var(--tex-mottle), linear-gradient(180deg, var(--c-stone-a), var(--c-stone-b));
+  --surface-panel-flat: #23211e; /* the slab's mid tone: chart dot outlines, sticky table heads */
+  /* raised: a stone button */
+  --surface-raised: linear-gradient(180deg, var(--c-stone-hi), var(--c-stone-lo));
+  --surface-raised-on: linear-gradient(180deg, #3a3631, #2a2724);
+  /* a well cut into the stone: inputs, segmented controls, status boxes, quiet groups */
+  --surface-well: rgb(0 0 0 / 0.35);
+  --surface-well-deep: rgb(0 0 0 / 0.45);
+  /* hover and selection washes on rows */
+  --surface-hover: rgb(255 255 255 / 0.03);
+  --surface-selected: rgb(255 177 92 / 0.06);
+  /* leather */
+  --surface-leather: var(--tex-hide), linear-gradient(90deg, var(--c-hide-2), var(--c-hide) 60%, #31231a);
+  --surface-strap: var(--tex-hide), linear-gradient(180deg, var(--c-strap-a), var(--c-strap-b));
+  /* parchment */
+  --surface-paper: var(--tex-fiber), var(--tex-stain), linear-gradient(175deg, var(--c-paper), var(--c-paper-2));
+  /* a popover on stone: chart read-outs, menus */
+  --surface-popover: linear-gradient(180deg, var(--c-stone-hi), #22201d);
+  /* tooltip glass: the game's own item tooltip (item hovers only) */
+  --surface-glass: linear-gradient(180deg, rgb(14 18 44 / 0.97), rgb(4 5 14 / 0.97));
+
+  /* ---- Text ---------------------------------------------------------------------------- */
+
+  --text-strong: var(--c-chalk-hi);
+  --text: var(--c-chalk);
+  --text-muted: var(--c-ash);
+  --text-faint: var(--c-soot);
+  --text-on-strap: var(--c-hide-head);
+  --text-on-strap-muted: var(--c-hide-mute);
+  --text-on-bronze: #fff0d6;
+  --text-display: #d8cfc0;
+  --text-link: var(--c-ember-2);
+
+  /* ---- Lines ----------------------------------------------------------------------------
+   * Rules are engraved: a dark line with a faint light one under it (--line + --line-hi). */
+  --line: rgb(0 0 0 / 0.45);
+  --line-strong: rgb(0 0 0 / 0.6);
+  --line-hi: rgb(255 255 255 / 0.025);
+  --line-edge: var(--c-edge); /* the 1px black outline around every slab and button */
+  --line-stitch: rgb(220 190 150 / 0.28);
+
+  /* ---- Accent and meaning ---------------------------------------------------------------- */
+
+  --accent: var(--c-ember-2); /* live, pending, selected, focus */
+  --accent-hot: var(--c-ember);
+  --accent-wash: rgb(255 177 92 / 0.06);
+  --accent-ring: rgb(255 177 92 / 0.5);
+  --focus-ring: 0 0 0 1px var(--accent-ring), 0 0 10px rgb(255 122 46 / 0.15);
+
+  --up: var(--c-ok);
+  --down: var(--c-bad);
+  --warn: var(--c-warn);
+  --info: var(--c-info);
+
+  --coin-gold: var(--c-gold);
+  --coin-silver: var(--c-silver);
+  --coin-copper: var(--c-copper);
+
+  /* ---- Charts ---------------------------------------------------------------------------- */
+
+  --chart-1: var(--c-amber); /* the main series: an item's cheapest, your gold */
+  --chart-2: var(--c-blue); /* the second: totals, medians */
+  --chart-3: var(--c-moss);
+  --chart-4: var(--c-violet);
+  --chart-5: var(--c-rose);
+  --chart-band: rgb(201 119 42 / 0.16);
+  --chart-grid: rgb(255 255 255 / 0.06);
+  --chart-axis: var(--c-soot);
+  --chart-cross: rgb(255 255 255 / 0.25);
+  --chart-dot-edge: var(--surface-panel-flat);
+  --chart-bar: rgb(154 145 131 / 0.32);
+  --chart-bar-hot: linear-gradient(90deg, #c8641f, var(--c-ember-2));
+
+  /* ---- Type ---------------------------------------------------------------------------- */
+
+  --font-ui: "Geist", "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Marcellus", Georgia, serif; /* page titles and the wordmark only */
+  --font-record: Georgia, "Iowan Old Style", serif; /* headings and notes on parchment */
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+
+  --fs-2xs: 10.5px; /* pills, chart axes */
+  --fs-xs: 11.5px; /* labels, notes, column heads */
+  --fs-s: 12.5px; /* tables, ledes */
+  --fs-m: 13px; /* body */
+  --fs-l: 13.5px; /* panel titles */
+  --fs-xl: 15.5px; /* record titles */
+  --fs-2xl: 19px; /* tile values */
+  --fs-3xl: 22px; /* page title on a phone */
+  --fs-display: 27px; /* page title */
+
+  --lh-tight: 1.15;
+  --lh: 1.45;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---- Space, size, shape ---------------------------------------------------------------- */
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 20px;
+  --space-10: 24px;
+  --space-11: 32px;
+  --space-12: 48px;
+
+  --control-h: 28px; /* buttons */
+  --control-h-s: 24px; /* small buttons, segmented */
+  --control-h-l: 32px; /* the bronze button */
+  --field-h: 30px; /* inputs, selects */
+  --row-h: 40px; /* a table row */
+
+  --radius-s: 3px;
+  --radius: 4px;
+  --radius-l: 6px;
+  --radius-pill: 10px;
+
+  /* ---- Elevation ------------------------------------------------------------------------- */
+
+  --shadow-slab: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -2px 0 rgb(0 0 0 / 0.45), inset 0 0 30px rgb(0 0 0 / 0.35),
+    0 0 0 1px var(--c-edge), 0 8px 18px rgb(0 0 0 / 0.6);
+  --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -1px 0 rgb(0 0 0 / 0.4), 0 0 0 1px #0b0a09, 0 2px 4px rgb(0 0 0 / 0.4);
+  --shadow-bronze: inset 0 1px 0 rgb(255 230 190 / 0.45), inset 0 -2px 0 rgb(0 0 0 / 0.35), 0 0 0 1px #1a1208, 0 3px 8px rgb(0 0 0 / 0.6);
+  --shadow-well: inset 0 2px 4px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-strap: inset 0 1px 0 rgb(255 220 180 / 0.08), 0 2px 3px rgb(0 0 0 / 0.5);
+  --shadow-popover: 0 0 0 1px #000, inset 0 1px 0 rgb(255 255 255 / 0.08), 0 6px 14px rgb(0 0 0 / 0.6);
+  --shadow-dialog: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 0 0 1px var(--c-edge), 0 24px 60px rgb(0 0 0 / 0.75);
+  --shadow-paper: inset 0 0 34px rgb(120 75 25 / 0.38), inset 0 0 2px rgb(90 55 20 / 0.5), 0 10px 22px rgb(0 0 0 / 0.65), 0 1px 3px rgb(0 0 0 / 0.7);
+  --shadow-glass: inset 0 0 0 1px #000, inset 0 0 0 2px rgb(108 113 132 / 0.4), 0 14px 30px rgb(0 0 0 / 0.75);
+  --shadow-toast: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 0 0 1px var(--c-edge), 0 10px 26px rgb(0 0 0 / 0.7);
+  --scrim: rgb(5 4 3 / 0.72);
+
+  /* ---- Layers ---------------------------------------------------------------------------- */
+
+  --z-sticky: 5; /* table heads, the finder */
+  --z-tip: 30;
+  --z-nav: 20;
+  --z-toast: 70;
+
+  /* ---- Motion ---------------------------------------------------------------------------- */
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 2.2s; /* the ember's smoulder */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* ---- Layout ---------------------------------------------------------------------------- */
+
+  --side-w: 216px;
+  --page-max: 1280px;
+  --gutter: 24px;
+  --topbar-h: 0px; /* the bar's height when the navigation sits on top (narrow screens) */
+  --sticky-top: calc(var(--topbar-h) + 16px);
+}
+
+/* Narrow screens: the sidebar becomes a top bar (base.css), so sticky things sit under it. */
+@media (max-width: 999px) {
+  :root {
+    --topbar-h: 96px;
+    --gutter: 18px;
+  }
+}
+@media (max-width: 640px) {
+  :root {
+    --gutter: 12px;
+    --fs-display: var(--fs-3xl);
+  }
+}
+
+/* ---- Parchment re-points the roles ------------------------------------------------------- */
+
+.record {
+  --text-strong: var(--c-ink);
+  --text: var(--c-ink);
+  --text-muted: var(--c-ink-2);
+  --text-faint: var(--c-ink-3);
+  --text-link: #7a1a12;
+  --line: rgb(58 38 22 / 0.16);
+  --line-strong: rgb(58 38 22 / 0.55);
+  --line-hi: transparent;
+  --surface-hover: rgb(58 38 22 / 0.04);
+  --surface-selected: rgb(165 86 15 / 0.08);
+  --surface-well: rgb(255 255 255 / 0.18);
+  --surface-well-deep: rgb(255 255 255 / 0.25);
+  --surface-popover: var(--c-paper-tip);
+  --shadow-popover: 0 0 0 1px rgb(58 38 22 / 0.35), 0 6px 14px rgb(58 38 22 / 0.35);
+  --shadow-well: inset 0 0 0 1px rgb(58 38 22 / 0.25);
+  --up: var(--c-ok-ink);
+  --down: var(--c-bad-ink);
+  --warn: var(--c-warn-ink);
+  --info: var(--c-info-ink);
+  --accent: var(--c-warn-ink);
+  --chart-1: var(--c-ink); /* the total, in black ink */
+  --chart-2: #b0761f;
+  --chart-3: #23710f;
+  --chart-4: #6b2a9a;
+  --chart-5: #a8326a;
+  --chart-band: rgb(58 38 22 / 0.1);
+  --chart-grid: rgb(58 38 22 / 0.14);
+  --chart-axis: var(--c-ink-3);
+  --chart-cross: rgb(58 38 22 / 0.45);
+  --chart-dot-edge: var(--c-paper);
+  --chart-bar: rgb(58 38 22 / 0.25);
+  /* silver all but vanishes on paper: coins a shade darker there */
+  --coin-silver: #9fa4ab;
+  --coin-gold: #d9ad38;
+  color: var(--text);
+}

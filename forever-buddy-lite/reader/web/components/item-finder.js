@@ -7,6 +7,7 @@ import { store, DEFAULT_PREFS } from "../lib/store.js";
 import { html } from "../lib/html.js";
 import { percent, count } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
+import { icon, itemIcon } from "../lib/ui.js";
 import { filterItems, countBy, kindsByCount, TRENDS, SORTS } from "../lib/model.js";
 
 const MAX_ROWS = 400; // thousands of rows make typing sluggish
@@ -21,59 +22,57 @@ class ItemFinder extends Component {
 
   setup() {
     this.innerHTML = String(html`
+      <header class="panel-head"><h2>Find an item</h2></header>
       <div class="finder-controls">
-        <input type="search" data-pref="query" placeholder="Search items" autocomplete="off" aria-label="Search items" />
+        <label class="search">${icon("search")}<input type="search" data-pref="query" placeholder="Search items" autocomplete="off" aria-label="Search items" /></label>
         <div class="finder-row">
+          <button class="filters-toggle" type="button" aria-expanded="false" aria-controls="finder-filters" data-ref="filters">
+            ${icon("chevron", "sm")}Filters <span class="badge" data-ref="active" hidden></span>
+          </button>
           <label class="inline-field">Sort
-            <select data-pref="sort">
+            <select class="small" data-pref="sort">
               ${Object.entries(SORTS).map(([key, sort]) => html`<option value="${key}">${sort.label}</option>`)}
             </select>
           </label>
         </div>
-        <details class="filters" data-ref="filters">
-          <summary>Filters <span class="filter-count" data-ref="active"></span></summary>
-          <div class="filters-body">
-            <fieldset class="facet-group">
-              <legend>Category</legend>
-              <div class="facet" data-ref="kinds"></div>
-            </fieldset>
-            <fieldset class="facet-group">
-              <legend>Trend over the scans</legend>
-              <div class="facet" data-ref="trends"></div>
-            </fieldset>
-            <div class="two-up">
-              <label class="field">Price from (silver)<input type="number" min="0" data-pref="priceMin" placeholder="any" /></label>
-              <label class="field">to (silver)<input type="number" min="0" data-pref="priceMax" placeholder="any" /></label>
-            </div>
-            <div class="two-up">
-              <label class="field">Listed at least<input type="number" min="0" data-pref="listedMin" /></label>
-              <div class="field-end"><button class="btn small" type="button" data-clear-filters>Clear filters</button></div>
-            </div>
+        <div class="filters-body" id="finder-filters" data-ref="filters-body" hidden>
+          <fieldset class="fieldset small">
+            <legend>Category</legend>
+            <div class="chips" data-ref="kinds"></div>
+          </fieldset>
+          <fieldset class="fieldset small">
+            <legend>Trend over the scans</legend>
+            <div class="chips" data-ref="trends"></div>
+          </fieldset>
+          <div class="two-up">
+            <label class="field">Price from (silver)<input type="number" min="0" data-pref="priceMin" placeholder="any" /></label>
+            <label class="field">to (silver)<input type="number" min="0" data-pref="priceMax" placeholder="any" /></label>
           </div>
-        </details>
+          <div class="two-up">
+            <label class="field">Listed at least<input type="number" min="0" data-pref="listedMin" /></label>
+            <div class="cluster end"><button class="btn small" type="button" data-clear-filters>Clear filters</button></div>
+          </div>
+        </div>
       </div>
       <p class="finder-count" data-ref="count" aria-live="polite"></p>
       <ul class="item-list" aria-label="Items" data-ref="list"></ul>
     `);
 
     this.#fillInputs();
-    this.ref("filters").open = Boolean(store.state.prefs.filtersOpen);
+    this.#showFilters(Boolean(store.state.prefs.filtersOpen));
 
     this.addEventListener("input", (event) => {
       const key = event.target.dataset.pref;
       if (key) store.setPrefs({ [key]: event.target.value });
     });
 
-    // "toggle" doesn't bubble; listen in the capture phase.
-    this.addEventListener(
-      "toggle",
-      (event) => {
-        if (event.target === this.ref("filters")) store.setPrefs({ filtersOpen: event.target.open });
-      },
-      true,
-    );
-
     this.addEventListener("click", (event) => {
+      if (event.target.closest('[data-ref="filters"]')) {
+        const open = this.ref("filters").getAttribute("aria-expanded") !== "true";
+        this.#showFilters(open);
+        store.setPrefs({ filtersOpen: open });
+        return;
+      }
       if (event.target.closest("[data-clear-filters]")) {
         store.setPrefs(Object.fromEntries(FILTERS.map((key) => [key, DEFAULT_PREFS[key]])));
         this.#fillInputs();
@@ -89,6 +88,11 @@ class ItemFinder extends Component {
       const row = event.target.closest("[data-id]");
       if (row) store.openItem(Number(row.dataset.id));
     });
+  }
+
+  #showFilters(open) {
+    this.ref("filters").setAttribute("aria-expanded", String(open));
+    this.ref("filters-body").hidden = !open;
   }
 
   // The inputs from the remembered filters.
@@ -118,6 +122,7 @@ class ItemFinder extends Component {
 
     const active = activeFilters(prefs);
     this.ref("active").textContent = active ? String(active) : "";
+    this.ref("active").hidden = !active;
     this.querySelector("[data-clear-filters]").disabled = !active;
 
     const matches = filterItems(items, prefs);
@@ -158,7 +163,7 @@ function chips(facet, values, counts, chosen) {
     .map(
       (value) => html`
         <button class="chip" type="button" data-facet="${facet}" data-value="${value}" aria-pressed="${chosen.includes(value)}">
-          ${value}<span class="chip-count">${counts.get(value)}</span>
+          ${value}<span class="n">${counts.get(value)}</span>
         </button>`,
     );
 }
@@ -168,6 +173,7 @@ function itemRow(item, selected) {
   return html`
     <li>
       <button class="item-row" type="button" data-id="${item.id}" ${selected ? html`aria-current="true"` : ""}>
+        ${itemIcon(item.n)}
         <span class="name">${item.n}</span>
         <span class="price">${coins(item.now)}</span>
         <span class="meta">${item.k} · ${count(item.listed)} listed</span>

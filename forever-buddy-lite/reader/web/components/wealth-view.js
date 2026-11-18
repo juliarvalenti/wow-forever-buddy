@@ -1,9 +1,11 @@
 // The Wealth tab: what you're worth now across characters, how it's moved, and who holds what.
 // Gold comes from the addon's money log; item value from fbl-rs live's record at each save.
+// The history is a record of what happened, so it's on parchment; the live figures are on stone.
 
 import { Component, define } from "../lib/component.js";
 import { html } from "../lib/html.js";
 import { coins } from "../lib/coins.js";
+import { pageHead, panel, tiles, tile, table, signed, character, loadingState } from "../lib/ui.js";
 import "./wealth-chart.js";
 
 class WealthView extends Component {
@@ -12,7 +14,7 @@ class WealthView extends Component {
   }
 
   render({ wealth }) {
-    if (!wealth) return html`<p class="empty">Loading wealth…</p>`;
+    if (!wealth) return loadingState("Loading wealth…");
     const chars = [...wealth.characters].sort((a, b) => b.gold + b.items - (a.gold + a.items));
     const gold = chars.reduce((sum, c) => sum + c.gold, 0);
     const items = chars.reduce((sum, c) => sum + c.items, 0);
@@ -22,50 +24,45 @@ class WealthView extends Component {
     const thin = wealth.gold.length < 2 && wealth.history.length < 2;
 
     return html`
-      <header class="page-head">
-        <h1>Wealth</h1>
-        <p class="sub">Gold on every character, plus what their bags and bank would fetch at the latest AH prices.</p>
-      </header>
-      <div class="tiles">
-        ${tile("Worth now", coins(gold + items), "gold + items")}
-        ${tile("Gold", coins(gold), `on ${chars.length} characters`)}
-        ${tile("Items", coins(items), "bags and bank at today’s prices")}
-        ${tile(
+      ${pageHead({ title: "Wealth", lede: "Gold on every character, plus what their bags and bank would fetch at the latest AH prices." })}
+      ${tiles([
+        tile("Worth now", coins(gold + items), "gold + items"),
+        tile("Gold", coins(gold), `on ${chars.length} characters`),
+        tile("Items", coins(items), "bags and bank at today’s prices"),
+        tile(
           "Gold change",
-          sinceFirst === 0 ? html`<span class="muted">no change yet</span>` : html`<span class="${sinceFirst > 0 ? "up" : "down"}">${coins(sinceFirst, { signed: true })}</span>`,
+          sinceFirst === 0 ? html`<span class="muted">no change yet</span>` : signed(coins(sinceFirst, { signed: true }), sinceFirst),
           historyStarts ? `since ${historyStarts.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "no history yet",
-        )}
-      </div>
-      <section class="card">
-        <h3>Over time</h3>
-        ${thin
-          ? html`<p class="sub">
-              History starts now. From your next /reload the addon logs every change in gold (loot, sales, quests, repairs), and
-              each save records what your items are worth. Come back after a session.
-            </p>`
-          : ""}
-        <wealth-chart></wealth-chart>
-      </section>
-      <section class="card">
-        <h3>By character</h3>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Character</th><th>Level</th><th>Gold</th><th>Items</th><th>Total</th></tr></thead>
-            <tbody>
-              ${chars.map(
-                (c) => html`
-                  <tr>
-                    <td><span class="item-name">${c.name}</span>${c.class && html` <span class="muted">${titleCase(c.class)}</span>`}</td>
-                    <td>${c.level ?? "–"}</td>
-                    <td>${coins(c.gold)}</td>
-                    <td>${coins(c.items)}</td>
-                    <td>${coins(c.gold + c.items)}</td>
-                  </tr>`,
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>`;
+        ),
+      ])}
+      ${panel({
+        title: "Over time",
+        record: true,
+        meta: historyStarts ? `since ${historyStarts.toLocaleDateString([], { month: "short", day: "numeric" })}` : "",
+        body: html`
+          ${thin &&
+          html`<p class="note">
+            History starts now. From your next /reload the addon logs every change in gold (loot, sales, quests, repairs), and
+            each save records what your items are worth. Come back after a session.
+          </p>`}
+          <wealth-chart></wealth-chart>`,
+      })}
+      ${panel({
+        title: "By character",
+        count: chars.length,
+        flush: table({
+          columns: [{ label: "Character" }, { label: "Level", cls: "num" }, { label: "Gold", cls: "num" }, { label: "Items", cls: "num" }, { label: "Total", cls: "num" }],
+          rows: chars,
+          row: (c) => html`
+            <tr>
+              <td>${character(c.name, c.class)}${c.class && html` <span class="muted small">${titleCase(c.class)}</span>`}</td>
+              <td class="num">${c.level ?? "–"}</td>
+              <td class="num">${coins(c.gold)}</td>
+              <td class="num">${coins(c.items)}</td>
+              <td class="num strong">${coins(c.gold + c.items)}</td>
+            </tr>`,
+        }),
+      })}`;
   }
 
   rendered({ wealth }) {
@@ -79,10 +76,6 @@ class WealthView extends Component {
 // "ROGUE" (the game's class token) -> "Rogue".
 function titleCase(word) {
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-}
-
-function tile(label, value, note) {
-  return html`<div class="tile"><div class="tile-label">${label}</div><div class="tile-value">${value}</div><div class="tile-note">${note}</div></div>`;
 }
 
 define("wealth-view", WealthView);
