@@ -3,16 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>ForeverBuddy Lite</title>
+    <!-- The Forever Buddy app's faces: Geist for the interface, Marcellus for titles. Offline,
+         the fallbacks in styles/tokens.css take over. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Marcellus&display=swap" />
     <link rel="stylesheet" href="style.css" />
     <script type="module" src="app.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
-    <app-header></app-header>
-    <main id="content" class="shell" tabindex="-1">
-      <main-view></main-view>
-    </main>
+    <div class="app">
+      <app-header></app-header>
+      <div class="app-main">
+        <main id="content" class="page-wrap" tabindex="-1">
+          <main-view></main-view>
+        </main>
+        <footer class="app-foot">
+          ForeverBuddy Lite: prices from your own Auctionator scans, nothing fetched online.
+          <a href="#/design">Design system</a>
+        </footer>
+      </div>
+    </div>
     <round-dialog></round-dialog>
   </body>
 </html>

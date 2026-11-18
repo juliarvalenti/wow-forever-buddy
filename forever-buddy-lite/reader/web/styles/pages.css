@@ -1,0 +1,218 @@
+/* Pages: only what's particular to one page. Everything shared is in components.css; a new page
+ * should rarely need anything here. */
+
+/* Every page is a column of blocks with one gap (main-view renders one page element). */
+main-view > * {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-7);
+  min-width: 0;
+  animation: rise var(--dur) var(--ease);
+}
+opportunities-view { gap: var(--space-10); }
+
+/* ---- Items: the finder beside the item ------------------------------------------------------ */
+
+.items-layout {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: start;
+}
+
+/* The list stays in view while the item scrolls. */
+.finder-pane {
+  position: sticky;
+  top: var(--sticky-top);
+  height: calc(100vh - var(--sticky-top) - var(--space-8));
+  min-height: 360px;
+  overflow: hidden;
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr);
+}
+item-finder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+}
+.finder-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+}
+.finder-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+
+.filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-h-s);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  font: var(--fw-medium) var(--fs-xs) / 1 var(--font-ui);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.filters-toggle svg { width: 12px; height: 12px; transition: transform var(--dur-fast) var(--ease); }
+.filters-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.filters-toggle:hover { color: var(--text); }
+.filters-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-height: 46vh;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: rgb(0 0 0 / 0.22);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 0.5);
+}
+.two-up { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: end; }
+
+.finder-count {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: inset 0 1px 0 var(--line-hi);
+}
+
+.item-list {
+  position: relative; /* rows' offsetTop is measured from here */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.item-list li + li .item-row { border-top: 1px solid var(--line); box-shadow: inset 0 1px 0 var(--line-hi); }
+.item-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 0 9px;
+  align-items: center;
+  width: 100%;
+  padding: 7px var(--space-6);
+  border: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+.item-row .item-icon { grid-row: span 2; }
+.item-row:hover { background: var(--surface-hover); }
+.item-row:focus-visible { outline-offset: -2px; }
+.item-row[aria-current="true"] { background: var(--surface-selected); box-shadow: inset 2px 0 0 var(--accent); }
+.item-row .name { min-width: 0; font-size: var(--fs-s); color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row[aria-current="true"] .name { color: #fff3dc; }
+.item-row .price { text-align: right; font-size: var(--fs-s); color: var(--text-strong); }
+.item-row .meta { min-width: 0; font-size: var(--fs-2xs); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row .change { text-align: right; font-size: var(--fs-2xs); }
+
+.detail-pane { min-width: 0; scroll-margin-top: var(--sticky-top); }
+item-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); min-width: 0; }
+.item-title { display: flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.item-title h1 { min-width: 0; }
+
+/* The ladder: a bar per price level. */
+.ladder {
+  display: grid;
+  grid-template-columns: auto minmax(40px, 1fr) auto auto;
+  gap: 3px var(--space-6);
+  align-items: center;
+  font-size: var(--fs-s);
+}
+.ladder .head { font-size: var(--fs-xs); color: var(--text-faint); padding-bottom: var(--space-2); }
+.level-price { text-align: right; color: var(--text-strong); }
+.level-qty { text-align: right; color: var(--text); white-space: nowrap; }
+.level-total { min-width: 3.5em; text-align: right; font-size: var(--fs-xs); color: var(--text-faint); }
+.level-bar { height: 10px; min-width: 2px; border-radius: 0 2px 2px 0; background: var(--chart-bar); }
+.level-bar.to-buy { background: var(--chart-bar-hot); box-shadow: 0 0 8px rgb(255 122 46 / 0.25); }
+.relist-line {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 3px 0 2px;
+  font-size: var(--fs-xs);
+  color: var(--up);
+}
+.relist-line::after { content: ""; flex: 1; border-top: 1px dashed rgb(159 194 122 / 0.6); }
+
+/* ---- The worklist (Opportunities, and the round dialog) ------------------------------------ */
+
+.worklist-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); min-width: 0; }
+.verdict-group .panel-head .note { flex-basis: 100%; font-size: var(--fs-xs); color: var(--text-on-strap-muted); }
+.verdict-group.quiet .panel-head .note { color: var(--text-faint); }
+@media (min-width: 900px) {
+  .verdict-group .panel-head .note { flex-basis: auto; }
+}
+.hidden-note { font-size: var(--fs-xs); color: var(--text-faint); }
+.hidden-note .btn { vertical-align: 0; }
+
+/* ---- Snipes ---------------------------------------------------------------------------------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-7) var(--space-9);
+}
+
+/* ---- Round dialog ---------------------------------------------------------------------------- */
+
+.round-progress { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); font-size: var(--fs-xs); color: var(--text-muted); }
+.waiting { display: flex; align-items: center; gap: var(--space-4); color: var(--text-muted); font-size: var(--fs-s); }
+.to-search > li { grid-template-columns: 24px minmax(0, 1fr) auto; padding-left: var(--space-6); padding-right: var(--space-4); }
+.to-search .why { grid-column: 2; font-size: var(--fs-xs); color: var(--text-faint); white-space: normal; }
+.to-search .btn { grid-column: 3; grid-row: 1 / span 2; }
+.to-search .item-icon { grid-row: span 2; }
+
+/* ---- Design system page ---------------------------------------------------------------------- */
+
+.ds-nav { position: sticky; top: var(--sticky-top); z-index: var(--z-sticky); padding: var(--space-4); border-radius: var(--radius); background: rgb(18 17 16 / 0.92); backdrop-filter: blur(4px); box-shadow: 0 0 0 1px var(--c-edge), 0 6px 14px rgb(0 0 0 / 0.5); }
+.ds-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); scroll-margin-top: calc(var(--sticky-top) + 48px); }
+.ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--space-5); }
+.ds-grid.wide { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.ds-swatch { display: grid; gap: var(--space-2); min-width: 0; font-size: var(--fs-xs); }
+.ds-swatch .chip-color { height: 44px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 0 0 1px var(--c-edge); }
+.ds-swatch code { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-muted); overflow-wrap: anywhere; }
+.ds-swatch .use { color: var(--text-faint); }
+.ds-specimen { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--space-4) var(--space-7); align-items: baseline; }
+.ds-specimen code,
+.ds-row code { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); overflow-wrap: anywhere; }
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5) var(--space-6); min-width: 0; }
+.ds-demo { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); min-width: 0; }
+.ds-demo > .ds-label { font-size: var(--fs-xs); color: var(--text-faint); }
+.ds-space { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-xs); color: var(--text-muted); }
+.ds-space i { display: block; height: 10px; background: var(--chart-bar-hot); border-radius: 1px; }
+.ds-box { height: 56px; border-radius: var(--radius); display: grid; place-items: center; font-size: var(--fs-xs); color: var(--text-muted); }
+@media (max-width: 640px) {
+  .ds-specimen { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .ds-specimen > code { margin-top: var(--space-5); }
+}
+
+/* ---- Narrow screens -------------------------------------------------------------------------- */
+
+/* Items: the list stacks above the item, at a fixed height. */
+@media (max-width: 900px) {
+  .items-layout { grid-template-columns: minmax(0, 1fr); }
+  .finder-pane { position: static; height: min(560px, 75vh); min-height: 0; }
+}
+@media (max-width: 640px) {
+  .ladder { gap: 3px var(--space-4); }
+  .ladder .level-total { display: none; }
+  .ladder { grid-template-columns: auto minmax(30px, 1fr) auto; }
+}
+@media (max-width: 640px) {
+  .ds-nav { position: static; }
+}
+.ds-side-sample { display: block !important; height: auto !important; }

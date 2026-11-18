@@ -1,6 +1,7 @@
 // The Trades page: are you trading at a profit? From the AH mail invoices the addon records
 // (Journal.lua): what each item cost you, what it sold for after the cut, the profit on what's sold,
 // and what's still held, against what it would bring at today's cheapest listing.
+// The figures are live (stone); the list of trades is a ledger of what happened (parchment).
 
 import { Component, define } from "../lib/component.js";
 import { store } from "../lib/store.js";
@@ -8,8 +9,10 @@ import { html } from "../lib/html.js";
 import { count, ago } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
 import { fetchJournal } from "../lib/api.js";
+import { pageHead, panel, tiles, tile, table, signed as tone, emptyState, loadingState, errorState } from "../lib/ui.js";
 
-const signed = (copper) => html`<span class="${copper > 0 ? "up" : copper < 0 ? "down" : "muted"}">${coins(copper, { signed: true })}</span>`;
+const signed = (copper) => tone(coins(copper, { signed: true }), copper);
+const itemName = (id, name) => (id ? html`<button class="row-link" type="button" data-open-item="${id}">${name}</button>` : name);
 
 class TradesView extends Component {
   #data = null;
@@ -28,84 +31,77 @@ class TradesView extends Component {
   }
 
   render() {
-    if (this.#error) return html`<p class="empty">Couldn’t load trades: ${this.#error}</p>`;
-    if (!this.#data) return html`<p class="empty">Loading trades…</p>`;
+    const head = (lede) => pageHead({ title: "Trades", lede });
+    if (this.#error) return html`${head()}${errorState({ title: "Couldn’t load trades", text: this.#error })}`;
+    if (!this.#data) return html`${head()}${loadingState("Loading trades…")}`;
     const { totals, items, recent } = this.#data;
     if (!totals.trades) {
       return html`
-        <header class="page-head"><h1>Trades</h1></header>
-        <section class="card">
-          <h3>No trades recorded yet</h3>
-          <p class="sub">
-            Every auction house buy and sale arrives by mail with an invoice. Open your mailbox after buying or selling and the
-            addon records them; Save &amp; Reload and they show here. It needs the updated addon (restart the game once).
-          </p>
-        </section>`;
+        ${head("Your auction house buys and sales, from the invoices in your mail.")}
+        ${panel({
+          title: "No trades recorded yet",
+          record: true,
+          body: emptyState({
+            icon: "mail",
+            title: "The ledger is blank",
+            text: "Every auction house buy and sale arrives by mail with an invoice. Open your mailbox after buying or selling and the addon records them; Save & Reload and they show here. It needs the updated addon (restart the game once).",
+          }),
+        })}`;
     }
     return html`
-      <header class="page-head">
-        <h1>Trades</h1>
-        <p class="sub">${count(totals.trades)} buys and sales from your AH mail. Sales are matched to your oldest buys first.</p>
-      </header>
-      <div class="tiles">
-        ${tile("Profit on sales", signed(totals.realized), "sold units, less what they cost")}
-        ${tile("Spent", coins(totals.spent), "on everything bought")}
-        ${tile("Earned", coins(totals.earned), "from sales, after the 5% cut")}
-        ${tile("Still held", coins(totals.heldCost), html`cost; worth ${coins(totals.heldValue)} at today’s floor (${signed(totals.unrealized)})`)}
-      </div>
-      <section class="card">
-        <h3>By item</h3>
-        <div class="table-scroll">
-          <table class="worklist">
-            <thead>
-              <tr>
-                <th>Item</th><th class="num">Bought</th><th class="num">Avg cost</th><th class="num">Sold</th><th class="num">Earned</th>
-                <th class="num">Profit</th><th class="num">Held</th><th class="num">Worth now</th><th class="num">Last</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items.map(
-                (l) => html`
-                  <tr>
-                    <td class="item-cell">
-                      ${l.id ? html`<button class="row-link" type="button" data-open-item="${l.id}">${l.item}</button>` : l.item}
-                      ${l.sold_unmatched > 0 && html`<span class="sell-hint muted">${count(l.sold_unmatched)} sold without a recorded buy</span>`}
-                    </td>
-                    <td class="num">${count(l.bought)}</td>
-                    <td class="num">${l.avgCost == null ? "–" : coins(l.avgCost)}</td>
-                    <td class="num">${count(l.sold)}</td>
-                    <td class="num">${coins(l.earned)}</td>
-                    <td class="num">${l.sold > l.sold_unmatched ? signed(l.realized) : html`<span class="muted">–</span>`}</td>
-                    <td class="num">${l.held > 0 ? count(l.held) : html`<span class="muted">0</span>`}</td>
-                    <td class="num">${l.held > 0 && l.held_value != null ? html`${coins(l.held_value)} ${signed(l.held_value - l.held_cost)}` : html`<span class="muted">–</span>`}</td>
-                    <td class="num muted">${ago(l.last)}</td>
-                  </tr>`,
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section class="card">
-        <h3>Latest trades</h3>
-        <div class="table-scroll">
-          <table class="worklist">
-            <thead><tr><th>Item</th><th class="text">What</th><th class="num">Count</th><th class="num">Each</th><th class="num">Total</th><th class="num">When</th></tr></thead>
-            <tbody>
-              ${recent.map(
-                (t) => html`
-                  <tr>
-                    <td class="item-cell">${t.id ? html`<button class="row-link" type="button" data-open-item="${t.id}">${t.item}</button>` : t.item}</td>
-                    <td class="text ${t.kind === "buy" ? "" : "up"}">${t.kind === "buy" ? "Bought" : "Sold"}</td>
-                    <td class="num">${count(t.count)}</td>
-                    <td class="num">${coins(t.price / Math.max(1, t.count))}</td>
-                    <td class="num">${coins(t.kind === "buy" ? t.price : t.price - t.cut)}</td>
-                    <td class="num muted">${ago(t.t)}</td>
-                  </tr>`,
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>`;
+      ${head(`${count(totals.trades)} buys and sales from your AH mail. Sales are matched to your oldest buys first.`)}
+      ${tiles([
+        tile("Profit on sales", signed(totals.realized), "sold units, less what they cost"),
+        tile("Spent", coins(totals.spent), "on everything bought"),
+        tile("Earned", coins(totals.earned), "from sales, after the 5% cut"),
+        tile("Still held", coins(totals.heldCost), html`cost; worth ${coins(totals.heldValue)} at today’s floor (${signed(totals.unrealized)})`),
+      ])}
+      ${panel({
+        title: "By item",
+        count: items.length,
+        flush: table({
+          sticky: true,
+          columns: [
+            { label: "Item" }, { label: "Bought", cls: "num" }, { label: "Avg cost", cls: "num" }, { label: "Sold", cls: "num" }, { label: "Earned", cls: "num" },
+            { label: "Profit", cls: "num" }, { label: "Held", cls: "num" }, { label: "Worth now", cls: "num" }, { label: "Last", cls: "num" },
+          ],
+          rows: items,
+          row: (l) => html`
+            <tr>
+              <td class="item">
+                ${itemName(l.id, l.item)}
+                ${l.sold_unmatched > 0 && html`<span class="sub">${count(l.sold_unmatched)} sold without a recorded buy</span>`}
+              </td>
+              <td class="num">${count(l.bought)}</td>
+              <td class="num">${l.avgCost == null ? html`<span class="muted">–</span>` : coins(l.avgCost)}</td>
+              <td class="num">${count(l.sold)}</td>
+              <td class="num">${coins(l.earned)}</td>
+              <td class="num profit">${l.sold > l.sold_unmatched ? signed(l.realized) : html`<span class="muted">–</span>`}</td>
+              <td class="num">${l.held > 0 ? count(l.held) : html`<span class="muted">0</span>`}</td>
+              <td class="num">${l.held > 0 && l.held_value != null ? html`${coins(l.held_value)} ${signed(l.held_value - l.held_cost)}` : html`<span class="muted">–</span>`}</td>
+              <td class="num muted">${ago(l.last)}</td>
+            </tr>`,
+        }),
+      })}
+      ${panel({
+        title: "Latest trades",
+        record: true,
+        meta: "from your AH mail",
+        flush: table({
+          columns: [{ label: "Item" }, { label: "What", cls: "text" }, { label: "Count", cls: "num" }, { label: "Each", cls: "num" }, { label: "Total", cls: "num" }, { label: "When", cls: "num" }],
+          rows: recent,
+          compact: true,
+          row: (t) => html`
+            <tr>
+              <td class="item">${itemName(t.id, t.item)}</td>
+              <td class="text ${t.kind === "buy" ? "" : "up"}">${t.kind === "buy" ? "Bought" : "Sold"}</td>
+              <td class="num">${count(t.count)}</td>
+              <td class="num">${coins(t.price / Math.max(1, t.count))}</td>
+              <td class="num">${coins(t.kind === "buy" ? t.price : t.price - t.cut)}</td>
+              <td class="num muted">${ago(t.t)}</td>
+            </tr>`,
+        }),
+      })}`;
   }
 
   async rendered({ lastUpdate }) {
@@ -119,10 +115,6 @@ class TradesView extends Component {
     }
     this.refresh(true);
   }
-}
-
-function tile(label, value, note) {
-  return html`<div class="tile"><div class="tile-label">${label}</div><div class="tile-value">${value}</div><div class="tile-note">${note}</div></div>`;
 }
 
 define("trades-view", TradesView);

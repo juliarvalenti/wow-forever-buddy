@@ -10,11 +10,14 @@ import "./components/wealth-view.js";
 import "./components/snipes-view.js";
 import "./components/trades-view.js";
 import "./components/thinning-card.js";
+import "./components/fb-tabs.js";
+import "./components/design-view.js";
 
 import { store } from "./lib/store.js";
 import { fetchData, fetchWealth, onServerUpdate, setHidden } from "./lib/api.js";
 import { enrichItem } from "./lib/model.js";
 import { nextRound } from "./lib/round.js";
+import { errorState } from "./lib/ui.js";
 
 const PAGE_TITLE = document.title;
 const DEFAULT_ITEM = "Mageweave Cloth"; // something to show before you pick
@@ -56,8 +59,7 @@ window.addEventListener("focus", () => {
 
 loadData({ pushed: false }).catch((error) => {
   const view = document.querySelector("main-view");
-  view.textContent = `Couldn't load the data (${error.message}). Is fbl-rs live running?`;
-  view.classList.add("empty");
+  view.innerHTML = String(errorState({ title: "Couldn’t load the data", text: `${error.message}. Is fbl-rs live running?` }));
 });
 // The header says Offline only if the connection stays down a few seconds (it reconnects by itself).
 let offlineTimer;

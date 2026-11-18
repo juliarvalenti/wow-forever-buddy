@@ -7,6 +7,7 @@ import { fetchHistory } from "../lib/api.js";
 import { html } from "../lib/html.js";
 import { percent, count } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
+import { pageHead, panel, tiles, tile, table, seg, legend, itemIcon, loadingState, emptyState } from "../lib/ui.js";
 import "./ladder-chart.js";
 import "./time-chart.js";
 
@@ -48,39 +49,46 @@ class ItemView extends Component {
 
   render({ items, prefs }) {
     const item = items.find((it) => it.id === prefs.selectedId);
-    if (!items.length) return html`<p class="empty">Loading prices…</p>`;
-    if (!item) return html`<p class="empty">Pick an item from the list.</p>`;
+    if (!items.length) return loadingState("Loading prices…");
+    if (!item) return emptyState({ title: "Pick an item", text: "Choose one from the list to see its ladder and prices.", icon: "scale" });
 
     return html`
-      <header class="page-head">
-        <h1>${item.n}</h1>
-        <p class="sub">${item.k} · item ${item.id}</p>
-      </header>
-      <div class="tiles">${tiles(item)}</div>
+      ${pageHead({
+        title: html`<span class="item-title">${itemIcon(item.n, "lg")}<span>${item.n}</span></span>`,
+        lede: `${item.k} · item ${item.id}`,
+      })}
+      ${tiles(itemTiles(item))}
       <ladder-chart></ladder-chart>
-      <section class="card">
-        <div class="chart-head">
-          <h3>Over time</h3>
-          <div class="range" role="group" aria-label="Time range">
-            ${RANGES.map(([name]) => html`<button class="chip" type="button" data-range="${name}" aria-pressed="${prefs.chartRange === name}">${name}</button>`)}
+      ${panel({
+        title: "Over time",
+        actions: seg("range", RANGES.map(([name]) => [name]), prefs.chartRange, "Time range"),
+        body: html`
+          <p class="note" data-ref="scan-note">Loading scans…</p>
+          <div class="chart-block">
+            <h3 class="chart-title">Cheapest listing</h3>
+            ${legend([
+              { label: "Cheapest at each scan", color: "var(--chart-1)" },
+              { label: "Each day’s low to high, from Auctionator", kind: "band" },
+            ])}
+            <time-chart kind="price"></time-chart>
           </div>
-        </div>
-        <p class="sub" data-ref="scan-note">Loading scans…</p>
-        <h4 class="chart-title">Cheapest listing</h4>
-        <p class="sub">Steps: the cheapest at each scan. Band: each day’s lowest to highest cheapest, from Auctionator.</p>
-        <time-chart kind="price"></time-chart>
-        <h4 class="chart-title">Quantity listed</h4>
-        <time-chart kind="listed"></time-chart>
-      </section>
-      <section class="card">
-        <h3>Values</h3>
-        <div class="table-scroll"><table>
-          <thead><tr><th>Day</th><th>Lowest</th><th>Highest</th><th>Listed</th></tr></thead>
-          <tbody>
-            ${item.h.map(([day, low, high, listed]) => html`<tr><td>${day}</td><td>${coins(low)}</td><td>${coins(high)}</td><td>${count(listed)}</td></tr>`)}
-          </tbody>
-        </table></div>
-      </section>`;
+          <div class="chart-block">
+            <h3 class="chart-title">Quantity listed</h3>
+            ${legend([{ label: "Listed at each scan", color: "var(--chart-2)" }])}
+            <time-chart kind="listed"></time-chart>
+          </div>`,
+      })}
+      ${panel({
+        title: "Values",
+        meta: "each day’s cheapest listing, from Auctionator",
+        flush: table({
+          columns: [{ label: "Day" }, { label: "Lowest", cls: "num" }, { label: "Highest", cls: "num" }, { label: "Listed", cls: "num" }],
+          rows: [...item.h].reverse(),
+          sticky: true,
+          compact: true,
+          row: ([day, low, high, listed]) => html`<tr><td>${day}</td><td class="num">${coins(low)}</td><td class="num">${coins(high)}</td><td class="num">${count(listed)}</td></tr>`,
+        }),
+      })}`;
   }
 
   rendered({ items, prefs, opps }) {
@@ -120,7 +128,7 @@ class ItemView extends Component {
   }
 }
 
-function tiles(item) {
+function itemTiles(item) {
   const direction = item.change > 0.1 ? "up" : item.change < -0.1 ? "down" : "muted";
   const change = item.h.length > 1 ? html`<span class="${direction}">${percent(item.change)}</span>` : "–";
   const snipe = item.snipe > 0;
@@ -131,10 +139,6 @@ function tiles(item) {
     tile("Listed", count(item.listed), "quantity, latest day"),
     tile("Snipe at or under", snipe ? coins(item.snipe) : "–", snipe ? "80% of floor, clears 1s deposit + 2s" : "too cheap to flip singly"),
   ];
-}
-
-function tile(label, value, note) {
-  return html`<div class="tile"><div class="tile-label">${label}</div><div class="tile-value">${value}</div><div class="tile-note">${note}</div></div>`;
 }
 
 define("item-view", ItemView);

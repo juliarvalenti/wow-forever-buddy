@@ -6,6 +6,7 @@ import { store } from "../lib/store.js";
 import { html } from "../lib/html.js";
 import { percent, count } from "../lib/format.js";
 import { coins } from "../lib/coins.js";
+import { pageHead, sectionHead, panel, table, loadingState } from "../lib/ui.js";
 
 const ROWS_PER_SECTION = 15;
 
@@ -66,44 +67,39 @@ class OpportunitiesView extends Component {
   }
 
   render({ opps }) {
-    if (!opps) return html`<p class="empty">Loading…</p>`;
+    if (!opps) return loadingState("Loading the market…");
     return html`
-      <header class="page-head">
-        <h1>Opportunities</h1>
-        <p class="sub">${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.</p>
-      </header>
+      ${pageHead({
+        title: "Opportunities",
+        lede: html`${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.`,
+      })}
       <check-list></check-list>
       <thinning-card></thinning-card>
-      <section class="market" aria-labelledby="market-title">
-        <header class="section-head">
-          <h2 id="market-title">Market today</h2>
-          <p class="section-note">From the latest price scan. Click a row to open the item.</p>
-        </header>
-        ${SECTIONS.map((section) => sectionCard(section, opps[section.key] || []))}
+      <section class="stack" aria-labelledby="market-title">
+        ${sectionHead({ title: "Market today", id: "market-title", note: "From the latest price scan. Click a row to open the item." })}
+        <div class="cols even">${SECTIONS.map((section) => sectionPanel(section, opps[section.key] || []))}</div>
       </section>`;
   }
 }
 
-function sectionCard({ title, why, columns }, rows) {
+function sectionPanel({ title, why, columns }, rows) {
   const shown = rows.slice(0, ROWS_PER_SECTION);
-  return html`
-    <section class="card">
-      <h3>${title} <span class="count">${rows.length}</span></h3>
-      <p class="why">${why}</p>
-      ${shown.length
-        ? html`
-            <div class="table-scroll"><table>
-              <thead>
-                <tr><th>Item</th>${columns.map(([label]) => html`<th>${label}</th>`)}</tr>
-              </thead>
-              <tbody>
-                ${shown.map(
-                  (r) => html`<tr data-id="${r.id}" class="clickable"><td><button class="row-link" type="button">${r.name}</button></td>${columns.map(([, value]) => html`<td>${value(r)}</td>`)}</tr>`,
-                )}
-              </tbody>
-            </table></div>`
-        : html`<p class="muted">Nothing right now.</p>`}
-    </section>`;
+  return panel({
+    title,
+    level: 3,
+    count: rows.length,
+    body: html`<p class="note">${why}</p>`,
+    flush: table({
+      columns: [{ label: "Item" }, ...columns.map(([label]) => ({ label, cls: "num" }))],
+      rows: shown,
+      empty: "Nothing right now.",
+      row: (r) => html`
+        <tr data-id="${r.id}" class="clickable">
+          <td class="item"><button class="row-link" type="button">${r.name}</button></td>
+          ${columns.map(([, value]) => html`<td class="num">${value(r)}</td>`)}
+        </tr>`,
+    }),
+  });
 }
 
 define("opportunities-view", OpportunitiesView);

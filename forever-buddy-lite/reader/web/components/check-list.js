@@ -6,6 +6,8 @@ import { store } from "../lib/store.js";
 import { html } from "../lib/html.js";
 import { auctionatorList } from "../lib/round.js";
 import { copyText } from "../lib/api.js";
+import { toast } from "../lib/toast.js";
+import { icon, sectionHead } from "../lib/ui.js";
 import { hiddenNote } from "./bits.js";
 import { verdictGroups } from "./verdict-groups.js";
 
@@ -21,7 +23,11 @@ class CheckList extends Component {
       if (!event.target.closest("[data-copy-todo]")) return;
       const names = (store.state.opps?.check || []).filter(needsSearch).map((row) => row.name);
       const copied = await copyText(auctionatorList(names));
-      if (copied) this.ref("note").textContent = "Copied. In Auctionator: Shopping, Import, paste.";
+      if (copied) {
+        const note = "Copied. In Auctionator: Shopping, Import, paste.";
+        this.ref("note").textContent = note;
+        toast(note);
+      }
     });
   }
 
@@ -31,18 +37,16 @@ class CheckList extends Component {
     const toSearch = rows.filter(needsSearch);
 
     return html`
-      <section class="worklist-panel">
-        <header class="section-head">
-          <h2>Price ladders</h2>
-          <p class="section-note">
-            Every item you open at the AH records its whole ladder. Save prices &amp; reload and the verdicts below update.
-          </p>
-          ${toSearch.length > 0 &&
-          html`<div class="tools">
-            <button class="btn primary" type="button" data-copy-todo>Copy ${toSearch.length} to search as an Auctionator list</button>
-            <span class="muted" data-ref="note"></span>
-          </div>`}
-        </header>
+      <section class="worklist-panel" aria-labelledby="ladders-title">
+        ${sectionHead({
+          title: "Price ladders",
+          id: "ladders-title",
+          note: "Every item you open at the AH records its whole ladder. Save prices & reload and the verdicts below update.",
+          actions:
+            toSearch.length > 0 &&
+            html`<button class="btn primary" type="button" data-copy-todo>${icon("copy")}Copy ${toSearch.length} to search as an Auctionator list</button>
+              <span class="muted small" data-ref="note"></span>`,
+        })}
         ${verdictGroups(rows)}
         ${hiddenNote(opps)}
       </section>`;
