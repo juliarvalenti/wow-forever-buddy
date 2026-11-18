@@ -54,6 +54,9 @@ struct Patterns {
     level: Regex,
     skill: Regex,
     other: Regex,
+    /// A bonus that only applies sometimes: against a creature type ("+18 Attack Power when fighting
+    /// Mechanical units"), in a form, while something holds. Not an all-the-time stat.
+    conditional: Regex,
 }
 
 fn patterns() -> &'static Patterns {
@@ -77,6 +80,9 @@ fn patterns() -> &'static Patterns {
             level: r(r"^Requires Level ([0-9]+)$"),
             skill: r(r"^Requires (.+?) \(([0-9]+)\)$"),
             other: r(r"^Requires (.+)$"),
+            conditional: r(
+                r"(?i)\b(when fighting|against|versus|vs\.?)\b|\b(Undead|Demons?|Beasts?|Mechanicals?|Dragonkin|Elementals?|Giants?|Humanoids?)\b|forms? only|while in ",
+            ),
         }
     })
 }
@@ -92,6 +98,10 @@ pub fn parse_stats(lines: &[String]) -> ItemStats {
     let mut s = ItemStats::default();
     for line in lines {
         let t = line.as_str();
+        // Requirement lines ("Requires Level 20") never are; anything else conditional is skipped.
+        if !t.starts_with("Requires") && !t.starts_with("Classes:") && p.conditional.is_match(t) {
+            continue;
+        }
         if let Some(m) = p.primary.captures(t) {
             let key = match &m[2] {
                 "Stamina" => "sta",
@@ -397,6 +407,19 @@ mod tests {
         assert_eq!(s.req, Some(20.0));
         assert_eq!(s.skill_req, [("Engineering".to_string(), 120.0)]);
         assert_eq!(s.other_req, ["Honored with Stormwind"]);
+    }
+
+    #[test]
+    fn conditional_bonuses_are_not_stats() {
+        // Gnomish Universal Remote and friends: only against some targets, or in a form.
+        let s = parse_stats(&lines(&[
+            "Equip: +18 Attack Power when fighting Mechanical units.",
+            "Equip: Increases attack power by 45 when fighting Undead.",
+            "Equip: +120 Attack Power in Cat, Bear, and Dire Bear forms only.",
+            "Equip: +10 Attack Power.",
+            "+5 Agility",
+        ]));
+        assert_eq!(s.summary(), "ap 10, agi 5");
     }
 
     #[test]
