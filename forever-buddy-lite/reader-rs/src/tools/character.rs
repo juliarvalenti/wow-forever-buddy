@@ -363,7 +363,17 @@ pub fn trainers(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
         );
     }
     if out.is_empty() {
-        return Err("No trainer saved yet: talk to one in game, then /fbl r.".into());
+        if ctx.data.trainers.is_empty() {
+            return Err("No trainer saved yet: talk to one in game, then /fbl r.".into());
+        }
+        // Saved trainers, but the query matched none: say so, rather than "none saved". The query
+        // is a trainer, skill or recipe name; a character's name matches nothing.
+        let names: Vec<&str> = ctx.data.trainers.iter().map(|(npc, _)| npc.as_str()).collect();
+        return Err(format!(
+            "No trainer, skill or recipe matches \"{}\". Saved trainers: {}. Leave the query out to list them all.",
+            query.unwrap_or(""),
+            names.join(", ")
+        ));
     }
     Ok(Value::Array(out))
 }
