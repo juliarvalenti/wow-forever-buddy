@@ -81,9 +81,40 @@ local function modernTradeSkill()
     return base.professionName, { rank = num(base.skillLevel), max = num(base.maxSkillLevel), recipes = recipes }
 end
 
+-- This character's rank in a skill line, from the skill list (the same source as the snapshot).
+local function skillLineRank(name)
+    local n = num(read("C_SkillInfo.GetNumSkillLines"))
+    for i = 1, n or 0 do
+        local s = read("C_SkillInfo.GetSkillLineInfo", i)
+        if type(s) == "table" and s.name == name and not s.isHeader then
+            return num(s.rank) or num(s.skillRank)
+        end
+    end
+    for i = 1, num(read("GetNumSkillLines")) or 0 do
+        local lname, isHeader, _, rank = read("GetSkillLineInfo", i)
+        if lname == name and not isHeader then
+            return num(rank)
+        end
+    end
+end
+
+-- Someone else's profession (a link from chat, a guildmate's, a crafting NPC) shows in the same
+-- window. Saved as ours, it made a 95 tailor look like 235 with Runecloth recipes.
+local function viewingOthers()
+    for _, f in ipairs({ "C_TradeSkillUI.IsTradeSkillLinked", "C_TradeSkillUI.IsTradeSkillGuild",
+        "C_TradeSkillUI.IsNPCCrafting", "IsTradeSkillLinked" }) do
+        if read(f) == true then
+            return true
+        end
+    end
+    return false
+end
+
+local warned = {}
+
 local function saveProfession()
     local c = ns.char()
-    if not c then
+    if not c or viewingOthers() then
         return
     end
     local good, name, p = pcall(classicTradeSkill)
@@ -91,6 +122,20 @@ local function saveProfession()
         good, name, p = pcall(modernTradeSkill)
     end
     if not (good and name and p and #p.recipes > 0) then
+        return
+    end
+    -- The window must agree with the character's own skill list. If it doesn't, it isn't this
+    -- character's (or the API reported another line): save nothing, and drop an earlier wrong save.
+    local own = skillLineRank(name)
+    if own and p.rank and own ~= p.rank then
+        if type(c.professions) == "table" and c.professions[name] and c.professions[name].rank ~= own then
+            c.professions[name] = nil
+            ns.fire("changed")
+        end
+        if not warned[name] then
+            warned[name] = true
+            ns.say(string.format("not saving the %s window: it shows %d, your skill is %d.", name, p.rank, own))
+        end
         return
     end
     p.at = now()
