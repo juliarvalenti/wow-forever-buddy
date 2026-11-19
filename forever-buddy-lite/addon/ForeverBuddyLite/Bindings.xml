@@ -5,4 +5,5 @@
 	<Binding name="FBL_TARGET_TOGGLE">FBL_TargetToggle()</Binding>
 	<!-- Clicks the target box button (Target.lua): a secure click, so it can target. -->
 	<Binding name="CLICK FBLTargetButton:Keybind"></Binding>
+	<Binding name="FBL_SHARE">FBL_ShareHovered()</Binding>
 </Bindings>
