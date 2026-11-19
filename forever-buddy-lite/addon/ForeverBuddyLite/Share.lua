@@ -242,9 +242,82 @@ local function share(h)
     end
 end
 
+-- What the tooltip shows, from the client's own record of the call that built it (modern
+-- data-driven tooltips keep info.getterName and info.getterArgs; Auctionator reads them the same
+-- way on Forever). Covers frames that don't go through the Set* methods we hook.
+local FROM_GETTER = {
+    GetUnitAura = function(unit, index, filter)
+        return { kind = "aura", unit = unit, index = index, filter = filter }
+    end,
+    GetUnitBuff = function(unit, index, filter)
+        return { kind = "aura", unit = unit, index = index, filter = filter or "HELPFUL" }
+    end,
+    GetUnitDebuff = function(unit, index, filter)
+        return { kind = "aura", unit = unit, index = index, filter = filter or "HARMFUL" }
+    end,
+    GetUnitBuffByAuraInstanceID = function(unit, instance)
+        return { kind = "aura", unit = unit, instance = instance, filter = "HELPFUL" }
+    end,
+    GetUnitDebuffByAuraInstanceID = function(unit, instance)
+        return { kind = "aura", unit = unit, instance = instance, filter = "HARMFUL" }
+    end,
+    GetUnitAuraByAuraInstanceID = function(unit, instance, filter)
+        return { kind = "aura", unit = unit, instance = instance, filter = filter }
+    end,
+    GetAction = function(slot)
+        return { kind = "action", slot = slot }
+    end,
+    GetSpellByID = function(id)
+        return { kind = "spell", id = id }
+    end,
+    GetBagItem = function(bag, slot)
+        return { kind = "bag", bag = bag, slot = slot }
+    end,
+    GetInventoryItem = function(unit, slot)
+        return { kind = "inventory", unit = unit, slot = slot }
+    end,
+}
+
+local function tooltipInfo()
+    local info = GameTooltip.info or GameTooltip.processingInfo
+    if type(info) ~= "table" and GameTooltip.GetPrimaryTooltipInfo then
+        local ok, i = pcall(GameTooltip.GetPrimaryTooltipInfo, GameTooltip)
+        info = ok and i or nil
+    end
+    return type(info) == "table" and info or nil
+end
+
+local function current()
+    local info = tooltipInfo()
+    local make = info and info.getterName and FROM_GETTER[info.getterName]
+    if make then
+        local ok, h = pcall(make, unpack(type(info.getterArgs) == "table" and info.getterArgs or {}))
+        if ok and h then
+            return h
+        end
+    end
+    return hovered
+end
+
+-- For figuring out a frame we can't read yet: what the tooltip says it came from.
+local noted = {}
+local function noteUnknown()
+    local info = tooltipInfo()
+    local getter = info and info.getterName or "an unknown source"
+    if not noted[getter] then
+        noted[getter] = true
+        say("can't share that yet: its tooltip comes from " .. tostring(getter) .. ".")
+    end
+end
+
 function FBL_ShareHovered()
     if GameTooltip:IsShown() then
-        share(hovered)
+        local h = current()
+        if h then
+            share(h)
+        else
+            noteUnknown()
+        end
     end
 end
 
@@ -295,9 +368,13 @@ local watcher = CreateFrame("Frame")
 local wasDown = false
 watcher:SetScript("OnUpdate", function()
     local down = IsMouseButtonDown("LeftButton") and true or false
-    if down and not wasDown and hovered and hovered.kind == "aura" and IsAltKeyDown() and not store().off
-        and GameTooltip:IsShown() then
-        share(hovered)
+    if down and not wasDown and IsAltKeyDown() and not store().off and GameTooltip:IsShown() then
+        local h = current()
+        if h and h.kind == "aura" then
+            share(h)
+        elseif not h then
+            noteUnknown()
+        end
     end
     wasDown = down
 end)
