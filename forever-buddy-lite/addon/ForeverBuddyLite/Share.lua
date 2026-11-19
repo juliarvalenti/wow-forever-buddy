@@ -199,7 +199,17 @@ local function describe(h)
     end
 end
 
+-- Where messages go: /fbl share to <choice>. "auto" picks your group (raid, instance, party) and
+-- prints only to you when solo; "self" always prints only to you.
+local CHANNELS = { say = "SAY", party = "PARTY", raid = "RAID", guild = "GUILD", instance = "INSTANCE_CHAT" }
+
 local function channel()
+    local to = store().to
+    if to == "self" then
+        return nil
+    elseif CHANNELS[to] then
+        return CHANNELS[to]
+    end
     if read("IsInRaid") then
         return "RAID"
     elseif read("IsInGroup", 2) then -- an instance group
@@ -294,9 +304,20 @@ end)
 
 BINDING_NAME_FBL_SHARE = "Share what I'm hovering (buff, debuff, cooldown, item)"
 
-ns.command({ name = "share", args = "[on | off]",
+ns.command({ name = "share", args = "[on, off, or to: auto, self, say, party, raid, guild, instance]",
     help = "alt-click a buff or debuff (or bind a key) to post it to your group with time left",
     fn = function(rest)
+        local to = rest:match("^to%s+(%a+)$")
+        if to then
+            to = to:lower()
+            if to == "auto" or to == "self" or CHANNELS[to] then
+                store().to = to ~= "auto" and to or nil
+                say("sharing to " .. to .. (to == "say" and " (with the key; game rules may block /say from the alt-click)" or "") .. ".")
+            else
+                say("share to: auto, self, say, party, raid, guild or instance.")
+            end
+            return
+        end
         if rest == "off" then
             store().off = true
             say("alt-click sharing off (the key binding still works).")
@@ -304,6 +325,6 @@ ns.command({ name = "share", args = "[on | off]",
             store().off = nil
             say("alt-click sharing on.")
         else
-            say("alt+left-click a buff or debuff to share it; bind \"Share what I'm hovering\" in Key Bindings > AddOns for cooldowns and items. /fbl share off turns alt-click off.")
+            say("sharing to " .. (store().to or "auto") .. ". Alt+left-click a buff or debuff; bind \"Share what I'm hovering\" (Key Bindings > AddOns) for cooldowns and items. /fbl share to self, say, party, raid, guild or auto picks where it goes.")
         end
     end })
