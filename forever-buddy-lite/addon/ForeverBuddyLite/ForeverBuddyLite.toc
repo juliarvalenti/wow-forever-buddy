@@ -18,4 +18,5 @@ Auras.lua
 UI.lua
 Groups.lua
 Target.lua
+Share.lua
 Commands.lua
