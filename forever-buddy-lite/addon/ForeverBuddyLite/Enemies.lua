@@ -14,7 +14,7 @@
 -- ForeverBuddyLiteDB.bg = { point, off, scale }
 
 local _, ns = ...
-local read, say = ns.read, ns.say
+local read, say, num = ns.read, ns.say, ns.num
 
 local MAX_ROWS = 40
 local ROW_W, ROW_H = 170, 18
@@ -177,13 +177,27 @@ local function readScoreboard()
     if testing then
         return
     end
-    local n = read("GetNumBattlefieldScores") or 0
+    local n = num(read("GetNumBattlefieldScores")) or 0
+    local f = ns.resolve("C_PvP.GetScoreInfo")
+    if not f or n == 0 then
+        return
+    end
     local mine = myFaction()
+    local secret = rawget(_G, "issecretvalue")
+    local function plain(v)
+        if v == nil or (secret and secret(v)) then
+            return nil
+        end
+        return v
+    end
     local list = {}
     for i = 1, n do
-        local s = read("C_PvP.GetScoreInfo", i)
-        if type(s) == "table" and type(s.name) == "string" and s.faction ~= nil and s.faction ~= mine then
-            list[#list + 1] = { name = s.name, short = s.name:match("^[^-]+") or s.name, guid = s.guid, class = s.classToken }
+        local ok, s = pcall(f, i)
+        if ok and type(s) == "table" then
+            local name, faction = plain(s.name), plain(s.faction)
+            if type(name) == "string" and name ~= "" and faction ~= nil and faction ~= mine then
+                list[#list + 1] = { name = name, short = name:match("^[^-]+") or name, guid = plain(s.guid), class = plain(s.classToken) }
+            end
         end
     end
     table.sort(list, function(a, b)
@@ -319,6 +333,8 @@ local function build()
     C_Timer.NewTicker(SCORE_EVERY, function()
         if frame:IsShown() and not testing then
             pcall(RequestBattlefieldScoreData)
+            -- Also read what's there now, in case the update event doesn't come.
+            readScoreboard()
         end
     end)
 end
@@ -375,11 +391,54 @@ local function test(on)
     layout()
 end
 
-ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>]",
+-- /fbl bg debug: what the scoreboard actually gives an addon here.
+local function debugScoreboard()
+    local secret = rawget(_G, "issecretvalue")
+    local function show(v)
+        if v == nil then
+            return "nil"
+        elseif secret and secret(v) then
+            return "<hidden>"
+        end
+        return tostring(v)
+    end
+    local _, kind = read("IsInInstance")
+    say(string.format("instance %s; GetNumBattlefieldScores %s; my side %s (GetBattlefieldArenaFaction %s, %s)",
+        show(kind), show(read("GetNumBattlefieldScores")), show(myFaction()), show(read("GetBattlefieldArenaFaction")),
+        show(read("UnitFactionGroup", "player"))))
+    say("C_PvP.GetScoreInfo " .. (ns.resolve("C_PvP.GetScoreInfo") and "exists" or "MISSING")
+        .. "; RequestBattlefieldScoreData " .. (ns.resolve("RequestBattlefieldScoreData") and "exists" or "MISSING"))
+    local f = ns.resolve("C_PvP.GetScoreInfo")
+    local sides = {}
+    for i = 1, math.min(num(read("GetNumBattlefieldScores")) or 0, 80) do
+        local ok, s = pcall(f, i)
+        if ok and type(s) == "table" then
+            local side = show(s.faction)
+            sides[side] = (sides[side] or 0) + 1
+            if i <= 3 then
+                say(string.format("  #%d name %s, faction %s, class %s, guid %s", i, show(s.name), side, show(s.classToken),
+                    s.guid and "yes" or "no"))
+            end
+        elseif i <= 3 then
+            say(string.format("  #%d: %s", i, ok and type(s) or ("error " .. tostring(s))))
+        end
+    end
+    local parts = {}
+    for k, v in pairs(sides) do
+        parts[#parts + 1] = "faction " .. k .. ": " .. v
+    end
+    say("by side: " .. (#parts > 0 and table.concat(parts, ", ") or "none") .. "; enemies listed now: " .. #roster)
+end
+
+ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>, debug]",
     help = "battleground enemies with health bars; click a row to target (shows by itself in battlegrounds)",
     fn = function(rest)
         if InCombatLockdown() then
             say("the enemies list can't change in combat.")
+            return
+        end
+        if rest == "debug" then
+            debugScoreboard()
             return
         end
         local spell = rest:match("^range%s+(.+)$")
