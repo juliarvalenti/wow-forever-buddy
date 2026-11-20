@@ -28,7 +28,14 @@ local function spellIcon(name, fallback)
     return fallback
 end
 
-local function uid()
+-- The uid an aura already has in Musca Auras, so a re-import offers to update it rather than add a
+-- copy; a new random one for an aura that isn't there yet.
+local function uidFor(id)
+    local get = WeakAuras and WeakAuras.GetData
+    local data = get and id and get(id)
+    if type(data) == "table" and type(data.uid) == "string" and data.uid ~= "" then
+        return data.uid
+    end
     local s = {}
     for i = 1, 11 do
         local n = math.random(1, 62)
@@ -55,7 +62,7 @@ end
 local function icon(id, label, iconTex, trigger, loadOpts)
     return {
         id = id,
-        uid = uid(),
+        uid = uidFor(id),
         parent = GROUP,
         regionType = "icon",
         internalVersion = 92,
@@ -126,6 +133,9 @@ local function build()
         local name, id, tex = t[1], t[2], t[3]
         local l = load(nil, { use_spellknown = true, spellknown = spellID(name, id) })
         l.use_class = nil
+        -- Not in battlegrounds: every instance type but Battleground (Musca has no "is not").
+        l.use_size = false
+        l.size = { multi = { none = true, party = true, ten = true, twenty = true, twentyfive = true, fortyman = true } }
         add(icon("BuffNag: " .. name, name, spellIcon(name, tex), buffMissing({ name }), l))
     end
     -- Well Fed: the mage asked for it.
@@ -137,7 +147,7 @@ local function build()
     end
     local group = {
         id = GROUP,
-        uid = uid(),
+        uid = uidFor(GROUP),
         regionType = "dynamicgroup",
         internalVersion = 92,
         controlledChildren = ids,
@@ -213,7 +223,7 @@ local function bar(slot, b)
         sub[#sub + 1] = text("%s", "CENTER", 13) -- on the icon
     end
     return {
-        id = "Rogue bar: " .. b[1], uid = uid(), parent = BARS,
+        id = "Rogue bar: " .. b[1], uid = uidFor("Rogue bar: " .. b[1]), parent = BARS,
         regionType = "aurabar", internalVersion = 92,
         width = BAR_W, height = BAR_H, orientation = "HORIZONTAL",
         texture = "Blizzard", barColor = b.color, barColor2 = b.color,
@@ -239,7 +249,7 @@ local function buildBars()
         ids[i] = c[i].id
     end
     local group = {
-        id = BARS, uid = uid(), regionType = "group", internalVersion = 92,
+        id = BARS, uid = uidFor(BARS), regionType = "group", internalVersion = 92,
         controlledChildren = ids,
         anchorPoint = "CENTER", selfPoint = "CENTER", xOffset = 0, yOffset = -180,
         border = false,
