@@ -95,33 +95,17 @@ local function makeRow(i)
     return b
 end
 
--- How a row looks by range: "near" (in range of you) full colour, "seen" (your group can see
--- them, you're out of range) dimmed, nil (nobody sees them) greyed.
-local LOOK = { near = { 1, 1 }, seen = { 0.55, 0.85 }, none = { 0.3, 0.6 } }
-local function setBarLook(row, state)
+-- How a row looks: full colour while someone in your group can see them, greyed when nobody can
+-- (the bar keeps their last health). Range isn't shown: an addon can only check it for enemies on
+-- your screen, which made it follow the camera more than distance.
+local function setBarLook(row, seen)
     local e = row.enemy
     local r, g, bl = classColor(e and e.class)
-    local k, text = unpack(LOOK[state or "none"])
+    local k = seen and 1 or 0.3
     row.bar:SetStatusBarColor(r * k, g * k, bl * k, 1)
+    local text = seen and 1 or 0.6
     row.label:SetTextColor(text, text, text)
-    row:SetAlpha(state == "near" and 1 or state == "seen" and 0.85 or 0.7)
-end
-
--- In range of you: a nameplate (they're within your nameplate distance), or, with a spell set
--- (/fbl bg range Throw), that spell's range. A check the client hides counts as out of range.
-local function inRange(unit)
-    local spell = store().rangeSpell
-    if spell then
-        local f = (C_Spell and C_Spell.IsSpellInRange) or rawget(_G, "IsSpellInRange")
-        if f then
-            local ok, r = pcall(f, spell, unit)
-            local secret = rawget(_G, "issecretvalue")
-            if ok and r ~= nil and not (secret and secret(r)) then
-                return r == true or r == 1
-            end
-        end
-    end
-    return unit:find("^nameplate") ~= nil
+    row:SetAlpha(seen and 1 or 0.7)
 end
 
 -- Lay the roster out on the rows. Secure buttons: out of combat only.
@@ -145,7 +129,7 @@ local function layout()
             end
             row.enemy = e
             row:SetAttribute("macrotext", "/targetexact " .. e.name)
-            row.label:SetText(e.short)
+            row.label:SetText((e.healer and "|cff40ff40+|r " or "") .. e.short)
             setBarLook(row, false)
             row:Show()
         else
@@ -164,7 +148,7 @@ local function sameRoster(a, b)
         return false
     end
     for i = 1, #a do
-        if a[i].name ~= b[i].name then
+        if a[i].name ~= b[i].name or a[i].healer ~= b[i].healer then
             return false
         end
     end
@@ -172,6 +156,22 @@ local function sameRoster(a, b)
 end
 
 local CLASS_ORDER = { WARRIOR = 1, PALADIN = 2, ROGUE = 3, HUNTER = 4, DRUID = 5, SHAMAN = 6, PRIEST = 7, MAGE = 8, WARLOCK = 9 }
+
+-- Healers. A healing spec on the scoreboard decides it when Forever fills one in; otherwise the
+-- numbers: a class that can heal, healing at least HEAL_OVER_DAMAGE times its damage, and at least
+-- HEAL_SHARE of the most healing anyone in the battleground has done (relative, so it works a minute
+-- in and an hour in, in any battleground size).
+local CAN_HEAL = { PRIEST = true, DRUID = true, SHAMAN = true, PALADIN = true }
+local HEALING_SPECS = { Holy = true, Restoration = true, Discipline = true }
+local HEAL_OVER_DAMAGE, HEAL_SHARE = 1.5, 0.3
+
+local function isHealer(e, maxHealing)
+    if type(e.spec) == "string" and e.spec ~= "" then
+        return HEALING_SPECS[e.spec] or false
+    end
+    local heal, dmg = tonumber(e.healing) or 0, tonumber(e.damage) or 0
+    return CAN_HEAL[e.class] == true and heal > 0 and heal >= HEAL_OVER_DAMAGE * dmg and heal >= HEAL_SHARE * maxHealing
+end
 
 local function readScoreboard()
     if testing then
@@ -191,16 +191,26 @@ local function readScoreboard()
         return v
     end
     local list = {}
+    local maxHealing = 0
     for i = 1, n do
         local ok, s = pcall(f, i)
         if ok and type(s) == "table" then
             local name, faction = plain(s.name), plain(s.faction)
+            local healing = tonumber(plain(s.healingDone)) or 0
+            maxHealing = math.max(maxHealing, healing) -- both teams: the match's scale
             if type(name) == "string" and name ~= "" and faction ~= nil and faction ~= mine then
-                list[#list + 1] = { name = name, short = name:match("^[^-]+") or name, guid = plain(s.guid), class = plain(s.classToken) }
+                list[#list + 1] = { name = name, short = name:match("^[^-]+") or name, guid = plain(s.guid), class = plain(s.classToken),
+                    healing = healing, damage = tonumber(plain(s.damageDone)) or 0, spec = plain(s.talentSpec) }
             end
         end
     end
+    for _, e in ipairs(list) do
+        e.healer = isHealer(e, maxHealing)
+    end
     table.sort(list, function(a, b)
+        if a.healer ~= b.healer then
+            return a.healer -- healers first
+        end
         local ca, cb = CLASS_ORDER[a.class] or 99, CLASS_ORDER[b.class] or 99
         if ca ~= cb then
             return ca < cb
@@ -258,7 +268,7 @@ local function updateHealth()
             rowOf[rows[i].enemy] = rows[i]
         end
     end
-    local seen = {} -- row -> "near" or "seen"
+    local seen = {}
     for _, unit in ipairs(UNITS) do
         if UnitExists(unit) then
             local e = enemyOf(unit)
@@ -269,11 +279,7 @@ local function updateHealth()
                     pcall(row.bar.SetMinMaxValues, row.bar, 0, UnitHealthMax(unit))
                     pcall(row.bar.SetValue, row.bar, UnitHealth(unit))
                     row.seenOnce = true
-                    seen[row] = "seen"
-                end
-                -- Group targets say nothing about your own range; your own units do.
-                if seen[row] ~= "near" and not unit:find("^party") and not unit:find("^raid") and inRange(unit) then
-                    seen[row] = "near"
+                    seen[row] = true
                 end
             end
         end
@@ -416,8 +422,9 @@ local function debugScoreboard()
             local side = show(s.faction)
             sides[side] = (sides[side] or 0) + 1
             if i <= 3 then
-                say(string.format("  #%d name %s, faction %s, class %s, guid %s", i, show(s.name), side, show(s.classToken),
-                    s.guid and "yes" or "no"))
+                say(string.format("  #%d name %s, faction %s, class %s, guid %s, spec %s, role %s, healing %s, damage %s", i,
+                    show(s.name), side, show(s.classToken), s.guid and "yes" or "no", show(s.talentSpec), show(s.roleAssigned),
+                    show(s.healingDone), show(s.damageDone)))
             end
         elseif i <= 3 then
             say(string.format("  #%d: %s", i, ok and type(s) or ("error " .. tostring(s))))
@@ -430,7 +437,7 @@ local function debugScoreboard()
     say("by side: " .. (#parts > 0 and table.concat(parts, ", ") or "none") .. "; enemies listed now: " .. #roster)
 end
 
-ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>, debug]",
+ns.command({ name = "bg", args = "[on, off, test, scale <n>, debug]",
     help = "battleground enemies with health bars; click a row to target (shows by itself in battlegrounds)",
     fn = function(rest)
         if InCombatLockdown() then
@@ -439,18 +446,6 @@ ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>, debu
         end
         if rest == "debug" then
             debugScoreboard()
-            return
-        end
-        local spell = rest:match("^range%s+(.+)$")
-        if spell then
-            spell = spell:match("^%s*(.-)%s*$")
-            if spell == "off" or spell == "nameplates" then
-                store().rangeSpell = nil
-                say("in range = within your nameplate distance.")
-            else
-                store().rangeSpell = spell
-                say("in range = within range of " .. spell .. " (where the client lets an addon check; otherwise nameplates).")
-            end
             return
         end
         local scale = tonumber(rest:match("^scale%s+([%d.]+)$"))
@@ -474,6 +469,6 @@ ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>, debu
             say(testing and "test team shown (row 1 is your target, if you have one). /fbl bg test again to hide."
                 or "test team hidden.")
         else
-            say("shows by itself in battlegrounds. /fbl bg test shows a fake team to place it; /fbl bg off, on, scale 1.2; /fbl bg range Throw sets what in range means (default: nameplate distance).")
+            say("shows by itself in battlegrounds. /fbl bg test shows a fake team to place it; /fbl bg off, on, scale 1.2.")
         end
     end })
