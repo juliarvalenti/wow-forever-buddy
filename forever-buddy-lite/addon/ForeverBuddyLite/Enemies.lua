@@ -463,28 +463,33 @@ local function rangeOf(unit)
         return false -- the client isn't even sending this unit: far
     end
     local spell = currentRangeSpell()
-    if not spell then
-        return nil
-    end
     local f = (C_Spell and C_Spell.IsSpellInRange) or rawget(_G, "IsSpellInRange")
-    if not f then
-        return nil
+    if spell and f then
+        local ok, r = pcall(f, spell, unit)
+        if ok and r ~= nil then
+            if isSecret(r) then
+                return r
+            end
+            return r == true or r == 1
+        end
     end
-    local ok, r = pcall(f, spell, unit)
-    if not ok or r == nil then
-        return nil
+    -- No spell answer (no ranged weapon for Throw, a spell this unit can't take): the client's
+    -- follow distance, about 28 yards, which works on enemies in combat too.
+    local okC, close = pcall(CheckInteractDistance, unit, 4)
+    if okC and close ~= nil then
+        if isSecret(close) then
+            return close
+        end
+        return close and true or false
     end
-    if isSecret(r) then
-        return r
-    end
-    return r == true or r == 1
+    return nil
 end
 
 local function setRangeLook(row, seen, range)
     if not seen then
         row:SetAlpha(ALPHA_UNKNOWN)
     elseif range == nil then
-        row:SetAlpha(ALPHA_IN) -- seen, but the client can't say: don't fade a visible enemy
+        row:SetAlpha(ALPHA_UNKNOWN) -- seen, but nothing could measure the distance: unknown, not near
     elseif isSecret(range) then
         if not (row.SetAlphaFromBoolean and pcall(row.SetAlphaFromBoolean, row, range, ALPHA_IN, ALPHA_OUT)) then
             row:SetAlpha(ALPHA_IN)
