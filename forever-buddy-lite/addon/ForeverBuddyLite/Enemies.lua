@@ -131,7 +131,22 @@ local function setHealthText(row, unit)
     local readable = type(cur) == "number" and type(max) == "number" and not (secret and (secret(cur) or secret(max)))
     if readable and max > 0 then
         row.hp:SetText(math.floor(cur / max * 100 + 0.5) .. "%")
-    else
+        return
+    end
+    -- Hidden: the client's own percentage (0-100 with its ScaleTo100 curve), formatted by the client.
+    local curves = rawget(_G, "CurveConstants")
+    local percent = rawget(_G, "UnitHealthPercent")
+    if percent and curves and curves.ScaleTo100 then
+        local ok, pct = pcall(percent, unit, false, curves.ScaleTo100)
+        if ok and pct ~= nil and pcall(row.hp.SetFormattedText, row.hp, "%.0f%%", pct) then
+            return
+        end
+    end
+    -- Else the raw health, shortened by the client where it can (2373 -> 2.4K).
+    local abbreviate = rawget(_G, "AbbreviateNumbers")
+    if not (abbreviate and pcall(function()
+        row.hp:SetText(abbreviate(cur))
+    end)) then
         pcall(row.hp.SetText, row.hp, cur)
     end
 end
@@ -442,6 +457,9 @@ local function debugScoreboard()
     say(string.format("instance %s; GetNumBattlefieldScores %s; my side %s (GetBattlefieldArenaFaction %s, %s)",
         show(kind), show(read("GetNumBattlefieldScores")), show(myFaction()), show(read("GetBattlefieldArenaFaction")),
         show(read("UnitFactionGroup", "player"))))
+    local curves = rawget(_G, "CurveConstants")
+    say("health %: UnitHealthPercent " .. (rawget(_G, "UnitHealthPercent") and "exists" or "MISSING") .. ", ScaleTo100 "
+        .. ((curves and curves.ScaleTo100) and "exists" or "MISSING"))
     say("C_PvP.GetScoreInfo " .. (ns.resolve("C_PvP.GetScoreInfo") and "exists" or "MISSING")
         .. "; RequestBattlefieldScoreData " .. (ns.resolve("RequestBattlefieldScoreData") and "exists" or "MISSING"))
     local f = ns.resolve("C_PvP.GetScoreInfo")
