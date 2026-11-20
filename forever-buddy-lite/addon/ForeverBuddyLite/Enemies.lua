@@ -84,10 +84,15 @@ local function makeRow(i)
 
     local name = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     name:SetPoint("LEFT", 4, 0)
-    name:SetPoint("RIGHT", -4, 0)
+    name:SetPoint("RIGHT", -40, 0)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
     b.label = name
+
+    local hp = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hp:SetPoint("RIGHT", -4, 0)
+    hp:SetJustifyH("RIGHT")
+    b.hp = hp
 
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
@@ -100,16 +105,35 @@ end
 -- How a row looks: full colour while someone in your group can see them, greyed when nobody can
 -- (the bar keeps their last health). Range isn't shown: an addon can only check it for enemies on
 -- your screen, which made it follow the camera more than distance.
-local function setBarLook(row, seen)
+-- Always the class colour (the missing health a darker shade of it). Only the health number says
+-- how fresh it is: white while someone in your group sees them, grey once nobody has for STALE
+-- seconds. (Dimming whole rows followed your camera: nameplates exist only on screen.)
+local STALE = 10
+local function setBarLook(row)
     local e = row.enemy
     local r, g, bl = classColor(e and e.class)
-    local k = seen and 1 or 0.3
-    row.bar:SetStatusBarColor(r * k, g * k, bl * k, 1)
-    local d = seen and 0.35 or 0.15
-    row.back:SetColorTexture(r * d, g * d, bl * d, 0.9)
-    local text = seen and 1 or 0.6
-    row.label:SetTextColor(text, text, text)
-    row:SetAlpha(seen and 1 or 0.7)
+    row.bar:SetStatusBarColor(r, g, bl, 1)
+    row.back:SetColorTexture(r * 0.35, g * 0.35, bl * 0.35, 0.9)
+    row.label:SetTextColor(1, 1, 1)
+    local fresh = row.lastSeen and (GetTime() - row.lastSeen) <= STALE
+    if fresh then
+        row.hp:SetTextColor(1, 1, 1)
+    else
+        row.hp:SetTextColor(0.55, 0.55, 0.55)
+    end
+end
+
+-- The health number: a percentage when the addon may read health; otherwise the raw value goes
+-- straight to the text (the client draws a value it hides from the addon).
+local function setHealthText(row, unit)
+    local cur, max = UnitHealth(unit), UnitHealthMax(unit)
+    local secret = rawget(_G, "issecretvalue")
+    local readable = type(cur) == "number" and type(max) == "number" and not (secret and (secret(cur) or secret(max)))
+    if readable and max > 0 then
+        row.hp:SetText(math.floor(cur / max * 100 + 0.5) .. "%")
+    else
+        pcall(row.hp.SetText, row.hp, cur)
+    end
 end
 
 -- Lay the roster out on the rows. Secure buttons: out of combat only.
@@ -127,14 +151,15 @@ local function layout()
         if e then
             if row.enemy ~= e then
                 -- Someone else on this row now: forget the last player's health.
-                row.seenOnce = nil
+                row.seenOnce, row.lastSeen = nil, nil
                 row.bar:SetMinMaxValues(0, 1)
                 row.bar:SetValue(1)
+                row.hp:SetText("")
             end
             row.enemy = e
             row:SetAttribute("macrotext", "/targetexact " .. e.name)
             row.label:SetText((e.healer and "|cff40ff40+|r " or "") .. e.short)
-            setBarLook(row, false)
+            setBarLook(row)
             row:Show()
         else
             row.enemy, row.seenOnce = nil, nil
@@ -282,7 +307,8 @@ local function updateHealth()
                     -- Straight into the bar: a value hidden from the addon still draws.
                     pcall(row.bar.SetMinMaxValues, row.bar, 0, UnitHealthMax(unit))
                     pcall(row.bar.SetValue, row.bar, UnitHealth(unit))
-                    row.seenOnce = true
+                    pcall(setHealthText, row, unit)
+                    row.seenOnce, row.lastSeen = true, GetTime()
                     seen[row] = true
                 end
             end
@@ -291,7 +317,7 @@ local function updateHealth()
     for i = 1, #roster do
         local row = rows[i]
         if row and row.enemy then
-            setBarLook(row, seen[row])
+            setBarLook(row)
         end
     end
 end
