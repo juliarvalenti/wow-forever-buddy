@@ -11,9 +11,10 @@
 -- when the client hides the values from addons in combat.
 --
 -- Range is from you: a spell range check (C_Spell.IsSpellInRange) through any of those units, so it
--- covers enemies your group targets too, not only ones on your screen. In range: full brightness;
--- out of range: faded; nobody can see them (range unknown): slightly faded with a grey health
--- number. If the client hides the range answer, the row fades with SetAlphaFromBoolean, which takes
+-- covers enemies your group targets too, not only ones on your screen. Three levels: in range (full
+-- brightness); targetable but out of range (faded); untargetable, the client not sending them to you
+-- or nobody seeing them (heavily faded, grey health number). Without a spell answer it falls back to
+-- the follow distance (CheckInteractDistance, about 28 yards). If the client hides the range answer, the row fades with SetAlphaFromBoolean, which takes
 -- a hidden value without the addon reading it. The spell defaults by class; /fbl bg range <spell>
 -- picks another (a melee ability for melee range).
 --
@@ -34,7 +35,9 @@ local MAX_EYES = 3
 local SCORE_EVERY = 5 -- seconds between scoreboard requests
 local UPDATE_EVERY = 0.2
 local STALE = 10 -- seconds unseen before the health number turns grey
-local ALPHA_IN, ALPHA_OUT, ALPHA_UNKNOWN = 1, 0.4, 0.7
+-- Three levels of range: in range of you; targetable (the client sends you this player) but out of
+-- range; untargetable (the client doesn't send them to you, or nobody in your group sees them).
+local ALPHA_IN, ALPHA_OUT, ALPHA_FAR = 1, 0.55, 0.25
 local EYE_ICON = "Interface\\Icons\\Spell_Holy_MindVision"
 
 -- Muted power colours (mana, rage, energy, focus): quiet next to the class colours.
@@ -460,31 +463,36 @@ end
 local function rangeOf(unit)
     local okV, visible = pcall(UnitIsVisible, unit)
     if okV and visible == false then
-        return false -- the client isn't even sending this unit: far
+        return "far" -- the client isn't sending this player to you: you couldn't target them
     end
     local spell = currentRangeSpell()
-    if not spell then
-        return nil
-    end
     local f = (C_Spell and C_Spell.IsSpellInRange) or rawget(_G, "IsSpellInRange")
-    if not f then
-        return nil
+    if spell and f then
+        local ok, r = pcall(f, spell, unit)
+        if ok and r ~= nil then
+            if isSecret(r) then
+                return r
+            end
+            return r == true or r == 1
+        end
     end
-    local ok, r = pcall(f, spell, unit)
-    if not ok or r == nil then
-        return nil
+    -- No spell answer (no ranged weapon for Throw, a spell this unit can't take): the client's
+    -- follow distance, about 28 yards, which works on enemies in combat too.
+    local okC, close = pcall(CheckInteractDistance, unit, 4)
+    if okC and close ~= nil then
+        if isSecret(close) then
+            return close
+        end
+        return close and true or false
     end
-    if isSecret(r) then
-        return r
-    end
-    return r == true or r == 1
+    return nil
 end
 
 local function setRangeLook(row, seen, range)
-    if not seen then
-        row:SetAlpha(ALPHA_UNKNOWN)
+    if not seen or range == "far" then
+        row:SetAlpha(ALPHA_FAR)
     elseif range == nil then
-        row:SetAlpha(ALPHA_IN) -- seen, but the client can't say: don't fade a visible enemy
+        row:SetAlpha(ALPHA_OUT) -- visible, but nothing could measure the distance: targetable, not "near"
     elseif isSecret(range) then
         if not (row.SetAlphaFromBoolean and pcall(row.SetAlphaFromBoolean, row, range, ALPHA_IN, ALPHA_OUT)) then
             row:SetAlpha(ALPHA_IN)
@@ -528,8 +536,12 @@ local function update()
             pcall(setPower, row, unit)
             row.lastSeen = GetTime()
         end
-        if range[row] == nil then
-            range[row] = rangeOf(unit)
+        -- First answer, unless it was "far": another unit for the same player may do better.
+        if range[row] == nil or range[row] == "far" then
+            local r = rangeOf(unit)
+            if r ~= nil then
+                range[row] = r
+            end
         end
     end
 
