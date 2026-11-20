@@ -68,9 +68,11 @@ local function makeRow(i)
     b:RegisterForClicks("AnyUp", "AnyDown")
     b:SetAttribute("type", "macro")
 
+    -- Behind the bar: the class colour, darker (the missing health shows it, not black).
     local bg = b:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.6)
+    bg:SetColorTexture(0.2, 0.2, 0.2, 0.9)
+    b.back = bg
 
     local bar = CreateFrame("StatusBar", nil, b)
     bar:SetPoint("TOPLEFT", 1, -1)
@@ -103,6 +105,8 @@ local function setBarLook(row, seen)
     local r, g, bl = classColor(e and e.class)
     local k = seen and 1 or 0.3
     row.bar:SetStatusBarColor(r * k, g * k, bl * k, 1)
+    local d = seen and 0.35 or 0.15
+    row.back:SetColorTexture(r * d, g * d, bl * d, 0.9)
     local text = seen and 1 or 0.6
     row.label:SetTextColor(text, text, text)
     row:SetAlpha(seen and 1 or 0.7)
