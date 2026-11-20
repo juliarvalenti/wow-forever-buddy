@@ -36,6 +36,7 @@ pub mod report;
 pub mod skillup;
 pub mod snipes;
 pub mod sources;
+pub mod spawns;
 pub mod strategies;
 pub mod thinning;
 pub mod tools;
