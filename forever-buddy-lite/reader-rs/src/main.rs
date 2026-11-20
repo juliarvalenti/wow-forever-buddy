@@ -30,7 +30,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 /// Flags that take no value.
-const SWITCHES: [&str; 3] = ["json", "no-open", "all"];
+const SWITCHES: [&str; 4] = ["json", "no-open", "all", "pins"];
 
 /// A subcommand's arguments: `--name value` flags (and switches), and the rest in order.
 struct Cli {
@@ -94,7 +94,8 @@ fn usage() {
         ("skillup", "The cheapest way up a profession, priced from the last scan."),
         ("questxp", "XP-dense zones, hubs and chains for a character (needs QuestieDB)."),
         ("bis", "Best in slot by level for an agility melee (needs the WoWSims Forever database)."),
-        ("npc", "Where an NPC stands, by name or title (\"first aid\", \"Fahrad\"); --zone narrows it (needs QuestieDB)."),
+        ("npc", "Where an NPC stands, by name or title (\"first aid\", \"Fahrad\"); --zone narrows it, --pins makes an OpenMap code (needs QuestieDB)."),
+        ("objects", "Every spawn of an object by name (\"footlocker\", \"silverleaf\", \"tin vein\"); --zone narrows it, --pins [--color c] makes OpenMap codes (needs QuestieDB)."),
         ("mcp", "The commands above the line as an MCP server on stdio."),
     ];
     for (name, what) in more {
@@ -242,13 +243,53 @@ fn bis_command(cli: &Cli, env: &Env) -> Result<String, String> {
 }
 
 /// `npc <query words> [--zone name] [--json]`: every positional word is part of the query.
-fn npc_command(cli: &Cli, env: &Env) -> Result<String, String> {
+/// OpenMap pin codes for what was found, with a line on what they hold.
+fn pin_codes(cli: &Cli, env: &Env, found: &[fbl::spawns::Found]) -> Result<String, String> {
+    let colour = match cli.flag("color") {
+        Some(c) => Some(fbl::spawns::color(c).ok_or_else(|| format!("--color: one of {} (or 1-5)", fbl::spawns::COLORS.join(", ")))?),
+        None => None,
+    };
+    let p = fbl::spawns::pins(found, &fbl::spawns::ui_maps(&env.questiedb_dir()), colour);
+    if p.codes.is_empty() {
+        return Err("Nothing to pin: no spawn points on an outdoor map.".into());
+    }
+    let skipped = if p.skipped > 0 { format!(", {} left out (dungeons, no map)", p.skipped) } else { String::new() };
+    let codes = if p.codes.len() > 1 { format!(" in {} codes (OpenMap takes 500 at a time)", p.codes.len()) } else { String::new() };
+    eprintln!("{} pins{codes}{skipped}. OpenMap: Pins, Import, paste, Add the pins.", p.pinned);
+    Ok(p.codes.join(
+        "
+
+",
+    ))
+}
+
+fn objects_command(cli: &Cli, env: &Env) -> Result<String, String> {
     let query = cli.positional.join(" ");
     if query.trim().is_empty() {
-        return Err("usage: fbl-rs npc <name or title> [--zone name] [--json]".into());
+        return Err("usage: fbl-rs objects <name> [--zone name] [--pins [--color gold|red|green|blue|purple]] [--json]".into());
     }
     let dir = env.questiedb_dir();
     let db = questie::QuestieDb::load(&dir).ok_or_else(|| format!("No QuestieDB at {} (set QUESTIEDB_DIR).", dir.display()))?;
+    let found = fbl::spawns::search(&db, "Object", query.trim(), cli.flag("zone"));
+    if cli.has("pins") {
+        return pin_codes(cli, env, &found);
+    }
+    if cli.has("json") {
+        return serde_json::to_string_pretty(&found).map_err(|e| e.to_string());
+    }
+    Ok(fbl::spawns::report(&found, 25, 12))
+}
+
+fn npc_command(cli: &Cli, env: &Env) -> Result<String, String> {
+    let query = cli.positional.join(" ");
+    if query.trim().is_empty() {
+        return Err("usage: fbl-rs npc <name or title> [--zone name] [--pins [--color c]] [--json]".into());
+    }
+    let dir = env.questiedb_dir();
+    let db = questie::QuestieDb::load(&dir).ok_or_else(|| format!("No QuestieDB at {} (set QUESTIEDB_DIR).", dir.display()))?;
+    if cli.has("pins") {
+        return pin_codes(cli, env, &fbl::spawns::search(&db, "Npc", query.trim(), cli.flag("zone")));
+    }
     let found = npcs::search(&db, query.trim(), cli.flag("zone"));
     if cli.has("json") {
         return serde_json::to_string_pretty(&found).map_err(|e| e.to_string());
@@ -295,6 +336,7 @@ fn main() -> ExitCode {
         "questxp" => questxp_command(&cli, &env),
         "bis" => bis_command(&cli, &env),
         "npc" => npc_command(&cli, &env),
+        "objects" => objects_command(&cli, &env),
         _ => match TOOLS.iter().find(|t| t.name == cmd) {
             Some(t) => tool(t, &cli, &env),
             None => {
