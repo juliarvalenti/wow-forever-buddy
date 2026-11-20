@@ -344,12 +344,41 @@ local CAN_HEAL = { PRIEST = true, DRUID = true, SHAMAN = true, PALADIN = true }
 local HEALING_SPECS = { Holy = true, Restoration = true, Discipline = true }
 local HEAL_OVER_DAMAGE, HEAL_SHARE = 1.5, 0.3
 
+-- Forever hides the scoreboard's healing, damage, spec and role during a match (all <hidden>), so
+-- the numbers above rarely decide anything there. What does: seeing them heal. Any enemy seen
+-- casting or finishing a healing spell (on your target, focus, mouseover or nameplates) is a healer
+-- for the rest of the match.
+local HEALS = {}
+for _, n in ipairs({ "Flash Heal", "Greater Heal", "Heal", "Lesser Heal", "Renew", "Prayer of Healing", "Binding Heal",
+    "Penance", "Holy Nova", "Circle of Healing", "Prayer of Mending", "Healing Touch", "Regrowth", "Rejuvenation",
+    "Tranquility", "Swiftmend", "Nourish", "Wild Growth", "Lifebloom", "Healing Wave", "Lesser Healing Wave", "Chain Heal",
+    "Riptide", "Healing Stream Totem", "Holy Light", "Flash of Light", "Holy Shock", "Lay on Hands", "Beacon of Light" }) do
+    HEALS[n] = true
+end
+local healedBy = {} -- name -> true: seen healing this match
+local castsRead, castsHidden = 0, 0
+
 local function isHealer(e, maxHealing)
+    if healedBy[e.name] or healedBy[e.short] then
+        return true
+    end
     if type(e.spec) == "string" and e.spec ~= "" then
         return HEALING_SPECS[e.spec] or false
     end
     local heal, dmg = tonumber(e.healing) or 0, tonumber(e.damage) or 0
     return CAN_HEAL[e.class] == true and heal > 0 and heal >= HEAL_OVER_DAMAGE * dmg and heal >= HEAL_SHARE * maxHealing
+end
+
+-- Healers first, then by class, then by name.
+local function byHealerClassName(a, b)
+    if a.healer ~= b.healer then
+        return a.healer
+    end
+    local ca, cb = CLASS_ORDER[a.class] or 99, CLASS_ORDER[b.class] or 99
+    if ca ~= cb then
+        return ca < cb
+    end
+    return a.name < b.name
 end
 
 local function plain(v)
@@ -386,16 +415,7 @@ local function readScoreboard()
     for _, e in ipairs(list) do
         e.healer = isHealer(e, maxHealing)
     end
-    table.sort(list, function(a, b)
-        if a.healer ~= b.healer then
-            return a.healer -- healers first
-        end
-        local ca, cb = CLASS_ORDER[a.class] or 99, CLASS_ORDER[b.class] or 99
-        if ca ~= cb then
-            return ca < cb
-        end
-        return a.name < b.name
-    end)
+    table.sort(list, byHealerClassName)
     if sameRoster(list, roster) then
         return
     end
@@ -648,6 +668,44 @@ local function refresh()
 end
 
 ns.on("PLAYER_ENTERING_WORLD", refresh)
+
+-- A heal seen: mark the healer now (the + is plain text, fine in combat), re-sort when allowed.
+local function onCast(unit, _, spellID)
+    if type(unit) ~= "string" or not frame or not frame:IsShown() or #roster == 0 then
+        return
+    end
+    if unit == "player" or unit:find("^party%d") or unit:find("^raid%d") then
+        return -- your own side
+    end
+    local e = enemyOf(unit)
+    if not e or e.healer then
+        return
+    end
+    if spellID == nil or isSecret(spellID) then
+        castsHidden = castsHidden + 1
+        return
+    end
+    castsRead = castsRead + 1
+    local name = ns.spellName(spellID)
+    if not (name and HEALS[name]) then
+        return
+    end
+    e.healer, healedBy[e.name] = true, true
+    for i = 1, #roster do
+        if rows[i] and rows[i].enemy == e then
+            rows[i].healer:SetText("+")
+        end
+    end
+    table.sort(roster, byHealerClassName)
+    layout() -- waits for the end of combat if it must
+end
+for _, ev in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_SUCCEEDED" }) do
+    ns.on(ev, onCast)
+end
+-- A new battleground: forget who healed in the last one.
+ns.on("ZONE_CHANGED_NEW_AREA", function()
+    wipe(healedBy)
+end)
 ns.on("ZONE_CHANGED_NEW_AREA", refresh)
 ns.on("UPDATE_BATTLEFIELD_SCORE", readScoreboard)
 ns.on("PLAYER_REGEN_ENABLED", function()
@@ -718,6 +776,12 @@ local function debugScoreboard()
         parts[#parts + 1] = "faction " .. k .. ": " .. v
     end
     say("by side: " .. (#parts > 0 and table.concat(parts, ", ") or "none") .. "; enemies listed now: " .. #roster)
+    local healers = {}
+    for n in pairs(healedBy) do
+        healers[#healers + 1] = n
+    end
+    say(string.format("enemy casts read %d, hidden %d; seen healing: %s", castsRead, castsHidden,
+        #healers > 0 and table.concat(healers, ", ") or "nobody yet"))
 end
 
 ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>, debug]",
