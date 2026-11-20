@@ -95,16 +95,33 @@ local function makeRow(i)
     return b
 end
 
-local function setBarLook(row, seen)
+-- How a row looks by range: "near" (in range of you) full colour, "seen" (your group can see
+-- them, you're out of range) dimmed, nil (nobody sees them) greyed.
+local LOOK = { near = { 1, 1 }, seen = { 0.55, 0.85 }, none = { 0.3, 0.6 } }
+local function setBarLook(row, state)
     local e = row.enemy
     local r, g, bl = classColor(e and e.class)
-    if seen then
-        row.bar:SetStatusBarColor(r, g, bl, 1)
-        row.label:SetTextColor(1, 1, 1)
-    else
-        row.bar:SetStatusBarColor(r * 0.35, g * 0.35, bl * 0.35, 1)
-        row.label:SetTextColor(0.75, 0.75, 0.75)
+    local k, text = unpack(LOOK[state or "none"])
+    row.bar:SetStatusBarColor(r * k, g * k, bl * k, 1)
+    row.label:SetTextColor(text, text, text)
+    row:SetAlpha(state == "near" and 1 or state == "seen" and 0.85 or 0.7)
+end
+
+-- In range of you: a nameplate (they're within your nameplate distance), or, with a spell set
+-- (/fbl bg range Throw), that spell's range. A check the client hides counts as out of range.
+local function inRange(unit)
+    local spell = store().rangeSpell
+    if spell then
+        local f = (C_Spell and C_Spell.IsSpellInRange) or rawget(_G, "IsSpellInRange")
+        if f then
+            local ok, r = pcall(f, spell, unit)
+            local secret = rawget(_G, "issecretvalue")
+            if ok and r ~= nil and not (secret and secret(r)) then
+                return r == true or r == 1
+            end
+        end
     end
+    return unit:find("^nameplate") ~= nil
 end
 
 -- Lay the roster out on the rows. Secure buttons: out of combat only.
@@ -227,17 +244,23 @@ local function updateHealth()
             rowOf[rows[i].enemy] = rows[i]
         end
     end
-    local seen = {}
+    local seen = {} -- row -> "near" or "seen"
     for _, unit in ipairs(UNITS) do
         if UnitExists(unit) then
             local e = enemyOf(unit)
             local row = e and rowOf[e]
-            if row and not seen[row] then
-                seen[row] = true
-                -- Straight into the bar: a value hidden from the addon still draws.
-                pcall(row.bar.SetMinMaxValues, row.bar, 0, UnitHealthMax(unit))
-                pcall(row.bar.SetValue, row.bar, UnitHealth(unit))
-                row.seenOnce = true
+            if row then
+                if not seen[row] then
+                    -- Straight into the bar: a value hidden from the addon still draws.
+                    pcall(row.bar.SetMinMaxValues, row.bar, 0, UnitHealthMax(unit))
+                    pcall(row.bar.SetValue, row.bar, UnitHealth(unit))
+                    row.seenOnce = true
+                    seen[row] = "seen"
+                end
+                -- Group targets say nothing about your own range; your own units do.
+                if seen[row] ~= "near" and not unit:find("^party") and not unit:find("^raid") and inRange(unit) then
+                    seen[row] = "near"
+                end
             end
         end
     end
@@ -352,11 +375,23 @@ local function test(on)
     layout()
 end
 
-ns.command({ name = "bg", args = "[on, off, test, scale <n>]",
+ns.command({ name = "bg", args = "[on, off, test, scale <n>, range <spell>]",
     help = "battleground enemies with health bars; click a row to target (shows by itself in battlegrounds)",
     fn = function(rest)
         if InCombatLockdown() then
             say("the enemies list can't change in combat.")
+            return
+        end
+        local spell = rest:match("^range%s+(.+)$")
+        if spell then
+            spell = spell:match("^%s*(.-)%s*$")
+            if spell == "off" or spell == "nameplates" then
+                store().rangeSpell = nil
+                say("in range = within your nameplate distance.")
+            else
+                store().rangeSpell = spell
+                say("in range = within range of " .. spell .. " (where the client lets an addon check; otherwise nameplates).")
+            end
             return
         end
         local scale = tonumber(rest:match("^scale%s+([%d.]+)$"))
@@ -380,6 +415,6 @@ ns.command({ name = "bg", args = "[on, off, test, scale <n>]",
             say(testing and "test team shown (row 1 is your target, if you have one). /fbl bg test again to hide."
                 or "test team hidden.")
         else
-            say("shows by itself in battlegrounds. /fbl bg test shows a fake team to place it; /fbl bg off, on, scale 1.2.")
+            say("shows by itself in battlegrounds. /fbl bg test shows a fake team to place it; /fbl bg off, on, scale 1.2; /fbl bg range Throw sets what in range means (default: nameplate distance).")
         end
     end })
