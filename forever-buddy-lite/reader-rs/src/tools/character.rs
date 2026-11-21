@@ -335,6 +335,62 @@ pub fn recipes(ctx: &Ctx, name: Option<&str>, profession: Option<&str>, query: O
     Ok(ctx.header(c).set("professions", Value::Object(out.collect())).build())
 }
 
+/// Vendors seen, and what they sell. A query matching the vendor's name lists all its items;
+/// otherwise only the items whose name matches.
+pub fn vendors(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
+    let q = query.unwrap_or("").trim().to_lowercase();
+    if ctx.data.vendors.is_empty() {
+        return Err("No vendor saved yet: open a vendor's window in game, then /fbl r.".into());
+    }
+    let mut out = Vec::new();
+    for (npc, v) in ctx.data.vendors.iter() {
+        let whole = q.is_empty() || npc.to_lowercase().contains(&q);
+        let items: Vec<Value> = v
+            .items
+            .iter()
+            .filter(|it| whole || it.name.to_lowercase().contains(&q))
+            .map(|it| {
+                let costs: Vec<String> = it.costs.iter().map(|c| format!("{} {}", c.count, c.name)).collect();
+                Obj::new()
+                    .set("name", it.name.as_str())
+                    .opt("id", it.id.map(|i| i as i64))
+                    .opt("price", it.price.filter(|p| *p > 0.0).map(money_long))
+                    .opt("costs", (!costs.is_empty()).then(|| costs.join(", ")))
+                    .opt("stock", it.stock)
+                    .opt("requires", (!it.requires.is_empty()).then(|| it.requires.join("; ")))
+                    .opt("usable", (!it.usable).then_some(false))
+                    .build()
+            })
+            .collect();
+        if items.is_empty() {
+            continue;
+        }
+        let place = match (&v.subzone, &v.zone) {
+            (Some(s), Some(z)) if !s.is_empty() => format!("{s}, {z}"),
+            (_, Some(z)) => z.clone(),
+            _ => String::new(),
+        };
+        let at = match (v.x, v.y) {
+            (Some(x), Some(y)) => format!(" ({x:.1}, {y:.1})"),
+            _ => String::new(),
+        };
+        out.push(
+            Obj::new()
+                .set("vendor", npc.as_str())
+                .opt("where", (!place.is_empty()).then(|| format!("{place}{at}")))
+                .opt("seen", ctx.when(v.at))
+                .opt("by", v.by.clone())
+                .set("items", items)
+                .build(),
+        );
+    }
+    if out.is_empty() {
+        let names: Vec<&str> = ctx.data.vendors.iter().map(|(n, _)| n.as_str()).collect();
+        return Err(format!("No vendor or item matches \"{}\". Saved vendors: {}.", query.unwrap_or(""), names.join(", ")));
+    }
+    Ok(Value::Array(out))
+}
+
 pub fn trainers(ctx: &Ctx, query: Option<&str>) -> Result<Value, String> {
     let q = query.unwrap_or("").to_lowercase();
     let text = |v: Option<&Value>| match v {

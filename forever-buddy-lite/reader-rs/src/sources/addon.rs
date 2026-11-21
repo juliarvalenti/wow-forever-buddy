@@ -27,6 +27,8 @@ pub struct AddonData {
     pub ah: Option<AhScan>,
     /// Trainers by NPC name.
     pub trainers: OrderedMap<Trainer>,
+    /// Vendors seen, by name (the addon saves a merchant's window when you open it).
+    pub vendors: OrderedMap<Vendor>,
     /// Item details by item key, from `/fbl items` (quest rewards, wishlist items).
     pub items: OrderedMap<ItemRecord>,
     /// Price ladders by item key ("id" or "id:suffix"), oldest search first.
@@ -552,6 +554,47 @@ pub struct Trainer {
     pub services: Vec<Value>,
 }
 
+/// A vendor's window as last seen: where, when, by whom, and every item with its costs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Vendor {
+    pub at: Option<f64>,
+    pub by: Option<String>,
+    pub zone: Option<String>,
+    pub subzone: Option<String>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    #[serde(deserialize_with = "lua_list")]
+    pub items: Vec<VendorItem>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct VendorItem {
+    pub name: String,
+    pub id: Option<f64>,
+    /// Copper (0 when it costs only Honor, marks or tokens).
+    pub price: Option<f64>,
+    pub stack: Option<f64>,
+    /// Limited stock left, when the vendor has a limit.
+    pub stock: Option<f64>,
+    pub usable: bool,
+    /// Honor, marks, tokens.
+    #[serde(deserialize_with = "lua_list")]
+    pub costs: Vec<VendorCost>,
+    /// The tooltip's "Requires ..." lines (a PvP rank, a reputation, a level).
+    #[serde(deserialize_with = "lua_list")]
+    pub requires: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct VendorCost {
+    pub name: String,
+    pub count: f64,
+    pub id: Option<f64>,
+}
+
 /// One search of an item at the auction house: every price level and its quantity.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -612,6 +655,12 @@ fn merge_file(data: &mut AddonData, db: &Value, file: &Path, written: &str) {
         };
         if data.trainers.get(&npc).is_none_or(|old| trainer.at.unwrap_or(0.0) > old.at.unwrap_or(0.0)) {
             data.trainers.insert(npc, trainer);
+        }
+    }
+    for (npc, raw) in json::entries(db.get("vendors")) {
+        let Ok(v) = Vendor::deserialize(raw) else { continue };
+        if data.vendors.get(&npc).is_none_or(|old| v.at.unwrap_or(0.0) > old.at.unwrap_or(0.0)) {
+            data.vendors.insert(npc, v);
         }
     }
     for (key, raw) in json::entries(db.get("inspected")) {

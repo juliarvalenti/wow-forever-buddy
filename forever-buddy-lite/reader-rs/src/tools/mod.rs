@@ -41,6 +41,7 @@ pub const TOOLS: &[ToolInfo] = &[
     ToolInfo { name: "value", description: "What a character's bags (and bank, if seen) would fetch on the auction house, priced from Auctionator, most valuable first. Soulbound items are left out.", args: &[("character", "Name (optional)")] },
     ToolInfo { name: "upgrades", description: "Auction house upgrades for a character, from the gear ForeverBuddy Lite kept during the last full scan. Any class: it checks armor and weapon skills, class restrictions and level, scores stats with the class's (or the top talent tree's) leveling weights, and compares with what's worn in that slot. Best gain per slot.", args: &[("character", "Name (optional)"), ("slot", "Only this slot, e.g. head, finger, main_hand (optional)"), ("budget", "Max price in gold (optional)"), ("ahead", "Also show items up to this many levels above you (optional, default 0)"), ("weights", "Override weights, e.g. int=1,sta=1,sp=0.8 (optional)"), ("per_slot", "How many per slot (optional, default 3)"), ("source", "ah (default) or items: the stats /fbl items saved for the ids in Wishlist.lua, e.g. quest rewards (optional)")] },
     ToolInfo { name: "recipes", description: "Recipes a character knows in a profession, as of the last time its window was open: colour then, reagents, tools (an anvil shows as a tool).", args: &[("character", "Name (optional)"), ("profession", "Profession name (optional: all)"), ("query", "Recipe name part (optional)")] },
+    ToolInfo { name: "vendors", description: "Vendors visited: every item they sell, its price in gold and in Honor, marks or tokens, limited stock, and requirements (PvP rank, reputation, level). Search by vendor or item.", args: &[("query", "Vendor or item name part (optional)")] },
     ToolInfo { name: "trainers", description: "Trainers visited: what each teaches, the skill and level it needs, cost, and whether the character who visited knows it.", args: &[("query", "Trainer, skill or recipe name part (optional)")] },
     ToolInfo { name: "raw", description: "One character's saved data, untouched, or one section of it (identity, stats, gear, bags, bank, mail, quests, skills, talents, spells, reputation, lockouts, buffs).", args: &[("character", "Name (optional)"), ("section", "Section name (optional)")] },
 ];
@@ -106,6 +107,7 @@ pub fn call_at(tool: &str, args: &Args, env: &Env, now: f64) -> Result<Value, St
         "buffs" => character::buffs(&ctx, a("character"))?,
         "mail" => character::mail(&ctx, a("character"))?,
         "recipes" => character::recipes(&ctx, a("character"), a("profession"), a("query"))?,
+        "vendors" => character::vendors(&ctx, a("query"))?,
         "trainers" => character::trainers(&ctx, a("query"))?,
         "raw" => character::raw(&ctx, a("character"), a("section"))?,
         "prices" => prices::prices(&ctx, a("query"))?,

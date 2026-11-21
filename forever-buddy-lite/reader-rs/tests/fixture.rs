@@ -319,9 +319,9 @@ fn every_tool_runs_on_the_fixture() {
             _ => &[],
         };
         let result = run_with(t.name, a, &env());
-        // prices needs Auctionator data; recipes and trainers need data the fixture doesn't have.
+        // prices needs Auctionator data; recipes, trainers and vendors need data the fixture doesn't have.
         match t.name {
-            "prices" | "recipes" | "trainers" | "flips" | "value" => {}
+            "prices" | "recipes" | "trainers" | "vendors" | "flips" | "value" => {}
             _ => assert!(result.is_ok(), "{}: {:?}", t.name, result),
         }
     }
