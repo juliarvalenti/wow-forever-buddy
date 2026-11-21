@@ -9,6 +9,7 @@ import "./components/round-dialog.js";
 import "./components/wealth-view.js";
 import "./components/snipes-view.js";
 import "./components/trades-view.js";
+import "./components/bgs-view.js";
 import "./components/thinning-card.js";
 import "./components/fb-tabs.js";
 import "./components/design-view.js";

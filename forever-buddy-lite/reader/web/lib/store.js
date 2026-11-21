@@ -33,7 +33,7 @@ export const DEFAULT_PREFS = {
 };
 
 // The pages in the header's navigation.
-export const VIEWS = ["opportunities", "items", "snipes", "trades", "wealth"];
+export const VIEWS = ["opportunities", "items", "snipes", "trades", "wealth", "battlegrounds"];
 // Every page with a route: the navigation's, plus the style guide (linked from the footer).
 export const PAGES = [...VIEWS, "design"];
 
