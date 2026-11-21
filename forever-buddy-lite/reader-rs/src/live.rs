@@ -11,6 +11,7 @@
 //! - `GET /thinning.json`: items whose supply is well under the same hour yesterday at a steady price,
 //!   with the rule's track record on your past scans (see `thinning`);
 //! - `GET /bgs.json[?char=Name-Realm]`: battleground match history (see `bgs`);
+//! - `GET /indexes.json`: market indexes over the last week of scans (see `indexes`);
 //! - `GET /journal.json`: the trade ledger from AH mail invoices (see `journal`);
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
@@ -289,6 +290,10 @@ impl Live {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/indexes.json") => match self.indexes() {
+                Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
+                Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
+            },
             (_, "/journal.json") => match self.journal() {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
@@ -349,6 +354,17 @@ impl Live {
     }
 
     /// A Point Blank Sniper list from the query's settings (see `snipes::SnipeOptions`).
+    /// `/indexes.json`: market indexes over the last 7 days of scans, items grouped by catalog kind.
+    fn indexes(&self) -> Result<String, String> {
+        let addon = addon::load(&self.env)?;
+        let prices = auctionator::load(&self.env)?;
+        let catalog = catalog::build(&addon, &prices, &self.questie);
+        let kinds: HashMap<u32, String> = catalog.items.iter().map(|it| (it.id, it.k.clone())).collect();
+        let names: HashMap<u32, String> = catalog.items.iter().map(|it| (it.id, it.n.clone())).collect();
+        let history = self.history.lock().unwrap();
+        Ok(crate::indexes::indexes_json(&history, &kinds, &names, crate::format::now_seconds(), 7.0).to_string())
+    }
+
     fn thinning(&self) -> Result<String, String> {
         let addon = addon::load(&self.env)?;
         let data: crate::skillup::ProfessionData =
