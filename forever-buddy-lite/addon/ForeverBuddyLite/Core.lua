@@ -55,7 +55,7 @@ ns.resolve, ns.pack, ns.read = resolve, pack, read
 
 -- Which code this is: a hash of every addon file, written by addon/stamp.mjs
 -- (run by addon/install.mjs). "dev" means it was copied without stamping.
-ns.build = "65dee3d"
+ns.build = "221fa1e"
 
 -- "2 · a1b2c3d": the .toc version (set once the addon has loaded) and the build hash.
 function ns.versionString()
