@@ -10,6 +10,7 @@
 //!   Sniper list (copper for prices), leaving out hidden items and unlimited vendor goods;
 //! - `GET /thinning.json`: items whose supply is well under the same hour yesterday at a steady price,
 //!   with the rule's track record on your past scans (see `thinning`);
+//! - `GET /bgs.json[?char=Name-Realm]`: battleground match history (see `bgs`);
 //! - `GET /journal.json`: the trade ledger from AH mail invoices (see `journal`);
 //! - `GET /history.json?id=N`: one item's cheapest price and quantity at every archived scan;
 //! - `GET /wealth.json`: gold and item value over time (see `wealth`), recorded in wealth.jsonl next to
@@ -284,6 +285,10 @@ impl Live {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
             },
+            (_, "/bgs.json") => match self.bgs(&request.path) {
+                Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
+                Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
+            },
             (_, "/journal.json") => match self.journal() {
                 Ok(body) => Reply::new(200, "application/json", body.into_bytes()).cache("no-store"),
                 Err(e) => Reply::new(500, "text/plain; charset=utf-8", e.into_bytes()),
@@ -323,6 +328,14 @@ impl Live {
             },
         };
         let _ = reply.send(&mut stream);
+    }
+
+    /// `/bgs.json`: battleground match history, for every character or one (`?char=`).
+    fn bgs(&self, path: &str) -> Result<String, String> {
+        let addon = addon::load(&self.env)?;
+        let query = path.split_once('?').map_or("", |(_, q)| q);
+        let character = query.split('&').find_map(|kv| kv.strip_prefix("char=")).and_then(percent_decode).filter(|c| !c.is_empty());
+        Ok(crate::bgs::bgs_json(&addon.bg_matches, character.as_deref()).to_string())
     }
 
     /// `/journal.json`: the trade ledger (see `journal`), held stock priced at the latest scan.

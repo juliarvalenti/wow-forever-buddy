@@ -16,6 +16,7 @@
 //! - [`tools`], [`mcp`]: the character commands, on the CLI and as an MCP server.
 
 pub mod backtest;
+pub mod bgs;
 pub mod bis;
 pub mod catalog;
 pub mod cbor;

@@ -14,6 +14,7 @@ class MainView extends Component {
     if (prefs.view === "wealth") return html`<wealth-view></wealth-view>`;
     if (prefs.view === "snipes") return html`<snipes-view></snipes-view>`;
     if (prefs.view === "trades") return html`<trades-view></trades-view>`;
+    if (prefs.view === "battlegrounds") return html`<bgs-view></bgs-view>`;
     if (prefs.view === "design") return html`<design-view></design-view>`;
     return html`<opportunities-view></opportunities-view>`;
   }

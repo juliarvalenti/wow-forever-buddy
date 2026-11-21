@@ -36,6 +36,14 @@ export async function fetchJournal() {
   return response.json();
 }
 
+// Battleground match history: { totals, maps, matches, characters }, all characters or one ("Name-Realm").
+export async function fetchBattlegrounds(character = "") {
+  const query = character ? `?char=${encodeURIComponent(character)}` : "";
+  const response = await fetch(`/bgs.json${query}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 export async function fetchWealth() {
   const response = await fetch("/wealth.json", { cache: "no-store" });
   if (!response.ok) throw new Error(`wealth.json: ${response.status}`);

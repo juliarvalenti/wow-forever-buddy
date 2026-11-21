@@ -26,6 +26,10 @@ const NAV = [
       { view: "wealth", label: "Wealth", icon: "coins" },
     ],
   },
+  {
+    group: "PvP",
+    pages: [{ view: "battlegrounds", label: "Battlegrounds", icon: "shield" }],
+  },
 ];
 
 class AppHeader extends Component {

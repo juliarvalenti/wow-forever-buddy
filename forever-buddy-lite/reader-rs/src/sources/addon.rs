@@ -29,6 +29,60 @@ pub struct AddonData {
     pub ladders: OrderedMap<Vec<LadderSnapshot>>,
     /// Auction house buys and sales from mail invoices, oldest first (every file's, together).
     pub journal: Vec<JournalEntry>,
+    /// Battlegrounds played, oldest first (see the addon's Enemies.lua, match history).
+    pub bg_matches: Vec<BgMatch>,
+}
+
+/// One battleground match: your own scoreboard row and each side's totals (no other player's row).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct BgMatch {
+    /// When it ended, and when you entered (unix seconds); its length in seconds.
+    pub at: f64,
+    pub started: Option<f64>,
+    pub duration: Option<f64>,
+    pub map: String,
+    /// "Name-Realm" of the character who played it.
+    pub char: Option<String>,
+    /// "win", "loss", "draw" or "unknown".
+    pub result: String,
+    pub me: Option<BgRow>,
+    pub mine: Option<BgSide>,
+    pub theirs: Option<BgSide>,
+}
+
+/// Your row. A value the client hid is missing.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct BgRow {
+    pub kb: Option<f64>,
+    pub hk: Option<f64>,
+    pub deaths: Option<f64>,
+    pub honor: Option<f64>,
+    pub damage: Option<f64>,
+    pub healing: Option<f64>,
+    /// The battleground's own columns: flags captured, bases assaulted...
+    #[serde(deserialize_with = "crate::sources::lists::lua_list")]
+    pub stats: Vec<BgStat>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct BgStat {
+    pub name: String,
+    pub value: f64,
+}
+
+/// One side's totals.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct BgSide {
+    pub players: f64,
+    pub kb: f64,
+    pub hk: f64,
+    pub deaths: f64,
+    pub damage: f64,
+    pub healing: f64,
 }
 
 /// One auction house buy or sale, from the invoice on its mail (see the addon's Journal.lua).
@@ -536,6 +590,11 @@ fn merge_file(data: &mut AddonData, db: &Value, file: &Path, written: &str) {
         if data.ladders.get(&key).is_none_or(|old| newest(&log) > newest(old)) {
             data.ladders.insert(key, log);
         }
+    }
+    if let Some(history) = db.get("bgHistory") {
+        data.bg_matches.extend(values::<BgMatch>(history.get("matches")));
+        data.bg_matches.sort_by(|a, b| a.at.total_cmp(&b.at));
+        data.bg_matches.dedup_by(|a, b| a.at == b.at && a.char == b.char);
     }
     if let Some(journal) = db.get("journal") {
         data.journal.extend(values::<JournalEntry>(journal.get("entries")));

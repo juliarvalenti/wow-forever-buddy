@@ -706,6 +706,138 @@ end
 ns.on("ZONE_CHANGED_NEW_AREA", function()
     wipe(healedBy)
 end)
+
+-- Match history ------------------------------------------------------------------------------------
+-- When a match ends, keep one record: where, when, how long, win or loss, your own scoreboard row
+-- (killing blows, honorable kills, deaths, honor, damage, healing, the battleground's objectives) and
+-- each side's totals. No other player's name or row is kept. During a match Forever hides the
+-- scoreboard's damage and healing; at the end it should show them (a hidden value is kept as nil).
+--
+-- ForeverBuddyLiteDB.bgHistory = { matches = { { at, started, duration, map, char, side, winner,
+--   result, me = { kb, hk, deaths, honor, damage, healing, stats = { { name, value } } },
+--   mine = { players, kb, hk, deaths, damage, healing }, theirs = { ... } } } }
+
+local MAX_MATCHES = 1000
+local matchStarted, matchRecorded = nil, false
+
+local function history()
+    local db = ns.db
+    if not db then
+        return nil
+    end
+    db.bgHistory = type(db.bgHistory) == "table" and db.bgHistory or {}
+    db.bgHistory.matches = type(db.bgHistory.matches) == "table" and db.bgHistory.matches or {}
+    return db.bgHistory.matches
+end
+
+local function statNames()
+    local names = {}
+    local cols = read("C_PvP.GetMatchPVPStatColumns")
+    for _, c in ipairs(type(cols) == "table" and cols or {}) do
+        local id, name = plain(c.pvpStatID), plain(c.name)
+        if id and type(name) == "string" then
+            names[id] = name
+        end
+    end
+    return names
+end
+
+local function recordMatch(winner)
+    if matchRecorded then
+        return
+    end
+    local list = history()
+    local f = ns.resolve("C_PvP.GetScoreInfo")
+    local n = num(read("GetNumBattlefieldScores")) or 0
+    if not list or not f or n == 0 then
+        return
+    end
+    local mine = myFaction()
+    local myGuid, myName = read("UnitGUID", "player"), read("UnitName", "player")
+    local sides = { [true] = { players = 0, kb = 0, hk = 0, deaths = 0, damage = 0, healing = 0 },
+        [false] = { players = 0, kb = 0, hk = 0, deaths = 0, damage = 0, healing = 0 } }
+    local me
+    local names = statNames()
+    for i = 1, n do
+        local ok, sc = pcall(f, i)
+        if ok and type(sc) == "table" and plain(sc.faction) ~= nil then
+            local side = sides[plain(sc.faction) == mine]
+            local row = { kb = tonumber(plain(sc.killingBlows)), hk = tonumber(plain(sc.honorableKills)),
+                deaths = tonumber(plain(sc.deaths)), honor = tonumber(plain(sc.honorGained)),
+                damage = tonumber(plain(sc.damageDone)), healing = tonumber(plain(sc.healingDone)) }
+            side.players = side.players + 1
+            for _, k in ipairs({ "kb", "hk", "deaths", "damage", "healing" }) do
+                side[k] = side[k] + (row[k] or 0)
+            end
+            local guid, name = plain(sc.guid), plain(sc.name)
+            if (guid and guid == myGuid) or (name and myName and (name == myName or name:match("^[^-]+") == myName)) then
+                row.stats = {}
+                for _, st in ipairs(type(sc.stats) == "table" and sc.stats or {}) do
+                    local id, value = plain(st.pvpStatID), tonumber(plain(st.pvpStatValue))
+                    local label = plain(st.name) or (id and names[id])
+                    if value and type(label) == "string" and label ~= "" then
+                        row.stats[#row.stats + 1] = { name = label, value = value }
+                    end
+                end
+                me = row
+            end
+        end
+    end
+    winner = tonumber(winner)
+    local result = winner == nil and "unknown" or (winner == mine and "win") or ((winner == 0 or winner == 1) and "loss") or "draw"
+    local now = ns.now()
+    local duration = tonumber(plain(read("C_PvP.GetActiveMatchDuration")))
+    list[#list + 1] = {
+        at = now,
+        started = matchStarted,
+        duration = duration or (matchStarted and (now - matchStarted)) or nil,
+        map = read("GetRealZoneText") or "?",
+        char = ns.key,
+        side = mine,
+        winner = winner,
+        result = result,
+        me = me,
+        mine = sides[true],
+        theirs = sides[false],
+    }
+    while #list > MAX_MATCHES do
+        table.remove(list, 1)
+    end
+    matchRecorded = true
+    ns.fire("changed")
+    say(string.format("match recorded: %s, %s.", list[#list].map, result))
+end
+
+-- The match is over: ask for the final scoreboard, then record it (or after a moment regardless).
+local function matchOver(winner)
+    if matchRecorded or not inBattleground() then
+        return
+    end
+    pcall(RequestBattlefieldScoreData)
+    C_Timer.After(2, function()
+        recordMatch(winner)
+    end)
+end
+
+ns.on("PVP_MATCH_COMPLETE", function(winner)
+    matchOver(plain(winner))
+end)
+ns.on("UPDATE_BATTLEFIELD_STATUS", function()
+    local w = read("GetBattlefieldWinner") or read("C_PvP.GetActiveMatchWinner")
+    if w ~= nil and inBattleground() then
+        matchOver(w)
+    end
+end)
+-- A new battleground starts a new match.
+ns.on("PLAYER_ENTERING_WORLD", function()
+    if inBattleground() then
+        if not matchStarted then
+            matchStarted, matchRecorded = ns.now(), false
+        end
+    else
+        matchStarted, matchRecorded = nil, false
+    end
+end)
 ns.on("ZONE_CHANGED_NEW_AREA", refresh)
 ns.on("UPDATE_BATTLEFIELD_SCORE", readScoreboard)
 ns.on("PLAYER_REGEN_ENABLED", function()
