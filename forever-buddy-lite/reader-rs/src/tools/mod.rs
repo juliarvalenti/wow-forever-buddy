@@ -132,6 +132,8 @@ pub fn pick<'a>(data: &'a AddonData, name: Option<&str>) -> Result<&'a Character
         });
         return Ok(newest.unwrap());
     };
+    // Named: your characters, then players saved with /fbl inspect.
+    let all: Vec<&Character> = all.into_iter().chain(data.inspected.values()).collect();
     let n = name.to_lowercase();
     let exact: Vec<&Character> = all
         .iter()
@@ -191,5 +193,26 @@ impl Obj {
 
     pub fn build(self) -> Value {
         Value::Object(self.0)
+    }
+}
+
+#[cfg(test)]
+mod pick_tests {
+    use super::*;
+
+    fn character(key: &str, name: &str) -> Character {
+        let mut c = Character { key: key.into(), ..Character::default() };
+        c.identity.name = Some(name.into());
+        c
+    }
+
+    #[test]
+    fn named_lookups_find_inspected_players_but_the_default_is_yours() {
+        let mut data = AddonData::default();
+        data.characters.insert("Myrogue-Realm".into(), character("Myrogue-Realm", "Myrogue"));
+        data.inspected.insert("Friendo-Realm".into(), character("Friendo-Realm", "Friendo"));
+        assert_eq!(pick(&data, Some("friendo")).unwrap().key, "Friendo-Realm");
+        assert_eq!(pick(&data, Some("Myrogue")).unwrap().key, "Myrogue-Realm");
+        assert_eq!(pick(&data, None).unwrap().key, "Myrogue-Realm");
     }
 }
