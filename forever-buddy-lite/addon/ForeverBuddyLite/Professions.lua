@@ -182,10 +182,82 @@ local function saveTrainer()
     ns.fire("changed")
 end
 
+-- Vendors: everything a merchant sells when you open its window, with the price in gold and any
+-- other cost (Honor, marks, tokens), limited stock, and the tooltip's "Requires ..." lines (a PvP
+-- rank, a reputation, a level). Account-wide, by vendor name; where you stood when you saw it.
+-- ForeverBuddyLiteDB.vendors[name] = { at, by, zone, subzone, x, y, items = { { name, id, price,
+--   stack, stock, usable, costs = { { name, count, id } }, requires = { "..." } } } }
+local function merchantItem(i)
+    local name, price, stack, stock, usable, extended
+    local info = read("C_MerchantFrame.GetItemInfo", i)
+    if type(info) == "table" then
+        name, price, stack, stock, usable, extended = info.name, info.price, info.stackCount, info.numAvailable, info.isUsable,
+            info.hasExtendedCost
+    else
+        local r = ns.pack(read("GetMerchantItemInfo", i))
+        name, price, stack, stock, usable, extended = r[1], r[3], r[4], r[5], r[7], r[8]
+    end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+    local link = read("GetMerchantItemLink", i)
+    local item = { name = name, id = ns.itemID(link), price = num(price), stack = num(stack),
+        stock = (num(stock) or -1) >= 0 and num(stock) or nil, usable = usable and true or false }
+    if extended then
+        for j = 1, num(read("GetMerchantItemCostInfo", i)) or 0 do
+            local _, value, costLink, currency = read("GetMerchantItemCostItem", i, j)
+            local costName = currency or (costLink and costLink:match("%[(.-)%]"))
+            if num(value) and costName then
+                item.costs = item.costs or {}
+                item.costs[#item.costs + 1] = { name = costName, count = num(value), id = costLink and ns.itemID(costLink) or nil }
+            end
+        end
+    end
+    local tip = read("C_TooltipInfo.GetMerchantItem", i)
+    for _, line in ipairs(type(tip) == "table" and type(tip.lines) == "table" and tip.lines or {}) do
+        local text = line.leftText
+        if type(text) == "string" and text:find("^Requires ") then
+            item.requires = item.requires or {}
+            item.requires[#item.requires + 1] = text
+        end
+    end
+    return item
+end
+
+local function saveMerchant()
+    local db = ns.db
+    local n = num(read("GetMerchantNumItems"))
+    if not db or not n or n == 0 then
+        return
+    end
+    local items = {}
+    for i = 1, n do
+        local ok, item = pcall(merchantItem, i)
+        if ok and item then
+            items[#items + 1] = item
+        end
+    end
+    if #items == 0 then
+        return
+    end
+    local v = { at = now(), by = ns.key, zone = read("GetRealZoneText"), subzone = read("GetSubZoneText"), items = items }
+    local map = read("C_Map.GetBestMapForUnit", "player")
+    local pos = map and read("C_Map.GetPlayerMapPosition", map, "player")
+    if pos and pos.x then
+        v.x, v.y = ns.round(pos.x * 100, 1), ns.round(pos.y * 100, 1)
+    end
+    db.vendors = type(db.vendors) == "table" and db.vendors or {}
+    db.vendors[read(UnitName, "npc") or "vendor"] = v
+    ns.fire("changed")
+end
+
 -- Windows fire their update events in bursts: read once they settle.
 local professionSoon, trainerSoon = ns.debounce(0.5, saveProfession), ns.debounce(0.5, saveTrainer)
 for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE" }) do
     ns.on(e, professionSoon)
 end
 ns.on("TRAINER_SHOW", trainerSoon)
+local merchantSoon = ns.debounce(0.5, saveMerchant)
+ns.on("MERCHANT_SHOW", merchantSoon)
+ns.on("MERCHANT_UPDATE", merchantSoon)
 ns.on("TRAINER_UPDATE", trainerSoon)
