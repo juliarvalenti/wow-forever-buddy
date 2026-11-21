@@ -787,11 +787,23 @@ local function recordMatch(winner)
     local result = winner == nil and "unknown" or (winner == mine and "win") or ((winner == 0 or winner == 1) and "loss") or "draw"
     local now = ns.now()
     local duration = tonumber(plain(read("C_PvP.GetActiveMatchDuration")))
+    local map = read("GetRealZoneText") or "?"
+    -- A record of this same match made too early (a reload mid-match once read a winner before the
+    -- end): anything for this character and battleground that ended after this match began goes.
+    local began = duration and (now - duration) or matchStarted
+    if began then
+        for i = #list, 1, -1 do
+            local old = list[i]
+            if old.char == ns.key and old.map == map and (tonumber(old.at) or 0) > began then
+                table.remove(list, i)
+            end
+        end
+    end
     list[#list + 1] = {
         at = now,
         started = matchStarted,
         duration = duration or (matchStarted and (now - matchStarted)) or nil,
-        map = read("GetRealZoneText") or "?",
+        map = map,
         char = ns.key,
         side = mine,
         winner = winner,
@@ -822,11 +834,27 @@ end
 ns.on("PVP_MATCH_COMPLETE", function(winner)
     matchOver(plain(winner))
 end)
-ns.on("UPDATE_BATTLEFIELD_STATUS", function()
-    local w = read("GetBattlefieldWinner") or read("C_PvP.GetActiveMatchWinner")
-    if w ~= nil and inBattleground() then
-        matchOver(w)
+-- Only a finished match counts: during one (and right after a /reload) the winner functions can
+-- answer before the end, which once recorded a loss mid-match.
+local function matchIsOver()
+    local complete = ns.resolve("C_PvP.IsMatchComplete")
+    if complete then
+        local ok, done = pcall(complete)
+        if ok and not isSecret(done) then
+            return done == true
+        end
     end
+    return false
+end
+ns.on("UPDATE_BATTLEFIELD_STATUS", function()
+    if not inBattleground() or not matchIsOver() then
+        return
+    end
+    local w = read("GetBattlefieldWinner")
+    if w == nil then
+        w = read("C_PvP.GetActiveMatchWinner")
+    end
+    matchOver(w)
 end)
 -- A new battleground starts a new match.
 ns.on("PLAYER_ENTERING_WORLD", function()
