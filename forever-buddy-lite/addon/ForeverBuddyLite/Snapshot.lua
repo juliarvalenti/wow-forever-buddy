@@ -696,6 +696,112 @@ ns.command({ name = "snap", aliases = { "s" }, help = "snapshot now and print wh
         ns.say("/fbl r saves it to disk (reloads the UI).")
     end })
 
+-- /fbl inspect [tree]: save your target's equipped gear (with stats from the tooltips), class, level
+-- and race, so the reader can find them upgrades (fbl-rs upgrades <name>). For a friend you group
+-- with; kept on this machine only. The talent tree isn't readable from an inspect here, so name it
+-- ("/fbl inspect discipline"): it decides how stats are weighed (a Discipline priest heals).
+-- ForeverBuddyLiteDB.inspected["Name-Realm"] = { saved_at, inspected = true, identity, gear, talents, skills }
+
+-- What each class can wear and wield (Classic proficiencies), as skill-line names: the reader's
+-- upgrade check reads armor and weapon types from these.
+local PROFICIENCY = {
+    PRIEST = { "Cloth", "Daggers", "Maces", "Staves", "Wands" },
+    MAGE = { "Cloth", "Daggers", "Swords", "Staves", "Wands" },
+    WARLOCK = { "Cloth", "Daggers", "Swords", "Staves", "Wands" },
+    ROGUE = { "Cloth", "Leather", "Daggers", "Swords", "Maces", "Fist Weapons", "Bows", "Guns", "Crossbows", "Thrown" },
+    DRUID = { "Cloth", "Leather", "Daggers", "Maces", "Two-Handed Maces", "Staves", "Fist Weapons", "Polearms" },
+    HUNTER = { "Cloth", "Leather", "Mail", "Daggers", "Swords", "Two-Handed Swords", "Axes", "Two-Handed Axes", "Fist Weapons",
+        "Polearms", "Staves", "Bows", "Guns", "Crossbows", "Thrown" },
+    SHAMAN = { "Cloth", "Leather", "Mail", "Shield", "Daggers", "Maces", "Two-Handed Maces", "Axes", "Two-Handed Axes", "Staves",
+        "Fist Weapons" },
+    PALADIN = { "Cloth", "Leather", "Mail", "Plate Mail", "Shield", "Swords", "Two-Handed Swords", "Maces", "Two-Handed Maces",
+        "Axes", "Two-Handed Axes", "Polearms" },
+    WARRIOR = { "Cloth", "Leather", "Mail", "Plate Mail", "Shield", "Daggers", "Swords", "Two-Handed Swords", "Maces",
+        "Two-Handed Maces", "Axes", "Two-Handed Axes", "Fist Weapons", "Polearms", "Staves", "Bows", "Guns", "Crossbows", "Thrown" },
+}
+
+local inspecting -- { guid, tree } while waiting for the server
+
+local function saveInspect()
+    local unit = "target"
+    if not inspecting or read(UnitGUID, unit) ~= inspecting.guid then
+        return
+    end
+    local name, realm = read(UnitName, unit)
+    realm = (realm and realm ~= "") and realm or read(GetRealmName)
+    local _, class = read(UnitClass, unit)
+    local gearOut = {}
+    for slot = 0, 19 do
+        local link = read(GetInventoryItemLink, unit, slot)
+        if link then
+            gearOut[slot] = { link = link, tip = ns.statLines(link), equip = select(4, read("C_Item.GetItemInfoInstant", link)),
+                id = read(GetInventoryItemID, unit, slot) }
+        end
+    end
+    local skills = {}
+    for _, s in ipairs(PROFICIENCY[class or ""] or {}) do
+        skills[#skills + 1] = { name = s, rank = 1, max = 1 }
+    end
+    local tree = inspecting.tree
+    local db = ns.db
+    db.inspected = type(db.inspected) == "table" and db.inspected or {}
+    local key = tostring(name) .. "-" .. tostring(realm)
+    db.inspected[key] = {
+        saved_at = now(),
+        inspected = true,
+        identity = { name = name, realm = realm, class = class, race = select(2, read(UnitRace, unit)),
+            level = read(UnitLevel, unit), faction = read(UnitFactionGroup, unit) },
+        gear = gearOut,
+        skills = skills,
+        talents = tree and { system = "tabs", tabs = { { name = tree, points = 1 } } } or nil,
+    }
+    inspecting = nil
+    if ClearInspectPlayer then
+        pcall(ClearInspectPlayer)
+    end
+    local n = 0
+    for _ in pairs(gearOut) do
+        n = n + 1
+    end
+    ns.say(string.format("saved %s's gear (%d items%s). /fbl r, then ask for their upgrades.", tostring(name), n,
+        tree and (", " .. tree) or ""))
+    ns.fire("changed")
+end
+
+ns.on("INSPECT_READY", function(guid)
+    if inspecting and guid == inspecting.guid then
+        -- Item links can arrive a moment after the event; read once they've settled.
+        C_Timer.After(0.5, saveInspect)
+    end
+end)
+
+ns.command({ name = "inspect", args = "[talent tree]",
+    help = "save your target's gear for upgrade suggestions (e.g. /fbl inspect discipline)",
+    fn = function(rest)
+        local unit = "target"
+        if not read(UnitIsPlayer, unit) then
+            ns.say("target a player first.")
+            return
+        end
+        if read(CanInspect, unit) == false then
+            ns.say("can't inspect them from here: get closer.")
+            return
+        end
+        local tree = rest:match("^%s*(.-)%s*$")
+        tree = tree ~= "" and (tree:sub(1, 1):upper() .. tree:sub(2):lower()) or nil
+        if tree == "Feral" then
+            tree = "Feral Combat"
+        end
+        inspecting = { guid = read(UnitGUID, unit), tree = tree }
+        if UnitIsUnit and read(UnitIsUnit, unit, "player") then
+            ns.say("that's you: your own gear is saved anyway.")
+            inspecting = nil
+            return
+        end
+        pcall(NotifyInspect, unit)
+        ns.say("inspecting...")
+    end })
+
 ns.command({ name = "r", aliases = { "reload", "save" }, help = "snapshot, then reload the UI, which writes the file",
     fn = function()
         report(ns.snapshot())

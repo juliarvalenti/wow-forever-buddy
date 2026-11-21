@@ -19,6 +19,10 @@ pub struct AddonData {
     pub files: Vec<PathBuf>,
     /// By key ("Name-Realm"), in the order first seen.
     pub characters: OrderedMap<Character>,
+    /// Other players' gear saved with /fbl inspect (a friend you group with), by "Name-Realm": only
+    /// identity, gear, a class's armor and weapon skills, and the talent tree you named. Tools that
+    /// take a character name find these too; lists of your characters leave them out.
+    pub inspected: OrderedMap<Character>,
     /// The newest gear scan of the auction house (`/fbl ah`).
     pub ah: Option<AhScan>,
     /// Trainers by NPC name.
@@ -608,6 +612,12 @@ fn merge_file(data: &mut AddonData, db: &Value, file: &Path, written: &str) {
         };
         if data.trainers.get(&npc).is_none_or(|old| trainer.at.unwrap_or(0.0) > old.at.unwrap_or(0.0)) {
             data.trainers.insert(npc, trainer);
+        }
+    }
+    for (key, raw) in json::entries(db.get("inspected")) {
+        let c = character_from_json(&key, raw, file, written);
+        if data.inspected.get(&key).is_none_or(|old| c.saved_at.unwrap_or(0.0) > old.saved_at.unwrap_or(0.0)) {
+            data.inspected.insert(key, c);
         }
     }
     for (key, raw) in json::entries(db.get("characters")) {
