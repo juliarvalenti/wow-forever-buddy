@@ -12,6 +12,15 @@ ns.command({ name = "help", aliases = { "?" }, help = "this list", fn = function
     end
 end })
 
+-- /rl: the same as /fbl r (snapshot, then reload, which writes the file), unless another addon
+-- already took /rl.
+if not SlashCmdList.FBLRELOAD and not (rawget(_G, "hash_SlashCmdList") or {})["/RL"] then
+    SLASH_FBLRELOAD1 = "/rl"
+    SlashCmdList.FBLRELOAD = function()
+        ns.run("r")
+    end
+end
+
 SLASH_FOREVERBUDDYLITE1 = "/fbl"
 SlashCmdList.FOREVERBUDDYLITE = function(msg)
     msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
