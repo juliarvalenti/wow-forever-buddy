@@ -74,6 +74,7 @@ class OpportunitiesView extends Component {
         lede: html`${count(opps.busy)} busy items (${opps.minListed}+ listed) of ${count(opps.items)}; buys up to ${coins(opps.budget)}.`,
       })}
       <check-list></check-list>
+      <index-board></index-board>
       <thinning-card></thinning-card>
       <section class="stack" aria-labelledby="market-title">
         ${sectionHead({ title: "Market today", id: "market-title", note: "From the latest price scan. Click a row to open the item." })}

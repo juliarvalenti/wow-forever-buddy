@@ -44,6 +44,13 @@ export async function fetchBattlegrounds(character = "") {
   return response.json();
 }
 
+// Market indexes over the last week of scans: { indexes: [{ name, value, change24h, changeAll, series, movers }], latest, scans }.
+export async function fetchIndexes() {
+  const response = await fetch("/indexes.json", { cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 export async function fetchWealth() {
   const response = await fetch("/wealth.json", { cache: "no-store" });
   if (!response.ok) throw new Error(`wealth.json: ${response.status}`);
