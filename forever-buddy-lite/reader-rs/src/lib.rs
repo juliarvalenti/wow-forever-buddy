@@ -43,4 +43,5 @@ pub mod strategies;
 pub mod thinning;
 pub mod tools;
 pub mod wealth;
+pub mod wowcraft;
 pub mod zones;
