@@ -96,6 +96,7 @@ fn usage() {
         ("bis", "Best in slot by level for an agility melee (needs the WoWSims Forever database)."),
         ("npc", "Where an NPC stands, by name or title (\"first aid\", \"Fahrad\"); --zone narrows it, --pins makes an OpenMap code (needs QuestieDB)."),
         ("objects", "Every spawn of an object by name (\"footlocker\", \"silverleaf\", \"tin vein\"); --zone narrows it, --pins [--color c] makes OpenMap codes (needs QuestieDB)."),
+        ("wowcraft", "wowcraft.io helpers (fetches on demand, cached): recipes <profession> [filter] [--json] [--refresh]; cost <profession> [--realm \"Forever PvP US\"] [--faction Alliance]."),
         ("mcp", "The commands above the line as an MCP server on stdio."),
     ];
     for (name, what) in more {
@@ -199,6 +200,23 @@ fn skillup_command(cli: &Cli, env: &Env) -> Result<String, String> {
         craft_time: cli.number("craft", 20.0)?,
     };
     skillup::plan(&addon, &auctionator::load(env)?, c, &data, &o)
+}
+
+fn wowcraft_command(cli: &Cli, env: &Env) -> Result<String, String> {
+    let usage = "fbl-rs wowcraft recipes <profession> [filter] [--json] [--refresh] | cost <profession> [--realm \"Forever PvP US\"] [--faction Alliance]";
+    let profession = cli.arg(1).ok_or(usage)?;
+    match cli.arg(0) {
+        Some("recipes") => {
+            let items = questie::load_items(&env.questiedb_dir(), usize::MAX);
+            fbl::wowcraft::recipes_report(profession, cli.arg(2), cli.has("json"), cli.has("refresh"), &|id| {
+                items.name(id).map(str::to_string)
+            })
+        }
+        Some("cost") => {
+            fbl::wowcraft::cost_report(profession, cli.flag("realm").unwrap_or("Forever PvP US"), cli.flag("faction").unwrap_or("Alliance"))
+        }
+        _ => Err(usage.to_string()),
+    }
 }
 
 fn questxp_command(cli: &Cli, env: &Env) -> Result<String, String> {
@@ -337,6 +355,7 @@ fn main() -> ExitCode {
         "bis" => bis_command(&cli, &env),
         "npc" => npc_command(&cli, &env),
         "objects" => objects_command(&cli, &env),
+        "wowcraft" => wowcraft_command(&cli, &env),
         _ => match TOOLS.iter().find(|t| t.name == cmd) {
             Some(t) => tool(t, &cli, &env),
             None => {
