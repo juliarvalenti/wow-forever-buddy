@@ -40,6 +40,7 @@ pub mod snipes;
 pub mod sources;
 pub mod spawns;
 pub mod strategies;
+pub mod suffix;
 pub mod thinning;
 pub mod tools;
 pub mod wealth;

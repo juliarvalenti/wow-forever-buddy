@@ -342,8 +342,20 @@ pub fn upgrades(ctx: &Ctx, args: &Args) -> Result<Value, String> {
         Some((_, n)) => *n += 1,
         None => not_usable.push((reason, 1)),
     };
+    let suffixes = crate::suffix::load(&crate::bis::default_db_path());
+    // Dual wielding: a weapon in the off hand now (Dual Wield is a passive, not a skill line).
+    let dual_wield =
+        worn.get(&17).and_then(|w| w.equip.as_deref()).is_some_and(|e| matches!(e, "INVTYPE_WEAPON" | "INVTYPE_WEAPONOFFHAND"));
     for it in items {
-        let stats = parse_stats(&it.tip);
+        let mut stats = parse_stats(&it.tip);
+        // A random-suffix item's tooltip from an auction result leaves the suffix's stats out.
+        let has_primary = stats.values.iter().any(|(k, _)| matches!(k.as_str(), "str" | "agi" | "sta" | "int" | "spi"));
+        if !has_primary {
+            let name = it.name.clone().filter(|n| !n.is_empty()).or_else(|| parse_link(it.link.as_deref()).name).unwrap_or_default();
+            for (k, v) in suffixes.stats(it.id.unwrap_or(0.0) as u64, &name) {
+                stats.add(k, v);
+            }
+        }
         let Some(req) = required_level(it, &stats) else {
             skip("level unknown".into());
             continue;
@@ -357,46 +369,52 @@ pub fn upgrades(ctx: &Ctx, args: &Args) -> Result<Value, String> {
         }
         let Some(slots) = it.slot.as_deref().and_then(slots_for) else { continue };
         let sc = score(&stats, &p);
-        // A ring or trinket replaces the weaker of the two; a two-hander replaces main and off hand.
-        let mut target = slots[0];
-        if slots.len() == 2 && score_in(slots[0]).unwrap_or(-1.0) > score_in(slots[1]).unwrap_or(-1.0) {
-            target = slots[1];
-        }
         let inv = it.slot.as_deref().unwrap_or("");
-        let current = if inv == "INVTYPE_2HWEAPON" {
-            score_in(16).unwrap_or(0.0) + if two_hander { 0.0 } else { score_in(17).unwrap_or(0.0) }
-        } else {
-            score_in(target).unwrap_or(0.0)
-        };
         // An off-hand would mean giving up the two-hander; that pair isn't scored.
         if two_hander && matches!(inv, "INVTYPE_WEAPONOFFHAND" | "INVTYPE_HOLDABLE" | "INVTYPE_SHIELD") {
             continue;
         }
-        let gain = ((sc - current) * 10.0).round() / 10.0;
-        if gain <= 0.0 {
-            continue;
+        // A ring or trinket replaces the weaker of the two; a two-hander replaces main and off hand.
+        let mut targets = vec![slots[0]];
+        if slots.len() == 2 && score_in(slots[0]).unwrap_or(-1.0) > score_in(slots[1]).unwrap_or(-1.0) {
+            targets = vec![slots[1]];
         }
-        let slot_name = SLOT_NAMES[target];
-        if want_slot.as_ref().is_some_and(|w| !slot_name.starts_with(w.as_str())) {
-            continue;
+        // A one-hander also goes in the off hand of someone who dual wields.
+        if inv == "INVTYPE_WEAPON" && dual_wield && !two_hander {
+            targets.push(17);
         }
-        let row = Obj::new()
-            .opt("name", it.name.clone().filter(|n| !n.is_empty()).or_else(|| parse_link(it.link.as_deref()).name))
-            .opt("id", it.id)
-            .set("gain", gain)
-            .set("score", sc)
-            .set("req", req)
-            .opt("price", it.buyout.map(money_long))
-            .opt("listings", it.listings.clone())
-            .set("stats", stats.summary())
-            .set("replaces", worn.get(&target).and_then(|w| w.name.clone()).unwrap_or_else(|| "(empty)".into()))
-            .opt("quests", quest_sources(it))
-            .opt("drops", drop_sources(it))
-            .build();
-        let candidate = Candidate { gain, price: it.buyout.unwrap_or(0.0), row };
-        match by_slot.iter_mut().find(|(s, _)| *s == slot_name) {
-            Some((_, rows)) => rows.push(candidate),
-            None => by_slot.push((slot_name, vec![candidate])),
+        for target in targets {
+            let current = if inv == "INVTYPE_2HWEAPON" {
+                score_in(16).unwrap_or(0.0) + if two_hander { 0.0 } else { score_in(17).unwrap_or(0.0) }
+            } else {
+                score_in(target).unwrap_or(0.0)
+            };
+            let gain = ((sc - current) * 10.0).round() / 10.0;
+            if gain <= 0.0 {
+                continue;
+            }
+            let slot_name = SLOT_NAMES[target];
+            if want_slot.as_ref().is_some_and(|w| !slot_name.starts_with(w.as_str())) {
+                continue;
+            }
+            let row = Obj::new()
+                .opt("name", it.name.clone().filter(|n| !n.is_empty()).or_else(|| parse_link(it.link.as_deref()).name))
+                .opt("id", it.id)
+                .set("gain", gain)
+                .set("score", sc)
+                .set("req", req)
+                .opt("price", it.buyout.map(money_long))
+                .opt("listings", it.listings.clone())
+                .set("stats", stats.summary())
+                .set("replaces", worn.get(&target).and_then(|w| w.name.clone()).unwrap_or_else(|| "(empty)".into()))
+                .opt("quests", quest_sources(it))
+                .opt("drops", drop_sources(it))
+                .build();
+            let candidate = Candidate { gain, price: it.buyout.unwrap_or(0.0), row };
+            match by_slot.iter_mut().find(|(s, _)| *s == slot_name) {
+                Some((_, rows)) => rows.push(candidate),
+                None => by_slot.push((slot_name, vec![candidate])),
+            }
         }
     }
     let mut out = serde_json::Map::new();

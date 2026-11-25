@@ -151,9 +151,16 @@ end
 local function finish(unloaded)
     local db = ns.db
     -- A small browse (a search you typed) updates what's there; a full scan
-    -- (/fbl ah, or any browse of 500+) replaces it.
-    local full = building.full or building.total >= 500
+    -- (/fbl ah, or a whole-AH browse of 500+) replaces it.
     local items = building.items
+    -- Someone else's whole-AH browse counts as a full scan too, but only when it holds both
+    -- weapons and armor: a big search in one category (all one-handers) must not wipe the rest.
+    local weapons, armor = false, false
+    for _, v in pairs(items) do
+        weapons = weapons or v.class == 2
+        armor = armor or v.class == 4
+    end
+    local full = building.full or (building.total >= 500 and weapons and armor)
     local old = not full and unpackItems(db.ah)
     if old then
         for k, v in pairs(items) do

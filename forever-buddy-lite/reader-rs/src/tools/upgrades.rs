@@ -23,7 +23,7 @@ pub struct ItemStats {
 }
 
 impl ItemStats {
-    fn add(&mut self, key: &str, amount: f64) {
+    pub(crate) fn add(&mut self, key: &str, amount: f64) {
         match self.values.iter_mut().find(|(k, _)| k == key) {
             Some((_, v)) => *v += amount,
             None => self.values.push((key.to_string(), amount)),
@@ -338,11 +338,19 @@ pub fn can_use(c: &Character, item: &ItemRecord, stats: &ItemStats) -> Result<()
         return Ok(()); // armor anyone can wear: rings, trinkets, shirts
     }
     let need = skill_for(subtype);
-    if skills.contains(&need) {
-        Ok(())
-    } else {
-        Err(format!("needs {need}"))
+    let Some(have) = c.skills.iter().find(|s| s.name.as_deref() == Some(need)) else {
+        return Err(format!("needs {need}"));
+    };
+    // A weapon skill far under its cap (Maces 1/210) means misses and glancing blows: not an
+    // upgrade until it's trained up.
+    if item.class == Some(2.0) {
+        if let (Some(rank), Some(max)) = (have.rank, have.max) {
+            if rank < max - 25.0 {
+                return Err(format!("{need} skill low ({rank}/{max})"));
+            }
+        }
     }
+    Ok(())
 }
 
 /// Inventory slot numbers an item type goes in.
